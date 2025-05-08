@@ -10,6 +10,7 @@ import { State } from "../crate/glue_code"
 export interface CreatorAPI {
   addImage: (img: HTMLImageElement) => void
   updatePoints: (textureId: number, points: Point[]) => void
+  destroy: VoidFunction
 }
 
 export default async function initCreator(
@@ -62,6 +63,10 @@ export default async function initCreator(
     },
     updatePoints: (textureId, points) => {
       state.update_points(textureId, points)
+    },
+    destroy: () => {
+      context.unconfigure()
+      device.destroy()
     }
   }
 }
