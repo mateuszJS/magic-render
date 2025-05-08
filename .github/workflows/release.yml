@@ -23,7 +23,9 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - run: npm ci
       - run: npm run build
-      - run: npm audit signatures --omit=dev # --omit-dev because of axios vulneraiblity used by wasm-pack, not in prod, vulnerability is active only when user input is provided
+      - run: npm audit --omit=dev
+      # once we install dependency we cna change it to "npm audit signatures" to verify signatures as well
+      # --omit-dev because of axios vulneraiblity used by wasm-pack, not in prod, vulnerability is active only when user input is provided
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
