@@ -1,7 +1,7 @@
 
 import initCreator from "../src/index"
 
-const ASSET_ID = 0
+const ASSET_ID = 1
 
 async function test() {
   const canvas = document.querySelector<HTMLCanvasElement>("canvas")!

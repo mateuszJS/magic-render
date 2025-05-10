@@ -33,7 +33,7 @@ export default function runCreator(
         drawTexture(pass, matrix, new Float32Array(vertex_data), textures[texture_id])
       })
 
-      // pass.end()
+      pass.end()
 
       pickManager.render(encoder, matrix, (pickPass, pickMatrix) => {
         assetsList.forEach((id) => {
@@ -42,13 +42,10 @@ export default function runCreator(
         })
       }, pass)
 
-      pass.end()
-
       const commandBuffer = encoder.finish()
       device.queue.submit([commandBuffer])
 
-      // pickManager.asyncPick()
-    // }
+      pickManager.asyncPick()
 
     requestAnimationFrame(draw)
   }

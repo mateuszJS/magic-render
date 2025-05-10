@@ -38,8 +38,8 @@ export default function getProgram(
       module,
       entryPoint: 'fs',
       targets: [{
-        format: debugPresentationFormat,
-        // format: 'r32uint',
+        // format: debugPresentationFormat,
+        format: 'r32uint',
       }],
     },
     // primitive: {
