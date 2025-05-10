@@ -62,7 +62,7 @@ impl State {
             err!("add_texture received not copatible data from JS. Failed at conversion to Rust types.");
         };
 
-        self.assets.insert(id, Texture::new(points, texture_id));
+        self.assets.insert(id, Texture::new(id, points, texture_id));
     }
 
     pub fn get_shader_input(&self, id: usize) -> JsValue {
@@ -75,6 +75,21 @@ impl State {
         let payload = ShaderInput {
             texture_id: asset.texture_id,
             vertex_data: asset.get_vertex_data(),
+        };
+
+        serde_wasm_bindgen::to_value(&payload).unwrap()
+    }
+
+    pub fn get_shader_pick_input(&self, id: usize) -> JsValue {
+        let asset: &Texture = if self.assets.contains_key(&id) {
+            self.assets.get(&id).unwrap()
+        } else {
+            err!("asset with id {id} not found");
+        };
+
+        let payload = ShaderInput {
+            texture_id: asset.texture_id,
+            vertex_data: asset.get_vertex_pick_data(),
         };
 
         serde_wasm_bindgen::to_value(&payload).unwrap()

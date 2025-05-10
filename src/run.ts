@@ -1,5 +1,5 @@
 import getCanvasRenderDescriptor from "getCanvasRenderDescriptor"
-import { drawTexture } from "WebGPU/programs/initPrograms"
+import { drawTexture, pickTexture } from "WebGPU/programs/initPrograms"
 import { State } from "../crate/glue_code"
 import getCanvasMatrix from "getCanvasMatrix"
 import PickManager from "WebGPU/pick"
@@ -33,16 +33,21 @@ export default function runCreator(
         drawTexture(pass, matrix, new Float32Array(vertex_data), textures[texture_id])
       })
 
-      pass.end()
+      // pass.end()
 
-      pickManager.render(encoder, matrix, (pass, drawingMatrix) => {
-        
-      })
+      pickManager.render(encoder, matrix, (pickPass, pickMatrix) => {
+        assetsList.forEach((id) => {
+          const { texture_id, vertex_data } = state.get_shader_pick_input(id)
+          pickTexture(pickPass, pickMatrix, new Float32Array(vertex_data), textures[texture_id])
+        })
+      }, pass)
+
+      pass.end()
 
       const commandBuffer = encoder.finish()
       device.queue.submit([commandBuffer])
 
-      pickManager.asyncPick()
+      // pickManager.asyncPick()
     // }
 
     requestAnimationFrame(draw)

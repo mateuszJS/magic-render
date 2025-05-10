@@ -27,5 +27,5 @@ export default function initPrograms(
   draw3dModelLight = getDraw3dModelLight(device, presentationFormat)
   drawBlur = getBlur(device)
   drawTexture = getDrawtexture(device, presentationFormat)
-  pickTexture = getPickTexture(device)
+  pickTexture = getPickTexture(device, presentationFormat)
 }

@@ -8,8 +8,9 @@ export default function initMouseController(canvas: HTMLCanvasElement) {
   })
 
   canvas.addEventListener('mousemove', e => {
-    pointer.x = e.clientX
-    pointer.y = e.clientY
+    const rect = canvas.getBoundingClientRect()
+    pointer.x = e.clientX - rect.left
+    pointer.y = e.clientY - rect.top
   })
 
   canvas.addEventListener('mousedown', e => {

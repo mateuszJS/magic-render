@@ -4,6 +4,7 @@ const STRIDE = 4 + 2 + 1 + 1
 
 export default function getProgram(
   device: GPUDevice,
+  debugPresentationFormat: GPUTextureFormat
 ) {
   const module = device.createShaderModule({
     label: 'texture module',
@@ -27,8 +28,8 @@ export default function getProgram(
           attributes: [
             {shaderLocation: 0, offset: 0, format: 'float32x4'},  // destination position
             {shaderLocation: 1, offset: 16, format: 'float32x2'},  // source position
-            {shaderLocation: 2, offset: 16 + 8, format: 'float32'},  // source texture layer
-            {shaderLocation: 3, offset: 16 + 8 + 4, format: 'float32'},  // id
+            {shaderLocation: 2, offset: 16 + 8, format: 'float32'},  // id
+            // {shaderLocation: 3, offset: 16 + 8, format: 'float32x3'},  // id
           ] as const,
         },
       ],
@@ -37,17 +38,18 @@ export default function getProgram(
       module,
       entryPoint: 'fs',
       targets: [{
-        format: 'r32uint',
+        format: debugPresentationFormat,
+        // format: 'r32uint',
       }],
     },
-    primitive: {
-      cullMode: 'back',
-    },
-    depthStencil: {
-      depthWriteEnabled: true,
-      depthCompare: 'less',
-      format: 'depth24plus',
-    },
+    // primitive: {
+    //   cullMode: 'back',
+    // },
+    // depthStencil: {
+    //   depthWriteEnabled: true,
+    //   depthCompare: 'less',
+    //   format: 'depth24plus',
+    // },
   })
 
   const uniformBufferSize = (
