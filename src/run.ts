@@ -2,13 +2,10 @@ import getCanvasRenderDescriptor from "getCanvasRenderDescriptor"
 import { drawTexture } from "WebGPU/programs/initPrograms"
 import { State } from "../crate/glue_code"
 import getCanvasMatrix from "getCanvasMatrix"
+import PickManager from "WebGPU/pick"
 
 export const transformMatrix = new Float32Array()
 export const MAP_BACKGROUND_SCALE = 1000
-
-const stopRecording: VoidFunction | null = null
-const samples = 0
-const averageTime = 0
 
 export default function runCreator(
   state: State,
@@ -17,10 +14,10 @@ export default function runCreator(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
   textures: GPUTexture[],
+  assetsList: number[]
 ) {
-
-
   const matrix = getCanvasMatrix(canvas)
+  const pickManager = new PickManager(device, canvas)
 
   function draw(now: DOMHighResTimeStamp) {
     // const { needsRefresh } = state; // make save copy of needsRefresh value
@@ -31,20 +28,21 @@ export default function runCreator(
       const descriptor = getCanvasRenderDescriptor(context, device)
       const pass = encoder.beginRenderPass(descriptor)
 
-      let isDone = false
-      let i = 0
-      while (!isDone) {
-        const { texture_id, vertex_data } = state.get_shader_input(i)
-        i++
-        isDone = vertex_data.length === 0
-        if (!isDone) {
-          drawTexture(pass, matrix, new Float32Array(vertex_data), textures[texture_id])
-        }
-      }
+      assetsList.forEach((id) => {
+        const { texture_id, vertex_data } = state.get_shader_input(id)
+        drawTexture(pass, matrix, new Float32Array(vertex_data), textures[texture_id])
+      })
 
       pass.end()
+
+      pickManager.render(encoder, matrix, (pass, drawingMatrix) => {
+        
+      })
+
       const commandBuffer = encoder.finish()
       device.queue.submit([commandBuffer])
+
+      pickManager.asyncPick()
     // }
 
     requestAnimationFrame(draw)

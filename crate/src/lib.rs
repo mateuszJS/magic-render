@@ -29,23 +29,32 @@ macro_rules! angle_diff {
 
 mod texture;
 
+use std::collections::HashMap;
+
 use gloo_utils::format::JsValueSerdeExt; // for transforming JsValue into serde
 use serde::{Deserialize, Serialize};
 use texture::{Texture, VertexPoint};
 use wasm_bindgen::prelude::*;
 
+// #[wasm_bindgen]
+// extern "C" {
+//     fn alert(s: &str);
+// }
+
 #[wasm_bindgen]
 pub struct State {
-    textures: Vec<Texture>,
+    assets: HashMap<usize, Texture>,
 }
 
 #[wasm_bindgen]
 impl State {
     pub fn new(width: f32, height: f32) -> State {
-        State { textures: vec![] }
+        State {
+            assets: HashMap::new(),
+        }
     }
 
-    pub fn add_texture(&mut self, raw_points: JsValue, id: usize) {
+    pub fn add_texture(&mut self, id: usize, raw_points: JsValue, texture_id: usize) {
         let serde = raw_points.into_serde();
         let points: Vec<VertexPoint> = if serde.is_ok() {
             serde.unwrap()
@@ -53,27 +62,27 @@ impl State {
             err!("add_texture received not copatible data from JS. Failed at conversion to Rust types.");
         };
 
-        self.textures.push(Texture::new(points, id));
+        self.assets.insert(id, Texture::new(points, texture_id));
     }
 
-    pub fn get_shader_input(&self, index: usize) -> JsValue {
-        let mut vertex_data: Vec<f32> = vec![];
-        let mut texture_id: usize = 0;
-        if index < self.textures.len() {
-            texture_id = self.textures[index].id;
-            self.textures[index].add_vertex(&mut vertex_data);
-        }
+    pub fn get_shader_input(&self, id: usize) -> JsValue {
+        let asset: &Texture = if self.assets.contains_key(&id) {
+            self.assets.get(&id).unwrap()
+        } else {
+            err!("asset with id {id} not found");
+        };
 
         let payload = ShaderInput {
-            texture_id,
-            vertex_data,
+            texture_id: asset.texture_id,
+            vertex_data: asset.get_vertex_data(),
         };
-        serde_wasm_bindgen::to_value(&payload).unwrap()
 
-        // js_sys::Float32Array::from(&result[..])
+        serde_wasm_bindgen::to_value(&payload).unwrap()
     }
 
-    pub fn update_points(&mut self, texture_id: usize, raw_points: JsValue) {
+    pub fn update_points(&mut self, id: usize, raw_points: JsValue) {
+        let asset = self.assets.get_mut(&id).unwrap();
+
         let serde = raw_points.into_serde();
         let points: Vec<Point> = if serde.is_ok() {
             serde.unwrap()
@@ -81,12 +90,7 @@ impl State {
             err!("add_texture received not copatible data from JS. Failed at conversion to Rust types.");
         };
 
-        let texture_option = self
-            .textures
-            .iter_mut()
-            .find(|texture| texture.id == texture_id);
-
-        texture_option.unwrap().update_coords(points);
+        asset.update_coords(points);
     }
 }
 

@@ -6,10 +6,11 @@ import { createTextureFromSource } from 'WebGPU/getTexture'
 import clamp from "utils/clamp"
 import { Point } from "types"
 import { State } from "../crate/glue_code"
+import initMouseController from "WebGPU/pointer"
 
 export interface CreatorAPI {
-  addImage: (img: HTMLImageElement) => void
-  updatePoints: (textureId: number, points: Point[]) => void
+  addImage: (id: number, img: HTMLImageElement) => void
+  updatePoints: (id: number, points: Point[]) => void
   destroy: VoidFunction
 }
 
@@ -37,21 +38,25 @@ export default async function initCreator(
   })
 
   initPrograms(device, presentationFormat)
+
+  initMouseController(canvas)
+
   const textures: GPUTexture[] = []
-  runCreator(state, canvas, context, device, presentationFormat, textures)
+  const assetsList: number[] = []
+  runCreator(state, canvas, context, device, presentationFormat, textures, assetsList)
 
   // initUI(state)
   return {
-    addImage: (img) => {
+    addImage: (id, img) => {
       const newTextureIndex = textures.length
       textures.push(createTextureFromSource(device, img))
-      console.log('env', img.width, canvas.width)
       const scale = getDefaultTextureScale(img, canvas)
       const scaledWidth = img.width * scale
       const scaledHeight = img.height * scale
       const paddingX = (canvas.width - scaledWidth) * .5
       const paddingY = (canvas.height - scaledHeight) * .5
       state.add_texture(
+        id,
         [
           { x: paddingX, y: paddingY, u: 0, v: 0 },
           { x: paddingX + scaledWidth, y: paddingY, u: 1, v: 0 },
@@ -60,9 +65,10 @@ export default async function initCreator(
         ],
         newTextureIndex
       )
+      assetsList.push(id)
     },
-    updatePoints: (textureId, points) => {
-      state.update_points(textureId, points)
+    updatePoints: (id, points) => {
+      state.update_points(id, points)
     },
     destroy: () => {
       context.unconfigure()

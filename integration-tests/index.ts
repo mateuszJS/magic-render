@@ -1,6 +1,8 @@
 
 import initCreator from "../src/index"
 
+const ASSET_ID = 0
+
 async function test() {
   const canvas = document.querySelector<HTMLCanvasElement>("canvas")!
   const creator = await initCreator(canvas)
@@ -13,14 +15,14 @@ async function test() {
     const img = new Image()
     img.src = URL.createObjectURL(files[0])
     img.onload = () => {
-      creator.addImage(img)
+      creator.addImage(ASSET_ID, img)
     }
   })
 
   let offset = 100
   const updateImgPositionBtn = document.querySelector<HTMLButtonElement>('#img-position')!
   updateImgPositionBtn.addEventListener('click', () => {
-    creator.updatePoints(0, [
+    creator.updatePoints(ASSET_ID, [
       { x: offset, y: offset },
       { x: offset + 400, y: offset },
       { x: offset + 400, y: offset + 400 },
