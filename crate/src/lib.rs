@@ -15,37 +15,35 @@ macro_rules! err {
   // there is no way to specify panci message, so we need to do console.error and then panci any value
 }
 
-//to remove and replace with util
-macro_rules! angle_diff {
-  ($beta:expr, $alpha:expr) => {{
-    let phi = ($beta - $alpha).abs() % (2.0 * MATH_PI); // This is either the distance or 2*Math.PI - distance
-    if phi > MATH_PI {
-      (2.0 * MATH_PI) - phi
-    } else {
-      phi
-    }
-  }}
-}
-
+mod line;
 mod texture;
+mod types;
 
-use gloo_utils::format::JsValueSerdeExt; // for transforming JsValue into serde
+use std::collections::HashMap;
+
+use gloo_utils::format::JsValueSerdeExt;
+use line::Line;
 use serde::{Deserialize, Serialize};
-use texture::{Texture, VertexPoint};
+use texture::Texture;
+use types::{Point, VertexPoint};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub struct State {
-    textures: Vec<Texture>,
+    assets: HashMap<usize, Texture>,
+    hovered_asset_id: usize, // 0 -> no asset is hovered
 }
 
 #[wasm_bindgen]
 impl State {
     pub fn new(width: f32, height: f32) -> State {
-        State { textures: vec![] }
+        State {
+            assets: HashMap::new(),
+            hovered_asset_id: 0,
+        }
     }
 
-    pub fn add_texture(&mut self, raw_points: JsValue, id: usize) {
+    pub fn add_texture(&mut self, id: usize, raw_points: JsValue, texture_id: usize) {
         let serde = raw_points.into_serde();
         let points: Vec<VertexPoint> = if serde.is_ok() {
             serde.unwrap()
@@ -53,27 +51,42 @@ impl State {
             err!("add_texture received not copatible data from JS. Failed at conversion to Rust types.");
         };
 
-        self.textures.push(Texture::new(points, id));
+        self.assets.insert(id, Texture::new(id, points, texture_id));
     }
 
-    pub fn get_shader_input(&self, index: usize) -> JsValue {
-        let mut vertex_data: Vec<f32> = vec![];
-        let mut texture_id: usize = 0;
-        if index < self.textures.len() {
-            texture_id = self.textures[index].id;
-            self.textures[index].add_vertex(&mut vertex_data);
-        }
+    pub fn get_shader_input(&self, id: usize) -> JsValue {
+        let asset: &Texture = if self.assets.contains_key(&id) {
+            self.assets.get(&id).unwrap()
+        } else {
+            err!("asset with id {id} not found");
+        };
 
         let payload = ShaderInput {
-            texture_id,
-            vertex_data,
+            texture_id: asset.texture_id,
+            vertex_data: asset.get_vertex_data(),
         };
-        serde_wasm_bindgen::to_value(&payload).unwrap()
 
-        // js_sys::Float32Array::from(&result[..])
+        serde_wasm_bindgen::to_value(&payload).unwrap()
     }
 
-    pub fn update_points(&mut self, texture_id: usize, raw_points: JsValue) {
+    pub fn get_shader_pick_input(&self, id: usize) -> JsValue {
+        let asset: &Texture = if self.assets.contains_key(&id) {
+            self.assets.get(&id).unwrap()
+        } else {
+            err!("asset with id {id} not found");
+        };
+
+        let payload = ShaderInput {
+            texture_id: asset.texture_id,
+            vertex_data: asset.get_vertex_pick_data(),
+        };
+
+        serde_wasm_bindgen::to_value(&payload).unwrap()
+    }
+
+    pub fn update_points(&mut self, id: usize, raw_points: JsValue) {
+        let asset = self.assets.get_mut(&id).unwrap();
+
         let serde = raw_points.into_serde();
         let points: Vec<Point> = if serde.is_ok() {
             serde.unwrap()
@@ -81,19 +94,38 @@ impl State {
             err!("add_texture received not copatible data from JS. Failed at conversion to Rust types.");
         };
 
-        let texture_option = self
-            .textures
-            .iter_mut()
-            .find(|texture| texture.id == texture_id);
-
-        texture_option.unwrap().update_coords(points);
+        asset.update_coords(points);
     }
-}
 
-#[derive(Serialize, Deserialize)]
-struct Point {
-    x: f32,
-    y: f32,
+    pub fn update_hover(&mut self, id: usize) {
+        self.hovered_asset_id = id
+    }
+
+    pub fn get_border(&self) -> Vec<f32> {
+        if self.assets.contains_key(&self.hovered_asset_id) {
+            let asset: &Texture = self.assets.get(&self.hovered_asset_id).unwrap();
+
+            asset
+                .points
+                .iter()
+                .enumerate()
+                .flat_map(|(index, point)| {
+                    Line::get_vertex_data(
+                        point,
+                        if index == 3 {
+                            &asset.points[0]
+                        } else {
+                            &asset.points[index + 1]
+                        },
+                        20.0,
+                        (1.0, 0.0, 0.0, 1.0),
+                    )
+                })
+                .collect::<Vec<f32>>()
+        } else {
+            vec![]
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]

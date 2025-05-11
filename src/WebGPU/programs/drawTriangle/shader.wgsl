@@ -1,26 +1,27 @@
-struct Uniforms {
-  color: vec4f,
-  matrix: mat3x3f,
-};
-
 struct Vertex {
-  @location(0) position: vec2f,
+  @location(0) position: vec4f,
+  @location(1) color: vec4f,
 };
 
-struct VSOutput {
+struct Uniforms {
+  worldViewProjection: mat4x4f,
+};
+
+struct VertexOutput {
   @builtin(position) position: vec4f,
+  @location(0) color: vec4f,
 };
 
-@group(0) @binding(0) var<uniform> uni: Uniforms;
+@group(0) @binding(0) var<uniform> u: Uniforms;
 
-@vertex fn vs(vert: Vertex) -> VSOutput {
-  var vsOut: VSOutput;
-
-  let clipSpace = (uni.matrix * vec3f(vert.position, 1)).xy;
-  vsOut.position = vec4f(clipSpace, 0.0, 1.0);
-  return vsOut;
+@vertex fn vs(vert: Vertex) -> VertexOutput {
+  var out: VertexOutput;
+  out.position = u.worldViewProjection * vert.position;
+  out.color = vert.color;
+  
+  return out;
 }
 
-@fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
-  return uni.color;
+@fragment fn fs(in: VertexOutput) -> @location(0) vec4f {
+  return in.color;
 }

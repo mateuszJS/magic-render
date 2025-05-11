@@ -21,20 +21,24 @@ test('visible image after upload', async ({ page }, testinfo) => {
   // await expect(page).toHaveScreenshot('webgpu-report.png');
 
   await page.goto('/')
+  await page.waitForLoadState("networkidle")
 
+  /** =========PNG IMAGE UPLOAD============ */
   const fileInput = page.locator('input[type="file"]')
   const testImagePath = path.join(__dirname, '../image-sample.png')
   await fileInput.setInputFiles(testImagePath)
 
   const canvas = page.locator('canvas')
+  await expect(canvas).toHaveScreenshot('after-upload.png')
 
-  await expect(canvas).toBeVisible()
-
-  await expect(canvas).toHaveScreenshot(['after-upload.png'])
-
+  /** =========IMAGES POSITION UPDATES============ */
   const moveImgBtn = page.locator('#img-position')
   await moveImgBtn.click()
   await expect(canvas).toHaveScreenshot('after-move.png')
+
+  /** =========DISPLAYS BORDER AROUND HOVERED ASSET============ */
+  await page.mouse.move(200, 300)
+  await expect(canvas).toHaveScreenshot('after-hover.png')
 })
 
 

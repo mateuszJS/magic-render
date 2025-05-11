@@ -1,27 +1,21 @@
-use serde::{Deserialize, Serialize};
-use wasm_bindgen::convert::FromWasmAbi;
-
-use crate::Point;
-
-#[derive(Serialize, Deserialize)]
-pub struct VertexPoint {
-    x: f32,
-    y: f32,
-    u: f32,
-    v: f32,
-}
+use crate::{Point, VertexPoint};
 
 pub struct Texture {
-    points: Vec<VertexPoint>,
-    pub id: usize,
+    id: f32,                      // for picking
+    pub points: Vec<VertexPoint>, // for border drawing
+    pub texture_id: usize,
 }
 
 impl Texture {
-    pub fn new(points: Vec<VertexPoint>, id: usize) -> Texture {
-        Texture { points, id }
+    pub fn new(id: usize, points: Vec<VertexPoint>, texture_id: usize) -> Texture {
+        Texture {
+            id: id as f32,
+            points,
+            texture_id,
+        }
     }
 
-    pub fn add_vertex(&self, verticies: &mut Vec<f32>) {
+    pub fn get_vertex_data(&self) -> Vec<f32> {
         let points: [&VertexPoint; 6] = [
             &self.points[0],
             &self.points[1],
@@ -30,14 +24,10 @@ impl Texture {
             &self.points[3],
             &self.points[0],
         ];
-        points.iter().for_each(|point| {
-            verticies.push(point.x);
-            verticies.push(point.y);
-            verticies.push(0.0);
-            verticies.push(1.0);
-            verticies.push(point.u);
-            verticies.push(point.v);
-        });
+        points
+            .iter()
+            .flat_map(|point| vec![point.x, point.y, 0.0, 1.0, point.u, point.v])
+            .collect()
     }
 
     pub fn update_coords(&mut self, new_points: Vec<Point>) {
@@ -48,5 +38,20 @@ impl Texture {
                 point.x = new_points[index].x;
                 point.y = new_points[index].y;
             });
+    }
+
+    pub fn get_vertex_pick_data(&self) -> Vec<f32> {
+        let points: [&VertexPoint; 6] = [
+            &self.points[0],
+            &self.points[1],
+            &self.points[2],
+            &self.points[2],
+            &self.points[3],
+            &self.points[0],
+        ];
+        points
+            .iter()
+            .flat_map(|point| vec![point.x, point.y, 0.0, 1.0, point.u, point.v, self.id])
+            .collect()
     }
 }

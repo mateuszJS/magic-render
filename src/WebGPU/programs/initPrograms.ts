@@ -5,6 +5,7 @@ import getDraw3dModel from "./draw3dModel/getProgram"
 import getDraw3dModelLight from "./draw3dModelLight/getProgram"
 import getBlur from "./blur/getProgram"
 import getDrawtexture from "./drawTexture/getProgram"
+import getPickTexture from "./pickTexture/getProgram"
 
 export let drawTriangle: ReturnType<typeof getDrawTriangle>
 export let drawBezier: ReturnType<typeof getDrawBezier>
@@ -13,6 +14,7 @@ export let draw3dModelTexture: ReturnType<typeof getDraw3dModelTexture>
 export let draw3dModelLight: ReturnType<typeof getDraw3dModelLight>
 export let drawBlur: ReturnType<typeof getBlur>
 export let drawTexture: ReturnType<typeof getDrawtexture>
+export let pickTexture: ReturnType<typeof getPickTexture>
 
 export default function initPrograms(
   device: GPUDevice,
@@ -25,4 +27,5 @@ export default function initPrograms(
   draw3dModelLight = getDraw3dModelLight(device, presentationFormat)
   drawBlur = getBlur(device)
   drawTexture = getDrawtexture(device, presentationFormat)
+  pickTexture = getPickTexture(device, presentationFormat)
 }

@@ -1,19 +1,23 @@
 import shaderCode from "./shader.wgsl"
  
-
-const STRIDE = 4 + 4// + 1 + 1 + 4
+const STRIDE = 4 + 2 + 1
 
 export default function getProgram(
   device: GPUDevice,
-  presentationFormat: GPUTextureFormat
+  debugPresentationFormat: GPUTextureFormat
 ) {
   const module = device.createShaderModule({
-    label: 'draw triangle module',
+    label: 'texture module',
     code: shaderCode
   })
 
+  const sampler = device.createSampler({
+    minFilter: 'linear',
+    magFilter: 'linear',
+  })
+
   const pipeline = device.createRenderPipeline({
-    label: 'draw triangle pipeline',
+    label: 'texture pipeline',
     layout: 'auto',
     vertex: {
       module,
@@ -23,7 +27,9 @@ export default function getProgram(
           arrayStride: STRIDE * 4,
           attributes: [
             {shaderLocation: 0, offset: 0, format: 'float32x4'},  // destination position
-            {shaderLocation: 1, offset: 16, format: 'float32x4'},  // color
+            {shaderLocation: 1, offset: 16, format: 'float32x2'},  // source position
+            {shaderLocation: 2, offset: 16 + 8, format: 'float32'},  // id
+            // {shaderLocation: 3, offset: 16 + 8, format: 'float32x3'},  // id
           ] as const,
         },
       ],
@@ -32,19 +38,13 @@ export default function getProgram(
       module,
       entryPoint: 'fs',
       targets: [{
-        format: presentationFormat,
-        // blend: {
-        //   color: {
-        //     srcFactor: 'one',
-        //     dstFactor: 'one-minus-src-alpha'
-        //   },
-        //   alpha: {
-        //     srcFactor: 'one',
-        //     dstFactor: 'one-minus-src-alpha'
-        //   },
-        // },
+        // format: debugPresentationFormat,
+        format: 'r32uint',
       }],
     },
+    // primitive: {
+    //   cullMode: 'back',
+    // },
     // depthStencil: {
     //   depthWriteEnabled: true,
     //   depthCompare: 'less',
@@ -65,10 +65,11 @@ export default function getProgram(
   const kMatrixOffset = 0
   const matrixValue = uniformValues.subarray(kMatrixOffset, kMatrixOffset + 16)
 
-  return function drawTriangle(
+  return function drawTexture(
     pass: GPURenderPassEncoder,
     worldProjectionMatrix: Float32Array,
     vertexData: Float32Array<ArrayBufferLike>,
+    texture: GPUTexture,
   ) {
     const numVertices = vertexData.length / STRIDE | 0
     const vertexBuffer = device.createBuffer({
@@ -80,17 +81,20 @@ export default function getProgram(
 
 
     // bind group should be pre-created and reuse instead of constantly initialized
+    // TODO: avoid creatign bind group on every render
     const bindGroup = device.createBindGroup({
       layout: pipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: uniformBuffer }},
+        { binding: 1, resource: sampler },
+        { binding: 2, resource: texture.createView() },
       ],
     })
 
-
     pass.setPipeline(pipeline)
     pass.setVertexBuffer(0, vertexBuffer)
-
+    
+    // const translateWorldProjMatrix = mat4.translate(worldProjectionMatrix, [])
     matrixValue.set(worldProjectionMatrix)
 
     device.queue.writeBuffer(uniformBuffer, 0, uniformValues)
