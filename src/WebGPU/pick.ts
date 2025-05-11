@@ -89,8 +89,6 @@ export default class PickManager {
       origin: { x: 0, y: 0 }
     }, {
       buffer: this.pickBuffer,
-      bytesPerRow: ((NUM_PIXELS * 4 + 255) | 0) * 256,
-      rowsPerImage: 1,
     }, {
       width: NUM_PIXELS,
     })
