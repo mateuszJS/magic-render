@@ -83,6 +83,7 @@ export default function getProgram(
 
 
     // bind group should be pre-created and reuse instead of constantly initialized
+    // TODO: avoid creatign bind group on every render
     const bindGroup = device.createBindGroup({
       layout: pipeline.getBindGroupLayout(0),
       entries: [

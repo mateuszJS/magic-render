@@ -29,7 +29,7 @@ test('visible image after upload', async ({ page }, testinfo) => {
   await fileInput.setInputFiles(testImagePath)
 
   const canvas = page.locator('canvas')
-  await expect(canvas).toHaveScreenshot(['after-upload.png'])
+  await expect(canvas).toHaveScreenshot('after-upload.png')
 
   /** =========IMAGES POSITION UPDATES============ */
   const moveImgBtn = page.locator('#img-position')
