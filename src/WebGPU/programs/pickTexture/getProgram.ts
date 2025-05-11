@@ -71,9 +71,7 @@ export default function getProgram(
     vertexData: Float32Array<ArrayBufferLike>,
     texture: GPUTexture,
   ) {
-
-    const numVertices = Math.round(vertexData.length / STRIDE)
-
+    const numVertices = vertexData.length / STRIDE | 0
     const vertexBuffer = device.createBuffer({
       label: 'vertex buffer vertices',
       size: vertexData.byteLength,

@@ -79,26 +79,24 @@ export default function getProgram(
     vertexData: Float32Array<ArrayBufferLike>,
     texture: GPUTexture,
   ) {
-  const numVertices = Math.round(vertexData.length / STRIDE)
+    const numVertices = vertexData.length / STRIDE | 0
+    const vertexBuffer = device.createBuffer({
+      label: 'vertex buffer vertices',
+      size: vertexData.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    })
+    device.queue.writeBuffer(vertexBuffer, 0, vertexData)
 
 
-  const vertexBuffer = device.createBuffer({
-    label: 'vertex buffer vertices',
-    size: vertexData.byteLength,
-    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-  })
-  device.queue.writeBuffer(vertexBuffer, 0, vertexData)
-
-
-  // bind group should be pre-created and reuse instead of constantly initialized
-  const bindGroup = device.createBindGroup({
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: { buffer: uniformBuffer }},
-      { binding: 1, resource: sampler },
-      { binding: 2, resource: texture.createView() },
-    ],
-  })
+    // bind group should be pre-created and reuse instead of constantly initialized
+    const bindGroup = device.createBindGroup({
+      layout: pipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: uniformBuffer }},
+        { binding: 1, resource: sampler },
+        { binding: 2, resource: texture.createView() },
+      ],
+    })
 
 
     pass.setPipeline(pipeline)

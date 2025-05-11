@@ -70,9 +70,7 @@ export default function getProgram(
     worldProjectionMatrix: Float32Array,
     vertexData: Float32Array<ArrayBufferLike>,
   ) {
-    const numVertices = Math.round(vertexData.length / STRIDE)
-
-
+    const numVertices = vertexData.length / STRIDE | 0
     const vertexBuffer = device.createBuffer({
       label: 'vertex buffer vertices',
       size: vertexData.byteLength,
