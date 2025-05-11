@@ -26,6 +26,5 @@ struct VertexOutput {
 }
 
 @fragment fn fs(in: VertexOutput) -> @location(0) vec4f {
-  let texel = textureSample(ourTexture, ourSampler, in.texCoord);
-  return texel * 0.5;
+  return textureSample(ourTexture, ourSampler, in.texCoord);
 }

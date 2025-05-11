@@ -1,6 +1,6 @@
 import shaderCode from "./shader.wgsl"
  
-const STRIDE = 4 + 2 + 1 + 1
+const STRIDE = 4 + 2 + 1
 
 export default function getProgram(
   device: GPUDevice,

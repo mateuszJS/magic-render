@@ -97,7 +97,7 @@ const testConfig = {
   },
   plugins: [
     ...baseConfig.plugins,
-    !isProd && new HtmlWebpackPlugin({
+    new HtmlWebpackPlugin({
       template: path.resolve(__dirname, "integration-tests/template.html"),
       inject: true,
       chunks: ['integrationTest'],

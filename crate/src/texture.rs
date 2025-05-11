@@ -1,19 +1,8 @@
-use serde::{Deserialize, Serialize};
-use wasm_bindgen::convert::FromWasmAbi;
-
-use crate::Point;
-
-#[derive(Serialize, Deserialize)]
-pub struct VertexPoint {
-    x: f32,
-    y: f32,
-    u: f32,
-    v: f32,
-}
+use crate::{Point, VertexPoint};
 
 pub struct Texture {
-    id: f32, // for picking
-    points: Vec<VertexPoint>,
+    id: f32,                      // for picking
+    pub points: Vec<VertexPoint>, // for border drawing
     pub texture_id: usize,
 }
 
@@ -62,7 +51,7 @@ impl Texture {
         ];
         points
             .iter()
-            .flat_map(|point| vec![point.x, point.y, 0.0, 1.0, point.u, point.v, self.id, 0.0])
+            .flat_map(|point| vec![point.x, point.y, 0.0, 1.0, point.u, point.v, self.id])
             .collect()
     }
 }

@@ -15,35 +15,23 @@ macro_rules! err {
   // there is no way to specify panci message, so we need to do console.error and then panci any value
 }
 
-//to remove and replace with util
-macro_rules! angle_diff {
-  ($beta:expr, $alpha:expr) => {{
-    let phi = ($beta - $alpha).abs() % (2.0 * MATH_PI); // This is either the distance or 2*Math.PI - distance
-    if phi > MATH_PI {
-      (2.0 * MATH_PI) - phi
-    } else {
-      phi
-    }
-  }}
-}
-
+mod line;
 mod texture;
+mod types;
 
 use std::collections::HashMap;
 
-use gloo_utils::format::JsValueSerdeExt; // for transforming JsValue into serde
+use gloo_utils::format::JsValueSerdeExt;
+use line::Line;
 use serde::{Deserialize, Serialize};
-use texture::{Texture, VertexPoint};
+use texture::Texture;
+use types::{Point, VertexPoint};
 use wasm_bindgen::prelude::*;
-
-// #[wasm_bindgen]
-// extern "C" {
-//     fn alert(s: &str);
-// }
 
 #[wasm_bindgen]
 pub struct State {
     assets: HashMap<usize, Texture>,
+    hovered_asset_id: usize, // 0 -> no asset is hovered
 }
 
 #[wasm_bindgen]
@@ -51,6 +39,7 @@ impl State {
     pub fn new(width: f32, height: f32) -> State {
         State {
             assets: HashMap::new(),
+            hovered_asset_id: 0,
         }
     }
 
@@ -107,12 +96,36 @@ impl State {
 
         asset.update_coords(points);
     }
-}
 
-#[derive(Serialize, Deserialize)]
-struct Point {
-    x: f32,
-    y: f32,
+    pub fn update_hover(&mut self, id: usize) {
+        self.hovered_asset_id = id
+    }
+
+    pub fn get_border(&self) -> Vec<f32> {
+        if self.assets.contains_key(&self.hovered_asset_id) {
+            let asset: &Texture = self.assets.get(&self.hovered_asset_id).unwrap();
+
+            asset
+                .points
+                .iter()
+                .enumerate()
+                .flat_map(|(index, point)| {
+                    Line::get_vertex_data(
+                        point,
+                        if index == 3 {
+                            &asset.points[0]
+                        } else {
+                            &asset.points[index + 1]
+                        },
+                        20.0,
+                        (1.0, 0.0, 0.0, 1.0),
+                    )
+                })
+                .collect::<Vec<f32>>()
+        } else {
+            vec![]
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]

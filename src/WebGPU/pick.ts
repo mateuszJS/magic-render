@@ -1,5 +1,6 @@
 import mat4 from "utils/mat4"
 import { pointer } from "./pointer"
+import type { State } from "../../crate/glue_code"
 
 const NUM_PIXELS = 1
 
@@ -9,8 +10,6 @@ export default class PickManager {
   private pickTexture: GPUTexture
   private pickDepthTexture: GPUTexture
   private isPreviousDone = true
-
-  public lastPick = 0
 
   constructor (
     private device: GPUDevice,
@@ -97,14 +96,12 @@ export default class PickManager {
     })
   }
 
-  async asyncPick() {
+  async asyncPick(state: State) {
     if (!this.isPreviousDone) return
     this.isPreviousDone = false
     await this.pickBuffer.mapAsync(GPUMapMode.READ, 0, 4 * NUM_PIXELS)
-    const ids = new Uint32Array(this.pickBuffer.getMappedRange(0, 4 * NUM_PIXELS))
-
-    this.lastPick = ids[0]
-    console.log('pick id', this.lastPick)
+    const [id] = new Uint32Array(this.pickBuffer.getMappedRange(0, 4 * NUM_PIXELS))
+    state.update_hover(id)
     this.pickBuffer.unmap()
     this.isPreviousDone = true
   }
