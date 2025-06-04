@@ -20,8 +20,8 @@
     ]
   },
   "scripts": {
-    "start": "export NODE_ENV=development && webpack serve --open",
-    "build": "rm -rf lib lib-test && export $(grep -v '^#' .env | xargs) && export NODE_ENV=production && node build-wasm.mjs && webpack && tsc --project tsconfig.build.json --emitDeclarationOnly ",
+    "start": "export NODE_ENV=development && webpack serve --mode development",
+    "build": "rm -rf lib lib-test && export $(grep -v '^#' .env | xargs) && export NODE_ENV=production && webpack && tsc --project tsconfig.build.json --emitDeclarationOnly ",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test-e2e": "npx playwright test",
     "format": "eslint --fix \"src/**/*.{ts,js}\" \"integration-tests/**/*.{ts,js}\""
@@ -49,7 +49,8 @@
     "webpack": "^5.97.1",
     "webpack-bundle-analyzer": "^4.10.2",
     "webpack-cli": "^6.0.1",
-    "webpack-dev-server": "^5.2.0"
+    "webpack-dev-server": "^5.2.0",
+    "zigar-loader": "^0.14.0"
   },
   "types": "./lib/types/src/index.d.ts",
   "main": "./lib/index.mjs",

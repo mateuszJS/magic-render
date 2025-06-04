@@ -4,6 +4,10 @@ _Hello there!_
 npm i @mateuszjs/magic-render
 ```
 
+# Generating WebGPU Binding Groups Layout and analyzing memory of structs
+
+https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#
+
 # Releasing versions
 
 Each Pull Request has to be merged with squash, the following naming convention needs to be respected:

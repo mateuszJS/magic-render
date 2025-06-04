@@ -1,6 +1,6 @@
 import mat4 from "utils/mat4"
 import { pointer } from "./pointer"
-import type { State } from "../../crate/glue_code"
+import { on_update_pick } from "../logic/index.zig"
 
 const NUM_PIXELS = 1
 
@@ -94,12 +94,12 @@ export default class PickManager {
     })
   }
 
-  async asyncPick(state: State) {
+  async asyncPick() {
     if (!this.isPreviousDone) return
     this.isPreviousDone = false
     await this.pickBuffer.mapAsync(GPUMapMode.READ, 0, 4 * NUM_PIXELS)
     const [id] = new Uint32Array(this.pickBuffer.getMappedRange(0, 4 * NUM_PIXELS))
-    state.update_hover(id)
+    on_update_pick(id)
     this.pickBuffer.unmap()
     this.isPreviousDone = true
   }

@@ -1,7 +1,6 @@
 import { fileURLToPath } from "url"
 import path from "path"
 // const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin
-import WasmPackPlugin from "@wasm-tool/wasm-pack-plugin" 
 // thanks to that plugin we don't need to make sure wasm-pack is installed
 import HtmlWebpackPlugin from 'html-webpack-plugin'
 
@@ -23,7 +22,7 @@ const baseConfig = {
     liveReload: true,
   },
   resolve: {
-    extensions: [".ts", ".js", '.wasm', '.wgsl', '.jpg', '.png'],
+    extensions: [".ts", ".js", '.wasm', '.wgsl', '.jpg', '.png', '.zig'],
     modules: [path.resolve(__dirname, "src"), "node_modules"],
     /* useful with absolute imports, "src" dir now takes precedence over "node_modules" */
   },
@@ -51,9 +50,20 @@ const baseConfig = {
         test: /\.(png|jpg)$/,
         type: "asset/resource",
       },
+      // {
+      //   test: /\.wasm$/,
+      //   type: "asset/inline",
+      // },
       {
-        test: /\.wasm$/,
-        type: "asset/inline",
+        test: /\.zig$/,
+        exclude: /node_modules/,
+        use: {
+          loader: path.resolve('zigar-loader.cjs'),
+          options: {
+            embedWASM: isProd,
+            optimize: isProd ? 'ReleaseFast' : 'Debug', // we can play with ReleaseSmall also
+          },
+        }
       },
     ],
   },
@@ -68,13 +78,6 @@ const baseConfig = {
     // isProd && !process.env.CI && new BundleAnalyzerPlugin({
     //   analyzerMode: 'static' // 'server' had issue running along with PrerendererWebpackPlugin
     // }),
-    new WasmPackPlugin({
-      crateDirectory: path.resolve(__dirname, "crate"),
-      forceMode: isProd ? 'production' : 'development',
-      outDir: path.resolve(__dirname, "crate", 'pkg'),
-      outName: 'index',
-      extraArgs: '--target bundler'
-    }),
   ],
 }
 

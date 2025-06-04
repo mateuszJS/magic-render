@@ -4,13 +4,13 @@ import initPrograms from "WebGPU/programs/initPrograms"
 import runCreator from "run"
 import { createTextureFromSource } from 'WebGPU/getTexture'
 import clamp from "utils/clamp"
-import { Point } from "types"
-import { State } from "../crate/glue_code"
+// import { State } from "../crate/glue_code"
+// import { hello } from './logic/test.zig'
+import { init_state, add_texture } from './logic/index.zig'
 import initMouseController from "WebGPU/pointer"
 
 export interface CreatorAPI {
   addImage: (id: number, img: HTMLImageElement) => void
-  updatePoints: (id: number, points: Point[]) => void
   destroy: VoidFunction
 }
 
@@ -20,8 +20,7 @@ export default async function initCreator(
   /* setup WebGPU stuff */
   const device = await getDevice()
 
-  const state = State.new(300, 300)
-
+  init_state(300, 300)
   const context = canvas.getContext("webgpu")
   if (!context) throw Error("WebGPU from canvas needs to be always provided")
 
@@ -43,11 +42,14 @@ export default async function initCreator(
 
   const textures: GPUTexture[] = []
   const assetsList: number[] = []
-  runCreator(state, canvas, context, device, presentationFormat, textures, assetsList)
+  runCreator(canvas, context, device, presentationFormat, textures, assetsList)
 
   // initUI(state)
   return {
     addImage: (id, img) => {
+      if (id < 1000) {
+        throw Error("ID should be unique and greater than 1000 or equal.")
+      }
       const newTextureIndex = textures.length
       textures.push(createTextureFromSource(device, img))
       const scale = getDefaultTextureScale(img, canvas)
@@ -55,7 +57,8 @@ export default async function initCreator(
       const scaledHeight = img.height * scale
       const paddingX = (canvas.width - scaledWidth) * .5
       const paddingY = (canvas.height - scaledHeight) * .5
-      state.add_texture(
+
+      add_texture(
         id,
         [
           { x: paddingX, y: paddingY, u: 0, v: 0 },
@@ -66,9 +69,6 @@ export default async function initCreator(
         newTextureIndex
       )
       assetsList.push(id)
-    },
-    updatePoints: (id, points) => {
-      state.update_points(id, points)
     },
     destroy: () => {
       context.unconfigure()
