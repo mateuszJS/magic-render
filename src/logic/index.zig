@@ -2,18 +2,23 @@ const std = @import("std");
 const Types = @import("./types.zig");
 const Texture = @import("./texture.zig").Texture;
 const Line = @import("./line.zig").Line;
+const zigar = @import("zigar");
 
-// const console_log_str = @extern("console_log_str", fn (ptr: [*]const u8, len: usize) void);
+const WebGpuPrograms = struct {
+    draw_texture: *const fn ([]const f32, u32) void,
+    draw_triangle: *const fn ([]const f32) void,
+    pick_texture: *const fn ([]const f32, u32) void,
+};
+var web_gpu_programs: *const WebGpuPrograms = undefined;
+// var callback: *const Callback = &none;
 
-// pub fn log(message: []const u8) void {
-//     console_log_str(message.ptr, message.len);
-// }
+pub fn connectWebGPUPrograms(programs: *const WebGpuPrograms) void {
+    // https://github.com/chung-leong/zigar/wiki/JavaScript-to-Zig-function-conversion
+    // callback = cb orelse &none;
+    web_gpu_programs = programs; // orelse WebGpuPrograms{};
+}
 
-// pub fn main() void {
-//     log("Hello from Zig!");
-// }
-
-const ASSET_ID_TRESHOLD: u32 = 1000;
+pub const ASSET_ID_TRESHOLD: u32 = 1000;
 
 const ActionType = enum {
     move,
@@ -45,38 +50,8 @@ pub fn init_state(width: u32, height: u32) void {
     state.height = height;
 }
 
-pub fn add_texture(id: u32, points: [4]Types.PointUV, texture_index: u32) !void {
-    try state.assets.put(id, Texture.new(id, points, texture_index));
-}
-
-pub fn get_shader_input(id: u32) !ShaderInput {
-    if (state.assets.get(id)) |asset| {
-        const vertex_data = try asset.get_vertex_data();
-        return ShaderInput{
-            .texture_id = asset.texture_id,
-            .vertex_data = vertex_data,
-        };
-    } else {
-        unreachable("asset with id {d} not found", .{id});
-    }
-}
-
-const ShaderInput = struct {
-    texture_id: u32,
-    vertex_data: []f32,
-};
-
-pub fn get_shader_pick_input(id: u32) !ShaderInput {
-    // const asset = state.assets.get(id).?;
-    if (state.assets.get(id)) |asset| {
-        const vertex_data = try asset.get_vertex_pick_data();
-        return ShaderInput{
-            .texture_id = asset.texture_id,
-            .vertex_data = vertex_data,
-        };
-    } else {
-        unreachable("asset with id {d} not found", .{id});
-    }
+pub fn add_texture(id: u32, points: [4]Types.PointUV, texture_index: u32) void {
+    state.assets.put(id, Texture.new(id, points, texture_index)) catch unreachable;
 }
 
 pub fn update_points(id: u32, points: [4]Types.PointUV) void {
@@ -85,7 +60,6 @@ pub fn update_points(id: u32, points: [4]Types.PointUV) void {
 }
 
 pub fn on_update_pick(id: u32) void {
-    std.debug.print("on_update_pick: {d}\n", .{id});
     state.hovered_asset_id = id;
     // hovered element and asset ARE NOT THE SAME!!!!!
     // hovered element can be a control to rotate/change size of the asset
@@ -133,7 +107,7 @@ pub fn on_pointer_move(x: f32, y: f32) !void {
     }
 }
 
-pub fn get_border() ![]f32 {
+fn get_border() []f32 {
     var vertex_data = std.ArrayList(f32).init(std.heap.page_allocator);
     // TODO: free memory, defer list.deinit();
     const red = [_]f32{ 1.0, 0.0, 0.0, 1.0 };
@@ -147,7 +121,7 @@ pub fn get_border() ![]f32 {
                 red,
             );
             // std.debug.print("new_verticies: {any}\n", .{new_verticies});
-            try vertex_data.appendSlice(new_verticies);
+            vertex_data.appendSlice(new_verticies) catch unreachable;
         }
     }
 
@@ -156,14 +130,39 @@ pub fn get_border() ![]f32 {
         for (asset.points, 0..) |point, i| {
             const next_point = if (i == 3) asset.points[0] else asset.points[i + 1];
 
-            try vertex_data.appendSlice(Line.get_vertex_data(
+            vertex_data.appendSlice(Line.get_vertex_data(
                 point,
                 next_point,
                 20.0,
                 green,
-            ));
+            )) catch unreachable;
         }
     }
 
     return vertex_data.items;
+}
+
+pub fn canvas_render() void {
+    var iterator = state.assets.iterator();
+
+    while (iterator.next()) |asset| {
+        const vertex_data = asset.value_ptr.get_vertex_data();
+
+        web_gpu_programs.draw_texture(vertex_data, asset.value_ptr.texture_id);
+    }
+
+    const border_verticies = get_border();
+    if (border_verticies.len > 0) {
+        web_gpu_programs.draw_triangle(border_verticies);
+    }
+}
+
+pub fn picks_render() void {
+    var iterator = state.assets.iterator();
+
+    while (iterator.next()) |asset| {
+        const vertex_data = asset.value_ptr.get_vertex_pick_data();
+
+        web_gpu_programs.pick_texture(vertex_data, asset.value_ptr.texture_id);
+    }
 }

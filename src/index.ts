@@ -4,7 +4,7 @@ import initPrograms from "WebGPU/programs/initPrograms"
 import runCreator from "run"
 import { createTextureFromSource } from 'WebGPU/getTexture'
 import clamp from "utils/clamp"
-import { init_state, add_texture } from './logic/index.zig'
+import { init_state, add_texture, ASSET_ID_TRESHOLD } from './logic/index.zig'
 import initMouseController from "WebGPU/pointer"
 
 export interface CreatorAPI {
@@ -18,7 +18,7 @@ export default async function initCreator(
   /* setup WebGPU stuff */
   const device = await getDevice()
 
-  init_state(300, 300)
+  init_state(canvas.clientWidth, canvas.clientHeight)
   const context = canvas.getContext("webgpu")
   if (!context) throw Error("WebGPU from canvas needs to be always provided")
 
@@ -39,14 +39,12 @@ export default async function initCreator(
   initMouseController(canvas)
 
   const textures: GPUTexture[] = []
-  const assetsList: number[] = []
-  runCreator(canvas, context, device, presentationFormat, textures, assetsList)
+  runCreator(canvas, context, device, presentationFormat, textures)
 
-  // initUI(state)
   return {
     addImage: (id, img) => {
-      if (id < 1000) {
-        throw Error("ID should be unique and greater than 1000 or equal.")
+      if (id < ASSET_ID_TRESHOLD) {
+        throw Error(`ID should be unique and not smaller than ${ASSET_ID_TRESHOLD}.`)
       }
       const newTextureIndex = textures.length
       textures.push(createTextureFromSource(device, img))
@@ -66,7 +64,6 @@ export default async function initCreator(
         ],
         newTextureIndex
       )
-      assetsList.push(id)
     },
     destroy: () => {
       context.unconfigure()

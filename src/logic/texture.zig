@@ -20,8 +20,8 @@ pub const Texture = struct {
         };
     }
 
-    pub fn get_vertex_data(self: Texture) ![]f32 {
-        var vertex_data = try std.heap.page_allocator.alloc(f32, 6 * 6);
+    pub fn get_vertex_data(self: Texture) []f32 {
+        var vertex_data = std.heap.page_allocator.alloc(f32, 6 * 6) catch unreachable;
         // TODO: free memory
         var i: usize = 0;
 
@@ -39,8 +39,8 @@ pub const Texture = struct {
         return vertex_data;
     }
 
-    pub fn get_vertex_pick_data(self: Texture) ![]f32 {
-        var vertex_data = try std.heap.page_allocator.alloc(f32, 7 * 6);
+    pub fn get_vertex_pick_data(self: Texture) []f32 {
+        var vertex_data = std.heap.page_allocator.alloc(f32, 7 * 6) catch unreachable;
         // TODO: free memory
         var i: usize = 0;
 

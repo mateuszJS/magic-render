@@ -13,7 +13,6 @@ export default class PickManager {
 
   constructor (
     private device: GPUDevice,
-    private canvas: HTMLElement,
   ) {
     this.pickBuffer = device.createBuffer({
       size: NUM_PIXELS * 4,
@@ -32,15 +31,12 @@ export default class PickManager {
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     })
   }
-
-  render(
-    encoder: GPUCommandEncoder,
-    drawingMatrix: Float32Array,
-    renderPicks: (pass: GPURenderPassEncoder, matrix: Float32Array) => void,
-    debugRenderPass?: GPURenderPassEncoder,
-  ) {
-    const { clientWidth, clientHeight } = this.canvas
-
+  /**
+   * Starts a picking render pass.
+   * @param encoder The GPUCommandEncoder to use for the render pass.
+   * @returns An object which contains render pass and a callback to end picking.
+   */
+  startPicking(encoder: GPUCommandEncoder): { pass: GPURenderPassEncoder, end: VoidFunction } {
     const descriptor: GPURenderPassDescriptor = {
       // describe which textures we want to raw to and how use them
       label: "our render to canvas renderPass",
@@ -60,38 +56,47 @@ export default class PickManager {
       // } as const,
     }
 
-    const tx = -(2 * (pointer.x / clientWidth) - 1)
-    const ty = 2 * (pointer.y / clientHeight) - 1
-
-    const pickMatrix = [
-      mat4.scaling([clientWidth, clientHeight, 0]), // scale to 1px convers whole shader output
-      mat4.translation([tx, ty, 0]),
-      drawingMatrix,
-    ].reduce(
-      (accMatrix, rotationMatrix) => mat4.multiply(accMatrix, rotationMatrix),
-      mat4.translation([-1, 1, 0]) // move (0,0) to the top left corner
-    )
-
     const pass = encoder.beginRenderPass(descriptor)
+
     const width = 1
     const height = 1
     pass.setViewport(0, 0, width, height, 0, 1)
     // Set the scissor rectangle to clip rendering to the 1x1 area
     pass.setScissorRect(0, 0, width, height)
 
-    renderPicks(pass, pickMatrix)
+    const endPicking = () => {
+        pass.end()
 
-    pass.end()
+      encoder.copyTextureToBuffer({
+          texture: this.pickTexture,
+          origin: { x: 0, y: 0 }
+        }, {
+          buffer: this.pickBuffer,
+        }, {
+          width: NUM_PIXELS,
+        }
+      )
+    }
 
+    return {pass, end: endPicking}
+  }
 
-    encoder.copyTextureToBuffer({
-      texture: this.pickTexture,
-      origin: { x: 0, y: 0 }
-    }, {
-      buffer: this.pickBuffer,
-    }, {
-      width: NUM_PIXELS,
-    })
+  createMatrix(canvas: HTMLCanvasElement, canvasMatrix: Float32Array) {
+    const { clientWidth, clientHeight } = canvas
+
+    const tx = -(2 * (pointer.x / clientWidth) - 1)
+    const ty = 2 * (pointer.y / clientHeight) - 1
+
+    const pickMatrix = [
+      mat4.scaling([clientWidth, clientHeight, 0]), // scale to 1px convers whole shader output
+      mat4.translation([tx, ty, 0]),
+      canvasMatrix,
+    ].reduce(
+      (accMatrix, rotationMatrix) => mat4.multiply(accMatrix, rotationMatrix),
+      mat4.translation([-1, 1, 0]) // move (0,0) to the top left corner
+    )
+
+    return pickMatrix
   }
 
   async asyncPick() {
