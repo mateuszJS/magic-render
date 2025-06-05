@@ -9,7 +9,7 @@ export default class PickManager {
   private pickBuffer: GPUBuffer
   private pickTexture: GPUTexture
   private pickDepthTexture: GPUTexture
-  private isPreviousDone = true
+  private isPreviousPickDone = true
 
   constructor (
     private device: GPUDevice,
@@ -65,17 +65,19 @@ export default class PickManager {
     pass.setScissorRect(0, 0, width, height)
 
     const endPicking = () => {
-        pass.end()
+      pass.end()
 
-      encoder.copyTextureToBuffer({
-          texture: this.pickTexture,
-          origin: { x: 0, y: 0 }
-        }, {
-          buffer: this.pickBuffer,
-        }, {
-          width: NUM_PIXELS,
-        }
-      )
+      if (this.isPreviousPickDone) {
+        encoder.copyTextureToBuffer({
+            texture: this.pickTexture,
+            origin: { x: 0, y: 0 }
+          }, {
+            buffer: this.pickBuffer,
+          }, {
+            width: NUM_PIXELS,
+          }
+        )
+      }
     }
 
     return {pass, end: endPicking}
@@ -100,12 +102,12 @@ export default class PickManager {
   }
 
   async asyncPick() {
-    if (!this.isPreviousDone) return
-    this.isPreviousDone = false
+    if (!this.isPreviousPickDone) return
+    this.isPreviousPickDone = false
     await this.pickBuffer.mapAsync(GPUMapMode.READ, 0, 4 * NUM_PIXELS)
     const [id] = new Uint32Array(this.pickBuffer.getMappedRange(0, 4 * NUM_PIXELS))
     on_update_pick(id)
     this.pickBuffer.unmap()
-    this.isPreviousDone = true
+    this.isPreviousPickDone = true
   }
 }
