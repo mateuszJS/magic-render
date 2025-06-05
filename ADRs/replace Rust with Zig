@@ -2,5 +2,20 @@ Fight with Rust syntax/specification takes more efford than writign application 
 
 - we cannot get pointer/read only struct if we cannot justify lifetime of that struct is logner then where the palce where reference is used
 - We have Point(x,y) and PointUV(x,y,u,v) it takes a lot of code to implement traits to make later create fucntion that takes any of those two points. Also traits can be onyl done with methods, no commo nfield or getters, so we have to call point.x() which makes it super unredable during compelx calculations
-- zig has produced smaller and more performant code, both in debugging and production modes. In prod zig got us 166 kB while Rust produced 
+- zig has produced smaller and more performant code, both in debugging and production modes. In production build:
+
+Rust:
+173 kB of JS & embedded WASM as base64
+103 kB of wasm
+
+Wasm
+166 kB of JS \* embedded WASM as base64
+44 kB rust(coupled to super fast, not with smallest size optimiser)
+
 - with zig we can also reuse C libaries. C environment is significantly bigger than rust.
+- complication process takes in Rust like 4-5s secodns while is Zig around 1s
+
+Downsides:
+
+- Zig is a new, prone ot large changes language/environment
+- Compiler is helpful but not that super friendly helpful as in Rust

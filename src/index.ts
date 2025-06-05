@@ -4,8 +4,6 @@ import initPrograms from "WebGPU/programs/initPrograms"
 import runCreator from "run"
 import { createTextureFromSource } from 'WebGPU/getTexture'
 import clamp from "utils/clamp"
-// import { State } from "../crate/glue_code"
-// import { hello } from './logic/test.zig'
 import { init_state, add_texture } from './logic/index.zig'
 import initMouseController from "WebGPU/pointer"
 
