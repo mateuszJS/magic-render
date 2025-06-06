@@ -14,6 +14,7 @@ Wasm
 
 - with zig we can also reuse C libaries. C environment is significantly bigger than rust.
 - complication process takes in Rust like 4-5s secodns while is Zig around 1s
+- Zig seems to produce faster performing WASM, although zigar JS glue code seems to be slowing down more than wasm-pack JS glue code. In both cases the result is not far from each other.
 
 Downsides:
 
