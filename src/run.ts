@@ -22,24 +22,25 @@ export default function runCreator(
   const pickManager = new PickManager(device)
   let pickMatrix: Float32Array
   let pickPass: GPURenderPassEncoder
-  
 
   connectWebGPUPrograms({
-    draw_texture: (vertex_data, texture_id) => drawTexture(
-      canvasPass,
-      canvasMatrix,
-      new Float32Array([...vertex_data]),
-      textures[texture_id]
-    ),
+    draw_texture: (vertex_data, texture_id) => {
+      drawTexture(
+        canvasPass,
+        canvasMatrix,
+        vertex_data.typedArray,
+        textures[texture_id]
+      )
+    },
     draw_triangle: (vertex_data) => drawTriangle(
       canvasPass,
       canvasMatrix,
-      new Float32Array([...vertex_data])
+      vertex_data.typedArray
     ),
     pick_texture: (vertex_data, texture_id) => pickTexture(
       pickPass,
       pickMatrix,
-      new Float32Array([...vertex_data]),
+      vertex_data.typedArray,
       textures[texture_id]
     ),
   })

@@ -5,6 +5,8 @@ interface PointUV {
   v: number
 }
 
+type ZigF32Array = { typedArray: Float32Array }
+
 declare module "*.zig" {
   export const ASSET_ID_TRESHOLD: number
   export const init_state: (width: number, height: number) => void
@@ -18,9 +20,9 @@ declare module "*.zig" {
   export const on_pointer_move: (x: number, y: number) => void
 
   export const connectWebGPUPrograms: (programs: {
-    draw_texture: (vertexData: Float32Array, texture_id: number) => void
-    draw_triangle: (vertexData: Float32Array) => void
-    pick_texture: (vertexData: Float32Array, texture_id: number) => void
+    draw_texture: (vertexData: ZigF32Array, texture_id: number) => void
+    draw_triangle: (vertexData: ZigF32Array) => void
+    pick_texture: (vertexData: ZigF32Array, texture_id: number) => void
   }) => void
   export const canvas_render: VoidFunction
   export const picks_render: VoidFunction
