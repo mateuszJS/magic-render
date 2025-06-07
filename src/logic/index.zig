@@ -80,7 +80,7 @@ pub fn on_pointer_up() void {
     state.ongoing_action = .none;
 }
 
-pub fn on_pointer_move(x: f32, y: f32) !void {
+pub fn on_pointer_move(x: f32, y: f32) void {
     switch (state.ongoing_action) {
         .move => {
             const offset = Types.Point{

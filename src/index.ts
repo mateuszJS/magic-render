@@ -1,26 +1,24 @@
-import canvasSizeObserver from "WebGPU/canvasSizeObserver"
-import getDevice from "WebGPU/getDevice"
-import initPrograms from "WebGPU/programs/initPrograms"
-import runCreator from "run"
+import canvasSizeObserver from 'WebGPU/canvasSizeObserver'
+import getDevice from 'WebGPU/getDevice'
+import initPrograms from 'WebGPU/programs/initPrograms'
+import runCreator from 'run'
 import { createTextureFromSource } from 'WebGPU/getTexture'
-import clamp from "utils/clamp"
+import clamp from 'utils/clamp'
 import { init_state, add_texture, ASSET_ID_TRESHOLD } from './logic/index.zig'
-import initMouseController from "WebGPU/pointer"
+import initMouseController from 'WebGPU/pointer'
 
 export interface CreatorAPI {
   addImage: (id: number, img: HTMLImageElement) => void
   destroy: VoidFunction
 }
 
-export default async function initCreator(
-  canvas: HTMLCanvasElement,
-): Promise<CreatorAPI> {
+export default async function initCreator(canvas: HTMLCanvasElement): Promise<CreatorAPI> {
   /* setup WebGPU stuff */
   const device = await getDevice()
 
   init_state(canvas.clientWidth, canvas.clientHeight)
-  const context = canvas.getContext("webgpu")
-  if (!context) throw Error("WebGPU from canvas needs to be always provided")
+  const context = canvas.getContext('webgpu')
+  if (!context) throw Error('WebGPU from canvas needs to be always provided')
 
   const presentationFormat = navigator.gpu.getPreferredCanvasFormat()
   context.configure({
@@ -51,8 +49,8 @@ export default async function initCreator(
       const scale = getDefaultTextureScale(img, canvas)
       const scaledWidth = img.width * scale
       const scaledHeight = img.height * scale
-      const paddingX = (canvas.width - scaledWidth) * .5
-      const paddingY = (canvas.height - scaledHeight) * .5
+      const paddingX = (canvas.width - scaledWidth) * 0.5
+      const paddingY = (canvas.height - scaledHeight) * 0.5
 
       add_texture(
         id,
@@ -68,13 +66,13 @@ export default async function initCreator(
     destroy: () => {
       context.unconfigure()
       device.destroy()
-    }
+    },
   }
 }
 
 /**
  * Returns visualy pleasant size of texture, to make sure it doesn't overflow canvas but also is not too small to manipulate
-*/
+ */
 function getDefaultTextureScale(img: HTMLImageElement, canvas: HTMLCanvasElement) {
   const heightDiff = canvas.height - img.height
   const widthDiff = canvas.width - img.width

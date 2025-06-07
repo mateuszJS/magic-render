@@ -2,10 +2,10 @@ let depthTexture: GPUTexture | undefined
 
 export default function getRenderDescriptor(
   texture: GPUTexture,
-  device: GPUDevice,
+  device: GPUDevice
 ): GPURenderPassDescriptor {
-
-  if (!depthTexture ||
+  if (
+    !depthTexture ||
     depthTexture.width !== texture.width ||
     depthTexture.height !== texture.height
   ) {
@@ -18,16 +18,16 @@ export default function getRenderDescriptor(
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     })
   }
-  
+
   return {
     // describe which textures we want to raw to and how use them
-    label: "our basic canvas renderPass",
+    label: 'our basic canvas renderPass',
     colorAttachments: [
       {
         view: texture.createView(),
         // clearValue: [0, 0, 0, 1],
-        loadOp: "clear", // before rendering clear the texture to value "clear". Other option is "load" to load existing content of the texture into GPU so we can draw over it
-        storeOp: "store", // to store the result of what we draw, other option is "discard"
+        loadOp: 'clear', // before rendering clear the texture to value "clear". Other option is "load" to load existing content of the texture into GPU so we can draw over it
+        storeOp: 'store', // to store the result of what we draw, other option is "discard"
       } as const,
     ],
     depthStencilAttachment: {

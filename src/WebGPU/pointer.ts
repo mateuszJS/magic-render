@@ -1,10 +1,9 @@
-// import type { State } from "../../crate/glue_code"
 import { on_pointer_move, on_pointer_click, on_pointer_down, on_pointer_up } from "../logic/index.zig"
 
 export const pointer = { x: 0, y: 0 }
 
 
-export default function initMouseController(canvas: HTMLCanvasElement, /*state: State*/) {
+export default function initMouseController(canvas: HTMLCanvasElement) {
   pointer.x = 0
   pointer.y = 0
 
@@ -23,16 +22,15 @@ function updatePointer(e: MouseEvent) {
     on_pointer_move(pointer.x, pointer.y)
   })
 
-  canvas.addEventListener('click', e => {
+  canvas.addEventListener('click', () => {
     on_pointer_click()
   })
 
-  canvas.addEventListener('mousedown', e => {
-    updatePointer(e)
+  canvas.addEventListener('mousedown', () => {
     on_pointer_down(pointer.x, pointer.y)
   })
 
-  canvas.addEventListener('mouseup', e => {
+  canvas.addEventListener('mouseup', () => {
     on_pointer_up()
   })
 
