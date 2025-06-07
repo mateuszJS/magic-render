@@ -4,6 +4,8 @@ import path from 'path'
 import { fileURLToPath } from "url"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const PAGE_WIDTH = 1000
+const PAGE_HEIGHT = 700
 
 test('visible image after upload', async ({ page }, testinfo) => {
   if (process.env.CI) {
@@ -16,10 +18,11 @@ test('visible image after upload', async ({ page }, testinfo) => {
   // and it produces different screenshot name base on operating system
   // while we want to make app consistent on all operating systems
 
-  // To finally check fi WebGPU is supported
+  // To finally check if WebGPU is supported
   // await page.goto('https://webgpureport.org/');
   // await expect(page).toHaveScreenshot('webgpu-report.png');
 
+  await page.setViewportSize({ width: PAGE_WIDTH, height: PAGE_HEIGHT })
   await page.goto('/')
   await page.waitForLoadState("networkidle")
 
@@ -31,37 +34,20 @@ test('visible image after upload', async ({ page }, testinfo) => {
   const canvas = page.locator('canvas')
   await expect(canvas).toHaveScreenshot('after-upload.png')
 
-  /** =========IMAGES POSITION UPDATES============ */
-  const moveImgBtn = page.locator('#img-position')
-  await moveImgBtn.click()
-  await expect(canvas).toHaveScreenshot('after-move.png')
-
   /** =========DISPLAYS BORDER AROUND HOVERED ASSET============ */
-  await page.mouse.move(200, 300)
+  const center = { x: PAGE_WIDTH / 2, y: PAGE_HEIGHT / 2 }
+  await page.mouse.move(center.x, center.y)
   await expect(canvas).toHaveScreenshot('after-hover.png')
+
+  /** =========IMAGE SELECTED============ */
+  await page.mouse.click(center.x, center.y)
+  await expect(canvas).toHaveScreenshot('after-selection.png')
+
+  /** =========IMAGES POSITION UPDATES============ */
+  await page.mouse.down()
+  await page.mouse.move(300, 200)
+  await page.mouse.up()
+  await expect(canvas).toHaveScreenshot('after-move.png')
 })
 
 
-/*
-npx playwright test
-    Runs the end-to-end tests.
-
-  npx playwright test --ui
-    Starts the interactive UI mode.
-
-  npx playwright test --project=chromium
-    Runs the tests only on Desktop Chrome.
-
-  npx playwright test example
-    Runs the tests in a specific file.
-
-  npx playwright test --debug
-    Runs the tests in debug mode.
-
-  npx playwright codegen
-    Auto generate tests with Codegen.
-
-We suggest that you begin by typing:
-
-    npx playwright test
-*/

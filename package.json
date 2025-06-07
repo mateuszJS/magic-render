@@ -20,22 +20,22 @@
     ]
   },
   "scripts": {
-    "start": "export NODE_ENV=development && webpack serve --open",
-    "build": "rm -rf lib lib-test && export $(grep -v '^#' .env | xargs) && export NODE_ENV=production && node build-wasm.mjs && webpack && tsc --project tsconfig.build.json --emitDeclarationOnly ",
+    "start": "export NODE_ENV=development && webpack serve --mode development",
+    "build": "rm -rf lib lib-test && export $(grep -v '^#' .env | xargs) && export NODE_ENV=production && webpack && tsc --project tsconfig.build.json --emitDeclarationOnly ",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test-e2e": "npx playwright test",
     "format": "eslint --fix \"src/**/*.{ts,js}\" \"integration-tests/**/*.{ts,js}\""
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
     "@eslint/js": "^9.21.0",
     "@playwright/test": "^1.50.1",
     "@stylistic/eslint-plugin-js": "^4.2.0",
     "@tsconfig/recommended": "^1.0.8",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.13.9",
-    "@wasm-tool/wasm-pack-plugin": "^1.7.0",
     "@webgpu/types": "^0.1.54",
-    "eslint": "^9.21.0",
+    "eslint": "^9.28.0",
     "html-webpack-plugin": "^5.6.3",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
@@ -45,11 +45,11 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.26.0",
-    "wasm-pack": "^0.13.1",
     "webpack": "^5.97.1",
     "webpack-bundle-analyzer": "^4.10.2",
     "webpack-cli": "^6.0.1",
-    "webpack-dev-server": "^5.2.0"
+    "webpack-dev-server": "^5.2.0",
+    "zigar-loader": "^0.14.0"
   },
   "types": "./lib/types/src/index.d.ts",
   "main": "./lib/index.mjs",

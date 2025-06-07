@@ -1,24 +1,37 @@
+import { on_pointer_move, on_pointer_click, on_pointer_down, on_pointer_up } from "../logic/index.zig"
+
 export const pointer = { x: 0, y: 0 }
+
 
 export default function initMouseController(canvas: HTMLCanvasElement) {
   pointer.x = 0
   pointer.y = 0
 
+
+function updatePointer(e: MouseEvent) {
+  const rect = canvas.getBoundingClientRect()
+  pointer.x = e.clientX - rect.left
+  pointer.y = e.clientY - rect.top
+}
+
   canvas.addEventListener('mouseleave', () => {
   })
 
   canvas.addEventListener('mousemove', e => {
-    const rect = canvas.getBoundingClientRect()
-    pointer.x = e.clientX - rect.left
-    pointer.y = e.clientY - rect.top
+    updatePointer(e)
+    on_pointer_move(pointer.x, pointer.y)
   })
 
-  canvas.addEventListener('mousedown', e => {
-
+  canvas.addEventListener('click', () => {
+    on_pointer_click()
   })
 
-  canvas.addEventListener('mouseup', e => {
+  canvas.addEventListener('mousedown', () => {
+    on_pointer_down(pointer.x, pointer.y)
+  })
 
+  canvas.addEventListener('mouseup', () => {
+    on_pointer_up()
   })
 
   canvas.addEventListener("wheel", (event) => {

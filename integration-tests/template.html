@@ -21,13 +21,16 @@
       display: grid;
       grid-template-columns: 100px minmax(0, 1fr);
     }
+
+    canvas {
+      min-height: 0;
+    }
   </style>
 </head>
 
 <body>
   <aside>
     <input type="file" />
-    <button id="img-position">Update image position</button>
   </aside>
   <canvas></canvas>
 </body>

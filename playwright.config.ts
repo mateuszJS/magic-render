@@ -1,5 +1,33 @@
 import { defineConfig, devices } from '@playwright/test'
 
+/*
+to update:
+  npx playwright test --update-snapshots
+
+npx playwright test
+    Runs the end-to-end tests.
+
+  npx playwright test --ui
+    Starts the interactive UI mode.
+
+  npx playwright test --project=chromium
+    Runs the tests only on Desktop Chrome.
+
+  npx playwright test example
+    Runs the tests in a specific file.
+
+  npx playwright test --debug
+    Runs the tests in debug mode.
+
+  npx playwright codegen
+    Auto generate tests with Codegen.
+
+We suggest that you begin by typing:
+
+    npx playwright test
+*/
+
+
 /**
  * Read environment variables from file.
  * https://github.com/motdotla/dotenv
@@ -75,7 +103,7 @@ export default defineConfig({
   ],
 
   /* Run your local dev server before starting the tests */
-  // if we deploy something to "staging" liek environment, then we can get rid of that webServer local run
+  // if we deploy something to "staging" like environment, then we can get rid of that webServer local run
   webServer: {
     command: 'npm run build && npx http-server lib-test -p 9275',
     url: 'http://127.0.0.1:9275',

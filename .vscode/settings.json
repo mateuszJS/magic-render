@@ -1,13 +1,21 @@
 {
+  "files.associations": {
+    "*.svg": "xml"
+  },
+  "workbench.editorAssociations": {
+    "*.svg": "default"
+  },
+  // ESLint configuration
+  "eslint.format.enable": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit",
+    "source.fixAll": "explicit"
+  },
   "[javascript]": {
     "editor.formatOnSave": true
   },
   "[typescript]": {
     "editor.formatOnSave": true
-  },
-  "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": "explicit",
-    "source.fixAll": "explicit"
-  },
-  "eslint.format.enable": true,
+  }
 }
