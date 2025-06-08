@@ -18,6 +18,11 @@ pub fn connectWebGPUPrograms(programs: *const WebGpuPrograms) void {
     web_gpu_programs = programs; // orelse WebGpuPrograms{};
 }
 
+var on_asset_update_cb: *const fn ([]Texture) void = undefined;
+pub fn connectOnAssetUpdateCallback(cb: *const fn ([]Texture) void) void {
+    on_asset_update_cb = cb;
+}
+
 pub const ASSET_ID_TRESHOLD: u32 = 1000;
 
 const ActionType = enum {
@@ -78,6 +83,18 @@ pub fn on_pointer_down(x: f32, y: f32) void {
 
 pub fn on_pointer_up() void {
     state.ongoing_action = .none;
+
+    var result = std.heap.page_allocator.alloc(Texture, state.assets.count()) catch unreachable;
+    var iterator = state.assets.iterator();
+    var i: usize = 0;
+    while (iterator.next()) |entry| {
+        result[i] = entry.value_ptr.*;
+        i += 1;
+    }
+
+    if (result.len > 0) {
+        on_asset_update_cb(result);
+    }
 }
 
 pub fn on_pointer_move(x: f32, y: f32) void {

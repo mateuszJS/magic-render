@@ -6,8 +6,13 @@ interface PointUV {
 }
 
 type ZigF32Array = { typedArray: Float32Array }
+type Texture = {
+  id: number
+  points: PointUV[]
+  texture_id: number
+}
 
-declare module "*.zig" {
+declare module '*.zig' {
   export const ASSET_ID_TRESHOLD: number
   export const init_state: (width: number, height: number) => void
   export const add_texture: (id: number, points: PointUV[], textre_index: number) => void
@@ -24,6 +29,8 @@ declare module "*.zig" {
     draw_triangle: (vertexData: ZigF32Array) => void
     pick_texture: (vertexData: ZigF32Array, texture_id: number) => void
   }) => void
+  export const connectOnAssetUpdateCallback: (cb: (data: Texture[]) => void) => void
+
   export const canvas_render: VoidFunction
   export const picks_render: VoidFunction
 }
