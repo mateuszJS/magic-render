@@ -3,6 +3,7 @@ import { drawTexture, drawTriangle, pickTexture } from 'WebGPU/programs/initProg
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
 import { canvas_render, picks_render, connectWebGPUPrograms } from 'logic/index.zig'
+import { TextureSource } from '.'
 
 export const transformMatrix = new Float32Array()
 export const MAP_BACKGROUND_SCALE = 1000
@@ -12,7 +13,7 @@ export default function runCreator(
   context: GPUCanvasContext,
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
-  textures: GPUTexture[]
+  textures: TextureSource[]
 ) {
   const canvasMatrix = getCanvasMatrix(canvas)
   let canvasPass: GPURenderPassEncoder
@@ -22,12 +23,11 @@ export default function runCreator(
   let pickPass: GPURenderPassEncoder
 
   connectWebGPUPrograms({
-    draw_texture: (vertex_data, texture_id) => {
-      drawTexture(canvasPass, canvasMatrix, vertex_data.typedArray, textures[texture_id])
-    },
+    draw_texture: (vertex_data, texture_id) =>
+      drawTexture(canvasPass, canvasMatrix, vertex_data.typedArray, textures[texture_id].texture),
     draw_triangle: (vertex_data) => drawTriangle(canvasPass, canvasMatrix, vertex_data.typedArray),
     pick_texture: (vertex_data, texture_id) =>
-      pickTexture(pickPass, pickMatrix, vertex_data.typedArray, textures[texture_id]),
+      pickTexture(pickPass, pickMatrix, vertex_data.typedArray, textures[texture_id].texture),
   })
 
   function draw(now: DOMHighResTimeStamp) {

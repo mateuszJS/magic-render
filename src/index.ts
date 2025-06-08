@@ -3,16 +3,34 @@ import getDevice from 'WebGPU/getDevice'
 import initPrograms from 'WebGPU/programs/initPrograms'
 import runCreator from 'run'
 import { createTextureFromSource } from 'WebGPU/getTexture'
-import clamp from 'utils/clamp'
-import { init_state, add_texture, ASSET_ID_TRESHOLD } from './logic/index.zig'
+import {
+  init_state,
+  add_texture,
+  connectOnAssetUpdateCallback,
+  ASSET_ID_TRESHOLD,
+} from './logic/index.zig'
 import initMouseController from 'WebGPU/pointer'
+import getDefaultPoints from 'utils/getDefaultPoints'
+
+export type SerializedAsset = Omit<Texture, 'texture_id'> & {
+  url: string
+}
 
 export interface CreatorAPI {
-  addImage: (id: number, img: HTMLImageElement) => void
+  addImage: (id: number, img: HTMLImageElement, points?: PointUV[]) => void
   destroy: VoidFunction
 }
 
-export default async function initCreator(canvas: HTMLCanvasElement): Promise<CreatorAPI> {
+export interface TextureSource {
+  url: string
+  texture: GPUTexture
+}
+
+export default async function initCreator(
+  canvas: HTMLCanvasElement,
+  assets: SerializedAsset[],
+  onAssetsUpdate: (assets: SerializedAsset[]) => void
+): Promise<CreatorAPI> {
   /* setup WebGPU stuff */
   const device = await getDevice()
 
@@ -36,52 +54,48 @@ export default async function initCreator(canvas: HTMLCanvasElement): Promise<Cr
 
   initMouseController(canvas)
 
-  const textures: GPUTexture[] = []
+  const textures: TextureSource[] = []
   runCreator(canvas, context, device, presentationFormat, textures)
+  connectOnAssetUpdateCallback((serializedData: Texture[]) => {
+    const serializedAssetsTextureUrl = [...serializedData].map<SerializedAsset>((asset) => ({
+      id: asset.id,
+      points: [...asset.points].map((point) => ({
+        x: point.x,
+        y: point.y,
+        u: point.u,
+        v: point.v,
+      })),
+      url: textures[asset.texture_id].url,
+    }))
+    onAssetsUpdate(serializedAssetsTextureUrl)
+  })
+
+  function addImage(id: number, img: HTMLImageElement, points?: PointUV[]) {
+    if (id < ASSET_ID_TRESHOLD) {
+      throw Error(`ID should be unique and not smaller than ${ASSET_ID_TRESHOLD}.`)
+    }
+    const newTextureIndex = textures.length
+    textures.push({
+      url: img.src,
+      texture: createTextureFromSource(device, img),
+    })
+
+    add_texture(id, points || getDefaultPoints(img, canvas), newTextureIndex)
+  }
+
+  assets.forEach((asset) => {
+    const img = new Image()
+    img.src = asset.url
+    img.onload = () => {
+      addImage(asset.id, img, asset.points)
+    }
+  })
 
   return {
-    addImage: (id, img) => {
-      if (id < ASSET_ID_TRESHOLD) {
-        throw Error(`ID should be unique and not smaller than ${ASSET_ID_TRESHOLD}.`)
-      }
-      const newTextureIndex = textures.length
-      textures.push(createTextureFromSource(device, img))
-      const scale = getDefaultTextureScale(img, canvas)
-      const scaledWidth = img.width * scale
-      const scaledHeight = img.height * scale
-      const paddingX = (canvas.width - scaledWidth) * 0.5
-      const paddingY = (canvas.height - scaledHeight) * 0.5
-
-      add_texture(
-        id,
-        [
-          { x: paddingX, y: paddingY, u: 0, v: 0 },
-          { x: paddingX + scaledWidth, y: paddingY, u: 1, v: 0 },
-          { x: paddingX + scaledWidth, y: paddingY + scaledHeight, u: 1, v: 1 },
-          { x: paddingX, y: paddingY + scaledHeight, u: 0, v: 1 },
-        ],
-        newTextureIndex
-      )
-    },
+    addImage,
     destroy: () => {
       context.unconfigure()
       device.destroy()
     },
   }
-}
-
-/**
- * Returns visualy pleasant size of texture, to make sure it doesn't overflow canvas but also is not too small to manipulate
- */
-function getDefaultTextureScale(img: HTMLImageElement, canvas: HTMLCanvasElement) {
-  const heightDiff = canvas.height - img.height
-  const widthDiff = canvas.width - img.width
-
-  if (heightDiff < widthDiff) {
-    const height = clamp(img.height, canvas.height * 0.2, canvas.height * 0.8)
-    return height / img.height
-  }
-
-  const width = clamp(img.width, canvas.width * 0.2, canvas.width * 0.8)
-  return width / img.width
 }
