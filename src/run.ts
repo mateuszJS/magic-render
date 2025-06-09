@@ -1,5 +1,5 @@
 import getCanvasRenderDescriptor from 'getCanvasRenderDescriptor'
-import { drawTexture, drawTriangle, pickTexture } from 'WebGPU/programs/initPrograms'
+import { drawTexture, drawTriangle, pickTexture, pickTriangle } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
 import { canvas_render, picks_render, connectWebGPUPrograms } from 'logic/index.zig'
@@ -28,6 +28,7 @@ export default function runCreator(
     draw_triangle: (vertex_data) => drawTriangle(canvasPass, canvasMatrix, vertex_data.typedArray),
     pick_texture: (vertex_data, texture_id) =>
       pickTexture(pickPass, pickMatrix, vertex_data.typedArray, textures[texture_id].texture),
+    pick_triangle: (vertex_data) => pickTriangle(pickPass, pickMatrix, vertex_data.typedArray),
   })
 
   function draw(now: DOMHighResTimeStamp) {

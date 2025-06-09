@@ -29,7 +29,6 @@ struct VertexOutput {
 }
 
 
-// @fragment fn fs(in: VertexOutput) -> @location(0) vec4f {
 @fragment fn fs(in: VertexOutput) -> @location(0) u32 {
   let alpha = textureSample(ourTexture, ourSampler, in.texCoord).a;
 

@@ -1,9 +1,4 @@
-import {
-  on_pointer_move,
-  on_pointer_click,
-  on_pointer_down,
-  on_pointer_up,
-} from '../logic/index.zig'
+import { on_pointer_move, on_pointer_down, on_pointer_up } from '../logic/index.zig'
 
 export const pointer = { x: 0, y: 0 }
 
@@ -22,10 +17,6 @@ export default function initMouseController(canvas: HTMLCanvasElement) {
   canvas.addEventListener('mousemove', (e) => {
     updatePointer(e)
     on_pointer_move(pointer.x, pointer.y)
-  })
-
-  canvas.addEventListener('click', () => {
-    on_pointer_click()
   })
 
   canvas.addEventListener('mousedown', () => {
