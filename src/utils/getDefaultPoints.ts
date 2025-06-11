@@ -11,10 +11,10 @@ export default function getDefaultPoints(
   const paddingY = (canvas.height - scaledHeight) * 0.5
 
   return [
-    { x: paddingX, y: paddingY, u: 0, v: 0 },
-    { x: paddingX + scaledWidth, y: paddingY, u: 1, v: 0 },
-    { x: paddingX + scaledWidth, y: paddingY + scaledHeight, u: 1, v: 1 },
     { x: paddingX, y: paddingY + scaledHeight, u: 0, v: 1 },
+    { x: paddingX + scaledWidth, y: paddingY + scaledHeight, u: 1, v: 1 },
+    { x: paddingX + scaledWidth, y: paddingY, u: 1, v: 0 },
+    { x: paddingX, y: paddingY, u: 0, v: 0 },
   ]
 }
 

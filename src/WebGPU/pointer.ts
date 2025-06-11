@@ -16,11 +16,11 @@ export default function initMouseController(canvas: HTMLCanvasElement) {
 
   canvas.addEventListener('mousemove', (e) => {
     updatePointer(e)
-    on_pointer_move(pointer.x, pointer.y)
+    on_pointer_move(pointer.x, canvas.height - pointer.y)
   })
 
   canvas.addEventListener('mousedown', () => {
-    on_pointer_down(pointer.x, pointer.y)
+    on_pointer_down(pointer.x, canvas.height - pointer.y)
   })
 
   canvas.addEventListener('mouseup', () => {

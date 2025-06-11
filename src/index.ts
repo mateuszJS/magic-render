@@ -78,7 +78,7 @@ export default async function initCreator(
     const newTextureId = textures.length
     textures.push({
       url: img.src,
-      texture: createTextureFromSource(device, img),
+      texture: createTextureFromSource(device, img, { flipY: true }),
     })
 
     add_texture(id, points || getDefaultPoints(img, canvas), newTextureId)
