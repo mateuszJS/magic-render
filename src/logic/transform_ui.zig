@@ -12,28 +12,28 @@ const black = [4]f32{ 0.0, 0.0, 0.0, 1.0 };
 
 const TransformLine = struct {
     id: u32,
-    relative_to_start_index: usize,
-    relative_to_end_index: usize,
+    relative_start: usize,
+    relative_end: usize,
 };
 
 const UI_NUM_VERTICIES_BORDER = 13;
 const resize_lines = [UI_NUM_VERTICIES_BORDER]TransformLine{
     // corners, clock wise
-    .{ .id = 1, .relative_to_start_index = 0, .relative_to_end_index = 1 },
-    .{ .id = 1, .relative_to_start_index = 0, .relative_to_end_index = 3 },
-    .{ .id = 2, .relative_to_start_index = 1, .relative_to_end_index = 0 },
-    .{ .id = 2, .relative_to_start_index = 1, .relative_to_end_index = 2 },
-    .{ .id = 3, .relative_to_start_index = 2, .relative_to_end_index = 1 },
-    .{ .id = 3, .relative_to_start_index = 2, .relative_to_end_index = 3 },
-    .{ .id = 4, .relative_to_start_index = 3, .relative_to_end_index = 0 },
-    .{ .id = 4, .relative_to_start_index = 3, .relative_to_end_index = 2 },
+    .{ .id = 1, .relative_start = 0, .relative_end = 1 },
+    .{ .id = 1, .relative_start = 0, .relative_end = 3 },
+    .{ .id = 2, .relative_start = 1, .relative_end = 0 },
+    .{ .id = 2, .relative_start = 1, .relative_end = 2 },
+    .{ .id = 3, .relative_start = 2, .relative_end = 1 },
+    .{ .id = 3, .relative_start = 2, .relative_end = 3 },
+    .{ .id = 4, .relative_start = 3, .relative_end = 0 },
+    .{ .id = 4, .relative_start = 3, .relative_end = 2 },
     // straight lines, clock wise
-    .{ .id = 5, .relative_to_start_index = 0, .relative_to_end_index = 1 },
-    .{ .id = 6, .relative_to_start_index = 1, .relative_to_end_index = 2 },
-    .{ .id = 7, .relative_to_start_index = 2, .relative_to_end_index = 3 },
-    .{ .id = 8, .relative_to_start_index = 3, .relative_to_end_index = 0 },
+    .{ .id = 5, .relative_start = 0, .relative_end = 1 },
+    .{ .id = 6, .relative_start = 1, .relative_end = 2 },
+    .{ .id = 7, .relative_start = 2, .relative_end = 3 },
+    .{ .id = 8, .relative_start = 3, .relative_end = 0 },
     //  rotation
-    .{ .id = 9, .relative_to_start_index = 0, .relative_to_end_index = 0 },
+    .{ .id = 9, .relative_start = 0, .relative_end = 0 },
 };
 
 pub fn is_transform_ui(id: u32) bool {
@@ -147,25 +147,25 @@ pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
 fn get_points_of_line(texture: Texture, transform_line: TransformLine) struct { Point, Point } {
     if (transform_line.id <= 4) {
         // corners
-        const length = texture.points[transform_line.relative_to_start_index].distance(texture.points[transform_line.relative_to_end_index]);
-        const angle = texture.points[transform_line.relative_to_start_index].angle_to(texture.points[transform_line.relative_to_end_index]);
+        const length = texture.points[transform_line.relative_start].distance(texture.points[transform_line.relative_end]);
+        const angle = texture.points[transform_line.relative_start].angle_to(texture.points[transform_line.relative_end]);
         const sanitized_length = @min(30.0, length * 0.1);
 
         const p1 = Point{
-            .x = texture.points[transform_line.relative_to_start_index].x,
-            .y = texture.points[transform_line.relative_to_start_index].y,
+            .x = texture.points[transform_line.relative_start].x,
+            .y = texture.points[transform_line.relative_start].y,
         };
         const p2 = Point{
-            .x = texture.points[transform_line.relative_to_start_index].x + @cos(angle) * sanitized_length,
-            .y = texture.points[transform_line.relative_to_start_index].y + @sin(angle) * sanitized_length,
+            .x = texture.points[transform_line.relative_start].x + @cos(angle) * sanitized_length,
+            .y = texture.points[transform_line.relative_start].y + @sin(angle) * sanitized_length,
         };
 
         return .{ p1, p2 };
     } else if (transform_line.id <= 8) {
         // straight lines
-        const relative_point = texture.points[transform_line.relative_to_start_index].mid(texture.points[transform_line.relative_to_end_index]);
-        const length = texture.points[transform_line.relative_to_start_index].distance(texture.points[transform_line.relative_to_end_index]);
-        const angle = texture.points[transform_line.relative_to_start_index].angle_to(texture.points[transform_line.relative_to_end_index]);
+        const relative_point = texture.points[transform_line.relative_start].mid(texture.points[transform_line.relative_end]);
+        const length = texture.points[transform_line.relative_start].distance(texture.points[transform_line.relative_end]);
+        const angle = texture.points[transform_line.relative_start].angle_to(texture.points[transform_line.relative_end]);
         const sanitized_length = @min(30.0, length * 0.07);
 
         const p1 = Point{
@@ -219,7 +219,6 @@ pub fn get_transform_ui(buffer: *[BORDER_BUFFER_SIZE]f32, texture: Texture, hove
             thickness,
             if (hovered_elem_id == transform_line.id) white else black,
         );
-        // if (hovered_elem_id == transform_line.id) white else black,
 
         i += LINE_NUM_VERTICIES;
     }
