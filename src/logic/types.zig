@@ -29,4 +29,8 @@ pub const PointUV = struct {
         const dy = other.y - self.y;
         return std.math.atan2(dy, dx);
     }
+
+    pub fn distance(self: PointUV, other: PointUV) f32 {
+        return std.math.hypot(self.x - other.x, self.y - other.y);
+    }
 };
