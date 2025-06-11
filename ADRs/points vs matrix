@@ -1,10 +1,10 @@
-We have two options how we can store assets positon/scale/rotation.
+I have two options how assets(positon/scale/rotation)  can stored.
 a) four points, each represents one corner
-b) width, height + 3v3 matrix
+b) width, height + 3x3 matrix
 
 Seems like matrix could simplify a lot of transformations but at the same time
-UV coordinates would be to be stored somewhere as well.
+I need to store points wit UV coordinates anyway.
 
-Thats why for now we stick with storing assets as four points, each point is x,y,u,v.
-For transformations like all scaling, rotations we are going to use matricies.
+Thats why for now I are going to stick with storing assets in a from of four points, each point is x,y,u,v.
+For transformations like scaling, rotations I are going to use matricies.
 For transition is not useful since it's super easy to just add cursor position to points.

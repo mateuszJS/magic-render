@@ -70,10 +70,9 @@ pub fn update_points(id: u32, points: [4]Types.PointUV) void {
 
 pub fn on_update_pick(id: u32) void {
     if (state.ongoing_action != .transform) {
-        state.hovered_asset_id = id; // hovered_asset_id stored id of the ui durign transform phase
+        state.hovered_asset_id = id;
+        // hovered_asset_id stores id of the ui transform element during transformations
     }
-    // hovered element and asset ARE NOT THE SAME!!!!!
-    // hovered element can be a control to rotate/change size of the asset
 }
 
 pub fn on_pointer_down(x: f32, y: f32) void {
