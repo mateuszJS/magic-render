@@ -21,7 +21,7 @@
   },
   "scripts": {
     "start": "export NODE_ENV=development && webpack serve --mode development",
-    "build": "rm -rf lib lib-test && export $(grep -v '^#' .env | xargs) && export NODE_ENV=production && webpack && tsc --project tsconfig.build.json --emitDeclarationOnly ",
+    "build": "rm -rf lib lib-test && export NODE_ENV=production && webpack && tsc --project tsconfig.build.json --emitDeclarationOnly ",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test-e2e": "npx playwright test",
     "format": "eslint --fix \"src/**/*.{ts,js}\" \"integration-tests/**/*.{ts,js}\""
