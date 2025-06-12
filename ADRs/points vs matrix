@@ -1,0 +1,10 @@
+I have two options how assets(positon/scale/rotation)  can stored.
+a) four points, each represents one corner
+b) width, height + 3x3 matrix
+
+Seems like matrix could simplify a lot of transformations but at the same time
+I need to store points wit UV coordinates anyway.
+
+Thats why for now I are going to stick with storing assets in a from of four points, each point is x,y,u,v.
+For transformations like scaling, rotations I are going to use matricies.
+For transition is not useful since it's super easy to just add cursor position to points.

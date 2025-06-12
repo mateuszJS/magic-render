@@ -74,13 +74,14 @@ export default async function initCreator(
     if (id < ASSET_ID_TRESHOLD) {
       throw Error(`ID should be unique and not smaller than ${ASSET_ID_TRESHOLD}.`)
     }
-    const newTextureIndex = textures.length
+
+    const newTextureId = textures.length
     textures.push({
       url: img.src,
-      texture: createTextureFromSource(device, img),
+      texture: createTextureFromSource(device, img, { flipY: true }),
     })
 
-    add_texture(id, points || getDefaultPoints(img, canvas), newTextureIndex)
+    add_texture(id, points || getDefaultPoints(img, canvas), newTextureId)
   }
 
   assets.forEach((asset) => {

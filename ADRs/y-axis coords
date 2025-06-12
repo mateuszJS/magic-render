@@ -1,0 +1,7 @@
+I've decided to stay with mathematically correct y axis(growing up).
+
+Using popular method of coordinates for screens is y axis growing down. It introduces a lot of noise and
+missunderstanding into calculating, especially those angle related.
+
+Also we do flip the textures while loading to be sure that
+(0,0) is bottom left corner, (1,1) is top right corner so we operate in correct cartesian space.
