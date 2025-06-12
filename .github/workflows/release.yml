@@ -17,10 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # Setup .npmrc file to publish to npm
+      - uses: mlugg/setup-zig@v2
       - uses: actions/setup-node@v4
         with:
-          node-version: "20.x" # [semantic-release]: node version >=20.8.1 is required
-          registry-url: "https://registry.npmjs.org"
+          node-version: '20.x' # [semantic-release]: node version >=20.8.1 is required
+          registry-url: 'https://registry.npmjs.org'
       - run: npm ci
       - run: npm run build
       - run: npm audit --omit=dev
