@@ -31,5 +31,5 @@ declare module '*.zig' {
 
   export const canvas_render: VoidFunction
   export const picks_render: VoidFunction
-  export const destory_state: VoidFunction
+  export const destroy_state: VoidFunction
 }

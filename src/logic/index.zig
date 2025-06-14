@@ -1,6 +1,8 @@
 const std = @import("std");
 const Types = @import("./types.zig");
 const Texture = @import("./texture.zig").Texture;
+const TEXTURE_VERTEX_BUFFER_SIZE = @import("./texture.zig").TEXTURE_VERTEX_BUFFER_SIZE;
+const TEXTURE_PICK_VERTEX_BUFFER_SIZE = @import("./texture.zig").TEXTURE_PICK_VERTEX_BUFFER_SIZE;
 const AssetZig = @import("./texture.zig").AssetZig;
 const Line = @import("./line.zig").Line;
 const LINE_NUM_VERTICIES = @import("./line.zig").LINE_NUM_VERTICIES;
@@ -193,9 +195,10 @@ pub fn canvas_render() void {
     var iterator = state.assets.iterator();
 
     while (iterator.next()) |asset| {
-        const vertex_data = asset.value_ptr.get_vertex_data();
+        var vertex_data: [TEXTURE_VERTEX_BUFFER_SIZE]f32 = undefined;
+        asset.value_ptr.get_vertex_data(&vertex_data);
 
-        web_gpu_programs.draw_texture(vertex_data, asset.value_ptr.texture_id);
+        web_gpu_programs.draw_texture(&vertex_data, asset.value_ptr.texture_id);
     }
 
     const border_verticies = get_border();
@@ -208,9 +211,10 @@ pub fn picks_render() void {
     var iterator = state.assets.iterator();
 
     while (iterator.next()) |asset| {
-        const vertex_data = asset.value_ptr.get_vertex_pick_data();
+        var vertex_data: [TEXTURE_PICK_VERTEX_BUFFER_SIZE]f32 = undefined;
+        asset.value_ptr.get_vertex_pick_data(&vertex_data);
 
-        web_gpu_programs.pick_texture(vertex_data, asset.value_ptr.texture_id);
+        web_gpu_programs.pick_texture(&vertex_data, asset.value_ptr.texture_id);
     }
 
     if (state.assets.get(state.active_asset_id)) |asset| {
@@ -220,7 +224,7 @@ pub fn picks_render() void {
     }
 }
 
-pub fn destory_state() void {
+pub fn destroy_state() void {
     state.assets.deinit();
     next_asset_id = ASSET_ID_TRESHOLD;
     web_gpu_programs = undefined;

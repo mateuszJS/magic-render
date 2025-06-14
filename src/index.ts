@@ -7,7 +7,7 @@ import {
   init_state,
   add_texture,
   connect_on_asset_update_callback,
-  destory_state,
+  destroy_state,
 } from './logic/index.zig'
 import initMouseController from 'WebGPU/pointer'
 import getDefaultPoints from 'utils/getDefaultPoints'
@@ -92,7 +92,7 @@ export default async function initCreator(
     addImage,
     destroy: () => {
       stopCreator()
-      destory_state()
+      destroy_state()
       context.unconfigure()
       device.destroy()
     },

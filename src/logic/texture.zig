@@ -12,6 +12,9 @@ pub const AssetZig = struct {
     texture_id: u32,
 };
 
+pub const TEXTURE_VERTEX_BUFFER_SIZE: usize = 6 * 6; // 6 vertices, each with 6 attributes (x, y, z, w, u, v)
+pub const TEXTURE_PICK_VERTEX_BUFFER_SIZE: usize = 7 * 6; // 6 vertices, each with 7 attributes (x, y, z, w, u, v, id)
+
 pub const Texture = struct {
     id: u32,
     points: [4]PointUV,
@@ -25,43 +28,35 @@ pub const Texture = struct {
         };
     }
 
-    pub fn get_vertex_data(self: Texture) []f32 {
-        var vertex_data = std.heap.page_allocator.alloc(f32, 6 * 6) catch unreachable;
-        // TODO: free memory
+    pub fn get_vertex_data(self: Texture, buffer: *[TEXTURE_VERTEX_BUFFER_SIZE]f32) void {
         var i: usize = 0;
 
         for (SHADER_TRIANGLE_INDICIES) |index| {
             const point = self.points[index];
-            vertex_data[i * 6 + 0] = point.x;
-            vertex_data[i * 6 + 1] = point.y;
-            vertex_data[i * 6 + 2] = 0.0; // z-coordinate
-            vertex_data[i * 6 + 3] = 1.0; // w-coordinate
-            vertex_data[i * 6 + 4] = point.u; // u-coordinate
-            vertex_data[i * 6 + 5] = point.v; // v-coordinate
+            buffer[i * 6 + 0] = point.x;
+            buffer[i * 6 + 1] = point.y;
+            buffer[i * 6 + 2] = 0.0; // z-coordinate
+            buffer[i * 6 + 3] = 1.0; // w-coordinate
+            buffer[i * 6 + 4] = point.u; // u-coordinate
+            buffer[i * 6 + 5] = point.v; // v-coordinate
             i += 1;
         }
-
-        return vertex_data;
     }
 
-    pub fn get_vertex_pick_data(self: Texture) []f32 {
-        var vertex_data = std.heap.page_allocator.alloc(f32, 7 * 6) catch unreachable;
-        // TODO: free memory
+    pub fn get_vertex_pick_data(self: Texture, buffer: *[TEXTURE_PICK_VERTEX_BUFFER_SIZE]f32) void {
         var i: usize = 0;
 
         for (SHADER_TRIANGLE_INDICIES) |index| {
             const point = self.points[index];
-            vertex_data[i * 7 + 0] = point.x;
-            vertex_data[i * 7 + 1] = point.y;
-            vertex_data[i * 7 + 2] = 0.0; // z-coordinate
-            vertex_data[i * 7 + 3] = 1.0; // w-coordinate
-            vertex_data[i * 7 + 4] = point.u; // u-coordinate
-            vertex_data[i * 7 + 5] = point.v; // v-coordinate
-            vertex_data[i * 7 + 6] = @floatFromInt(self.id); // v-coordinate
+            buffer[i * 7 + 0] = point.x;
+            buffer[i * 7 + 1] = point.y;
+            buffer[i * 7 + 2] = 0.0; // z-coordinate
+            buffer[i * 7 + 3] = 1.0; // w-coordinate
+            buffer[i * 7 + 4] = point.u; // u-coordinate
+            buffer[i * 7 + 5] = point.v; // v-coordinate
+            buffer[i * 7 + 6] = @floatFromInt(self.id); // v-coordinate
             i += 1;
         }
-
-        return vertex_data;
     }
 
     pub fn update_coords(self: *Texture, new_points: [4]Types.PointUV) void {
