@@ -12,7 +12,6 @@ type AssetZig = {
 }
 
 declare module '*.zig' {
-  export const ASSET_ID_TRESHOLD: number
   export const init_state: (width: number, height: number) => void
   export const add_texture: (points: PointUV[], texture_id: number) => void
   export const update_points: (id: number, points: PointUV[]) => void
@@ -32,4 +31,5 @@ declare module '*.zig' {
 
   export const canvas_render: VoidFunction
   export const picks_render: VoidFunction
+  export const destory_state: VoidFunction
 }

@@ -23,12 +23,8 @@ export default function runCreator(
   let pickPass: GPURenderPassEncoder
 
   connectWebGPUPrograms({
-    draw_texture: (vertex_data, texture_id) => {
-      if (!canvasPass) {
-        console.log('connectWebGPUPrograms', canvasPass)
-      }
-      drawTexture(canvasPass, canvasMatrix, vertex_data.typedArray, textures[texture_id].texture)
-    },
+    draw_texture: (vertex_data, texture_id) =>
+      drawTexture(canvasPass, canvasMatrix, vertex_data.typedArray, textures[texture_id].texture),
     draw_triangle: (vertex_data) => drawTriangle(canvasPass, canvasMatrix, vertex_data.typedArray),
     pick_texture: (vertex_data, texture_id) =>
       pickTexture(pickPass, pickMatrix, vertex_data.typedArray, textures[texture_id].texture),

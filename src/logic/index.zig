@@ -14,7 +14,6 @@ const WebGpuPrograms = struct {
     pick_triangle: *const fn ([]const f32) void,
 };
 var web_gpu_programs: *const WebGpuPrograms = undefined;
-// var callback: *const Callback = &none;
 
 pub fn connectWebGPUPrograms(programs: *const WebGpuPrograms) void {
     // https://github.com/chung-leong/zigar/wiki/JavaScript-to-Zig-function-conversion
@@ -48,7 +47,7 @@ const State = struct {
 var state = State{
     .width = 0,
     .height = 0,
-    .assets = std.AutoHashMap(u32, Texture).init(std.heap.page_allocator),
+    .assets = undefined,
     .hovered_asset_id = 0,
     .active_asset_id = 0,
     .ongoing_action = ActionType.none,
@@ -58,6 +57,7 @@ var state = State{
 pub fn init_state(width: u32, height: u32) void {
     state.width = width;
     state.height = height;
+    state.assets = std.AutoHashMap(u32, Texture).init(std.heap.page_allocator);
 }
 
 var next_asset_id: u32 = ASSET_ID_TRESHOLD;
@@ -218,4 +218,13 @@ pub fn picks_render() void {
         TransformUI.get_transform_ui_pick(vertex_buffer[0..TransformUI.PICK_BORDER_BUFFER_SIZE], asset);
         web_gpu_programs.pick_triangle(vertex_buffer[0..TransformUI.PICK_BORDER_BUFFER_SIZE]);
     }
+}
+
+pub fn destory_state() void {
+    state.assets.deinit();
+    next_asset_id = ASSET_ID_TRESHOLD;
+    web_gpu_programs = undefined;
+    on_asset_update_cb = undefined;
+    // state itself is not destoyed as it will be reinitalized before usage
+    // and has no reference to memory to free
 }

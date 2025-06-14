@@ -3,7 +3,12 @@ import getDevice from 'WebGPU/getDevice'
 import initPrograms from 'WebGPU/programs/initPrograms'
 import runCreator from 'run'
 import { createTextureFromSource } from 'WebGPU/getTexture'
-import { init_state, add_texture, connectOnAssetUpdateCallback } from './logic/index.zig'
+import {
+  init_state,
+  add_texture,
+  connectOnAssetUpdateCallback,
+  destory_state,
+} from './logic/index.zig'
 import initMouseController from 'WebGPU/pointer'
 import getDefaultPoints from 'utils/getDefaultPoints'
 
@@ -28,20 +33,6 @@ export default async function initCreator(
 ): Promise<CreatorAPI> {
   /* setup WebGPU stuff */
   const device = await getDevice()
-
-  // setTimeout(() => {
-  //   const url = new URL(document.location.href)
-  //   // const params = new URLSearchParams(url.search)
-  //   const isRedirectParam = url.searchParams.has('redirect') // is the string "Jonathan"
-  //   if (isRedirectParam) {
-  //     url.searchParams.delete('redirect')
-  //     window.history.pushState({}, '', url)
-  //     setTimeout(() => {
-  //       url.pathname = '/non-existing-path-just-for-testing-bf-cache-and-wasm'
-  //       window.history.pushState({}, '', url)
-  //     }, 1000)
-  //   }
-  // }, 1000)
 
   init_state(canvas.clientWidth, canvas.clientHeight)
   const context = canvas.getContext('webgpu')
@@ -100,8 +91,8 @@ export default async function initCreator(
   return {
     addImage,
     destroy: () => {
-      console.log('Destroying device')
       stopCreator()
+      destory_state()
       context.unconfigure()
       device.destroy()
     },

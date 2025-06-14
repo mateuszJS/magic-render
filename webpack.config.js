@@ -15,7 +15,7 @@ const baseConfig = {
     outputModule: true, // webpack will output ECMAScript module syntax whenever possible
   },
   mode: process.env.NODE_ENV,
-  devtool: isProd ? undefined : 'eval-source-map',
+  devtool: isProd ? 'source-map' : 'eval-source-map',
   watch: !isProd,
   devServer: {
     // HMR doesn't support ESM
