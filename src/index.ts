@@ -3,21 +3,16 @@ import getDevice from 'WebGPU/getDevice'
 import initPrograms from 'WebGPU/programs/initPrograms'
 import runCreator from 'run'
 import { createTextureFromSource } from 'WebGPU/getTexture'
-import {
-  init_state,
-  add_texture,
-  connectOnAssetUpdateCallback,
-  ASSET_ID_TRESHOLD,
-} from './logic/index.zig'
+import { init_state, add_texture, connectOnAssetUpdateCallback } from './logic/index.zig'
 import initMouseController from 'WebGPU/pointer'
 import getDefaultPoints from 'utils/getDefaultPoints'
 
-export type SerializedAsset = Omit<Texture, 'texture_id'> & {
+export type SerializedAsset = Omit<AssetZig, 'texture_id'> & {
   url: string
 }
 
 export interface CreatorAPI {
-  addImage: (id: number, img: HTMLImageElement, points?: PointUV[]) => void
+  addImage: (img: HTMLImageElement, points?: PointUV[]) => void
   destroy: VoidFunction
 }
 
@@ -33,6 +28,20 @@ export default async function initCreator(
 ): Promise<CreatorAPI> {
   /* setup WebGPU stuff */
   const device = await getDevice()
+
+  // setTimeout(() => {
+  //   const url = new URL(document.location.href)
+  //   // const params = new URLSearchParams(url.search)
+  //   const isRedirectParam = url.searchParams.has('redirect') // is the string "Jonathan"
+  //   if (isRedirectParam) {
+  //     url.searchParams.delete('redirect')
+  //     window.history.pushState({}, '', url)
+  //     setTimeout(() => {
+  //       url.pathname = '/non-existing-path-just-for-testing-bf-cache-and-wasm'
+  //       window.history.pushState({}, '', url)
+  //     }, 1000)
+  //   }
+  // }, 1000)
 
   init_state(canvas.clientWidth, canvas.clientHeight)
   const context = canvas.getContext('webgpu')
@@ -55,10 +64,8 @@ export default async function initCreator(
   initMouseController(canvas)
 
   const textures: TextureSource[] = []
-  runCreator(canvas, context, device, presentationFormat, textures)
-  connectOnAssetUpdateCallback((serializedData: Texture[]) => {
+  connectOnAssetUpdateCallback((serializedData: AssetZig[]) => {
     const serializedAssetsTextureUrl = [...serializedData].map<SerializedAsset>((asset) => ({
-      id: asset.id,
       points: [...asset.points].map((point) => ({
         x: point.x,
         y: point.y,
@@ -70,31 +77,31 @@ export default async function initCreator(
     onAssetsUpdate(serializedAssetsTextureUrl)
   })
 
-  function addImage(id: number, img: HTMLImageElement, points?: PointUV[]) {
-    if (id < ASSET_ID_TRESHOLD) {
-      throw Error(`ID should be unique and not smaller than ${ASSET_ID_TRESHOLD}.`)
-    }
-
+  function addImage(img: HTMLImageElement, points?: PointUV[]) {
     const newTextureId = textures.length
     textures.push({
       url: img.src,
       texture: createTextureFromSource(device, img, { flipY: true }),
     })
 
-    add_texture(id, points || getDefaultPoints(img, canvas), newTextureId)
+    add_texture(points || getDefaultPoints(img, canvas), newTextureId)
   }
 
   assets.forEach((asset) => {
     const img = new Image()
     img.src = asset.url
     img.onload = () => {
-      addImage(asset.id, img, asset.points)
+      addImage(img, asset.points)
     }
   })
+
+  const stopCreator = runCreator(canvas, context, device, presentationFormat, textures)
 
   return {
     addImage,
     destroy: () => {
+      console.log('Destroying device')
+      stopCreator()
       context.unconfigure()
       device.destroy()
     },

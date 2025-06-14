@@ -14,7 +14,7 @@ export default function runCreator(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
   textures: TextureSource[]
-) {
+): VoidFunction {
   const canvasMatrix = getCanvasMatrix(canvas)
   let canvasPass: GPURenderPassEncoder
 
@@ -23,13 +23,19 @@ export default function runCreator(
   let pickPass: GPURenderPassEncoder
 
   connectWebGPUPrograms({
-    draw_texture: (vertex_data, texture_id) =>
-      drawTexture(canvasPass, canvasMatrix, vertex_data.typedArray, textures[texture_id].texture),
+    draw_texture: (vertex_data, texture_id) => {
+      if (!canvasPass) {
+        console.log('connectWebGPUPrograms', canvasPass)
+      }
+      drawTexture(canvasPass, canvasMatrix, vertex_data.typedArray, textures[texture_id].texture)
+    },
     draw_triangle: (vertex_data) => drawTriangle(canvasPass, canvasMatrix, vertex_data.typedArray),
     pick_texture: (vertex_data, texture_id) =>
       pickTexture(pickPass, pickMatrix, vertex_data.typedArray, textures[texture_id].texture),
     pick_triangle: (vertex_data) => pickTriangle(pickPass, pickMatrix, vertex_data.typedArray),
   })
+
+  let rafId = 0
 
   function draw(now: DOMHighResTimeStamp) {
     const encoder = device.createCommandEncoder()
@@ -50,8 +56,12 @@ export default function runCreator(
 
     pickManager.asyncPick()
 
-    requestAnimationFrame(draw)
+    rafId = requestAnimationFrame(draw)
   }
 
-  requestAnimationFrame(draw)
+  rafId = requestAnimationFrame(draw)
+
+  return () => {
+    cancelAnimationFrame(rafId)
+  }
 }

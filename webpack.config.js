@@ -59,6 +59,7 @@ const baseConfig = {
           options: {
             embedWASM: isProd,
             optimize: isProd ? 'ReleaseFast' : 'Debug', // we can play with ReleaseSmall also
+            // we can play with ReleaseSmall also
           },
         },
       },

@@ -1,6 +1,7 @@
 const std = @import("std");
 const Types = @import("./types.zig");
 const Texture = @import("./texture.zig").Texture;
+const AssetZig = @import("./texture.zig").AssetZig;
 const Line = @import("./line.zig").Line;
 const LINE_NUM_VERTICIES = @import("./line.zig").LINE_NUM_VERTICIES;
 const TransformUI = @import("./transform_ui.zig");
@@ -21,8 +22,8 @@ pub fn connectWebGPUPrograms(programs: *const WebGpuPrograms) void {
     web_gpu_programs = programs; // orelse WebGpuPrograms{};
 }
 
-var on_asset_update_cb: *const fn ([]Texture) void = undefined;
-pub fn connectOnAssetUpdateCallback(cb: *const fn ([]Texture) void) void {
+var on_asset_update_cb: *const fn ([]AssetZig) void = undefined;
+pub fn connectOnAssetUpdateCallback(cb: *const fn ([]AssetZig) void) void {
     on_asset_update_cb = cb;
 }
 
@@ -59,8 +60,10 @@ pub fn init_state(width: u32, height: u32) void {
     state.height = height;
 }
 
-pub fn add_texture(id: u32, points: [4]Types.PointUV, texture_id: u32) void {
-    state.assets.put(id, Texture.new(id, points, texture_id)) catch unreachable;
+var next_asset_id: u32 = ASSET_ID_TRESHOLD;
+pub fn add_texture(points: [4]Types.PointUV, texture_id: u32) void {
+    state.assets.put(next_asset_id, Texture.new(next_asset_id, points, texture_id)) catch unreachable;
+    next_asset_id +%= 1;
 }
 
 pub fn update_points(id: u32, points: [4]Types.PointUV) void {
@@ -93,11 +96,11 @@ pub fn on_pointer_up() void {
 
     state.ongoing_action = .none;
 
-    var result = std.heap.page_allocator.alloc(Texture, state.assets.count()) catch unreachable;
+    var result = std.heap.page_allocator.alloc(AssetZig, state.assets.count()) catch unreachable;
     var iterator = state.assets.iterator();
     var i: usize = 0;
     while (iterator.next()) |entry| {
-        result[i] = entry.value_ptr.*;
+        result[i] = entry.value_ptr.serialize();
         i += 1;
     }
 

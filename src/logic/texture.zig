@@ -7,6 +7,11 @@ const SHADER_TRIANGLE_INDICIES = [_]usize{
     2, 3, 0,
 };
 
+pub const AssetZig = struct {
+    points: [4]PointUV,
+    texture_id: u32,
+};
+
 pub const Texture = struct {
     id: u32,
     points: [4]PointUV,
@@ -63,5 +68,12 @@ pub const Texture = struct {
         for (&self.points, 0..) |*item, i| {
             item.* = new_points[i];
         }
+    }
+
+    pub fn serialize(self: Texture) AssetZig {
+        return AssetZig{
+            .points = self.points,
+            .texture_id = self.texture_id,
+        };
     }
 };
