@@ -6,7 +6,7 @@ import { createTextureFromSource } from 'WebGPU/getTexture'
 import {
   init_state,
   add_texture,
-  connectOnAssetUpdateCallback,
+  connect_on_asset_update_callback,
   destory_state,
 } from './logic/index.zig'
 import initMouseController from 'WebGPU/pointer'
@@ -55,7 +55,7 @@ export default async function initCreator(
   initMouseController(canvas)
 
   const textures: TextureSource[] = []
-  connectOnAssetUpdateCallback((serializedData: AssetZig[]) => {
+  connect_on_asset_update_callback((serializedData: AssetZig[]) => {
     const serializedAssetsTextureUrl = [...serializedData].map<SerializedAsset>((asset) => ({
       points: [...asset.points].map((point) => ({
         x: point.x,

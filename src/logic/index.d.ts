@@ -21,13 +21,13 @@ declare module '*.zig' {
   export const on_pointer_up: () => void
   export const on_pointer_move: (x: number, y: number) => void
 
-  export const connectWebGPUPrograms: (programs: {
+  export const connect_web_gpu_programs: (programs: {
     draw_texture: (vertexData: ZigF32Array, texture_id: number) => void
     draw_triangle: (vertexData: ZigF32Array) => void
     pick_texture: (vertexData: ZigF32Array, texture_id: number) => void
     pick_triangle: (vertexData: ZigF32Array) => void
   }) => void
-  export const connectOnAssetUpdateCallback: (cb: (data: AssetZig[]) => void) => void
+  export const connect_on_asset_update_callback: (cb: (data: AssetZig[]) => void) => void
 
   export const canvas_render: VoidFunction
   export const picks_render: VoidFunction

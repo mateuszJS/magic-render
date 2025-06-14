@@ -15,14 +15,14 @@ const WebGpuPrograms = struct {
 };
 var web_gpu_programs: *const WebGpuPrograms = undefined;
 
-pub fn connectWebGPUPrograms(programs: *const WebGpuPrograms) void {
+pub fn connect_web_gpu_programs(programs: *const WebGpuPrograms) void {
     // https://github.com/chung-leong/zigar/wiki/JavaScript-to-Zig-function-conversion
     // callback = cb orelse &none;
     web_gpu_programs = programs; // orelse WebGpuPrograms{};
 }
 
 var on_asset_update_cb: *const fn ([]AssetZig) void = undefined;
-pub fn connectOnAssetUpdateCallback(cb: *const fn ([]AssetZig) void) void {
+pub fn connect_on_asset_update_callback(cb: *const fn ([]AssetZig) void) void {
     on_asset_update_cb = cb;
 }
 
