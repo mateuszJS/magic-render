@@ -1,8 +1,6 @@
 import initCreator from '../src/index'
 import SampleImg from './image-sample.png'
 
-let new_asset_id = 1001
-
 const params = new URLSearchParams(document.location.search)
 const isSampleParam = params.has('sample') // is the string "Jonathan"
 
@@ -13,7 +11,6 @@ async function test() {
     isSampleParam
       ? [
           {
-            id: 1000,
             points: [
               {
                 u: 0,
@@ -55,8 +52,7 @@ async function test() {
     const img = new Image()
     img.src = URL.createObjectURL(files[0])
     img.onload = () => {
-      creator.addImage(new_asset_id, img)
-      new_asset_id++
+      creator.addImage(img)
     }
   })
 }

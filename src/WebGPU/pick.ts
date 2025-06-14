@@ -1,19 +1,16 @@
-import mat4 from "utils/mat4"
-import { pointer } from "./pointer"
-import { on_update_pick } from "../logic/index.zig"
+import mat4 from 'utils/mat4'
+import { pointer } from './pointer'
+import { on_update_pick } from '../logic/index.zig'
 
 const NUM_PIXELS = 1
 
 export default class PickManager {
-
   private pickBuffer: GPUBuffer
   private pickTexture: GPUTexture
   private pickDepthTexture: GPUTexture
   private isPreviousPickDone = true
 
-  constructor (
-    private device: GPUDevice,
-  ) {
+  constructor(device: GPUDevice) {
     this.pickBuffer = device.createBuffer({
       size: NUM_PIXELS * 4,
       usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
@@ -31,21 +28,22 @@ export default class PickManager {
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     })
   }
+
   /**
    * Starts a picking render pass.
    * @param encoder The GPUCommandEncoder to use for the render pass.
    * @returns An object which contains render pass and a callback to end picking.
    */
-  startPicking(encoder: GPUCommandEncoder): { pass: GPURenderPassEncoder, end: VoidFunction } {
+  startPicking(encoder: GPUCommandEncoder): { pass: GPURenderPassEncoder; end: VoidFunction } {
     const descriptor: GPURenderPassDescriptor = {
       // describe which textures we want to raw to and how use them
-      label: "our render to canvas renderPass",
+      label: 'our render to canvas renderPass',
       colorAttachments: [
         {
           view: this.pickTexture.createView(),
-          loadOp: "clear",
+          loadOp: 'clear',
           clearValue: [0, 0, 0, 1],
-          storeOp: "store",
+          storeOp: 'store',
         } as const,
       ],
       // depthStencilAttachment: {
@@ -68,19 +66,22 @@ export default class PickManager {
       pass.end()
 
       if (this.isPreviousPickDone) {
-        encoder.copyTextureToBuffer({
+        encoder.copyTextureToBuffer(
+          {
             texture: this.pickTexture,
-            origin: { x: 0, y: 0 }
-          }, {
+            origin: { x: 0, y: 0 },
+          },
+          {
             buffer: this.pickBuffer,
-          }, {
+          },
+          {
             width: NUM_PIXELS,
           }
         )
       }
     }
 
-    return {pass, end: endPicking}
+    return { pass, end: endPicking }
   }
 
   createMatrix(canvas: HTMLCanvasElement, canvasMatrix: Float32Array) {
@@ -104,10 +105,15 @@ export default class PickManager {
   async asyncPick() {
     if (!this.isPreviousPickDone) return
     this.isPreviousPickDone = false
-    await this.pickBuffer.mapAsync(GPUMapMode.READ, 0, 4 * NUM_PIXELS)
-    const [id] = new Uint32Array(this.pickBuffer.getMappedRange(0, 4 * NUM_PIXELS))
-    on_update_pick(id)
-    this.pickBuffer.unmap()
+    try {
+      await this.pickBuffer.mapAsync(GPUMapMode.READ, 0, 4 * NUM_PIXELS)
+      const [id] = new Uint32Array(this.pickBuffer.getMappedRange(0, 4 * NUM_PIXELS))
+      on_update_pick(id)
+      this.pickBuffer.unmap()
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (err) {
+      /* ignorign errors when map fails because device was destroyed(so buffer too and was unmapped before mapAsync completed)*/
+    }
     this.isPreviousPickDone = true
   }
 }

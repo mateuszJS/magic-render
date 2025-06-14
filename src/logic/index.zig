@@ -1,6 +1,9 @@
 const std = @import("std");
 const Types = @import("./types.zig");
 const Texture = @import("./texture.zig").Texture;
+const TEXTURE_VERTEX_BUFFER_SIZE = @import("./texture.zig").TEXTURE_VERTEX_BUFFER_SIZE;
+const TEXTURE_PICK_VERTEX_BUFFER_SIZE = @import("./texture.zig").TEXTURE_PICK_VERTEX_BUFFER_SIZE;
+const AssetZig = @import("./texture.zig").AssetZig;
 const Line = @import("./line.zig").Line;
 const LINE_NUM_VERTICIES = @import("./line.zig").LINE_NUM_VERTICIES;
 const TransformUI = @import("./transform_ui.zig");
@@ -13,16 +16,15 @@ const WebGpuPrograms = struct {
     pick_triangle: *const fn ([]const f32) void,
 };
 var web_gpu_programs: *const WebGpuPrograms = undefined;
-// var callback: *const Callback = &none;
 
-pub fn connectWebGPUPrograms(programs: *const WebGpuPrograms) void {
+pub fn connect_web_gpu_programs(programs: *const WebGpuPrograms) void {
     // https://github.com/chung-leong/zigar/wiki/JavaScript-to-Zig-function-conversion
     // callback = cb orelse &none;
     web_gpu_programs = programs; // orelse WebGpuPrograms{};
 }
 
-var on_asset_update_cb: *const fn ([]Texture) void = undefined;
-pub fn connectOnAssetUpdateCallback(cb: *const fn ([]Texture) void) void {
+var on_asset_update_cb: *const fn ([]AssetZig) void = undefined;
+pub fn connect_on_asset_update_callback(cb: *const fn ([]AssetZig) void) void {
     on_asset_update_cb = cb;
 }
 
@@ -47,7 +49,7 @@ const State = struct {
 var state = State{
     .width = 0,
     .height = 0,
-    .assets = std.AutoHashMap(u32, Texture).init(std.heap.page_allocator),
+    .assets = undefined,
     .hovered_asset_id = 0,
     .active_asset_id = 0,
     .ongoing_action = ActionType.none,
@@ -57,10 +59,13 @@ var state = State{
 pub fn init_state(width: u32, height: u32) void {
     state.width = width;
     state.height = height;
+    state.assets = std.AutoHashMap(u32, Texture).init(std.heap.page_allocator);
 }
 
-pub fn add_texture(id: u32, points: [4]Types.PointUV, texture_id: u32) void {
-    state.assets.put(id, Texture.new(id, points, texture_id)) catch unreachable;
+var next_asset_id: u32 = ASSET_ID_TRESHOLD;
+pub fn add_texture(points: [4]Types.PointUV, texture_id: u32) void {
+    state.assets.put(next_asset_id, Texture.new(next_asset_id, points, texture_id)) catch unreachable;
+    next_asset_id +%= 1;
 }
 
 pub fn update_points(id: u32, points: [4]Types.PointUV) void {
@@ -93,11 +98,11 @@ pub fn on_pointer_up() void {
 
     state.ongoing_action = .none;
 
-    var result = std.heap.page_allocator.alloc(Texture, state.assets.count()) catch unreachable;
+    var result = std.heap.page_allocator.alloc(AssetZig, state.assets.count()) catch unreachable;
     var iterator = state.assets.iterator();
     var i: usize = 0;
     while (iterator.next()) |entry| {
-        result[i] = entry.value_ptr.*;
+        result[i] = entry.value_ptr.serialize();
         i += 1;
     }
 
@@ -190,9 +195,10 @@ pub fn canvas_render() void {
     var iterator = state.assets.iterator();
 
     while (iterator.next()) |asset| {
-        const vertex_data = asset.value_ptr.get_vertex_data();
+        var vertex_data: [TEXTURE_VERTEX_BUFFER_SIZE]f32 = undefined;
+        asset.value_ptr.get_vertex_data(&vertex_data);
 
-        web_gpu_programs.draw_texture(vertex_data, asset.value_ptr.texture_id);
+        web_gpu_programs.draw_texture(&vertex_data, asset.value_ptr.texture_id);
     }
 
     const border_verticies = get_border();
@@ -205,9 +211,10 @@ pub fn picks_render() void {
     var iterator = state.assets.iterator();
 
     while (iterator.next()) |asset| {
-        const vertex_data = asset.value_ptr.get_vertex_pick_data();
+        var vertex_data: [TEXTURE_PICK_VERTEX_BUFFER_SIZE]f32 = undefined;
+        asset.value_ptr.get_vertex_pick_data(&vertex_data);
 
-        web_gpu_programs.pick_texture(vertex_data, asset.value_ptr.texture_id);
+        web_gpu_programs.pick_texture(&vertex_data, asset.value_ptr.texture_id);
     }
 
     if (state.assets.get(state.active_asset_id)) |asset| {
@@ -215,4 +222,13 @@ pub fn picks_render() void {
         TransformUI.get_transform_ui_pick(vertex_buffer[0..TransformUI.PICK_BORDER_BUFFER_SIZE], asset);
         web_gpu_programs.pick_triangle(vertex_buffer[0..TransformUI.PICK_BORDER_BUFFER_SIZE]);
     }
+}
+
+pub fn destroy_state() void {
+    state.assets.deinit();
+    next_asset_id = ASSET_ID_TRESHOLD;
+    web_gpu_programs = undefined;
+    on_asset_update_cb = undefined;
+    // state itself is not destoyed as it will be reinitalized before usage
+    // and has no reference to memory to free
 }

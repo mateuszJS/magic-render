@@ -2,7 +2,7 @@ import getCanvasRenderDescriptor from 'getCanvasRenderDescriptor'
 import { drawTexture, drawTriangle, pickTexture, pickTriangle } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
-import { canvas_render, picks_render, connectWebGPUPrograms } from 'logic/index.zig'
+import { canvas_render, picks_render, connect_web_gpu_programs } from 'logic/index.zig'
 import { TextureSource } from '.'
 
 export const transformMatrix = new Float32Array()
@@ -14,7 +14,7 @@ export default function runCreator(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
   textures: TextureSource[]
-) {
+): VoidFunction {
   const canvasMatrix = getCanvasMatrix(canvas)
   let canvasPass: GPURenderPassEncoder
 
@@ -22,7 +22,7 @@ export default function runCreator(
   let pickMatrix: Float32Array
   let pickPass: GPURenderPassEncoder
 
-  connectWebGPUPrograms({
+  connect_web_gpu_programs({
     draw_texture: (vertex_data, texture_id) =>
       drawTexture(canvasPass, canvasMatrix, vertex_data.typedArray, textures[texture_id].texture),
     draw_triangle: (vertex_data) => drawTriangle(canvasPass, canvasMatrix, vertex_data.typedArray),
@@ -30,6 +30,8 @@ export default function runCreator(
       pickTexture(pickPass, pickMatrix, vertex_data.typedArray, textures[texture_id].texture),
     pick_triangle: (vertex_data) => pickTriangle(pickPass, pickMatrix, vertex_data.typedArray),
   })
+
+  let rafId = 0
 
   function draw(now: DOMHighResTimeStamp) {
     const encoder = device.createCommandEncoder()
@@ -50,8 +52,12 @@ export default function runCreator(
 
     pickManager.asyncPick()
 
-    requestAnimationFrame(draw)
+    rafId = requestAnimationFrame(draw)
   }
 
-  requestAnimationFrame(draw)
+  rafId = requestAnimationFrame(draw)
+
+  return () => {
+    cancelAnimationFrame(rafId)
+  }
 }
