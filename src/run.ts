@@ -1,9 +1,50 @@
 import getCanvasRenderDescriptor from 'getCanvasRenderDescriptor'
-import { drawTexture, drawTriangle, pickTexture, pickTriangle } from 'WebGPU/programs/initPrograms'
+import {
+  drawTexture,
+  drawTriangle,
+  generateMSDF,
+  pickTexture,
+  pickTriangle,
+} from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
 import { canvas_render, picks_render, connect_web_gpu_programs } from 'logic/index.zig'
 import { TextureSource } from '.'
+import svgToSegments from 'utils/svgToSegments'
+import { CubicBezier } from 'types'
+
+const TestShapeSvg = `
+<svg viewBox="0 0 100 100" version="1.1" xmlns="http://www.w3.org/2000/svg">
+    <path d="M86.467,29.511C85.525,27.807 84.337,26.131 82.949,24.507C81.279,22.552 79.32,20.673 77.154,18.914C75.651,17.693 74.048,16.53 72.373,15.438C70.224,14.039 67.956,12.758 65.626,11.626C53.307,5.641 39.264,3.83 32.01,10.728C19.493,22.63 48.138,36.888 12.048,58.79C-9.698,71.987 26.544,106.787 62.514,97.022C98.483,87.256 97.854,50.107 86.467,29.511Z"/>
+</svg>
+`
+function testSvgToSegments(): CubicBezier[] {
+  const testCanvas = document.createElement('canvas')
+  testCanvas.style.position = 'absolute'
+  document.body.appendChild(testCanvas)
+  testCanvas.width = testCanvas.clientWidth
+  testCanvas.height = testCanvas.clientHeight
+
+  const segments = svgToSegments(TestShapeSvg) as CubicBezier[]
+
+  const ctx = testCanvas.getContext('2d')!
+
+  segments.forEach(([start, cp1, cp2, end]) => {
+    ctx.strokeStyle = 'red'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(start.x, start.y)
+    ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, end.x, end.y)
+    ctx.stroke()
+  })
+
+  return segments.map((segment) =>
+    segment.map((point) => ({
+      x: point.x,
+      y: testCanvas.height - point.y,
+    }))
+  ) as CubicBezier[]
+}
 
 export const transformMatrix = new Float32Array()
 export const MAP_BACKGROUND_SCALE = 1000
@@ -33,12 +74,25 @@ export default function runCreator(
 
   let rafId = 0
 
+  const segments = testSvgToSegments()
+  // prettier-ignore
+  const vertexData = new Float32Array([
+    0, 0, 0, 1,
+    canvas.width, canvas.height, 0, 1,
+    canvas.width, 0, 0, 1,
+    //
+    0, 0, 0, 1,
+    0, canvas.height, 0, 1,
+    canvas.width, canvas.height, 0, 1,
+  ])
+
   function draw(now: DOMHighResTimeStamp) {
     const encoder = device.createCommandEncoder()
 
     const canvasDescriptor = getCanvasRenderDescriptor(context, device)
     canvasPass = encoder.beginRenderPass(canvasDescriptor)
     canvas_render()
+    generateMSDF(canvasPass, canvasMatrix, vertexData, segments)
     canvasPass.end()
 
     pickMatrix = pickManager.createMatrix(canvas, canvasMatrix)

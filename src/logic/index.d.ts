@@ -1,3 +1,8 @@
+interface Point {
+  x: number
+  y: number
+}
+
 interface PointUV {
   x: number
   y: number
@@ -32,4 +37,6 @@ declare module '*.zig' {
   export const canvas_render: VoidFunction
   export const picks_render: VoidFunction
   export const destroy_state: VoidFunction
+
+  export const import_shape: (segments: [Point, Point, Point, Point][]) => void
 }
