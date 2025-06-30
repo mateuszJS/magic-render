@@ -52,7 +52,7 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     pass: GPURenderPassEncoder,
     worldProjectionMatrix: Float32Array,
     vertexData: Float32Array<ArrayBufferLike>,
-    cubicBezierCurves: CubicBezier[]
+    cubicBezierCurves: number[]
   ) {
     const numVertices = (vertexData.length / STRIDE) | 0
     const vertexBuffer = device.createBuffer({
@@ -72,22 +72,7 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     })
 
     const curveStorageValues = new Float32Array(curvesStorageBufferSize / 4)
-    cubicBezierCurves.forEach((curve, i) => {
-      const staticOffset = i * (quadBezierCurverSize / 4)
-      curveStorageValues.set(
-        [
-          curve[0].x,
-          curve[0].y,
-          curve[1].x,
-          curve[1].y,
-          curve[2].x,
-          curve[2].y,
-          curve[3].x,
-          curve[3].y,
-        ],
-        staticOffset
-      )
-    })
+    curveStorageValues.set(cubicBezierCurves)
     device.queue.writeBuffer(curvesStorageBuffer, 0, curveStorageValues)
 
     // bind group should be pre-created and reuse instead of constantly initialized

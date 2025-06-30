@@ -5,6 +5,27 @@ interface PathCommand {
   args: number[]
 }
 
+// Calculate the length of a line segment
+function getLineLength(p1: Point, p2: Point): number {
+  return Math.hypot(p2.x - p1.x, p2.y - p1.y)
+}
+
+// Get length of a path using SVG's native getTotalLength()
+function getPathLength(pathData: string): number {
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  path.setAttribute('d', pathData)
+
+  const length = path.getTotalLength()
+  console.log(length)
+  return length
+}
+
+// Calculate the approximate length of a cubic Bezier curve by converting to path
+function getCubicBezierLength(p0: Point, p1: Point, p2: Point, p3: Point): number {
+  const pathData = `M ${p0.x} ${p0.y} C ${p1.x} ${p1.y} ${p2.x} ${p2.y} ${p3.x} ${p3.y}`
+  return getPathLength(pathData)
+}
+
 function parsePathData(pathData: string): PathCommand[] {
   // Remove whitespace and split by command letters
   const commands: PathCommand[] = []
@@ -55,7 +76,11 @@ function commandsToSegments(commands: PathCommand[]): Segment[] {
           } else {
             // Subsequent moves are treated as LineTo
             const newPoint = { x, y }
-            segments.push([currentPoint, newPoint] as Line)
+            const line: Line = [currentPoint, newPoint]
+            segments.push({
+              points: line,
+              length: getLineLength(currentPoint, newPoint),
+            })
             currentPoint = newPoint
           }
         }
@@ -71,7 +96,11 @@ function commandsToSegments(commands: PathCommand[]): Segment[] {
             x: args[i] + (isRelative ? currentPoint.x : 0),
             y: args[i + 1] + (isRelative ? currentPoint.y : 0),
           }
-          segments.push([currentPoint, newPoint] as Line)
+          const line: Line = [currentPoint, newPoint]
+          segments.push({
+            points: line,
+            length: getLineLength(currentPoint, newPoint),
+          })
           currentPoint = newPoint
         }
         lastControlPoint = null
@@ -86,7 +115,11 @@ function commandsToSegments(commands: PathCommand[]): Segment[] {
             x: x + (isRelative ? currentPoint.x : 0),
             y: currentPoint.y,
           }
-          segments.push([currentPoint, newPoint] as Line)
+          const line: Line = [currentPoint, newPoint]
+          segments.push({
+            points: line,
+            length: getLineLength(currentPoint, newPoint),
+          })
           currentPoint = newPoint
         }
         lastControlPoint = null
@@ -101,7 +134,11 @@ function commandsToSegments(commands: PathCommand[]): Segment[] {
             x: currentPoint.x,
             y: y + (isRelative ? currentPoint.y : 0),
           }
-          segments.push([currentPoint, newPoint] as Line)
+          const line: Line = [currentPoint, newPoint]
+          segments.push({
+            points: line,
+            length: getLineLength(currentPoint, newPoint),
+          })
           currentPoint = newPoint
         }
         lastControlPoint = null
@@ -125,7 +162,11 @@ function commandsToSegments(commands: PathCommand[]): Segment[] {
             y: args[i + 5] + (isRelative ? currentPoint.y : 0),
           }
 
-          segments.push([currentPoint, cp1, cp2, endPoint] as CubicBezier)
+          const cubicBezier: CubicBezier = [currentPoint, cp1, cp2, endPoint]
+          segments.push({
+            points: cubicBezier,
+            length: getCubicBezierLength(currentPoint, cp1, cp2, endPoint),
+          })
           currentPoint = endPoint
           lastControlPoint = cp2
         }
@@ -153,7 +194,11 @@ function commandsToSegments(commands: PathCommand[]): Segment[] {
             y: args[i + 3] + (isRelative ? currentPoint.y : 0),
           }
 
-          segments.push([currentPoint, cp1, cp2, endPoint] as CubicBezier)
+          const cubicBezier: CubicBezier = [currentPoint, cp1, cp2, endPoint]
+          segments.push({
+            points: cubicBezier,
+            length: getCubicBezierLength(currentPoint, cp1, cp2, endPoint),
+          })
           currentPoint = endPoint
           lastControlPoint = cp2
         }
@@ -163,7 +208,11 @@ function commandsToSegments(commands: PathCommand[]): Segment[] {
       case 'z': {
         // ClosePath
         if (currentPoint.x !== pathStart.x || currentPoint.y !== pathStart.y) {
-          segments.push([currentPoint, pathStart] as Line)
+          const line: Line = [currentPoint, pathStart]
+          segments.push({
+            points: line,
+            length: getLineLength(currentPoint, pathStart),
+          })
         }
         currentPoint = pathStart
         lastControlPoint = null
@@ -195,6 +244,11 @@ export default function svgToSegments(svg: string): Segment[] {
     if (pathData) {
       const commands = parsePathData(pathData)
       const pathSegments = commandsToSegments(commands)
+
+      // If we want the total length of the entire path, we could use:
+      // const totalPathLength = getPathLength(pathData)
+      // But since we're breaking it into segments, we calculate individual lengths
+
       segments.push(...pathSegments)
     }
   }
@@ -207,10 +261,14 @@ export default function svgToSegments(svg: string): Segment[] {
     const x2 = parseFloat(lineElement.getAttribute('x2') || '0')
     const y2 = parseFloat(lineElement.getAttribute('y2') || '0')
 
-    segments.push([
-      { x: x1, y: y1 },
-      { x: x2, y: y2 },
-    ] as Line)
+    const p1: Point = { x: x1, y: y1 }
+    const p2: Point = { x: x2, y: y2 }
+    const line: Line = [p1, p2]
+
+    segments.push({
+      points: line,
+      length: getLineLength(p1, p2),
+    })
   }
 
   // Find all polyline elements
@@ -225,7 +283,11 @@ export default function svgToSegments(svg: string): Segment[] {
       for (let i = 0; i < coords.length - 2; i += 2) {
         const p1: Point = { x: coords[i], y: coords[i + 1] }
         const p2: Point = { x: coords[i + 2], y: coords[i + 3] }
-        segments.push([p1, p2] as Line)
+        const line: Line = [p1, p2]
+        segments.push({
+          points: line,
+          length: getLineLength(p1, p2),
+        })
       }
     }
   }
@@ -242,13 +304,21 @@ export default function svgToSegments(svg: string): Segment[] {
       for (let i = 0; i < coords.length - 2; i += 2) {
         const p1: Point = { x: coords[i], y: coords[i + 1] }
         const p2: Point = { x: coords[i + 2], y: coords[i + 3] }
-        segments.push([p1, p2] as Line)
+        const line: Line = [p1, p2]
+        segments.push({
+          points: line,
+          length: getLineLength(p1, p2),
+        })
       }
       // Close the polygon
       if (coords.length >= 4) {
         const first: Point = { x: coords[0], y: coords[1] }
         const last: Point = { x: coords[coords.length - 2], y: coords[coords.length - 1] }
-        segments.push([last, first] as Line)
+        const line: Line = [last, first]
+        segments.push({
+          points: line,
+          length: getLineLength(last, first),
+        })
       }
     }
   }

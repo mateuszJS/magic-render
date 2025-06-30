@@ -12,7 +12,7 @@ struct VertexOutput {
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
-@group(0) @binding(1) var<storage, read> quadBezierCurves: array<array<vec2f, 5>>;
+@group(0) @binding(1) var<storage, read> quadBezierCurves: array<array<vec2f, 4>>;
 
 @vertex fn vs(vert: Vertex) -> VertexOutput {
   var out: VertexOutput;
@@ -45,14 +45,13 @@ fn signedPseudoDistance(pixelPos: vec2f, curveIndex: u32) -> f32 {
   let p1 = quadBezierCurves[curveIndex][1];
   let p2 = quadBezierCurves[curveIndex][2];
   let p3 = quadBezierCurves[curveIndex][3];
-  let curve_length = quadBezierCurves[curveIndex][4].x;
   
   var minDistance = 1000.0;
   var bestT = 0.0;
   
   // Sample the curve with extended range for pseudo-distance
   // We extend beyond [0,1] to include the infinite extensions
-  let samples = u32(curve_length);
+  let samples = 64u;
   let tStart = -0.5; // Start before curve begins
   let tEnd = 1.5;    // End after curve ends
   
@@ -167,39 +166,23 @@ fn signedPseudoDistance(pixelPos: vec2f, curveIndex: u32) -> f32 {
   return sign * minDistance;
 }
 
-// the whole algo starts here:
-// https://github.com/Chlumsky/msdfgen/blob/master/core/msdfgen.cpp#L53
-
 @fragment fn fs(in: VertexOutput) -> @location(0) vec4f {
   var minRedDistance = 1000.0;
   var minGreenDistance = 1000.0;
   var minBlueDistance = 1000.0;
 
-  var minRedEdge = 0u;
-  var minGreenEdge = 0u;
-  var minBlueEdge = 0u;
-
   let curvesCount = arrayLength(&quadBezierCurves);
 
-  // Calculate signed distance using winding number
-  // For each curve, check if the fragment point is inside or outside
   var windingNumber = 0.0;
-  var color = MAGENTA;
-  if (curvesCount == 1) {
-    color = WHITE;
-  };
   
   for (var i: u32 = 0; i < curvesCount; i++) {
-    // how that author measure this clsoest point
-    // https://github.com/Chlumsky/msdfgen/blob/master/core/edge-segments.cpp#L245
     let curve_p0 = quadBezierCurves[i][0];
     let curve_p1 = quadBezierCurves[i][1];
     let curve_p2 = quadBezierCurves[i][2];
     let curve_p3 = quadBezierCurves[i][3];
-    let curve_length = quadBezierCurves[i][4].x;
     
     // Sample the curve and calculate winding contribution
-    let curve_samples = u32(curve_length);;
+    let curve_samples = 16u;
     for (var j: u32 = 0; j < curve_samples; j++) {
       let t1 = f32(j) / f32(curve_samples);
       let t2 = f32(j + 1u) / f32(curve_samples);
@@ -250,56 +233,16 @@ fn signedPseudoDistance(pixelPos: vec2f, curveIndex: u32) -> f32 {
       // Determine sign: inside if winding number is non-zero, outside if zero
 
 
-      if ((color & RED) > 0 && distanceToPoint < minRedDistance) {
-        minRedDistance = distanceToPoint;
-        minRedEdge = i;
+      if (distanceToPoint < minDistance) {
+        minDistance = distanceToPoint;
+        // minRedEdge = i;
       }
-      if ((color & GREEN) > 0 && distanceToPoint < minGreenDistance) {
-        minGreenDistance = distanceToPoint;
-        minGreenEdge = i;
-      }
-      if ((color & BLUE) > 0 && distanceToPoint < minBlueDistance) {
-        minBlueDistance = distanceToPoint;
-        minBlueEdge = i;
-      }
-    }
-
-    // minRedDistance = signedPseudoDistance(in.originalPosition, minRedEdge);
-    // minGreenDistance = signedPseudoDistance(in.originalPosition, minGreenEdge);
-    // minBlueDistance = signedPseudoDistance(in.originalPosition, minBlueEdge);
-
-
-    // calculating color for the next edge
-    if (color == YELLOW) {
-      color = CYAN;
-    } else {
-      color = YELLOW;
     }
   }
-
-  //   return vec4f(
-  //   f32(minRedEdge) / f32(curvesCount),
-  //   f32(minGreenEdge) / f32(curvesCount),
-  //   f32(minBlueEdge) / f32(curvesCount),
-  //   1.0
-  // );
-
   let sign = select(-1.0, 1.0, abs(windingNumber) > 0.5);
-  minRedDistance *= sign;
-  minGreenDistance *= sign;
-  minBlueDistance *= sign;
-  return vec4f(
-    minRedDistance / 5.0,
-    minGreenDistance / 5.0,
-    minBlueDistance / 5.0,
-    1.0
-  );
-  // return vec4f(minRedDistance + 0.5, minGreenDistance + 0.5, minBlueDistance + 0.5, 1.0);
-
-  // let msdf = vec4f(minRedDistance, minGreenDistance, minBlueDistance, 1.0);
-  // let d = median(minRedDistance, minGreenDistance, minBlueDistance) - 0.5;
-  // return vec4f(d, d, d, 1.0);
+  let signedDistance = sign * minDistance;
+  // minDistance += 0.5;
+  // minDistance = abs(minDistance);
+  // minDistance = abs(minDistance);
+  return vec4f(signedDistance / 5.0, 0.0, 0.0, 1.0);
 }
-
-// the author marked above approach as legacy
-// https://github.com/Chlumsky/msdfgen/blob/master/core/msdfgen.cpp#L220

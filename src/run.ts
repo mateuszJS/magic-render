@@ -11,39 +11,44 @@ import PickManager from 'WebGPU/pick'
 import { canvas_render, picks_render, connect_web_gpu_programs } from 'logic/index.zig'
 import { TextureSource } from '.'
 import svgToSegments from 'utils/svgToSegments'
-import { CubicBezier } from 'types'
 
 const TestShapeSvg = `
 <svg viewBox="0 0 100 100" version="1.1" xmlns="http://www.w3.org/2000/svg">
     <path d="M86.467,29.511C85.525,27.807 84.337,26.131 82.949,24.507C81.279,22.552 79.32,20.673 77.154,18.914C75.651,17.693 74.048,16.53 72.373,15.438C70.224,14.039 67.956,12.758 65.626,11.626C53.307,5.641 39.264,3.83 32.01,10.728C19.493,22.63 48.138,36.888 12.048,58.79C-9.698,71.987 26.544,106.787 62.514,97.022C98.483,87.256 97.854,50.107 86.467,29.511Z"/>
 </svg>
 `
-function testSvgToSegments(): CubicBezier[] {
+function testSvgToSegments(): number[] {
   const testCanvas = document.createElement('canvas')
   testCanvas.style.position = 'absolute'
   document.body.appendChild(testCanvas)
   testCanvas.width = testCanvas.clientWidth
   testCanvas.height = testCanvas.clientHeight
 
-  const segments = svgToSegments(TestShapeSvg) as CubicBezier[]
+  const segments = svgToSegments(TestShapeSvg)
 
   const ctx = testCanvas.getContext('2d')!
 
-  segments.forEach(([start, cp1, cp2, end]) => {
-    ctx.strokeStyle = 'red'
-    ctx.lineWidth = 2
+  segments.forEach(({ points: [start, cp1, cp2, end] }, i) => {
+    ctx.strokeStyle = `rgb(0, ${(i / segments.length) * 255}, 0)`
+    ctx.lineWidth = 10
     ctx.beginPath()
     ctx.moveTo(start.x, start.y)
-    ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, end.x, end.y)
+    ctx.bezierCurveTo(
+      cp1.x,
+      cp1.y,
+      (cp2 as Point).x,
+      (cp2 as Point).y,
+      (end as Point).x,
+      (end as Point).y
+    )
     ctx.stroke()
   })
 
-  return segments.map((segment) =>
-    segment.map((point) => ({
-      x: point.x,
-      y: testCanvas.height - point.y,
-    }))
-  ) as CubicBezier[]
+  return segments.flatMap((segment) => [
+    ...segment.points.flatMap((point) => [point.x, testCanvas.height - point.y]),
+    segment.length,
+    0, // just a padding to make it vec2f
+  ])
 }
 
 export const transformMatrix = new Float32Array()
@@ -86,6 +91,7 @@ export default function runCreator(
     canvas.width, canvas.height, 0, 1,
   ])
 
+  let renderAgain = true
   function draw(now: DOMHighResTimeStamp) {
     const encoder = device.createCommandEncoder()
 
@@ -106,7 +112,10 @@ export default function runCreator(
 
     pickManager.asyncPick()
 
-    rafId = requestAnimationFrame(draw)
+    if (renderAgain) {
+      renderAgain = false
+      rafId = requestAnimationFrame(draw)
+    }
   }
 
   rafId = requestAnimationFrame(draw)
