@@ -21,6 +21,9 @@ struct VertexOutput {
   return out;
 }
 
+const MSDFGEN_CUBIC_SEARCH_STARTS = 4;
+const MSDFGEN_CUBIC_SEARCH_STEPS = 4;
+
 fn median(a: f32, b: f32, c: f32) -> f32 {
   if ((a < b && b < c) || (c < b && b < a)) {
     return b;
@@ -141,30 +144,28 @@ fn signedDistance(curveIndex: u32, origin: vec2f) -> SignedDistanceAndParam {
     }
 
     // Iterative minimum distance search
-    let samples = u32(curve_length);
-    for (var i: u32 = 0u; i <= samples; i = i + 1u) {
-    // for (int i = 0; i <= MSDFGEN_CUBIC_SEARCH_STARTS; ++i) {
-        var t = f32(i) / curve_length;
+    // let samples = u32(curve_length);
+    for (var i: u32 = 0u; i <= MSDFGEN_CUBIC_SEARCH_STARTS; i++) {
+        var t = 1.0 / f32(MSDFGEN_CUBIC_SEARCH_STARTS) * f32(i);
         var qe = qa+3*t*ab+3*t*t*br+t*t*t*custom_as;
         var d1 = 3*ab+6*t*br+3*t*t*custom_as;
         var d2 = 6*br+6*t*custom_as;
         var improvedT = t-dot(qe, d1)/(dot(d1, d1)+dot(qe, d2));
         if (improvedT > 0.0 && improvedT < 1.0) {
-            var remainingSteps = samples;
+            var remainingSteps = MSDFGEN_CUBIC_SEARCH_STEPS;
 
             loop {
                 t = improvedT;
                 qe = qa+3*t*ab+3*t*t*br+t*t*t*custom_as;
                 d1 = 3*ab+6*t*br+3*t*t*custom_as;
-                // remainingSteps--;
-                remainingSteps = remainingSteps - 1;
+                remainingSteps--;
                 if (remainingSteps == 0) {
                     break;
                 }
                 d2 = 6*br+6*t*custom_as;
                 improvedT = t-dot(qe, d1)/(dot(d1, d1)+dot(qe, d2));
 
-                if (improvedT > 0.0 && improvedT < 1.0) {
+                if (improvedT <= 0.0 || improvedT >= 1.0) {
                     break;
                 }
             }
@@ -202,8 +203,8 @@ fn cubic_point(curveIndex: u32, param: f32) -> vec2f {
 
 fn distanceToPerpendicularDistance(curveIndex: u32, distance: SignedDistance, origin: vec2f, param: f32) -> f32 {
     if (param < 0.0) {
-        let dir = normalize_custom(direction(curveIndex, 0), false);
-        let aq = origin - cubic_point(curveIndex, 0);
+        let dir = normalize_custom(direction(curveIndex, 0.0), false);
+        let aq = origin - cubic_point(curveIndex, 0.0);
         let ts = dot(aq, dir);
         if (ts < 0.0) {
             let perpendicularDistance = crossProduct(aq, dir);
@@ -212,8 +213,8 @@ fn distanceToPerpendicularDistance(curveIndex: u32, distance: SignedDistance, or
             }
         }
     } else if (param > 1.0) {
-        let dir = normalize_custom(direction(curveIndex, 1), false);
-        let bq = origin-cubic_point(curveIndex, 1);
+        let dir = normalize_custom(direction(curveIndex, 1.0), false);
+        let bq = origin-cubic_point(curveIndex, 1.0);
         let ts = dot(bq, dir);
         if (ts > 0.0) {
             let perpendicularDistance = crossProduct(bq, dir);
@@ -251,11 +252,18 @@ struct ChannelInfo {
 
   let curvesCount = arrayLength(&quadBezierCurves);
   var color: u32 = MAGENTA;
-  for (var i: u32 = 0u; i < curvesCount; i = i + 1u) {
+  for (var i: u32 = 0u; i < curvesCount; i++) {
     let distanceAndParam = signedDistance(i, in.originalPosition);
     let distance = distanceAndParam.signedDistance;
     let param = distanceAndParam.param;
 
+
+    // if (isSmallerThan(distance, r.minDistance)) {
+    //   r.minDistance = distance;
+    //   r.nearEdgeSegment.index = i;
+    //   r.nearEdgeSegment.color = color;
+    //   r.nearParam = param;
+    // }
 
     if ((color & RED) > 0 && isSmallerThan(distance, r.minDistance)) {
       r.minDistance = distance;
@@ -299,6 +307,7 @@ struct ChannelInfo {
   let v = median(r.minDistance.distance, g.minDistance.distance, b.minDistance.distance);
   // return vec4f(v, v, v, 1.0);
   return vec4f(r.minDistance.distance / 10.0, g.minDistance.distance / 10.0, b.minDistance.distance / 10.0, 1.0);
+  // return vec4f(r.minDistance.distance / 10.0, g.minDistance.distance / 10.0, b.minDistance.distance / 10.0, 1.0);
 }
 
 
