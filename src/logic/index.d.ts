@@ -18,7 +18,8 @@ type AssetZig = {
 
 declare module '*.zig' {
   export const init_state: (width: number, height: number) => void
-  export const add_texture: (points: PointUV[], texture_id: number) => void
+  export const add_asset: (points: PointUV[], texture_id: number) => void
+  export const remove_asset: () => void
   export const update_points: (id: number, points: PointUV[]) => void
 
   export const on_update_pick: (id: number) => void

@@ -67,9 +67,15 @@ pub fn init_state(width: u32, height: u32) void {
 }
 
 var next_asset_id: u32 = ASSET_ID_TRESHOLD;
-pub fn add_texture(points: [4]Types.PointUV, texture_id: u32) void {
+pub fn add_asset(points: [4]Types.PointUV, texture_id: u32) void {
     state.assets.put(next_asset_id, Texture.new(next_asset_id, points, texture_id)) catch unreachable;
     next_asset_id +%= 1;
+    on_asset_update();
+}
+
+pub fn remove_asset() void {
+    state.assets.remove(state.active_asset_id) catch unreachable;
+    on_asset_update();
 }
 
 pub fn update_points(id: u32, points: [4]Types.PointUV) void {
@@ -95,13 +101,7 @@ pub fn on_pointer_down(x: f32, y: f32) void {
     }
 }
 
-pub fn on_pointer_up() void {
-    if (state.ongoing_action == .none) {
-        state.active_asset_id = state.hovered_asset_id;
-    }
-
-    state.ongoing_action = .none;
-
+fn on_asset_update() void {
     var result = std.heap.page_allocator.alloc(AssetZig, state.assets.count()) catch unreachable;
     var iterator = state.assets.iterator();
     var i: usize = 0;
@@ -113,6 +113,16 @@ pub fn on_pointer_up() void {
     if (result.len > 0) {
         on_asset_update_cb(result);
     }
+}
+
+pub fn on_pointer_up() void {
+    if (state.ongoing_action == .none) {
+        state.active_asset_id = state.hovered_asset_id;
+    }
+
+    state.ongoing_action = .none;
+
+    on_asset_update();
 }
 
 pub fn on_pointer_move(x: f32, y: f32) void {
