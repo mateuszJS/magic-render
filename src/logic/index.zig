@@ -275,21 +275,5 @@ pub fn import_icons(data: []const f32) void {
             .real_height = data[i + 6],
         };
         state.icons.put(icon.id, icon) catch unreachable;
-
-        std.debug.print("icon id: {}, width: {}, height: {}, x: {}, y: {}\n", .{ icon.id, icon.width, icon.height, icon.x, icon.y });
     }
-    // std.debug.print("icon id: {}", data.len);
-    // var iterator = data.iterator();
-    // while (iterator.next()) |icon| {
-    //     std.debug.print("icon id: {}", icon.id);
-    // }
-
-    // Notify about the new assets
-    // var result = std.heap.page_allocator.alloc(AssetZig, state.assets.count()) catch unreachable;
-    // var i: usize = 0;
-    // for (state.assets.items(), 0..) |entry| {
-    //     result[i] = entry.value_ptr.serialize();
-    //     i += 1;
-    // }
-    // on_asset_update_cb(result);
 }
