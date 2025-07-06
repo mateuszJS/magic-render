@@ -12,6 +12,7 @@ const zigar = @import("zigar");
 const WebGpuPrograms = struct {
     draw_texture: *const fn ([]const f32, u32) void,
     draw_triangle: *const fn ([]const f32) void,
+    draw_msdf: *const fn ([]const f32, u32) void,
     pick_texture: *const fn ([]const f32, u32) void,
     pick_triangle: *const fn ([]const f32) void,
 };
@@ -40,6 +41,7 @@ const State = struct {
     width: u32,
     height: u32,
     assets: std.AutoHashMap(u32, Texture),
+    icons: std.AutoHashMap(u32, Types.IconData),
     hovered_asset_id: u32,
     active_asset_id: u32,
     ongoing_action: ActionType,
@@ -50,6 +52,7 @@ var state = State{
     .width = 0,
     .height = 0,
     .assets = undefined,
+    .icons = undefined,
     .hovered_asset_id = 0,
     .active_asset_id = 0,
     .ongoing_action = ActionType.none,
@@ -60,6 +63,7 @@ pub fn init_state(width: u32, height: u32) void {
     state.width = width;
     state.height = height;
     state.assets = std.AutoHashMap(u32, Texture).init(std.heap.page_allocator);
+    state.icons = std.AutoHashMap(u32, Types.IconData).init(std.heap.page_allocator);
 }
 
 var next_asset_id: u32 = ASSET_ID_TRESHOLD;
@@ -205,6 +209,30 @@ pub fn canvas_render() void {
     if (border_verticies.len > 0) {
         web_gpu_programs.draw_triangle(border_verticies);
     }
+
+    if (state.icons.get(57346)) |icon| {
+        const scale = 4.0;
+        const dest_y_top = 100.0 + icon.real_height * scale;
+        const dest_y_bottom = 100.0;
+        const dest_x_left = 100.0;
+        const dest_x_right = 100.0 + icon.real_width * scale;
+
+        const source_y_top = 1.0 - icon.y;
+        const source_y_bottom = 1.0 - (icon.y + icon.height);
+        const source_x_left = icon.x;
+        const source_x_right = icon.x + icon.width;
+
+        const msdf_vertex_data = [_]f32{
+            dest_x_left,  dest_y_bottom, 0.0, 1.0, source_x_left,  source_y_bottom,
+            dest_x_left,  dest_y_top,    0.0, 1.0, source_x_left,  source_y_top,
+            dest_x_right, dest_y_top,    0.0, 1.0, source_x_right, source_y_top,
+            // second triangle
+            dest_x_right, dest_y_top,    0.0, 1.0, source_x_right, source_y_top,
+            dest_x_right, dest_y_bottom, 0.0, 1.0, source_x_right, source_y_bottom,
+            dest_x_left,  dest_y_bottom, 0.0, 1.0, source_x_left,  source_y_bottom,
+        };
+        web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
+    }
 }
 
 pub fn picks_render() void {
@@ -226,9 +254,42 @@ pub fn picks_render() void {
 
 pub fn destroy_state() void {
     state.assets.deinit();
+    state.icons.deinit();
     next_asset_id = ASSET_ID_TRESHOLD;
     web_gpu_programs = undefined;
     on_asset_update_cb = undefined;
     // state itself is not destoyed as it will be reinitalized before usage
     // and has no reference to memory to free
+}
+
+pub fn import_icons(data: []const f32) void {
+    var i: usize = 0;
+    while (i < data.len) : (i += 7) {
+        const icon = Types.IconData{
+            .id = @intFromFloat(data[i]),
+            .x = data[i + 1],
+            .y = data[i + 2],
+            .width = data[i + 3],
+            .height = data[i + 4],
+            .real_width = data[i + 5],
+            .real_height = data[i + 6],
+        };
+        state.icons.put(icon.id, icon) catch unreachable;
+
+        std.debug.print("icon id: {}, width: {}, height: {}, x: {}, y: {}\n", .{ icon.id, icon.width, icon.height, icon.x, icon.y });
+    }
+    // std.debug.print("icon id: {}", data.len);
+    // var iterator = data.iterator();
+    // while (iterator.next()) |icon| {
+    //     std.debug.print("icon id: {}", icon.id);
+    // }
+
+    // Notify about the new assets
+    // var result = std.heap.page_allocator.alloc(AssetZig, state.assets.count()) catch unreachable;
+    // var i: usize = 0;
+    // for (state.assets.items(), 0..) |entry| {
+    //     result[i] = entry.value_ptr.serialize();
+    //     i += 1;
+    // }
+    // on_asset_update_cb(result);
 }

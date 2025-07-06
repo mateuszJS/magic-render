@@ -8,9 +8,12 @@ import {
   add_texture,
   connect_on_asset_update_callback,
   destroy_state,
+  import_icons,
 } from './logic/index.zig'
 import initMouseController from 'WebGPU/pointer'
 import getDefaultPoints from 'utils/getDefaultPoints'
+import IconsPng from '../msdf/output/icons.png'
+import IconsJson from '../msdf/output/icons.json'
 
 export type SerializedAsset = Omit<AssetZig, 'texture_id'> & {
   url: string
@@ -54,7 +57,7 @@ export default async function initCreator(
 
   initMouseController(canvas)
 
-  const textures: TextureSource[] = []
+  const textures: TextureSource[] = [{} as TextureSource /*reserved for icons texture*/]
   connect_on_asset_update_callback((serializedData: AssetZig[]) => {
     const serializedAssetsTextureUrl = [...serializedData].map<SerializedAsset>((asset) => ({
       points: [...asset.points].map((point) => ({
@@ -85,6 +88,23 @@ export default async function initCreator(
       addImage(img, asset.points)
     }
   })
+
+  const icons = new Image()
+  icons.src = IconsPng
+  icons.onload = () => {
+    textures[0].texture = createTextureFromSource(device, icons, { flipY: true })
+    import_icons(
+      IconsJson.chars.flatMap((char) => [
+        char.id,
+        char.x / icons.width,
+        char.y / icons.height,
+        char.width / icons.width,
+        char.height / icons.height,
+        char.width,
+        char.height,
+      ])
+    )
+  }
 
   const stopCreator = runCreator(canvas, context, device, presentationFormat, textures)
 

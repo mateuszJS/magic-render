@@ -229,6 +229,69 @@ function commandsToSegments(commands: PathCommand[]): Segment[] {
   return segments
 }
 
+enum EdgeColor {
+  BLACK = 0,
+  RED = 1,
+  GREEN = 2,
+  YELLOW = 3,
+  BLUE = 4,
+  MAGENTA = 5,
+  CYAN = 6,
+  WHITE = 7,
+}
+
+type Seed = {
+  value: number
+}
+
+function seedExtract3(seed: Seed): number {
+  const v = Math.trunc(seed.value % 3)
+  seed.value /= 3
+  return v
+}
+
+function initColor(seed: Seed): EdgeColor {
+  const colors = [EdgeColor.CYAN, EdgeColor.MAGENTA, EdgeColor.YELLOW]
+  return colors[seedExtract3(seed)]
+}
+
+function mix(a: Point, b: Point, t: number): Point {
+  return {
+    x: a.x * (1 - t) + b.x * t,
+    y: a.y * (1 - t) + b.y * t,
+  }
+}
+
+function substract(a: Point, b: Point): Point {
+  return {
+    x: a.x - b.x,
+    y: a.y - b.y,
+  }
+}
+
+function floatIsEqual(a: number, b: number): boolean {
+  return Math.abs(a - b) < Number.EPSILON
+}
+
+function direction(segment: Segment, param: number): Point {
+  const [p0, p1, p2, p3] = segment.points as Point[]
+
+  const tangent = mix(
+    mix(substract(p1, p0), substract(p2, p1), param),
+    mix(substract(p2, p1), substract(p3, p2), param),
+    param
+  )
+  if (floatIsEqual(tangent.x, 0) && floatIsEqual(tangent.y, 0)) {
+    if (floatIsEqual(param, 0)) {
+      return substract(p2, p0)
+    }
+    if (floatIsEqual(param, 1)) {
+      return substract(p3, p1)
+    }
+  }
+  return tangent
+}
+
 export default function svgToSegments(svg: string): Segment[] {
   const segments: Segment[] = []
 

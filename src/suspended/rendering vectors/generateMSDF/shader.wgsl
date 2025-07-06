@@ -23,6 +23,7 @@ struct VertexOutput {
 
 const MSDFGEN_CUBIC_SEARCH_STARTS = 4;
 const MSDFGEN_CUBIC_SEARCH_STEPS = 4;
+const DEFAULT_ANGLE_THRESHOLD = 3.0;
 
 fn median(a: f32, b: f32, c: f32) -> f32 {
   if ((a < b && b < c) || (c < b && b < a)) {
@@ -257,14 +258,6 @@ struct ChannelInfo {
     let distance = distanceAndParam.signedDistance;
     let param = distanceAndParam.param;
 
-
-    // if (isSmallerThan(distance, r.minDistance)) {
-    //   r.minDistance = distance;
-    //   r.nearEdgeSegment.index = i;
-    //   r.nearEdgeSegment.color = color;
-    //   r.nearParam = param;
-    // }
-
     if ((color & RED) > 0 && isSmallerThan(distance, r.minDistance)) {
       r.minDistance = distance;
       r.nearEdgeSegment.index = i;
@@ -294,15 +287,15 @@ struct ChannelInfo {
   }
 
   // https://github.com/Chlumsky/msdfgen/blob/master/core/msdfgen.cpp#L259
-  if (r.nearEdgeSegment.index != NO_EDGE_INDEX) {
-    r.minDistance.distance = distanceToPerpendicularDistance(r.nearEdgeSegment.index, r.minDistance, in.originalPosition, r.nearParam);
-  }
-  if (g.nearEdgeSegment.index != NO_EDGE_INDEX) {
-    g.minDistance.distance = distanceToPerpendicularDistance(g.nearEdgeSegment.index, g.minDistance, in.originalPosition, g.nearParam);
-  }
-  if (b.nearEdgeSegment.index != NO_EDGE_INDEX) {
-    b.minDistance.distance = distanceToPerpendicularDistance(b.nearEdgeSegment.index, b.minDistance, in.originalPosition, b.nearParam);
-  }
+  // if (r.nearEdgeSegment.index != NO_EDGE_INDEX) {
+  //   r.minDistance.distance = distanceToPerpendicularDistance(r.nearEdgeSegment.index, r.minDistance, in.originalPosition, r.nearParam);
+  // }
+  // if (g.nearEdgeSegment.index != NO_EDGE_INDEX) {
+  //   g.minDistance.distance = distanceToPerpendicularDistance(g.nearEdgeSegment.index, g.minDistance, in.originalPosition, g.nearParam);
+  // }
+  // if (b.nearEdgeSegment.index != NO_EDGE_INDEX) {
+  //   b.minDistance.distance = distanceToPerpendicularDistance(b.nearEdgeSegment.index, b.minDistance, in.originalPosition, b.nearParam);
+  // }
 
   let v = median(r.minDistance.distance, g.minDistance.distance, b.minDistance.distance);
   // return vec4f(v, v, v, 1.0);
