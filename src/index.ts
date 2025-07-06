@@ -5,7 +5,8 @@ import runCreator from 'run'
 import { createTextureFromSource } from 'WebGPU/getTexture'
 import {
   init_state,
-  add_texture,
+  add_asset,
+  remove_asset,
   connect_on_asset_update_callback,
   destroy_state,
   import_icons,
@@ -21,6 +22,7 @@ export type SerializedAsset = Omit<AssetZig, 'texture_id'> & {
 
 export interface CreatorAPI {
   addImage: (img: HTMLImageElement, points?: PointUV[]) => void
+  removeAsset: VoidFunction
   destroy: VoidFunction
 }
 
@@ -78,7 +80,7 @@ export default async function initCreator(
       texture: createTextureFromSource(device, img, { flipY: true }),
     })
 
-    add_texture(points || getDefaultPoints(img, canvas), newTextureId)
+    add_asset(points || getDefaultPoints(img, canvas), newTextureId)
   }
 
   assets.forEach((asset) => {
@@ -108,8 +110,13 @@ export default async function initCreator(
 
   const stopCreator = runCreator(canvas, context, device, presentationFormat, textures)
 
+  function removeAsset() {
+    remove_asset()
+  }
+
   return {
     addImage,
+    removeAsset,
     destroy: () => {
       stopCreator()
       destroy_state()
