@@ -34,3 +34,13 @@ pub const PointUV = struct {
         return std.math.hypot(self.x - other.x, self.y - other.y);
     }
 };
+
+pub const IconData = struct {
+    id: u32,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    real_width: f32,
+    real_height: f32,
+};

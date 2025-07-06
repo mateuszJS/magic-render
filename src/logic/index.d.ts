@@ -1,3 +1,8 @@
+interface Point {
+  x: number
+  y: number
+}
+
 interface PointUV {
   x: number
   y: number
@@ -24,6 +29,7 @@ declare module '*.zig' {
   export const connect_web_gpu_programs: (programs: {
     draw_texture: (vertexData: ZigF32Array, texture_id: number) => void
     draw_triangle: (vertexData: ZigF32Array) => void
+    draw_msdf: (vertexData: ZigF32Array, texture_id: number) => void
     pick_texture: (vertexData: ZigF32Array, texture_id: number) => void
     pick_triangle: (vertexData: ZigF32Array) => void
   }) => void
@@ -32,4 +38,6 @@ declare module '*.zig' {
   export const canvas_render: VoidFunction
   export const picks_render: VoidFunction
   export const destroy_state: VoidFunction
+
+  export const import_icons: (data: number[]) => void
 }

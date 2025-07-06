@@ -7,6 +7,7 @@ import getBlur from './blur/getProgram'
 import getDrawtexture from './drawTexture/getProgram'
 import getPickTexture from './pickTexture/getProgram'
 import getPickTriangle from './pickTriangle/getProgram'
+import getDrawMSDF from './drawMSDF/getProgram'
 
 export let drawTriangle: ReturnType<typeof getDrawTriangle>
 export let drawBezier: ReturnType<typeof getDrawBezier>
@@ -17,6 +18,7 @@ export let drawBlur: ReturnType<typeof getBlur>
 export let drawTexture: ReturnType<typeof getDrawtexture>
 export let pickTexture: ReturnType<typeof getPickTexture>
 export let pickTriangle: ReturnType<typeof getPickTriangle>
+export let drawMSDF: ReturnType<typeof getDrawMSDF>
 
 export default function initPrograms(device: GPUDevice, presentationFormat: GPUTextureFormat) {
   drawTriangle = getDrawTriangle(device, presentationFormat)
@@ -28,4 +30,5 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
   drawTexture = getDrawtexture(device, presentationFormat)
   pickTexture = getPickTexture(device)
   pickTriangle = getPickTriangle(device)
+  drawMSDF = getDrawMSDF(device, presentationFormat)
 }
