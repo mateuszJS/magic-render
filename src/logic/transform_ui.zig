@@ -1,11 +1,9 @@
-const Texture = @import("./texture.zig").Texture;
+const Texture = @import("texture.zig").Texture;
 const Point = @import("types.zig").Point;
-const LINE_NUM_VERTICIES = @import("./line.zig").LINE_NUM_VERTICIES;
-const PICK_LINE_NUM_VERTICIES = @import("./line.zig").PICK_LINE_NUM_VERTICIES;
-const Line = @import("./line.zig").Line;
+const Line = @import("line.zig").Line;
 const PointUV = @import("types.zig").PointUV;
 const std = @import("std");
-const Matrix3x3 = @import("./matrix.zig").Matrix3x3;
+const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 
 const white = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
 const black = [4]f32{ 0.0, 0.0, 0.0, 1.0 };
@@ -202,7 +200,7 @@ fn get_points_of_line(texture: Texture, transform_line: TransformLine) struct { 
     }
 }
 
-pub const BORDER_BUFFER_SIZE = UI_NUM_VERTICIES_BORDER * LINE_NUM_VERTICIES * 2;
+pub const BORDER_BUFFER_SIZE = UI_NUM_VERTICIES_BORDER * Line.DRAW_NUM_VERTICIES * 2;
 const HALF_BUFFER = BORDER_BUFFER_SIZE / 2;
 
 pub fn get_transform_ui(buffer: *[BORDER_BUFFER_SIZE]f32, texture: Texture, hovered_elem_id: u32) void {
@@ -211,28 +209,28 @@ pub fn get_transform_ui(buffer: *[BORDER_BUFFER_SIZE]f32, texture: Texture, hove
         const p1, const p2 = get_points_of_line(texture, transform_line);
         const thickness: f32 = if (transform_line.id == 9) 30.0 else 10.0;
 
-        Line.get_vertex_data(buffer[i..][0..LINE_NUM_VERTICIES], p1, p2, thickness + 10.0, white);
+        Line.get_vertex_data(buffer[i..][0..Line.DRAW_NUM_VERTICIES], p1, p2, thickness + 10.0, white);
         Line.get_vertex_data(
-            buffer[(HALF_BUFFER + i)..][0..LINE_NUM_VERTICIES],
+            buffer[(HALF_BUFFER + i)..][0..Line.DRAW_NUM_VERTICIES],
             p1,
             p2,
             thickness,
             if (hovered_elem_id == transform_line.id) white else black,
         );
 
-        i += LINE_NUM_VERTICIES;
+        i += Line.DRAW_NUM_VERTICIES;
     }
 }
 
-pub const PICK_BORDER_BUFFER_SIZE = UI_NUM_VERTICIES_BORDER * PICK_LINE_NUM_VERTICIES;
+pub const PICK_BORDER_BUFFER_SIZE = UI_NUM_VERTICIES_BORDER * Line.PICK_NUM_VERTICIES;
 pub fn get_transform_ui_pick(buffer: *[PICK_BORDER_BUFFER_SIZE]f32, texture: Texture) void {
     var i: usize = 0;
     for (resize_lines) |transform_line| {
         const p1, const p2 = get_points_of_line(texture, transform_line);
         const thickness: f32 = if (transform_line.id == 9) 30.0 else 10.0;
 
-        Line.get_vertex_data_pick(buffer[i..][0..PICK_LINE_NUM_VERTICIES], p1, p2, thickness + 10.0, @floatFromInt(transform_line.id));
+        Line.get_vertex_data_pick(buffer[i..][0..Line.PICK_NUM_VERTICIES], p1, p2, thickness + 10.0, @floatFromInt(transform_line.id));
 
-        i += PICK_LINE_NUM_VERTICIES;
+        i += Line.PICK_NUM_VERTICIES;
     }
 }

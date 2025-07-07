@@ -68,16 +68,12 @@ struct VertexOutput {
   let p0_circle_dist = distance(in.p0.xy, in.pixel) - in.threshold_list.x;
   let p1_circle_dist = distance(in.p1.xy, in.pixel) - in.threshold_list.y;
   let p2_circle_dist = distance(in.p2.xy, in.pixel) - in.threshold_list.z;
-  // let p0_circle_dist = distance(in.p0.xy, in.pixel);
-  // let p1_circle_dist = distance(in.p1.xy, in.pixel);
-  // let p2_circle_dist = distance(in.p2.xy, in.pixel);
   
   let min_circle_dist = min(
     p0_circle_dist,
     min(p1_circle_dist, p2_circle_dist)
   );
-  // return vec4f(min_circle_dist * 0.01, 0, 0, 1);
-  // return vec4f(p0_circle_dist * 0.01 + EPSILON,0, 0, 1);
+
   var p: vec2f; // closest corner
   var p_circle: vec2f; // closest corner's circle position
   var radius: f32;
@@ -88,28 +84,24 @@ struct VertexOutput {
     p_circle = in.p0.zw;
     radius = in.radius_list.x;
     threshold = in.threshold_list.x;
-    // return vec4f(1, 0, 0, 1);
   } else if (abs(min_circle_dist - p1_circle_dist) <= EPSILON) {
     p = in.p1.xy;
     p_circle = in.p1.zw;
     radius = in.radius_list.y;
     threshold = in.threshold_list.y;
-    // return vec4f(0, 1, 0, 1);
   } else {
     p = in.p2.xy;
     p_circle = in.p2.zw;
     radius = in.radius_list.z;
     threshold = in.threshold_list.z;
-    // return vec4f(0, 0, 1, 1);
   }
 
   let dist = distance(p, in.pixel);
 
   if (dist < threshold) {
     let circle_distance = distance(p_circle, in.pixel);
-    // return vec4f(circle_distance / (radius * 1), 0, 0, 1);
-    return mix(vec4f(1, 0, 0, 1), vec4f(0, 1, 0, 1), step(radius, circle_distance));
+    return in.color * (1.0 - step(radius, circle_distance));
   } else {
-    return vec4f(0, 0, 1, 1);
+    return in.color;
   }
 }
