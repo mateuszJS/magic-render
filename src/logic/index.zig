@@ -5,6 +5,7 @@ const TEXTURE_VERTEX_BUFFER_SIZE = @import("./texture.zig").TEXTURE_VERTEX_BUFFE
 const TEXTURE_PICK_VERTEX_BUFFER_SIZE = @import("./texture.zig").TEXTURE_PICK_VERTEX_BUFFER_SIZE;
 const AssetZig = @import("./texture.zig").AssetZig;
 const Line = @import("./line.zig").Line;
+const get_round_corner_vector = @import("./line.zig").get_round_corner_vector;
 const LINE_NUM_VERTICIES = @import("./line.zig").LINE_NUM_VERTICIES;
 const TransformUI = @import("./transform_ui.zig");
 const zigar = @import("zigar");
@@ -227,14 +228,16 @@ pub fn canvas_render() void {
         web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
     }
 
-    const points = [3]Types.Point{
+    const points = [_]Types.Point{
         Types.Point{ .x = 100.0, .y = 70.0 }, //
         Types.Point{ .x = 300.0, .y = 100.0 }, //
-        Types.Point{ .x = 100.0, .y = 150.0 },
+        Types.Point{ .x = 300.0, .y = 250.0 }, //
+        Types.Point{ .x = 100.0, .y = 150.0 }, //
     };
     const p0_v = get_round_corner_vector(0, points, 10.0);
-    const p1_v = get_round_corner_vector(1, points, 15.0);
-    const p2_v = get_round_corner_vector(2, points, 20.0);
+    const p1_v = get_round_corner_vector(1, points, 20.0);
+    const p2_v = get_round_corner_vector(2, points, 80.0);
+    const p3_v = get_round_corner_vector(3, points, 20.0);
 
     const shape_vertex_data = [_]f32{
         p0_v[0], p0_v[1], p0_v[2], p0_v[3],
@@ -242,38 +245,15 @@ pub fn canvas_render() void {
         p2_v[0], p2_v[1], p2_v[2], p2_v[3],
         0.0,     1.0,     0.0,     1.0,
         p0_v[4], p1_v[4], p2_v[4], // rounded corner values for each of three positions
+        //
+        p0_v[0], p0_v[1], p0_v[2], p0_v[3], //
+        p2_v[0], p2_v[1], p2_v[2], p2_v[3], //
+        p3_v[0], p3_v[1], p3_v[2], p3_v[3], //
+        0.0,     1.0,     0.0,     1.0,
+        p0_v[4], p2_v[4], p3_v[4], // rounded corner values for each of three positions
     };
+
     web_gpu_programs.draw_triangle(&shape_vertex_data);
-}
-
-fn get_round_corner_vector(index: usize, points: [3]Types.Point, radius: f32) [5]f32 {
-    const p = points[index];
-    const pa = points[(index + 1) % 3];
-    const pb = points[(index + 2) % 3];
-
-    const p_to_pa = p.angle_to(pa);
-    const p_to_pb = p.angle_to(pb);
-    const mid_angle_p0 = findMidAngle(p_to_pa, p_to_pb);
-
-    const p0_diff_mid_to_neighbour_angle = angleDifference(mid_angle_p0, p_to_pa);
-    const p0_circle_offset = radius / std.math.sin(p0_diff_mid_to_neighbour_angle);
-    const p_circle = Types.Point{
-        .x = p.x + std.math.cos(mid_angle_p0) * p0_circle_offset,
-        .y = p.y + std.math.sin(mid_angle_p0) * p0_circle_offset,
-    };
-
-    return [_]f32{ p.x, p.y, p_circle.x, p_circle.y, radius };
-}
-
-fn findMidAngle(angle1: f32, angle2: f32) f32 {
-    const x = std.math.cos(angle1) + std.math.cos(angle2);
-    const y = std.math.sin(angle1) + std.math.sin(angle2);
-    return std.math.atan2(y, x);
-}
-
-fn angleDifference(angle1: f32, angle2: f32) f32 {
-    const delta = angle2 - angle1;
-    return std.math.atan2(std.math.sin(delta), std.math.cos(delta)) + std.math.pi;
 }
 
 pub fn picks_render() void {

@@ -1,4 +1,5 @@
 const PI = 3.14159265358979323846;
+const EPSILON = 1.1920929e-7;
 
 struct Vertex {
   @location(0) p0: vec4f,
@@ -18,9 +19,9 @@ struct VertexOutput {
   @location(1) @interpolate(flat) p1: vec4f,
   @location(2) @interpolate(flat) p2: vec4f,
   @location(3) color: vec4f,
-  @location(4) proximity: vec4f,
-  @location(5) pixel: vec2f,
-  @location(6) radius_list: vec3f,
+  @location(4) pixel: vec2f,
+  @location(5) radius_list: vec3f,
+  @location(6) threshold_list: vec3f,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -34,13 +35,10 @@ struct VertexOutput {
   var out: VertexOutput;
   if (normVertexIndex == 0) {
     out.position = vec4f(vert.p0.xy, 0, 1);
-    out.proximity = vec4f(1, 0, 0, 0);
   } else if (normVertexIndex == 1) {
     out.position = vec4f(vert.p1.xy, 0, 1);
-    out.proximity = vec4f(0, 1, 0, 0);
   } else {
     out.position = vec4f(vert.p2.xy, 0, 1);
-    out.proximity = vec4f(0, 0, 1, 0);
   }
 
   out.pixel = vec2f(out.position.x, out.position.y);
@@ -53,48 +51,63 @@ struct VertexOutput {
   out.color = vert.color;
   out.radius_list = vert.radius_list;
 
+  let p0_circle_dist = distance(vert.p0.xy, vert.p0.zw);
+  let p1_circle_dist = distance(vert.p1.xy, vert.p1.zw);
+  let p2_circle_dist = distance(vert.p2.xy, vert.p2.zw);
+
+  out.threshold_list = vec3f(
+    sqrt(pow(p0_circle_dist, 2) - pow(vert.radius_list.x, 2)),
+    sqrt(pow(p1_circle_dist, 2) - pow(vert.radius_list.y, 2)),
+    sqrt(pow(p2_circle_dist, 2) - pow(vert.radius_list.z, 2)),
+  ); // behind this value is roudned corner
+
   return out;
 }
 
-
-fn angleDifference(angle1: f32, angle2: f32) -> f32 {
-  let delta = angle2 - angle1;
-  return atan2(sin(delta), cos(delta)) + PI;
-}
-
 @fragment fn fs(in: VertexOutput) -> @location(0) vec4f {
-  let max_value = max(in.proximity.x, max(in.proximity.y, in.proximity.z));
-  let mask = in.proximity.xyz == vec3f(max_value);
-  let imask = vec3i(select(vec3i(0), vec3i(1), mask));
-  let index = u32(dot(imask, vec3i(0, 1, 2)));
-
+  let p0_circle_dist = distance(in.p0.xy, in.pixel) - in.threshold_list.x;
+  let p1_circle_dist = distance(in.p1.xy, in.pixel) - in.threshold_list.y;
+  let p2_circle_dist = distance(in.p2.xy, in.pixel) - in.threshold_list.z;
+  // let p0_circle_dist = distance(in.p0.xy, in.pixel);
+  // let p1_circle_dist = distance(in.p1.xy, in.pixel);
+  // let p2_circle_dist = distance(in.p2.xy, in.pixel);
+  
+  let min_circle_dist = min(
+    p0_circle_dist,
+    min(p1_circle_dist, p2_circle_dist)
+  );
+  // return vec4f(min_circle_dist * 0.01, 0, 0, 1);
+  // return vec4f(p0_circle_dist * 0.01 + EPSILON,0, 0, 1);
   var p: vec2f; // closest corner
   var p_circle: vec2f; // closest corner's circle position
   var radius: f32;
+  var threshold: f32;
 
-  if (index == 0) {
+  if (abs(min_circle_dist - p0_circle_dist) <= EPSILON) {
     p = in.p0.xy;
     p_circle = in.p0.zw;
     radius = in.radius_list.x;
+    threshold = in.threshold_list.x;
     // return vec4f(1, 0, 0, 1);
-  } else if (index == 1) {
+  } else if (abs(min_circle_dist - p1_circle_dist) <= EPSILON) {
     p = in.p1.xy;
     p_circle = in.p1.zw;
     radius = in.radius_list.y;
+    threshold = in.threshold_list.y;
     // return vec4f(0, 1, 0, 1);
   } else {
     p = in.p2.xy;
     p_circle = in.p2.zw;
     radius = in.radius_list.z;
+    threshold = in.threshold_list.z;
     // return vec4f(0, 0, 1, 1);
   }
 
-  let p_circle_distance = distance(p_circle, p);
-  let threshold = sqrt(pow(p_circle_distance, 2) - pow(radius, 2)); // behind this value is roudned corner
   let dist = distance(p, in.pixel);
 
   if (dist < threshold) {
     let circle_distance = distance(p_circle, in.pixel);
+    // return vec4f(circle_distance / (radius * 1), 0, 0, 1);
     return mix(vec4f(1, 0, 0, 1), vec4f(0, 1, 0, 1), step(radius, circle_distance));
   } else {
     return vec4f(0, 0, 1, 1);

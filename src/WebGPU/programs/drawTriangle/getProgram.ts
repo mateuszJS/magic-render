@@ -17,7 +17,7 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
       entryPoint: 'vs',
       buffers: [
         {
-          arrayStride: INSTANCE_STRIDE * 4,
+          arrayStride: INSTANCE_STRIDE * 4, // The size in bytes for one instance's data
           stepMode: 'instance',
           attributes: [
             { shaderLocation: 0, offset: 0, format: 'float32x4' }, // position 0
@@ -57,8 +57,9 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     vertexData: Float32Array<ArrayBufferLike>
   ) {
     // console.log('worldProjectionMatrix', worldProjectionMatrix)
-    const numInstances = (vertexData.length / INSTANCE_STRIDE) | 0
-    const numVertices = numInstances * 3
+    const numInstances = vertexData.length / INSTANCE_STRIDE
+    const numVertices = 3 // For instancing, this is the vertex count for a single instance
+
     const vertexBuffer = device.createBuffer({
       label: 'vertex buffer vertices',
       size: vertexData.byteLength,
@@ -80,6 +81,6 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     device.queue.writeBuffer(uniformBuffer, 0, uniformValues)
 
     pass.setBindGroup(0, bindGroup)
-    pass.draw(numVertices)
+    pass.draw(numVertices, numInstances)
   }
 }
