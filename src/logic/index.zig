@@ -227,9 +227,13 @@ pub fn canvas_render() void {
         web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
     }
 
-    const points = [3]Types.Point{ Types.Point{ .x = 100.0, .y = 70.0 }, Types.Point{ .x = 300.0, .y = 100.0 }, Types.Point{ .x = 100.0, .y = 150.0 } };
+    const points = [3]Types.Point{
+        Types.Point{ .x = 100.0, .y = 70.0 }, //
+        Types.Point{ .x = 300.0, .y = 100.0 }, //
+        Types.Point{ .x = 100.0, .y = 150.0 },
+    };
     const p0_v = get_round_corner_vector(0, points, 10.0);
-    const p1_v = get_round_corner_vector(1, points, 20.0);
+    const p1_v = get_round_corner_vector(1, points, 15.0);
     const p2_v = get_round_corner_vector(2, points, 20.0);
 
     const shape_vertex_data = [_]f32{

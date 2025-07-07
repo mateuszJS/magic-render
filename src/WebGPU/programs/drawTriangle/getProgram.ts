@@ -40,7 +40,7 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     },
   })
 
-  const uniformBufferSize = (16 /*projection matrix*/ + 2 /*screen size*/ + 2) /*padding*/ * 4
+  const uniformBufferSize = 16 /*projection matrix*/ * 4
   const uniformBuffer = device.createBuffer({
     label: 'uniforms',
     size: uniformBufferSize,
@@ -54,8 +54,7 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
   return function drawTriangle(
     pass: GPURenderPassEncoder,
     worldProjectionMatrix: Float32Array,
-    vertexData: Float32Array<ArrayBufferLike>,
-    canvas: HTMLCanvasElement
+    vertexData: Float32Array<ArrayBufferLike>
   ) {
     // console.log('worldProjectionMatrix', worldProjectionMatrix)
     const numInstances = (vertexData.length / INSTANCE_STRIDE) | 0
