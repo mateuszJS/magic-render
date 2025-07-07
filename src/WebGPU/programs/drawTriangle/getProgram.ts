@@ -1,6 +1,7 @@
 import shaderCode from './shader.wgsl'
 
-const INSTANCE_STRIDE = 4 * 3 /* positon */ + 4 /* color */ + 4 /* corner angles */
+const INSTANCE_STRIDE =
+  4 * 3 /* positon */ + 4 /* color */ + 3 /* value of roudned corner  for each of three positions */
 
 export default function getProgram(device: GPUDevice, presentationFormat: GPUTextureFormat) {
   const module = device.createShaderModule({
@@ -23,7 +24,7 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
             { shaderLocation: 1, offset: 16, format: 'float32x4' }, // position 1
             { shaderLocation: 2, offset: 16 + 16, format: 'float32x4' }, // position 2
             { shaderLocation: 3, offset: 16 + 16 + 16, format: 'float32x4' }, // color
-            { shaderLocation: 4, offset: 16 + 16 + 16 + 16, format: 'float32x4' }, // color
+            { shaderLocation: 4, offset: 16 + 16 + 16 + 16, format: 'float32x3' }, // rounded corner values
           ] as const,
         },
       ],

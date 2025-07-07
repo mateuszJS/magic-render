@@ -5,7 +5,7 @@ struct Vertex {
   @location(1) p1: vec4f,
   @location(2) p2: vec4f,
   @location(3) color: vec4f,
-  @location(4) corner_angles: vec4f,
+  @location(4) radius_list: vec3f,
 };
 
 struct Uniforms {
@@ -14,13 +14,13 @@ struct Uniforms {
 
 struct VertexOutput {
   @builtin(position) position: vec4f,
-  @location(0) @interpolate(flat) p0: vec2f,
-  @location(1) @interpolate(flat) p1: vec2f,
-  @location(2) @interpolate(flat) p2: vec2f,
+  @location(0) @interpolate(flat) p0: vec4f,
+  @location(1) @interpolate(flat) p1: vec4f,
+  @location(2) @interpolate(flat) p2: vec4f,
   @location(3) color: vec4f,
   @location(4) proximity: vec4f,
-  @location(5) corner_angles: vec4f,
-  @location(6) cartesian_pixel_coords: vec2f,
+  @location(5) pixel: vec2f,
+  @location(6) radius: f32,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -33,25 +33,27 @@ struct VertexOutput {
 
   var out: VertexOutput;
   if (normVertexIndex == 0) {
-    out.position = vert.p0;
+    out.position = vec4f(vert.p0.xy, 0, 1);
     out.proximity = vec4f(1, 0, 0, 0);
+    out.radius = 10.0;//vert.radius_list.x;
   } else if (normVertexIndex == 1) {
-    out.position = vert.p1;
+    out.position = vec4f(vert.p1.xy, 0, 1);
     out.proximity = vec4f(0, 1, 0, 0);
+    out.radius = 20.0;//vert.radius_list.y;
   } else {
-    out.position = vert.p2;
+    out.position = vec4f(vert.p2.xy, 0, 1);
     out.proximity = vec4f(0, 0, 1, 0);
+    out.radius = 20.0;//vert.radius_list.z;
   }
 
-  out.cartesian_pixel_coords = vec2f(out.position.x, out.position.y);
+  out.pixel = vec2f(out.position.x, out.position.y);
 
   out.position = u.worldViewProjection * out.position;
 
-  out.p0 = vert.p0.xy;
-  out.p1 = vert.p1.xy;
-  out.p2 = vert.p2.xy;
+  out.p0 = vert.p0;
+  out.p1 = vert.p1;
+  out.p2 = vert.p2;
   out.color = vert.color;
-  out.corner_angles = vert.corner_angles;
 
   return out;
 }
@@ -63,55 +65,32 @@ fn angleDifference(angle1: f32, angle2: f32) -> f32 {
 }
 
 @fragment fn fs(in: VertexOutput) -> @location(0) vec4f {
-  var pixel = in.cartesian_pixel_coords;
-
   let max_value = max(in.proximity.x, max(in.proximity.y, in.proximity.z));
   let mask = in.proximity.xyz == vec3f(max_value);
   let imask = vec3i(select(vec3i(0), vec3i(1), mask));
   let index = u32(dot(imask, vec3i(0, 1, 2)));
 
   var p: vec2f; // closest corner
-  var p_angle: f32; // middle angle from the corner
-  var neighbor_p: vec2f;
+  var p_circle: vec2f; // closest corner's circle position
+
   if (index == 0) {
-    p = in.p0;
-    p_angle = in.corner_angles.x;
-    neighbor_p = in.p1;
+    p = in.p0.xy;
+    p_circle = in.p0.zw;
   } else if (index == 1) {
-    p = in.p1;
-    p_angle = in.corner_angles.y;
-    neighbor_p = in.p2;
+    p = in.p1.xy;
+    p_circle = in.p1.zw;
   } else {
-    p = in.p2;
-    p_angle = in.corner_angles.z;
-    neighbor_p = in.p0;
+    p = in.p2.xy;
+    p_circle = in.p2.zw;
   }
 
-  let neighbor_dist = neighbor_p - p;
-  let neighbor_angle = atan2(neighbor_dist.y, neighbor_dist.x);
-  let diff_mid_to_neighbour_angle = angleDifference(p_angle, neighbor_angle); // not sure if we need angleDifference function
+  let p_circle_distance = distance(p_circle, p);
+  let threshold = sqrt(pow(p_circle_distance, 2) - pow(in.radius, 2)); // behind this value is roudned corner
+  let dist = distance(p, in.pixel);
 
-  let dist = distance(p, pixel);
-
-  let radius = 20.0;
-
-  let diff = pixel - p;
-  let corner_to_pixel_angle = atan2(diff.y, diff.x);
-  let un_rotate_angle = corner_to_pixel_angle - p_angle;
-  let un_rotated_pixel_x = p.x + cos(un_rotate_angle) * dist;
-
-
-  let threshold = radius / abs(tan(diff_mid_to_neighbour_angle)); // behind this value is roudned corner
-
-  if (un_rotated_pixel_x < p.x + threshold) {
-  // if (un_rotated_pixel_x < closest_corner.x + threshold - 1.3) { // sometimes on the edge we got wrogn results
-    let circle_offset = radius / sin(diff_mid_to_neighbour_angle);
-    let circle_pos = vec2f(
-      p.x + cos(p_angle) * circle_offset,
-      p.y + sin(p_angle) * circle_offset
-    );
-    let circle_distance = distance(circle_pos, pixel.xy);
-    return mix(vec4f(1, 0, 0, 1), vec4f(0, 1, 0, 1), step(radius, circle_distance));
+  if (dist < threshold) {
+    let circle_distance = distance(p_circle, in.pixel);
+    return mix(vec4f(1, 0, 0, 1), vec4f(0, 1, 0, 1), step(in.radius, circle_distance));
   } else {
     return vec4f(0, 0, 1, 1);
   }
