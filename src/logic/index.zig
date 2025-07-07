@@ -8,6 +8,7 @@ const Line = @import("./line.zig").Line;
 const LINE_NUM_VERTICIES = @import("./line.zig").LINE_NUM_VERTICIES;
 const TransformUI = @import("./transform_ui.zig");
 const zigar = @import("zigar");
+const MSDF = @import("./msdf.zig");
 
 const WebGpuPrograms = struct {
     draw_texture: *const fn ([]const f32, u32) void,
@@ -30,6 +31,7 @@ pub fn connect_on_asset_update_callback(cb: *const fn ([]AssetZig) void) void {
 }
 
 pub const ASSET_ID_TRESHOLD: u32 = 1000;
+const ROTATE_ICON_ID: u32 = 57345; // U+E001
 
 const ActionType = enum {
     move,
@@ -38,8 +40,8 @@ const ActionType = enum {
 };
 
 const State = struct {
-    width: u32,
-    height: u32,
+    width: f32,
+    height: f32,
     assets: std.AutoHashMap(u32, Texture),
     icons: std.AutoHashMap(u32, Types.IconData),
     hovered_asset_id: u32,
@@ -59,7 +61,7 @@ var state = State{
     .last_pointer_coords = Types.Point{ .x = 0.0, .y = 0.0 },
 };
 
-pub fn init_state(width: u32, height: u32) void {
+pub fn init_state(width: f32, height: f32) void {
     state.width = width;
     state.height = height;
     state.assets = std.AutoHashMap(u32, Texture).init(std.heap.page_allocator);
@@ -74,7 +76,7 @@ pub fn add_asset(points: [4]Types.PointUV, texture_id: u32) void {
 }
 
 pub fn remove_asset() void {
-    state.assets.remove(state.active_asset_id) catch unreachable;
+    _ = state.assets.remove(state.active_asset_id);
     on_asset_update();
 }
 
@@ -220,29 +222,48 @@ pub fn canvas_render() void {
         web_gpu_programs.draw_triangle(border_verticies);
     }
 
-    if (state.icons.get(57346)) |icon| {
-        const scale = 4.0;
-        const dest_y_top = 100.0 + icon.real_height * scale;
-        const dest_y_bottom = 100.0;
-        const dest_x_left = 100.0;
-        const dest_x_right = 100.0 + icon.real_width * scale;
-
-        const source_y_top = 1.0 - icon.y;
-        const source_y_bottom = 1.0 - (icon.y + icon.height);
-        const source_x_left = icon.x;
-        const source_x_right = icon.x + icon.width;
-
-        const msdf_vertex_data = [_]f32{
-            dest_x_left,  dest_y_bottom, 0.0, 1.0, source_x_left,  source_y_bottom,
-            dest_x_left,  dest_y_top,    0.0, 1.0, source_x_left,  source_y_top,
-            dest_x_right, dest_y_top,    0.0, 1.0, source_x_right, source_y_top,
-            // second triangle
-            dest_x_right, dest_y_top,    0.0, 1.0, source_x_right, source_y_top,
-            dest_x_right, dest_y_bottom, 0.0, 1.0, source_x_right, source_y_bottom,
-            dest_x_left,  dest_y_bottom, 0.0, 1.0, source_x_left,  source_y_bottom,
-        };
+    if (state.icons.get(ROTATE_ICON_ID)) |rotate_icon| {
+        const msdf_vertex_data = MSDF.get_msdf_vertex_data(rotate_icon, 10.0, 10.0, 4.0);
         web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
     }
+
+    const p0 = Types.Point{ .x = 100.0, .y = 70.0 };
+    const p1 = Types.Point{ .x = 300.0, .y = 100.0 };
+    const p2 = Types.Point{ .x = 100.0, .y = 150.0 };
+
+    // const mid_p1 = p2.mid(p3);
+    // const mid_p2 = p3.mid(p1);
+    // const mid_p3 = p1.mid(p2);
+
+    // const mid_angle_p1 = p1.angle_to(mid_p1);
+    // const mid_angle_p2 = p2.angle_to(mid_p2);
+    // const mid_angle_p3 = p3.angle_to(mid_p3);
+    const p0_to_p1 = p0.angle_to(p1);
+    const p0_to_p2 = p0.angle_to(p2);
+    const p0_mid_angle = findMidAngle(p0_to_p1, p0_to_p2);
+
+    const p1_to_p0 = p1.angle_to(p0);
+    const p1_to_p2 = p1.angle_to(p2);
+    const mid_angle_p1 = findMidAngle(p1_to_p0, p1_to_p2);
+
+    const p2_to_p0 = p2.angle_to(p0);
+    const p2_to_p1 = p2.angle_to(p1);
+    const mid_angle_p2 = findMidAngle(p2_to_p0, p2_to_p1);
+
+    const shape_vertex_data = [_]f32{
+        p0.x,         p0.y,         0.0,          1.0,
+        p1.x,         p1.y,         0.0,          1.0,
+        p2.x,         p2.y,         0.0,          1.0,
+        0.0,          1.0,          0.0,          1.0,
+        p0_mid_angle, mid_angle_p1, mid_angle_p2, 0.0,
+    };
+    web_gpu_programs.draw_triangle(&shape_vertex_data);
+}
+
+fn findMidAngle(angle1: f32, angle2: f32) f32 {
+    const x = std.math.cos(angle1) + std.math.cos(angle2);
+    const y = std.math.sin(angle1) + std.math.sin(angle2);
+    return std.math.atan2(y, x);
 }
 
 pub fn picks_render() void {

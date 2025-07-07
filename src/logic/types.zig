@@ -4,6 +4,13 @@ pub const Point = struct {
     x: f32,
     y: f32,
 
+    pub fn mid(self: Point, other: Point) Point {
+        return Point{
+            .x = (self.x + other.x) * 0.5,
+            .y = (self.y + other.y) * 0.5,
+        };
+    }
+
     pub fn angle_to(self: Point, other: anytype) f32 {
         const dx = other.x - self.x;
         const dy = other.y - self.y;

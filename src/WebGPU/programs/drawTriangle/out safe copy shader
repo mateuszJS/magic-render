@@ -1,0 +1,96 @@
+struct Vertex {
+  @location(0) position_0: vec4f,
+  @location(1) position_1: vec4f,
+  @location(2) position_2: vec4f,
+  @location(3) color: vec4f,
+};
+
+struct Uniforms {
+  worldViewProjection: mat4x4f,
+};
+
+struct VertexOutput {
+  @builtin(position) position: vec4f,
+  @location(0) @interpolate(flat) position_0: vec4f,
+  @location(1) @interpolate(flat) position_1: vec4f,
+  @location(2) @interpolate(flat) position_2: vec4f,
+  @location(3) color: vec4f,
+  @location(4) proximity: vec4f,
+};
+
+@group(0) @binding(0) var<uniform> u: Uniforms;
+
+@vertex fn vs(
+  vert: Vertex,
+  @builtin(vertex_index) vertexIndex : u32
+) -> VertexOutput {
+  let normVertexIndex = vertexIndex % 3;
+
+  var out: VertexOutput;
+  if (normVertexIndex == 0) {
+    out.position = u.worldViewProjection * vert.position_0;
+    out.proximity = vec4f(1, 0, 0, 0);
+  } else if (normVertexIndex == 1) {
+    out.position = u.worldViewProjection * vert.position_1;
+    out.proximity = vec4f(0, 1, 0, 0);
+  } else {
+    out.proximity = vec4f(0, 0, 1, 0);
+    out.position = u.worldViewProjection * vert.position_2;
+  }
+
+  out.position_0 = vert.position_0;
+  out.position_1 = vert.position_1;
+  out.position_2 = vert.position_2;
+  out.color = vert.color;
+
+  // let i = f32(normVertexIndex);
+  // out.proximity = vec4f(i, (i + 1.0) % 3.0, (i + 2.0) % 3.0, 0);
+  
+  return out;
+}
+
+@fragment fn fs(in: VertexOutput) -> @location(0) vec4f {
+  let max_value = max(in.proximity.x, max(in.proximity.y, in.proximity.z));
+  let mask = in.proximity.xyz == vec3f(max_value);
+  let imask = vec3i(select(vec3i(0), vec3i(1), mask));
+  let index = u32(dot(imask, vec3i(0, 1, 2)));
+
+  var closest_corner: vec4f;
+  if (index == 0) {
+    closest_corner = in.position_0;
+  } else if (index == 1) {
+    closest_corner = in.position_1;
+  } else {
+    closest_corner = in.position_2;
+  }
+  closest_corner.y = 2.0 / u.worldViewProjection[1][1] - closest_corner.y;
+  let dist = distance(closest_corner, in.position);
+  let corner_radius = 20.0;
+  let edge = smoothstep(corner_radius - 1.0, corner_radius + 1.0, dist);
+
+    // Alpha is 0 outside the corner, 1 inside, smooth at the edge
+  let alpha = 1.0 - edge;
+  return vec4f(1, 1, 1, 1) * alpha;
+
+
+  // let v = smoothstep(35.0, 40.0, dist);
+  // return vec4f(v, v, v, 1);
+
+  // if (index == 0) {
+  //   return vec4f(1, 0, 0, 1);
+  // } else if (index == 1) {
+  //   return vec4f(0, 1, 0, 1);
+  // } else if(index == 2) {
+  //   return vec4f(0, 0, 1, 1);
+  // } else {
+  //   return vec4f(0);
+  // }
+
+  // return vec4f(in.proximity.xyz, 1.0);
+
+  
+  // let dist = distance(in.position.xy, in.corner);
+  // let edge = smoothstep(in.corner_radius - 1.0, in.corner_radius + 1.0, dist);
+  // let value: f32 = 1.0 - step(in.corner_offset.x, distance_from_center);
+  // return in.color;
+}

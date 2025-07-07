@@ -1,12 +1,4 @@
-import { Point } from "types"
-
-export default function getBezierPos(
-  p1: Point,
-  p2: Point,
-  p3: Point,
-  p4: Point,
-  t: number
-): Point {
+export default function getBezierPos(p1: Point, p2: Point, p3: Point, p4: Point, t: number): Point {
   const t2 = t * t
   const one_minus_t = 1.0 - t
   const one_minus_t2 = one_minus_t * one_minus_t

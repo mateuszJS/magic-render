@@ -1,5 +1,4 @@
-import { Point } from "types"
-import getBezierPos from "./getBezierPos"
+import getBezierPos from './getBezierPos'
 
 // precision describes how many samples on the curve we want to measure to calculate whole length
 // precision = 3, means 3 samples, 0, 0.5, 1. So total distance will be calculate between t = 0 -> t = 0.5, + t = 0.5 -> t = 1

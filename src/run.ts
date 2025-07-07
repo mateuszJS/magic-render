@@ -33,7 +33,8 @@ export default function runCreator(
       drawTexture(canvasPass, canvasMatrix, vertex_data.typedArray, textures[texture_id].texture),
     draw_msdf: (vertex_data, texture_id) =>
       drawMSDF(canvasPass, canvasMatrix, vertex_data.typedArray, textures[texture_id].texture),
-    draw_triangle: (vertex_data) => drawTriangle(canvasPass, canvasMatrix, vertex_data.typedArray),
+    draw_triangle: (vertex_data) =>
+      drawTriangle(canvasPass, canvasMatrix, vertex_data.typedArray, canvas),
     pick_texture: (vertex_data, texture_id) =>
       pickTexture(pickPass, pickMatrix, vertex_data.typedArray, textures[texture_id].texture),
     pick_triangle: (vertex_data) => pickTriangle(pickPass, pickMatrix, vertex_data.typedArray),
