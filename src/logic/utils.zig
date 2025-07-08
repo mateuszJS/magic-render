@@ -1,0 +1,12 @@
+const math = @import("std").math;
+
+pub fn findMidAngle(angle1: f32, angle2: f32) f32 {
+    const x = math.cos(angle1) + math.cos(angle2);
+    const y = math.sin(angle1) + math.sin(angle2);
+    return math.atan2(y, x);
+}
+
+pub fn angleDifference(angle1: f32, angle2: f32) f32 {
+    const delta = angle2 - angle1;
+    return math.atan2(math.sin(delta), math.cos(delta)) + math.pi;
+}

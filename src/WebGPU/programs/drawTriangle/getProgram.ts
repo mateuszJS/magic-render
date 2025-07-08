@@ -1,15 +1,12 @@
-import shaderCode from "./shader.wgsl"
- 
+import shaderCode from './shader.wgsl'
 
-const STRIDE = 4 + 4// + 1 + 1 + 4
+const INSTANCE_STRIDE =
+  4 * 3 /* positon */ + 4 /* color */ + 3 /* value of roudned corner  for each of three positions */
 
-export default function getProgram(
-  device: GPUDevice,
-  presentationFormat: GPUTextureFormat
-) {
+export default function getProgram(device: GPUDevice, presentationFormat: GPUTextureFormat) {
   const module = device.createShaderModule({
     label: 'draw triangle module',
-    code: shaderCode
+    code: shaderCode,
   })
 
   const pipeline = device.createRenderPipeline({
@@ -20,10 +17,14 @@ export default function getProgram(
       entryPoint: 'vs',
       buffers: [
         {
-          arrayStride: STRIDE * 4,
+          arrayStride: INSTANCE_STRIDE * 4, // The size in bytes for one instance's data
+          stepMode: 'instance',
           attributes: [
-            {shaderLocation: 0, offset: 0, format: 'float32x4'},  // destination position
-            {shaderLocation: 1, offset: 16, format: 'float32x4'},  // color
+            { shaderLocation: 0, offset: 0, format: 'float32x4' }, // position 0
+            { shaderLocation: 1, offset: 16, format: 'float32x4' }, // position 1
+            { shaderLocation: 2, offset: 16 + 16, format: 'float32x4' }, // position 2
+            { shaderLocation: 3, offset: 16 + 16 + 16, format: 'float32x4' }, // color
+            { shaderLocation: 4, offset: 16 + 16 + 16 + 16, format: 'float32x3' }, // rounded corner values
           ] as const,
         },
       ],
@@ -31,30 +32,25 @@ export default function getProgram(
     fragment: {
       module,
       entryPoint: 'fs',
-      targets: [{
-        format: presentationFormat,
-        // blend: {
-        //   color: {
-        //     srcFactor: 'one',
-        //     dstFactor: 'one-minus-src-alpha'
-        //   },
-        //   alpha: {
-        //     srcFactor: 'one',
-        //     dstFactor: 'one-minus-src-alpha'
-        //   },
-        // },
-      }],
+      targets: [
+        {
+          format: presentationFormat,
+          blend: {
+            color: {
+              srcFactor: 'one',
+              dstFactor: 'one-minus-src-alpha',
+            },
+            alpha: {
+              srcFactor: 'one',
+              dstFactor: 'one-minus-src-alpha',
+            },
+          },
+        },
+      ],
     },
-    // depthStencil: {
-    //   depthWriteEnabled: true,
-    //   depthCompare: 'less',
-    //   format: 'depth24plus',
-    // },
   })
 
-  const uniformBufferSize = (
-    16/*projection matrix*/
-  ) * 4
+  const uniformBufferSize = 16 /*projection matrix*/ * 4
   const uniformBuffer = device.createBuffer({
     label: 'uniforms',
     size: uniformBufferSize,
@@ -68,9 +64,11 @@ export default function getProgram(
   return function drawTriangle(
     pass: GPURenderPassEncoder,
     worldProjectionMatrix: Float32Array,
-    vertexData: Float32Array<ArrayBufferLike>,
+    vertexData: Float32Array<ArrayBufferLike>
   ) {
-    const numVertices = vertexData.length / STRIDE | 0
+    // console.log('worldProjectionMatrix', worldProjectionMatrix)
+    const numInstances = vertexData.length / INSTANCE_STRIDE
+
     const vertexBuffer = device.createBuffer({
       label: 'vertex buffer vertices',
       size: vertexData.byteLength,
@@ -78,15 +76,11 @@ export default function getProgram(
     })
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
 
-
     // bind group should be pre-created and reuse instead of constantly initialized
     const bindGroup = device.createBindGroup({
       layout: pipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: uniformBuffer }},
-      ],
+      entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
     })
-
 
     pass.setPipeline(pipeline)
     pass.setVertexBuffer(0, vertexBuffer)
@@ -96,6 +90,6 @@ export default function getProgram(
     device.queue.writeBuffer(uniformBuffer, 0, uniformValues)
 
     pass.setBindGroup(0, bindGroup)
-    pass.draw(numVertices)
+    pass.draw(3, numInstances)
   }
 }
