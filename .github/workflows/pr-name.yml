@@ -1,0 +1,19 @@
+name: Pull Request Name
+on:
+  pull_request:
+    branches:
+      - next
+
+jobs:
+  pull_request_name:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obtain PR name
+        run: echo "PR_TITLE=${{ github.event.pull_request.title }}" >> $GITHUB_ENV
+      - name: Verify PR name
+        uses: actions/github-script@v6
+        with:
+          script: |
+            if (!/^fix|feat|perf/.test(process.env.PR_TITLE)) {
+              throw new Error(`Please start the PR title with "fix", "feat" or "perf". Current title: "${process.env.PR_TITLE}"`);
+            }
