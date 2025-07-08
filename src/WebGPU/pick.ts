@@ -109,6 +109,14 @@ export default class PickManager {
       await this.pickBuffer.mapAsync(GPUMapMode.READ, 0, 4 * NUM_PIXELS)
       const [id] = new Uint32Array(this.pickBuffer.getMappedRange(0, 4 * NUM_PIXELS))
       on_update_pick(id)
+
+      if (pointer.downCallback) {
+        // to me 100% precise we should also check timestamp if pickign started after the click happened
+        // but not sure if it's possible to expose this issue
+        pointer.downCallback()
+        pointer.downCallback = null // reset callback after use
+      }
+
       this.pickBuffer.unmap()
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (err) {
