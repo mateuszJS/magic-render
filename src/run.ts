@@ -10,6 +10,7 @@ import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
 import { canvas_render, picks_render, connect_web_gpu_programs } from 'logic/index.zig'
 import { TextureSource } from '.'
+import { pointer } from 'WebGPU/pointer'
 
 export const transformMatrix = new Float32Array()
 export const MAP_BACKGROUND_SCALE = 1000
@@ -43,6 +44,7 @@ export default function runCreator(
   })
 
   let rafId = 0
+  const lastPickPointer: Point = { x: 0, y: 0 }
 
   function draw(now: DOMHighResTimeStamp) {
     const encoder = device.createCommandEncoder()
@@ -52,16 +54,21 @@ export default function runCreator(
     canvas_render()
     canvasPass.end()
 
-    pickMatrix = pickManager.createMatrix(canvas, canvasMatrix)
-    const pick = pickManager.startPicking(encoder)
-    pickPass = pick.pass
-    picks_render()
-    pick.end()
+    if (lastPickPointer.x !== pointer.x || lastPickPointer.y !== pointer.y) {
+      lastPickPointer.x = pointer.x
+      lastPickPointer.y = pointer.y
+      pickMatrix = pickManager.createMatrix(canvas, canvasMatrix)
+      const pick = pickManager.startPicking(encoder)
+      pickPass = pick.pass
+      picks_render()
+      pick.end()
+    }
 
     const commandBuffer = encoder.finish()
     device.queue.submit([commandBuffer])
 
     pickManager.asyncPick()
+
     rafId = requestAnimationFrame(draw)
   }
 
