@@ -1,6 +1,7 @@
 import shaderCode from './shader.wgsl'
 
-const STRIDE = 4 + 2 // + 1 + 1 + 4
+const INSTANCE_STRIDE =
+  3 /*3 verticies*/ * (4 /*destinatio position*/ + 2) /*source position*/ + 4 /*color*/
 
 export default function getProgram(device: GPUDevice, presentationFormat: GPUTextureFormat) {
   const module = device.createShaderModule({
@@ -21,13 +22,16 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
       entryPoint: 'vs',
       buffers: [
         {
-          arrayStride: STRIDE * 4,
+          arrayStride: INSTANCE_STRIDE * 4,
+          stepMode: 'instance',
           attributes: [
-            { shaderLocation: 0, offset: 0, format: 'float32x4' }, // destination position
-            { shaderLocation: 1, offset: 16, format: 'float32x2' }, // source position
-            // {shaderLocation: 2, offset: 16 + 8, format: 'float32'},  // source texture layer
-            // {shaderLocation: 3, offset: 16 + 8 + 4, format: 'float32'},  // index of color matrix
-            // {shaderLocation: 4, offset: 16 + 8 + 4 + 4, format: 'float32x3'},  // index of color matrix
+            { shaderLocation: 0, offset: 0, format: 'float32x4' }, // p0 destination position
+            { shaderLocation: 1, offset: 16, format: 'float32x2' }, // p0 source position
+            { shaderLocation: 2, offset: 16 + 8, format: 'float32x4' }, // p1 destination position
+            { shaderLocation: 3, offset: 16 + 8 + 16, format: 'float32x2' }, // p1 source position
+            { shaderLocation: 4, offset: 16 + 8 + 16 + 8, format: 'float32x4' }, // p2 destination position
+            { shaderLocation: 5, offset: 16 + 8 + 16 + 8 + 16, format: 'float32x2' }, // p2 source position
+            { shaderLocation: 6, offset: 16 + 8 + 16 + 8 + 16 + 8, format: 'float32x4' }, // color
           ] as const,
         },
       ],
@@ -76,15 +80,16 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     kScreenPixelDistanceOffset + 1
   )
 
-  return function drawTexture(
+  return function drawMSDF(
     pass: GPURenderPassEncoder,
     worldProjectionMatrix: Float32Array,
-    vertexData: Float32Array<ArrayBufferLike>,
+    vertexData: Float32Array,
     texture: GPUTexture
   ) {
-    const numVertices = (vertexData.length / STRIDE) | 0
+    const numInstances = vertexData.length / INSTANCE_STRIDE
+
     const vertexBuffer = device.createBuffer({
-      label: 'vertex buffer vertices',
+      label: 'draw msdf - vertex buffer',
       size: vertexData.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
@@ -109,6 +114,6 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     device.queue.writeBuffer(uniformBuffer, 0, uniformValues)
 
     pass.setBindGroup(0, bindGroup)
-    pass.draw(numVertices)
+    pass.draw(3, numInstances)
   }
 }

@@ -68,7 +68,6 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
   ) {
     // console.log('worldProjectionMatrix', worldProjectionMatrix)
     const numInstances = vertexData.length / INSTANCE_STRIDE
-    const numVertices = 3 // For instancing, this is the vertex count for a single instance
 
     const vertexBuffer = device.createBuffer({
       label: 'vertex buffer vertices',
@@ -91,6 +90,6 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     device.queue.writeBuffer(uniformBuffer, 0, uniformValues)
 
     pass.setBindGroup(0, bindGroup)
-    pass.draw(numVertices, numInstances)
+    pass.draw(3, numInstances)
   }
 }

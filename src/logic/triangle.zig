@@ -2,8 +2,8 @@ const Point = @import("types.zig").Point;
 const Utils = @import("utils.zig");
 const math = @import("std").math;
 
-pub const DRAW_NUM_VERTICIES: usize = 3 * 4 + 4 + 3;
-pub fn get_vertex_data(buffer: *[DRAW_NUM_VERTICIES]f32, p0: [5]f32, p1: [5]f32, p2: [5]f32, color: [4]f32) void {
+pub const DRAW_VERTICIES_COUNT: usize = 3 * 4 + 4 + 3;
+pub fn get_vertex_data(buffer: *[DRAW_VERTICIES_COUNT]f32, p0: [5]f32, p1: [5]f32, p2: [5]f32, color: [4]f32) void {
     buffer[0] = p0[0];
     buffer[1] = p0[1];
     buffer[2] = p0[2];

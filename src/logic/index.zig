@@ -8,7 +8,7 @@ const Line = @import("line.zig");
 const Triangle = @import("triangle.zig");
 const TransformUI = @import("./transform_ui.zig");
 const zigar = @import("zigar");
-const MSDF = @import("./msdf.zig");
+const Msdf = @import("./msdf.zig");
 
 const WebGpuPrograms = struct {
     draw_texture: *const fn ([]const f32, u32) void,
@@ -31,7 +31,6 @@ pub fn connect_on_asset_update_callback(cb: *const fn ([]AssetZig) void) void {
 }
 
 pub const ASSET_ID_TRESHOLD: u32 = 1000;
-const ROTATE_ICON_ID: u32 = 57345; // U+E001
 
 const ActionType = enum {
     move,
@@ -43,7 +42,6 @@ const State = struct {
     width: f32,
     height: f32,
     assets: std.AutoHashMap(u32, Texture),
-    icons: std.AutoHashMap(u32, Types.IconData),
     hovered_asset_id: u32,
     active_asset_id: u32,
     ongoing_action: ActionType,
@@ -54,7 +52,6 @@ var state = State{
     .width = 0,
     .height = 0,
     .assets = undefined,
-    .icons = undefined,
     .hovered_asset_id = 0,
     .active_asset_id = 0,
     .ongoing_action = ActionType.none,
@@ -65,7 +62,6 @@ pub fn init_state(width: f32, height: f32) void {
     state.width = width;
     state.height = height;
     state.assets = std.AutoHashMap(u32, Texture).init(std.heap.page_allocator);
-    state.icons = std.AutoHashMap(u32, Types.IconData).init(std.heap.page_allocator);
 }
 
 var next_asset_id: u32 = ASSET_ID_TRESHOLD;
@@ -159,8 +155,9 @@ pub fn on_pointer_move(x: f32, y: f32) void {
     }
 }
 
-fn get_border() []f32 {
-    var vertex_data = std.ArrayList(f32).init(std.heap.page_allocator);
+fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
+    var triangle_vertex_data = std.ArrayList(f32).init(std.heap.page_allocator);
+    var msdf_vertex_data = std.ArrayList(f32).init(std.heap.page_allocator);
 
     // TODO: free memory, defer list.deinit();
     const red = [_]f32{ 1.0, 0.0, 0.0, 1.0 };
@@ -168,18 +165,19 @@ fn get_border() []f32 {
         if (state.assets.get(state.hovered_asset_id)) |asset| {
             for (asset.points, 0..) |point, i| {
                 const next_point = if (i == 3) asset.points[0] else asset.points[i + 1];
-                var buffer: [Line.DRAW_NUM_VERTICIES]f32 = undefined;
+                var buffer: [Line.DRAW_VERTICIES_COUNT]f32 = undefined;
 
                 Line.get_vertex_data(
-                    // buffer[0..LINE_NUM_VERTICIES],
-                    buffer[0..Line.DRAW_NUM_VERTICIES],
+                    // buffer[0..LINE_VERTICIES_COUNT],
+                    buffer[0..Line.DRAW_VERTICIES_COUNT],
                     point,
                     next_point,
                     10.0,
                     red,
+                    5.0,
                 );
 
-                vertex_data.appendSlice(&buffer) catch unreachable;
+                triangle_vertex_data.appendSlice(&buffer) catch unreachable;
             }
         }
     }
@@ -188,23 +186,36 @@ fn get_border() []f32 {
     if (state.assets.get(state.active_asset_id)) |asset| {
         for (asset.points, 0..) |point, i| {
             const next_point = if (i == 3) asset.points[0] else asset.points[i + 1];
-            var buffer: [Line.DRAW_NUM_VERTICIES]f32 = undefined;
+            var buffer: [Line.DRAW_VERTICIES_COUNT]f32 = undefined;
             Line.get_vertex_data(
-                buffer[0..Line.DRAW_NUM_VERTICIES],
+                buffer[0..Line.DRAW_VERTICIES_COUNT],
                 point,
                 next_point,
                 10.0,
                 green,
+                5.0,
             );
-            vertex_data.appendSlice(&buffer) catch unreachable;
+            triangle_vertex_data.appendSlice(&buffer) catch unreachable;
         }
 
-        var buffer2: [TransformUI.BORDER_BUFFER_SIZE]f32 = undefined;
-        TransformUI.get_transform_ui(buffer2[0..TransformUI.BORDER_BUFFER_SIZE], asset, state.hovered_asset_id);
-        vertex_data.appendSlice(&buffer2) catch unreachable;
+        var triangle_buffer: [TransformUI.DRAW_VERTICIES_COUNT]f32 = undefined;
+        var msdf_buffer: [Msdf.DRAW_VERTICIES_COUNT]f32 = undefined;
+
+        TransformUI.get_transform_ui(
+            &triangle_buffer,
+            &msdf_buffer,
+            asset,
+            state.hovered_asset_id,
+        );
+
+        triangle_vertex_data.appendSlice(&triangle_buffer) catch unreachable;
+        msdf_vertex_data.appendSlice(&msdf_buffer) catch unreachable;
     }
 
-    return vertex_data.items;
+    return .{
+        triangle_vertex_data.items,
+        msdf_vertex_data.items,
+    };
 }
 
 pub fn canvas_render() void {
@@ -217,33 +228,34 @@ pub fn canvas_render() void {
         web_gpu_programs.draw_texture(&vertex_data, asset.value_ptr.texture_id);
     }
 
-    const border_verticies = get_border();
-    if (border_verticies.len > 0) {
-        web_gpu_programs.draw_triangle(border_verticies);
+    const triangle_buffer, const msdf_buffer = get_border();
+    if (triangle_buffer.len > 0) {
+        web_gpu_programs.draw_triangle(triangle_buffer);
+    }
+    if (msdf_buffer.len > 0) {
+        web_gpu_programs.draw_msdf(msdf_buffer, 0);
     }
 
-    const points = [_]Types.Point{
-        Types.Point{ .x = 100.0, .y = 70.0 }, //
-        Types.Point{ .x = 300.0, .y = 100.0 }, //
-        Types.Point{ .x = 300.0, .y = 250.0 }, //
-        Types.Point{ .x = 100.0, .y = 150.0 }, //
-    };
-    const p0_v = Triangle.get_round_corner_vector(0, points, 10.0);
-    const p1_v = Triangle.get_round_corner_vector(1, points, 20.0);
-    const p2_v = Triangle.get_round_corner_vector(2, points, 80.0);
-    const p3_v = Triangle.get_round_corner_vector(3, points, 20.0);
+    // const points = [_]Types.Point{
+    //     Types.Point{ .x = 100.0, .y = 70.0 }, //
+    //     Types.Point{ .x = 300.0, .y = 100.0 }, //
+    //     Types.Point{ .x = 300.0, .y = 250.0 }, //
+    //     Types.Point{ .x = 100.0, .y = 150.0 }, //
+    // };
+    // const p0_v = Triangle.get_round_corner_vector(0, points, 10.0);
+    // const p1_v = Triangle.get_round_corner_vector(1, points, 20.0);
+    // const p2_v = Triangle.get_round_corner_vector(2, points, 80.0);
+    // const p3_v = Triangle.get_round_corner_vector(3, points, 20.0);
 
-    var shape_vertex_data: [2 * Triangle.DRAW_NUM_VERTICIES]f32 = undefined;
-    const color = [_]f32{ 0.0, 1.0, 1.0, 1.0 };
-    Triangle.get_vertex_data(shape_vertex_data[0..Triangle.DRAW_NUM_VERTICIES], p0_v, p1_v, p2_v, color);
-    Triangle.get_vertex_data(shape_vertex_data[Triangle.DRAW_NUM_VERTICIES .. 2 * Triangle.DRAW_NUM_VERTICIES], p0_v, p2_v, p3_v, color);
+    // var shape_vertex_data: [2 * Triangle.DRAW_VERTICIES_COUNT]f32 = undefined;
+    // const color = [_]f32{ 0.0, 1.0, 1.0, 1.0 };
+    // Triangle.get_vertex_data(shape_vertex_data[0..Triangle.DRAW_VERTICIES_COUNT], p0_v, p1_v, p2_v, color);
+    // Triangle.get_vertex_data(shape_vertex_data[Triangle.DRAW_VERTICIES_COUNT .. 2 * Triangle.DRAW_VERTICIES_COUNT], p0_v, p2_v, p3_v, color);
 
-    web_gpu_programs.draw_triangle(&shape_vertex_data);
+    // web_gpu_programs.draw_triangle(&shape_vertex_data);
 
-    if (state.icons.get(ROTATE_ICON_ID)) |rotate_icon| {
-        const msdf_vertex_data = MSDF.get_msdf_vertex_data(rotate_icon, 10.0, 10.0, 4.0);
-        web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
-    }
+    // const msdf_vertex_data = Msdf.get_msdf_vertex_data(Msdf.IconId.rotate, 10.0, 10.0, 100.0, [_]f32{ 1.0, 0.0, 0.0, 1.0 });
+    // web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
 }
 
 pub fn picks_render() void {
@@ -265,7 +277,7 @@ pub fn picks_render() void {
 
 pub fn destroy_state() void {
     state.assets.deinit();
-    state.icons.deinit();
+    Msdf.deinit_icons();
     next_asset_id = ASSET_ID_TRESHOLD;
     web_gpu_programs = undefined;
     on_asset_update_cb = undefined;
@@ -274,17 +286,5 @@ pub fn destroy_state() void {
 }
 
 pub fn import_icons(data: []const f32) void {
-    var i: usize = 0;
-    while (i < data.len) : (i += 7) {
-        const icon = Types.IconData{
-            .id = @intFromFloat(data[i]),
-            .x = data[i + 1],
-            .y = data[i + 2],
-            .width = data[i + 3],
-            .height = data[i + 4],
-            .real_width = data[i + 5],
-            .real_height = data[i + 6],
-        };
-        state.icons.put(icon.id, icon) catch unreachable;
-    }
+    Msdf.init_icons(data);
 }

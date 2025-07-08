@@ -4,6 +4,7 @@ const Line = @import("line.zig");
 const PointUV = @import("types.zig").PointUV;
 const std = @import("std");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
+const Msdf = @import("msdf.zig");
 
 const white = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
 const black = [4]f32{ 0.0, 0.0, 0.0, 1.0 };
@@ -14,8 +15,8 @@ const TransformLine = struct {
     relative_end: usize,
 };
 
-const UI_NUM_VERTICIES_BORDER = 13;
-const resize_lines = [UI_NUM_VERTICIES_BORDER]TransformLine{
+const UI_VERTICIES_COUNT_BORDER = 13;
+const resize_lines = [UI_VERTICIES_COUNT_BORDER]TransformLine{
     // corners, clock wise
     .{ .id = 1, .relative_start = 0, .relative_end = 1 },
     .{ .id = 1, .relative_start = 0, .relative_end = 3 },
@@ -200,37 +201,67 @@ fn get_points_of_line(texture: Texture, transform_line: TransformLine) struct { 
     }
 }
 
-pub const BORDER_BUFFER_SIZE = UI_NUM_VERTICIES_BORDER * Line.DRAW_NUM_VERTICIES * 2;
-const HALF_BUFFER = BORDER_BUFFER_SIZE / 2;
+pub const DRAW_VERTICIES_COUNT = UI_VERTICIES_COUNT_BORDER * Line.DRAW_VERTICIES_COUNT * 2;
+const HALF_BUFFER = DRAW_VERTICIES_COUNT / 2;
 
-pub fn get_transform_ui(buffer: *[BORDER_BUFFER_SIZE]f32, texture: Texture, hovered_elem_id: u32) void {
+pub fn get_transform_ui(
+    triangle_buffer: *[DRAW_VERTICIES_COUNT]f32,
+    msdf_vertex_data: *[Msdf.DRAW_VERTICIES_COUNT]f32,
+    texture: Texture,
+    hovered_elem_id: u32,
+) void {
     var i: usize = 0;
     for (resize_lines) |transform_line| {
-        const p1, const p2 = get_points_of_line(texture, transform_line);
-        const thickness: f32 = if (transform_line.id == 9) 30.0 else 10.0;
+        const color = if (hovered_elem_id == transform_line.id) white else black;
 
-        Line.get_vertex_data(buffer[i..][0..Line.DRAW_NUM_VERTICIES], p1, p2, thickness + 10.0, white);
+        const p1, const p2 = get_points_of_line(texture, transform_line);
+        var thickness: f32 = 10.0;
+
+        if (transform_line.id == 9) {
+            // rotation icon
+            thickness = 30.0;
+            const icon_size = thickness - 5.0;
+            const msdf_data = Msdf.get_msdf_vertex_data(
+                Msdf.IconId.rotate,
+                p1.x - icon_size * 0.5 - 0.5,
+                p1.y - icon_size * 0.5 + 0.5,
+                icon_size,
+                if (hovered_elem_id == transform_line.id) black else white,
+            );
+            msdf_vertex_data.* = msdf_data;
+        }
+
+        const outer_line_width = thickness + 10.0;
         Line.get_vertex_data(
-            buffer[(HALF_BUFFER + i)..][0..Line.DRAW_NUM_VERTICIES],
+            triangle_buffer[i..][0..Line.DRAW_VERTICIES_COUNT],
+            p1,
+            p2,
+            outer_line_width,
+            white,
+            outer_line_width / 2.0,
+        );
+        Line.get_vertex_data(
+            triangle_buffer[(HALF_BUFFER + i)..][0..Line.DRAW_VERTICIES_COUNT],
             p1,
             p2,
             thickness,
-            if (hovered_elem_id == transform_line.id) white else black,
+            color,
+            thickness / 2.0,
         );
 
-        i += Line.DRAW_NUM_VERTICIES;
+        i += Line.DRAW_VERTICIES_COUNT;
     }
 }
 
-pub const PICK_BORDER_BUFFER_SIZE = UI_NUM_VERTICIES_BORDER * Line.PICK_NUM_VERTICIES;
+pub const PICK_BORDER_BUFFER_SIZE = UI_VERTICIES_COUNT_BORDER * Line.PICK_VERTICIES_COUNT;
 pub fn get_transform_ui_pick(buffer: *[PICK_BORDER_BUFFER_SIZE]f32, texture: Texture) void {
     var i: usize = 0;
     for (resize_lines) |transform_line| {
         const p1, const p2 = get_points_of_line(texture, transform_line);
         const thickness: f32 = if (transform_line.id == 9) 30.0 else 10.0;
 
-        Line.get_vertex_data_pick(buffer[i..][0..Line.PICK_NUM_VERTICIES], p1, p2, thickness + 10.0, @floatFromInt(transform_line.id));
+        Line.get_vertex_data_pick(buffer[i..][0..Line.PICK_VERTICIES_COUNT], p1, p2, thickness + 10.0, @floatFromInt(transform_line.id));
 
-        i += Line.PICK_NUM_VERTICIES;
+        i += Line.PICK_VERTICIES_COUNT;
     }
 }
