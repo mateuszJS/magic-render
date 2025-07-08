@@ -10,7 +10,6 @@ struct Vertex {
 
 struct Uniforms {
   worldViewProjection: mat4x4f,
-  screenPxDistance: f32,
 };
 
 struct VertexOutput {
@@ -49,9 +48,7 @@ fn median(r: f32, g: f32, b: f32) -> f32 {
 
 @fragment fn fs(in: VertexOutput) -> @location(0) vec4f {
   let msdf = textureSample(ourTexture, ourSampler, in.texCoord);
-  let sd = median(msdf.r, msdf.g, msdf.b);
-
-  let screenPxDistance = u.screenPxDistance * (sd - 0.5);
-  let opacity = clamp(screenPxDistance + 0.5, 0.0, 1.0);
-  return in.color * opacity;
+  let signed_distance = median(msdf.r, msdf.g, msdf.b) - 0.5;
+  let w = clamp(signed_distance / fwidth(signed_distance) + 0.5, 0.0, 1.0);
+  return in.color * w;
 }

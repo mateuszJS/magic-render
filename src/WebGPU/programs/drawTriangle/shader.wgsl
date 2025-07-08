@@ -100,7 +100,7 @@ struct VertexOutput {
 
   if (dist < threshold) {
     let circle_distance = distance(p_circle, in.pixel);
-    return in.color * (1.0 - step(radius, circle_distance));
+    return in.color * (1.0 - smoothstep(radius - 0.5, radius + 0.5, circle_distance));
   } else {
     return in.color;
   }

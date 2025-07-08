@@ -55,6 +55,9 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
         },
       ],
     },
+    multisample: {
+      count: 4,
+    },
     // depthStencil: {
     //   depthWriteEnabled: true,
     //   depthCompare: 'less',
@@ -62,8 +65,7 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     // },
   })
 
-  const uniformBufferSize =
-    (16 /*projection matrix*/ + 1 /*screen pixel distance*/ + 3) /*padding*/ * 4
+  const uniformBufferSize = 16 /*projection matrix*/ * 4
   const uniformBuffer = device.createBuffer({
     label: 'draw msdf uniforms',
     size: uniformBufferSize,
@@ -73,12 +75,6 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
   const uniformValues = new Float32Array(uniformBufferSize / 4)
   const kMatrixOffset = 0
   const matrixValue = uniformValues.subarray(kMatrixOffset, kMatrixOffset + 16)
-
-  const kScreenPixelDistanceOffset = 16
-  const screenPixelDistanceValue = uniformValues.subarray(
-    kScreenPixelDistanceOffset,
-    kScreenPixelDistanceOffset + 1
-  )
 
   return function drawMSDF(
     pass: GPURenderPassEncoder,
@@ -109,7 +105,6 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     pass.setVertexBuffer(0, vertexBuffer)
 
     matrixValue.set(worldProjectionMatrix)
-    screenPixelDistanceValue.set([16.0]) // Set the screen pixel distance to 1.0 for now, can be adjusted later
 
     device.queue.writeBuffer(uniformBuffer, 0, uniformValues)
 
