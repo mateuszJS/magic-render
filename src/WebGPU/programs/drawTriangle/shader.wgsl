@@ -18,10 +18,10 @@ struct VertexOutput {
   @location(0) @interpolate(flat) p0: vec4f,
   @location(1) @interpolate(flat) p1: vec4f,
   @location(2) @interpolate(flat) p2: vec4f,
-  @location(3) color: vec4f,
+  @location(3) @interpolate(flat) color: vec4f,
   @location(4) pixel: vec2f,
-  @location(5) radius_list: vec3f,
-  @location(6) threshold_list: vec3f,
+  @location(5) @interpolate(flat) radius_list: vec3f,
+  @location(6) @interpolate(flat) threshold_list: vec3f,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;

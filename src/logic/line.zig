@@ -17,19 +17,19 @@ pub const Line = struct {
         const by = end.y + half_width * @sin(parallel_angle);
 
         const points = [_]Point{
-            .{ .x = ax - half_width * @cos(angle), .y = ay - half_width * @sin(angle) },
             .{ .x = ax + half_width * @cos(angle), .y = ay + half_width * @sin(angle) },
-            .{ .x = bx + half_width * @cos(angle), .y = by + half_width * @sin(angle) },
+            .{ .x = ax - half_width * @cos(angle), .y = ay - half_width * @sin(angle) },
             .{ .x = bx - half_width * @cos(angle), .y = by - half_width * @sin(angle) },
+            .{ .x = bx + half_width * @cos(angle), .y = by + half_width * @sin(angle) },
         };
 
-        const p0_v = Triangle.get_round_corner_vector(0, points, 0.0);
-        const p1_v = Triangle.get_round_corner_vector(1, points, 0.0);
-        const p2_v = Triangle.get_round_corner_vector(2, points, 0.0);
-        const p3_v = Triangle.get_round_corner_vector(3, points, 0.0);
+        const p0_v = Triangle.get_round_corner_vector(0, points, half_width);
+        const p1_v = Triangle.get_round_corner_vector(1, points, half_width);
+        const p2_v = Triangle.get_round_corner_vector(2, points, half_width);
+        const p3_v = Triangle.get_round_corner_vector(3, points, half_width);
 
         Triangle.get_vertex_data(buffer[0..Triangle.DRAW_NUM_VERTICIES], p0_v, p1_v, p2_v, color);
-        Triangle.get_vertex_data(buffer[Triangle.DRAW_NUM_VERTICIES..][0..Triangle.DRAW_NUM_VERTICIES], p0_v, p2_v, p3_v, color);
+        Triangle.get_vertex_data(buffer[Triangle.DRAW_NUM_VERTICIES .. 2 * Triangle.DRAW_NUM_VERTICIES], p0_v, p2_v, p3_v, color);
     }
 
     pub fn get_vertex_data_pick(buffer: *[Line.PICK_NUM_VERTICIES]f32, start: anytype, end: anytype, width: f32, id: f32) void {

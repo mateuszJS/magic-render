@@ -172,7 +172,7 @@ fn get_border() []f32 {
 
                 Line.get_vertex_data(
                     // buffer[0..LINE_NUM_VERTICIES],
-                    buffer[0..][0..Line.DRAW_NUM_VERTICIES],
+                    buffer[0..Line.DRAW_NUM_VERTICIES],
                     point,
                     next_point,
                     10.0,
@@ -222,11 +222,6 @@ pub fn canvas_render() void {
         web_gpu_programs.draw_triangle(border_verticies);
     }
 
-    if (state.icons.get(ROTATE_ICON_ID)) |rotate_icon| {
-        const msdf_vertex_data = MSDF.get_msdf_vertex_data(rotate_icon, 10.0, 10.0, 4.0);
-        web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
-    }
-
     const points = [_]Types.Point{
         Types.Point{ .x = 100.0, .y = 70.0 }, //
         Types.Point{ .x = 300.0, .y = 100.0 }, //
@@ -238,21 +233,17 @@ pub fn canvas_render() void {
     const p2_v = Triangle.get_round_corner_vector(2, points, 80.0);
     const p3_v = Triangle.get_round_corner_vector(3, points, 20.0);
 
-    const shape_vertex_data = [_]f32{
-        p0_v[0], p0_v[1], p0_v[2], p0_v[3],
-        p1_v[0], p1_v[1], p1_v[2], p1_v[3],
-        p2_v[0], p2_v[1], p2_v[2], p2_v[3],
-        0.0,     1.0,     1.0,     1.0,
-        p0_v[4], p1_v[4], p2_v[4], // rounded corner values for each of three positions
-        //
-        p0_v[0], p0_v[1], p0_v[2], p0_v[3], //
-        p2_v[0], p2_v[1], p2_v[2], p2_v[3], //
-        p3_v[0], p3_v[1], p3_v[2], p3_v[3], //
-        0.0,     1.0,     1.0,     1.0,
-        p0_v[4], p2_v[4], p3_v[4], // rounded corner values for each of three positions
-    };
+    var shape_vertex_data: [2 * Triangle.DRAW_NUM_VERTICIES]f32 = undefined;
+    const color = [_]f32{ 0.0, 1.0, 1.0, 1.0 };
+    Triangle.get_vertex_data(shape_vertex_data[0..Triangle.DRAW_NUM_VERTICIES], p0_v, p1_v, p2_v, color);
+    Triangle.get_vertex_data(shape_vertex_data[Triangle.DRAW_NUM_VERTICIES .. 2 * Triangle.DRAW_NUM_VERTICIES], p0_v, p2_v, p3_v, color);
 
     web_gpu_programs.draw_triangle(&shape_vertex_data);
+
+    if (state.icons.get(ROTATE_ICON_ID)) |rotate_icon| {
+        const msdf_vertex_data = MSDF.get_msdf_vertex_data(rotate_icon, 10.0, 10.0, 4.0);
+        web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
+    }
 }
 
 pub fn picks_render() void {

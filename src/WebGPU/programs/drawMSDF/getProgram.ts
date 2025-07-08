@@ -38,16 +38,16 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
       targets: [
         {
           format: presentationFormat,
-          // blend: {
-          //   color: {
-          //     srcFactor: 'one',
-          //     dstFactor: 'one-minus-src-alpha'
-          //   },
-          //   alpha: {
-          //     srcFactor: 'one',
-          //     dstFactor: 'one-minus-src-alpha'
-          //   },
-          // },
+          blend: {
+            color: {
+              srcFactor: 'one',
+              dstFactor: 'one-minus-src-alpha',
+            },
+            alpha: {
+              srcFactor: 'one',
+              dstFactor: 'one-minus-src-alpha',
+            },
+          },
         },
       ],
     },
