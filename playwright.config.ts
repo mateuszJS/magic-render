@@ -1,10 +1,10 @@
 import { defineConfig, devices } from '@playwright/test'
 
 /*
-to update:
   npx playwright test --update-snapshots
+    updates screenshots
 
-npx playwright test
+  npx playwright test
     Runs the end-to-end tests.
 
   npx playwright test --ui
@@ -26,7 +26,6 @@ We suggest that you begin by typing:
 
     npx playwright test
 */
-
 
 /**
  * Read environment variables from file.
