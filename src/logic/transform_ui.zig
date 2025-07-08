@@ -40,8 +40,10 @@ pub fn is_transform_ui(id: u32) bool {
 }
 
 pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, raw_y: f32) void {
-    const asset_angle = points[0].angle_to(points[1]);
-    const transform_matrix = Matrix3x3.rotation(asset_angle);
+    const asset_angle_y = points[0].angle_to(points[3]) + std.math.pi / 2.0;
+    // it's important we dont meausre horizontal one, because reflecting by X axis makes no change in horizontal angle
+    // but should be 180 degree opposite
+    const transform_matrix = Matrix3x3.rotation(asset_angle_y);
     const inverted_transform_matrix = transform_matrix.inverse().?;
     const pointer = inverted_transform_matrix.transform_point(Point{
         .x = raw_x,
@@ -110,12 +112,14 @@ pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
         9 => {
             // rotation
             const asset_center = points[0].mid(points[2]);
-            const asset_pointer_angle = std.math.atan2(raw_y - asset_center.y, raw_x - asset_center.x);
-            const asset_new_angle = asset_pointer_angle + std.math.pi / 2.0;
+            const asset_new_angle = std.math.atan2(
+                asset_center.y - raw_y,
+                asset_center.x - raw_x,
+            ) - std.math.pi / 2.0;
 
             for (points) |*point| {
                 const current_angle = std.math.atan2(point.y - asset_center.y, point.x - asset_center.x);
-                const default_angle = current_angle - asset_angle; // angle without any user rotation introduced
+                const default_angle = current_angle - asset_angle_y; // angle without any user rotation introduced
                 const length = std.math.hypot(point.x - asset_center.x, point.y - asset_center.y);
                 const new_angle = default_angle + asset_new_angle;
 
