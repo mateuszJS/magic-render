@@ -1,15 +1,11 @@
-import shaderCode from "./shader.wgsl"
- 
+import shaderCode from './shader.wgsl'
 
-const STRIDE = 4 + 2// + 1 + 1 + 4
+const STRIDE = 4 + 2 // + 1 + 1 + 4
 
-export default function getProgram(
-  device: GPUDevice,
-  presentationFormat: GPUTextureFormat
-) {
+export default function getProgram(device: GPUDevice, presentationFormat: GPUTextureFormat) {
   const module = device.createShaderModule({
     label: 'texture module',
-    code: shaderCode
+    code: shaderCode,
   })
 
   const sampler = device.createSampler({
@@ -27,11 +23,8 @@ export default function getProgram(
         {
           arrayStride: STRIDE * 4,
           attributes: [
-            {shaderLocation: 0, offset: 0, format: 'float32x4'},  // destination position
-            {shaderLocation: 1, offset: 16, format: 'float32x2'},  // source position
-            // {shaderLocation: 2, offset: 16 + 8, format: 'float32'},  // source texture layer
-            // {shaderLocation: 3, offset: 16 + 8 + 4, format: 'float32'},  // index of color matrix
-            // {shaderLocation: 4, offset: 16 + 8 + 4 + 4, format: 'float32x3'},  // index of color matrix
+            { shaderLocation: 0, offset: 0, format: 'float32x4' }, // destination position
+            { shaderLocation: 1, offset: 16, format: 'float32x2' }, // source position
           ] as const,
         },
       ],
@@ -39,19 +32,24 @@ export default function getProgram(
     fragment: {
       module,
       entryPoint: 'fs',
-      targets: [{
-        format: presentationFormat,
-        // blend: {
-        //   color: {
-        //     srcFactor: 'one',
-        //     dstFactor: 'one-minus-src-alpha'
-        //   },
-        //   alpha: {
-        //     srcFactor: 'one',
-        //     dstFactor: 'one-minus-src-alpha'
-        //   },
-        // },
-      }],
+      targets: [
+        {
+          format: presentationFormat,
+          blend: {
+            color: {
+              srcFactor: 'one',
+              dstFactor: 'one-minus-src-alpha',
+            },
+            alpha: {
+              srcFactor: 'one',
+              dstFactor: 'one-minus-src-alpha',
+            },
+          },
+        },
+      ],
+    },
+    multisample: {
+      count: 4,
     },
     // depthStencil: {
     //   depthWriteEnabled: true,
@@ -60,9 +58,7 @@ export default function getProgram(
     // },
   })
 
-  const uniformBufferSize = (
-    16/*projection matrix*/
-  ) * 4
+  const uniformBufferSize = 16 /*projection matrix*/ * 4
   const uniformBuffer = device.createBuffer({
     label: 'uniforms',
     size: uniformBufferSize,
@@ -77,9 +73,9 @@ export default function getProgram(
     pass: GPURenderPassEncoder,
     worldProjectionMatrix: Float32Array,
     vertexData: Float32Array<ArrayBufferLike>,
-    texture: GPUTexture,
+    texture: GPUTexture
   ) {
-    const numVertices = vertexData.length / STRIDE | 0
+    const numVertices = (vertexData.length / STRIDE) | 0
     const vertexBuffer = device.createBuffer({
       label: 'vertex buffer vertices',
       size: vertexData.byteLength,
@@ -87,17 +83,15 @@ export default function getProgram(
     })
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
 
-
     // bind group should be pre-created and reuse instead of constantly initialized
     const bindGroup = device.createBindGroup({
       layout: pipeline.getBindGroupLayout(0),
       entries: [
-        { binding: 0, resource: { buffer: uniformBuffer }},
+        { binding: 0, resource: { buffer: uniformBuffer } },
         { binding: 1, resource: sampler },
         { binding: 2, resource: texture.createView() },
       ],
     })
-
 
     pass.setPipeline(pipeline)
     pass.setVertexBuffer(0, vertexBuffer)

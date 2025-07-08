@@ -32,6 +32,7 @@ fontStream
       {
         outputType: 'json',
         charset: [String.fromCharCode(0xe001), String.fromCharCode(0xe002)],
+        fontSize: 20,
       },
       (error, textures, font) => {
         if (error) throw error

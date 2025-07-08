@@ -48,6 +48,9 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
         },
       ],
     },
+    multisample: {
+      count: 4,
+    },
   })
 
   const uniformBufferSize = 16 /*projection matrix*/ * 4
