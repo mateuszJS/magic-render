@@ -201,12 +201,12 @@ fn get_points_of_line(texture: Texture, transform_line: TransformLine) struct { 
     }
 }
 
-pub const DRAW_VERTICIES_COUNT = UI_VERTICIES_COUNT_BORDER * Line.DRAW_VERTICIES_COUNT * 2;
-const HALF_BUFFER = DRAW_VERTICIES_COUNT / 2;
+pub const DRAW_VERTICES_COUNT = UI_VERTICIES_COUNT_BORDER * Line.DRAW_VERTICES_COUNT * 2;
+const HALF_BUFFER = DRAW_VERTICES_COUNT / 2;
 
 pub fn get_transform_ui(
-    triangle_buffer: *[DRAW_VERTICIES_COUNT]f32,
-    msdf_vertex_data: *[Msdf.DRAW_VERTICIES_COUNT]f32,
+    triangle_buffer: *[DRAW_VERTICES_COUNT]f32,
+    msdf_vertex_data: *[Msdf.DRAW_VERTICES_COUNT]f32,
     texture: Texture,
     hovered_elem_id: u32,
 ) void {
@@ -233,7 +233,7 @@ pub fn get_transform_ui(
 
         const outer_line_width = thickness + 10.0;
         Line.get_vertex_data(
-            triangle_buffer[i..][0..Line.DRAW_VERTICIES_COUNT],
+            triangle_buffer[i..][0..Line.DRAW_VERTICES_COUNT],
             p1,
             p2,
             outer_line_width,
@@ -241,7 +241,7 @@ pub fn get_transform_ui(
             outer_line_width / 2.0,
         );
         Line.get_vertex_data(
-            triangle_buffer[(HALF_BUFFER + i)..][0..Line.DRAW_VERTICIES_COUNT],
+            triangle_buffer[(HALF_BUFFER + i)..][0..Line.DRAW_VERTICES_COUNT],
             p1,
             p2,
             thickness,
@@ -249,7 +249,7 @@ pub fn get_transform_ui(
             thickness / 2.0,
         );
 
-        i += Line.DRAW_VERTICIES_COUNT;
+        i += Line.DRAW_VERTICES_COUNT;
     }
 }
 

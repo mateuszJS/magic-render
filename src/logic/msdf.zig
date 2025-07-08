@@ -25,8 +25,8 @@ const DEFAULT_ICON = IconData{
     .real_height = 0.0,
 }; // used when an icon is not found(not loaded yet)
 
-const TRIANGLE_DRAW_VERTICIES_COUNT = (4 + 2) * 3 + 4; // 4 -> x,y,z,w, 2 -> u,v, 3 verticies, 4 -> color
-pub const DRAW_VERTICIES_COUNT = TRIANGLE_DRAW_VERTICIES_COUNT * 2;
+const TRIANGLE_DRAW_VERTICES_COUNT = (4 + 2) * 3 + 4; // 4 -> x,y,z,w, 2 -> u,v, 3 verticies, 4 -> color
+pub const DRAW_VERTICES_COUNT = TRIANGLE_DRAW_VERTICES_COUNT * 2;
 
 var icons: std.AutoHashMap(IconId, IconData) = undefined;
 
@@ -36,7 +36,7 @@ pub fn init_icons(data: []const f32) void {
     var i: usize = 0;
     while (i < data.len) : (i += 7) {
         const icon_id: u32 = @intFromFloat(data[i]);
-        std.debug.print("icon_id: {}\n", .{icon_id});
+
         const icon = IconData{
             .id = std.meta.intToEnum(IconId, icon_id) catch unreachable,
             .x = data[i + 1],
@@ -54,7 +54,7 @@ pub fn deinit_icons() void {
     icons.deinit();
 }
 
-pub fn get_msdf_vertex_data(icon_id: IconId, x: f32, y: f32, width: f32, color: [4]f32) [DRAW_VERTICIES_COUNT]f32 {
+pub fn get_msdf_vertex_data(icon_id: IconId, x: f32, y: f32, width: f32, color: [4]f32) [DRAW_VERTICES_COUNT]f32 {
     const icon = icons.get(icon_id) orelse DEFAULT_ICON;
 
     const scale = width / icon.real_width;

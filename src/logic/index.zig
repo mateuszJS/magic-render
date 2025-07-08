@@ -165,11 +165,11 @@ fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
         if (state.assets.get(state.hovered_asset_id)) |asset| {
             for (asset.points, 0..) |point, i| {
                 const next_point = if (i == 3) asset.points[0] else asset.points[i + 1];
-                var buffer: [Line.DRAW_VERTICIES_COUNT]f32 = undefined;
+                var buffer: [Line.DRAW_VERTICES_COUNT]f32 = undefined;
 
                 Line.get_vertex_data(
                     // buffer[0..LINE_VERTICIES_COUNT],
-                    buffer[0..Line.DRAW_VERTICIES_COUNT],
+                    buffer[0..Line.DRAW_VERTICES_COUNT],
                     point,
                     next_point,
                     10.0,
@@ -186,9 +186,9 @@ fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
     if (state.assets.get(state.active_asset_id)) |asset| {
         for (asset.points, 0..) |point, i| {
             const next_point = if (i == 3) asset.points[0] else asset.points[i + 1];
-            var buffer: [Line.DRAW_VERTICIES_COUNT]f32 = undefined;
+            var buffer: [Line.DRAW_VERTICES_COUNT]f32 = undefined;
             Line.get_vertex_data(
-                buffer[0..Line.DRAW_VERTICIES_COUNT],
+                buffer[0..Line.DRAW_VERTICES_COUNT],
                 point,
                 next_point,
                 10.0,
@@ -198,8 +198,8 @@ fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
             triangle_vertex_data.appendSlice(&buffer) catch unreachable;
         }
 
-        var triangle_buffer: [TransformUI.DRAW_VERTICIES_COUNT]f32 = undefined;
-        var msdf_buffer: [Msdf.DRAW_VERTICIES_COUNT]f32 = undefined;
+        var triangle_buffer: [TransformUI.DRAW_VERTICES_COUNT]f32 = undefined;
+        var msdf_buffer: [Msdf.DRAW_VERTICES_COUNT]f32 = undefined;
 
         TransformUI.get_transform_ui(
             &triangle_buffer,
@@ -247,10 +247,10 @@ pub fn canvas_render() void {
     // const p2_v = Triangle.get_round_corner_vector(2, points, 80.0);
     // const p3_v = Triangle.get_round_corner_vector(3, points, 20.0);
 
-    // var shape_vertex_data: [2 * Triangle.DRAW_VERTICIES_COUNT]f32 = undefined;
+    // var shape_vertex_data: [2 * Triangle.DRAW_VERTICES_COUNT]f32 = undefined;
     // const color = [_]f32{ 0.0, 1.0, 1.0, 1.0 };
-    // Triangle.get_vertex_data(shape_vertex_data[0..Triangle.DRAW_VERTICIES_COUNT], p0_v, p1_v, p2_v, color);
-    // Triangle.get_vertex_data(shape_vertex_data[Triangle.DRAW_VERTICIES_COUNT .. 2 * Triangle.DRAW_VERTICIES_COUNT], p0_v, p2_v, p3_v, color);
+    // Triangle.get_vertex_data(shape_vertex_data[0..Triangle.DRAW_VERTICES_COUNT], p0_v, p1_v, p2_v, color);
+    // Triangle.get_vertex_data(shape_vertex_data[Triangle.DRAW_VERTICES_COUNT .. 2 * Triangle.DRAW_VERTICES_COUNT], p0_v, p2_v, p3_v, color);
 
     // web_gpu_programs.draw_triangle(&shape_vertex_data);
 
