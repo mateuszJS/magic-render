@@ -1,6 +1,6 @@
 const Texture = @import("texture.zig").Texture;
 const Point = @import("types.zig").Point;
-const Line = @import("line.zig").Line;
+const Line = @import("line.zig");
 const PointUV = @import("types.zig").PointUV;
 const std = @import("std");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
