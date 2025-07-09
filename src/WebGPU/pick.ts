@@ -110,12 +110,14 @@ export default class PickManager {
       const [id] = new Uint32Array(this.pickBuffer.getMappedRange(0, 4 * NUM_PIXELS))
       on_update_pick(id)
 
-      if (pointer.downCallback) {
-        // to me 100% precise we should also check timestamp if pickign started after the click happened
-        // but not sure if it's possible to expose this issue
-        pointer.downCallback()
-        pointer.downCallback = null // reset callback after use
+      let i = 0
+      while (i < pointer.afterPickEventsQueue.length) {
+        const { requireNewPick, cb } = pointer.afterPickEventsQueue[i]
+        if (requireNewPick && i > 0) break // we need to start new picking pass
+        cb()
+        i++
       }
+      pointer.afterPickEventsQueue.splice(0, i) // remove processed events
 
       this.pickBuffer.unmap()
       // eslint-disable-next-line @typescript-eslint/no-unused-vars

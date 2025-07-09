@@ -3,7 +3,7 @@ import { on_pointer_move, on_pointer_down, on_pointer_up } from '../logic/index.
 export const pointer = {
   x: 0,
   y: 0,
-  downCallback: null as VoidFunction | null,
+  afterPickEventsQueue: [] as Array<{ requireNewPick: boolean; cb: VoidFunction }>,
 }
 
 export default function initMouseController(canvas: HTMLCanvasElement) {
@@ -19,19 +19,37 @@ export default function initMouseController(canvas: HTMLCanvasElement) {
   canvas.addEventListener('mouseleave', () => {})
 
   canvas.addEventListener('mousemove', (e) => {
-    updatePointer(e)
-    on_pointer_move(pointer.x, canvas.height - pointer.y)
+    const move = () => {
+      updatePointer(e)
+      on_pointer_move(pointer.x, canvas.height - pointer.y)
+    }
+    if (pointer.afterPickEventsQueue.length > 0) {
+      pointer.afterPickEventsQueue.push({
+        requireNewPick: false,
+        cb: move,
+      })
+    } else {
+      move()
+    }
   })
 
   canvas.addEventListener('mousedown', (e) => {
     updatePointer(e)
-    pointer.downCallback = () => {
-      on_pointer_down(pointer.x, canvas.height - pointer.y)
-    }
+    pointer.afterPickEventsQueue.push({
+      requireNewPick: true,
+      cb: on_pointer_down.bind(null, pointer.x, canvas.height - pointer.y),
+    })
   })
 
   canvas.addEventListener('mouseup', () => {
-    on_pointer_up()
+    if (pointer.afterPickEventsQueue.length > 0) {
+      pointer.afterPickEventsQueue.push({
+        requireNewPick: false,
+        cb: on_pointer_up,
+      })
+    } else {
+      on_pointer_up()
+    }
   })
 
   canvas.addEventListener('wheel', (event) => {
