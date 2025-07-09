@@ -54,7 +54,11 @@ export default function runCreator(
     canvas_render()
     canvasPass.end()
 
-    if (lastPickPointer.x !== pointer.x || lastPickPointer.y !== pointer.y) {
+    if (
+      lastPickPointer.x !== pointer.x ||
+      lastPickPointer.y !== pointer.y ||
+      pointer.afterPickEventsQueue.length > 0
+    ) {
       lastPickPointer.x = pointer.x
       lastPickPointer.y = pointer.y
       pickMatrix = pickManager.createMatrix(canvas, canvasMatrix)

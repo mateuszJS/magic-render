@@ -25,6 +25,13 @@ import { defineConfig, devices } from '@playwright/test'
 We suggest that you begin by typing:
 
     npx playwright test
+
+  To see what was console.logged durign the test:
+    const errorLogs: string[] = []
+    page.on('console', (message) => {
+      errorLogs.push(message.text())
+    })
+    console.log(errorLogs)
 */
 
 /**
