@@ -1,11 +1,29 @@
 import initCreator from '../src/index'
 import SampleImg from './image-sample.png'
 
+declare global {
+  interface Window {
+    testLastAssetUpdate: {
+      calledTimes: number
+      assets: object[] | null
+    }
+  }
+}
+
 const params = new URLSearchParams(document.location.search)
 const isSampleParam = params.has('sample') // is the string "Jonathan"
 
 async function test() {
   const canvas = document.querySelector<HTMLCanvasElement>('canvas')!
+
+  const selectedAssetEl = document.querySelector<HTMLSpanElement>('#selected-asset-id')!
+  const removeAssetBtn = document.querySelector<HTMLSpanElement>('#remove-btn')!
+
+  window.testLastAssetUpdate = {
+    calledTimes: 0,
+    assets: null,
+  }
+
   const creator = await initCreator(
     canvas,
     isSampleParam
@@ -41,7 +59,16 @@ async function test() {
           },
         ]
       : [],
-    console.log
+    (assets) => {
+      window.testLastAssetUpdate = {
+        calledTimes: window.testLastAssetUpdate.calledTimes + 1,
+        assets,
+      }
+      console.log(assets)
+    },
+    (assetId) => {
+      selectedAssetEl.textContent = assetId.toString()
+    }
   )
 
   const fileInput = document.querySelector<HTMLInputElement>('input')!
@@ -54,6 +81,10 @@ async function test() {
     img.onload = () => {
       creator.addImage(img)
     }
+  })
+
+  removeAssetBtn.addEventListener('click', () => {
+    creator.removeAsset()
   })
 }
 

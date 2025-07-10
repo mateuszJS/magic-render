@@ -30,6 +30,11 @@ pub fn connect_on_asset_update_callback(cb: *const fn ([]AssetZig) void) void {
     on_asset_update_cb = cb;
 }
 
+var on_asset_select_cb: *const fn (u32) void = undefined;
+pub fn connect_on_asset_selection_callback(cb: *const fn (u32) void) void {
+    on_asset_select_cb = cb;
+}
+
 pub const ASSET_ID_TRESHOLD: u32 = 1000;
 
 const ActionType = enum {
@@ -73,6 +78,8 @@ pub fn add_asset(points: [4]Types.PointUV, texture_id: u32) void {
 
 pub fn remove_asset() void {
     _ = state.assets.remove(state.active_asset_id);
+    state.active_asset_id = 0;
+    on_asset_select_cb(state.active_asset_id);
     on_asset_update();
 }
 
@@ -109,13 +116,16 @@ fn on_asset_update() void {
     }
 
     if (result.len > 0) {
-        on_asset_update_cb(result);
+        on_asset_update_cb(result); // would throw error if results.len == 0
+    } else {
+        on_asset_update_cb(&.{});
     }
 }
 
 pub fn on_pointer_up() void {
     if (state.ongoing_action == .none) {
         state.active_asset_id = state.hovered_asset_id;
+        on_asset_select_cb(state.active_asset_id);
     }
 
     state.ongoing_action = .none;

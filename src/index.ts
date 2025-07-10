@@ -8,6 +8,7 @@ import {
   add_asset,
   remove_asset,
   connect_on_asset_update_callback,
+  connect_on_asset_selection_callback,
   destroy_state,
   import_icons,
 } from './logic/index.zig'
@@ -34,7 +35,8 @@ export interface TextureSource {
 export default async function initCreator(
   canvas: HTMLCanvasElement,
   assets: SerializedAsset[],
-  onAssetsUpdate: (assets: SerializedAsset[]) => void
+  onAssetsUpdate: (assets: SerializedAsset[]) => void,
+  onAssetSelect: (assetId: number) => void
 ): Promise<CreatorAPI> {
   /* setup WebGPU stuff */
   const device = await getDevice()
@@ -73,6 +75,8 @@ export default async function initCreator(
     onAssetsUpdate(serializedAssetsTextureUrl)
   })
 
+  connect_on_asset_selection_callback(onAssetSelect)
+
   function addImage(img: HTMLImageElement, points?: PointUV[]) {
     const newTextureId = textures.length
     textures.push({
@@ -110,13 +114,9 @@ export default async function initCreator(
 
   const stopCreator = runCreator(canvas, context, device, presentationFormat, textures)
 
-  function removeAsset() {
-    remove_asset()
-  }
-
   return {
     addImage,
-    removeAsset,
+    removeAsset: remove_asset,
     destroy: () => {
       stopCreator()
       destroy_state()
