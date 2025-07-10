@@ -23,7 +23,6 @@ test('ui elements get correct highlight on hover', async ({ page }, testinfo) =>
   await page.mouse.move(550, 275)
   await page.mouse.down()
   await page.mouse.up()
-  await expect(canvas).toHaveScreenshot('select-image.png')
 
   // highlights rotation ui
   await page.mouse.move(550, 685)

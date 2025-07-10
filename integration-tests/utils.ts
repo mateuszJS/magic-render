@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { expect } from '@playwright/test'
 
 const PAGE_WIDTH = 1000
 const PAGE_HEIGHT = 700
@@ -20,6 +21,19 @@ export async function init(page: Page) {
     window.addEventListener('mousemove', (e) => console.log(e.clientX, e.clientY))
   ) // to display cursor position during debugging
   // helps to copy position here
+
+  async function expectLastUpdate(
+    numberOfTheUpdate: number,
+    assetsUpdate: Window['testLastAssetUpdate']['assets']
+  ) {
+    const testLastAssetUpdate = await page.evaluate(() => window.testLastAssetUpdate)
+    expect(testLastAssetUpdate).toEqual({
+      calledTimes: numberOfTheUpdate,
+      assets: assetsUpdate,
+    })
+  }
+
+  return expectLastUpdate
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))

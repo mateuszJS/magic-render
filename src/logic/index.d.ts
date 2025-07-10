@@ -35,6 +35,7 @@ declare module '*.zig' {
     pick_triangle: (vertexData: ZigF32Array) => void
   }) => void
   export const connect_on_asset_update_callback: (cb: (data: AssetZig[]) => void) => void
+  export const connect_on_asset_selection_callback: (cb: (data: number) => void) => void
 
   export const canvas_render: VoidFunction
   export const picks_render: VoidFunction
