@@ -69,7 +69,6 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     worldProjectionMatrix: Float32Array,
     vertexData: Float32Array<ArrayBufferLike>
   ) {
-    // console.log('worldProjectionMatrix', worldProjectionMatrix)
     const numInstances = vertexData.length / INSTANCE_STRIDE
 
     const vertexBuffer = device.createBuffer({

@@ -20,7 +20,8 @@ export default function runCreator(
   context: GPUCanvasContext,
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
-  textures: TextureSource[]
+  textures: TextureSource[],
+  onEmptyEvents: VoidFunction // call when there is no more events to process
 ): VoidFunction {
   const canvasMatrix = getCanvasMatrix(canvas)
   let canvasPass: GPURenderPassEncoder
@@ -54,11 +55,16 @@ export default function runCreator(
     canvas_render()
     canvasPass.end()
 
-    if (
+    if (pointer.afterPickEventsQueue.length === 0) {
+      onEmptyEvents()
+    }
+
+    const needsUpdatePick =
+      pointer.afterPickEventsQueue.length > 0 ||
       lastPickPointer.x !== pointer.x ||
-      lastPickPointer.y !== pointer.y ||
-      pointer.afterPickEventsQueue.length > 0
-    ) {
+      lastPickPointer.y !== pointer.y
+
+    if (needsUpdatePick) {
       lastPickPointer.x = pointer.x
       lastPickPointer.y = pointer.y
       pickMatrix = pickManager.createMatrix(canvas, canvasMatrix)

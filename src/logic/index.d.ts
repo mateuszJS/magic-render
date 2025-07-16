@@ -12,14 +12,16 @@ interface PointUV {
 
 type ZigF32Array = { typedArray: Float32Array }
 type AssetZig = {
+  id: number
   points: PointUV[]
   texture_id: number
 }
 
 declare module '*.zig' {
   export const init_state: (width: number, height: number) => void
-  export const add_asset: (points: PointUV[], texture_id: number) => void
+  export const add_asset: (points: PointUV[], texture_id: number, id: number) => void
   export const remove_asset: () => void
+  export const reset_assets: (assets: AssetZig[]) => void
   export const update_points: (id: number, points: PointUV[]) => void
 
   export const on_update_pick: (id: number) => void

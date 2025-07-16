@@ -1,7 +1,7 @@
-// npx playwright test ui-hover.spec.ts --debug
+// npm run test-e2e -- ui-hover.spec.ts --debug
 
 import { test, expect } from '@playwright/test'
-import * as Utils from '../utils'
+import init from '../init'
 
 test('ui elements get correct highlight on hover', async ({ page }, testinfo) => {
   if (process.env.CI) {
@@ -11,8 +11,8 @@ test('ui elements get correct highlight on hover', async ({ page }, testinfo) =>
 
   testinfo.snapshotSuffix = '' // by default is `process.platform`
 
-  await Utils.init(page)
-  await Utils.uploadAsset(page)
+  const utils = await init(page)
+  await utils.uploadAsset()
   const canvas = page.locator('canvas')
 
   // displays border on hover

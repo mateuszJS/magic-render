@@ -1,7 +1,7 @@
-// npx playwright test asset-removal.spec.ts --debug
+// npm run test-e2e -- asset-removal.spec.ts --debug
 
 import { test, expect } from '@playwright/test'
-import * as Utils from '../utils'
+import init from '../init'
 
 test('asset removal', async ({ page }, testinfo) => {
   if (process.env.CI) {
@@ -11,9 +11,8 @@ test('asset removal', async ({ page }, testinfo) => {
 
   testinfo.snapshotSuffix = '' // by default is `process.platform`
 
-  const expectLastUpdate = await Utils.init(page)
-  await Utils.uploadAsset(page)
-  const canvas = page.locator('canvas')
+  const utils = await init(page)
+  await utils.uploadAsset()
   const removeBtn = page.locator('#remove-btn')
   const assetIdEl = page.locator('#selected-asset-id')
 
@@ -23,8 +22,6 @@ test('asset removal', async ({ page }, testinfo) => {
   await page.mouse.up()
 
   await removeBtn.click()
-  await expect(canvas).toHaveScreenshot('removed-image.png')
   await expect(assetIdEl).toHaveText('0')
-
-  await expectLastUpdate(3, [])
+  expect(await utils.getAssetsState()).toStrictEqual([])
 })

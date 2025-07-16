@@ -4,9 +4,17 @@ export const pointer = {
   x: 0,
   y: 0,
   afterPickEventsQueue: [] as Array<{ requireNewPick: boolean; cb: VoidFunction }>,
+  /* this queue exists because wen mobiel device is touched we have to:
+    1) update pointer,
+    2) do picking,
+    3) record a click in order,
+    so click has to wait after pick is done */
 }
 
-export default function initMouseController(canvas: HTMLCanvasElement) {
+export default function initMouseController(
+  canvas: HTMLCanvasElement,
+  onStartProcessing: VoidFunction
+) {
   pointer.x = 0
   pointer.y = 0
 
@@ -19,6 +27,8 @@ export default function initMouseController(canvas: HTMLCanvasElement) {
   canvas.addEventListener('mouseleave', () => {})
 
   canvas.addEventListener('mousemove', (e) => {
+    onStartProcessing()
+
     const move = () => {
       updatePointer(e)
       on_pointer_move(pointer.x, canvas.height - pointer.y)
@@ -34,6 +44,8 @@ export default function initMouseController(canvas: HTMLCanvasElement) {
   })
 
   canvas.addEventListener('mousedown', (e) => {
+    onStartProcessing()
+
     updatePointer(e)
     pointer.afterPickEventsQueue.push({
       requireNewPick: true,
@@ -42,6 +54,8 @@ export default function initMouseController(canvas: HTMLCanvasElement) {
   })
 
   canvas.addEventListener('mouseup', () => {
+    onStartProcessing()
+
     if (pointer.afterPickEventsQueue.length > 0) {
       pointer.afterPickEventsQueue.push({
         requireNewPick: false,

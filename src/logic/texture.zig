@@ -10,6 +10,7 @@ const SHADER_TRIANGLE_INDICIES = [_]usize{
 pub const AssetZig = struct {
     points: [4]PointUV,
     texture_id: u32,
+    id: u32,
 };
 
 pub const TEXTURE_VERTEX_BUFFER_SIZE: usize = 6 * 6; // 6 vertices, each with 6 attributes (x, y, z, w, u, v)
@@ -69,6 +70,7 @@ pub const Texture = struct {
         return AssetZig{
             .points = self.points,
             .texture_id = self.texture_id,
+            .id = self.id,
         };
     }
 };
