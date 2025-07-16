@@ -25,10 +25,12 @@ pub fn connect_web_gpu_programs(programs: *const WebGpuPrograms) void {
     web_gpu_programs = programs; // orelse WebGpuPrograms{};
 }
 
-var on_asset_update_cb: *const fn ([]AssetZig) void = undefined;
-pub fn connect_on_asset_update_callback(cb: *const fn ([]AssetZig) void) void {
+var on_asset_update_cb: *const fn ([]const AssetZig) void = &on_asset_update_noop;
+pub fn connect_on_asset_update_callback(cb: *const fn ([]const AssetZig) void) void {
     on_asset_update_cb = cb;
 }
+
+fn on_asset_update_noop(_: []const AssetZig) void {}
 
 var on_asset_select_cb: *const fn (u32) void = undefined;
 pub fn connect_on_asset_selection_callback(cb: *const fn (u32) void) void {
@@ -310,7 +312,10 @@ pub fn picks_render() void {
     }
 }
 
-pub fn reset_assets(new_assets: []AssetZig) void {
+pub fn reset_assets(new_assets: []const AssetZig) void {
+    const real_callback_pointer = on_asset_update_cb;
+    on_asset_update_cb = &on_asset_update_noop;
+
     state.assets.clearAndFree();
 
     for (new_assets) |asset| {
@@ -321,6 +326,8 @@ pub fn reset_assets(new_assets: []AssetZig) void {
         state.active_asset_id = 0;
         on_asset_select_cb(state.active_asset_id);
     }
+
+    on_asset_update_cb = real_callback_pointer;
 }
 
 pub fn destroy_state() void {
