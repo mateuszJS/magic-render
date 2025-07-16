@@ -2,8 +2,6 @@ import type { Page } from '@playwright/test'
 import { expect } from '@playwright/test'
 import path from 'path'
 import { fileURLToPath } from 'url'
-// import { SerializedAsset } from 'index'
-// import SampleImg from './image-sample.png'
 
 const PAGE_WIDTH = 1000
 const PAGE_HEIGHT = 700
@@ -17,6 +15,7 @@ interface SerializedAsset {
   url: string
 }
 
+// SyntaxError: TypeScript enum is not supported in strip-only mode
 export const TransformHandle = {
   TOP_LEFT: 0,
   TOP_RIGHT: 1,
@@ -26,10 +25,8 @@ export const TransformHandle = {
 
 export default async function init(receivedPage: Page) {
   page = receivedPage
-  // and it produces different screenshot name base on operating system
-  // while we want to make app consistent on all operating systems
 
-  // To finally check if WebGPU is supported
+  // To check in the future if WebGPU is supported
   // await page.goto('https://webgpureport.org/');
   // await expect(page).toHaveScreenshot('webgpu-report.png');
 
