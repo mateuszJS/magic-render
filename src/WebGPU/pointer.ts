@@ -4,7 +4,7 @@ export const pointer = {
   x: 0,
   y: 0,
   afterPickEventsQueue: [] as Array<{ requireNewPick: boolean; cb: VoidFunction }>,
-  /* this queue exists because on mobile devices, we need to:
+  /* this queue exists because wen mobiel device is touched we have to:
     1) update pointer,
     2) do picking,
     3) record a click in order,
