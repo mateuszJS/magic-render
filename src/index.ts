@@ -47,7 +47,7 @@ export default async function initCreator(
   let isMouseEventProcessing = false
 
   function updateProcessing() {
-    onProcessingUpdate(imagesInLoading === 0 && isMouseEventProcessing)
+    onProcessingUpdate(imagesInLoading > 0 || isMouseEventProcessing)
   }
 
   /* setup WebGPU stuff */
