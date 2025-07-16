@@ -70,17 +70,22 @@ pub fn init_state(width: f32, height: f32) void {
 }
 
 var next_asset_id: u32 = ASSET_ID_TRESHOLD;
-pub fn add_asset(points: [4]Types.PointUV, texture_id: u32) void {
-    state.assets.put(next_asset_id, Texture.new(next_asset_id, points, texture_id)) catch unreachable;
-    next_asset_id +%= 1;
-    on_asset_update();
+
+pub fn add_asset(points: [4]Types.PointUV, texture_id: u32, id: u32) void {
+    const asset_id = if (id == 0) next_asset_id else id;
+    state.assets.put(asset_id, Texture.new(asset_id, points, texture_id)) catch unreachable;
+    notify_about_assets_update();
+
+    if (id == 0) {
+        next_asset_id +%= 1;
+    }
 }
 
 pub fn remove_asset() void {
     _ = state.assets.remove(state.active_asset_id);
     state.active_asset_id = 0;
     on_asset_select_cb(state.active_asset_id);
-    on_asset_update();
+    notify_about_assets_update();
 }
 
 pub fn update_points(id: u32, points: [4]Types.PointUV) void {
@@ -106,17 +111,38 @@ pub fn on_pointer_down(x: f32, y: f32) void {
     }
 }
 
-fn on_asset_update() void {
-    var result = std.heap.page_allocator.alloc(AssetZig, state.assets.count()) catch unreachable;
+// const std.heap.page_allocator.alloc(AssetZig, state.assets.count())
+var last_assets_update: []const AssetZig = &.{};
+fn notify_about_assets_update() void {
+    var new_assets_update = std.heap.page_allocator.alloc(AssetZig, state.assets.count()) catch unreachable;
     var iterator = state.assets.iterator();
     var i: usize = 0;
     while (iterator.next()) |entry| {
-        result[i] = entry.value_ptr.serialize();
+        new_assets_update[i] = entry.value_ptr.serialize();
         i += 1;
     }
 
-    if (result.len > 0) {
-        on_asset_update_cb(result); // would throw error if results.len == 0
+    if (new_assets_update.len == last_assets_update.len) {
+        var all_match = true;
+        for (new_assets_update, 0..) |new_asset, j| {
+            if (!std.meta.eql(new_asset, last_assets_update[j])) {
+                all_match = false;
+                break;
+            }
+        }
+
+        if (all_match) {
+            std.heap.page_allocator.free(new_assets_update);
+            return;
+        }
+    }
+
+    std.heap.page_allocator.free(last_assets_update);
+    last_assets_update = new_assets_update;
+
+    if (new_assets_update.len > 0) {
+        std.debug.print("new_assets_update.len: {}\n", .{new_assets_update.len});
+        on_asset_update_cb(new_assets_update); // would throw error if results.len == 0
     } else {
         on_asset_update_cb(&.{});
     }
@@ -126,11 +152,10 @@ pub fn on_pointer_up() void {
     if (state.ongoing_action == .none) {
         state.active_asset_id = state.hovered_asset_id;
         on_asset_select_cb(state.active_asset_id);
+    } else {
+        state.ongoing_action = .none;
+        notify_about_assets_update();
     }
-
-    state.ongoing_action = .none;
-
-    on_asset_update();
 }
 
 pub fn on_pointer_move(x: f32, y: f32) void {
@@ -285,8 +310,23 @@ pub fn picks_render() void {
     }
 }
 
+pub fn reset_assets(new_assets: []AssetZig) void {
+    state.assets.clearAndFree();
+
+    for (new_assets) |asset| {
+        add_asset(asset.points, asset.texture_id, asset.id);
+    }
+
+    if (!state.assets.contains(state.active_asset_id)) {
+        state.active_asset_id = 0;
+        on_asset_select_cb(state.active_asset_id);
+    }
+}
+
 pub fn destroy_state() void {
     state.assets.deinit();
+    std.heap.page_allocator.free(last_assets_update);
+    last_assets_update = &.{};
     Msdf.deinit_icons();
     next_asset_id = ASSET_ID_TRESHOLD;
     web_gpu_programs = undefined;

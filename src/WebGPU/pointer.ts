@@ -4,9 +4,17 @@ export const pointer = {
   x: 0,
   y: 0,
   afterPickEventsQueue: [] as Array<{ requireNewPick: boolean; cb: VoidFunction }>,
+  /* this queue exists because on mobile devices, we need to:
+    1) update pointer,
+    2) do picking,
+    3) record a click in order,
+    so click has to wait after pick is done */
 }
 
-export default function initMouseController(canvas: HTMLCanvasElement) {
+export default function initMouseController(
+  canvas: HTMLCanvasElement,
+  onStartProcessing: VoidFunction
+) {
   pointer.x = 0
   pointer.y = 0
 
@@ -31,6 +39,7 @@ export default function initMouseController(canvas: HTMLCanvasElement) {
     } else {
       move()
     }
+    onStartProcessing()
   })
 
   canvas.addEventListener('mousedown', (e) => {
@@ -39,6 +48,7 @@ export default function initMouseController(canvas: HTMLCanvasElement) {
       requireNewPick: true,
       cb: on_pointer_down.bind(null, pointer.x, canvas.height - pointer.y),
     })
+    onStartProcessing()
   })
 
   canvas.addEventListener('mouseup', () => {
@@ -50,6 +60,7 @@ export default function initMouseController(canvas: HTMLCanvasElement) {
     } else {
       on_pointer_up()
     }
+    onStartProcessing()
   })
 
   canvas.addEventListener('wheel', (event) => {

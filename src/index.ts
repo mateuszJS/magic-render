@@ -7,6 +7,7 @@ import {
   init_state,
   add_asset,
   remove_asset,
+  reset_assets,
   connect_on_asset_update_callback,
   connect_on_asset_selection_callback,
   destroy_state,
@@ -18,11 +19,14 @@ import IconsPng from '../msdf/output/icons.png'
 import IconsJson from '../msdf/output/icons.json'
 
 export type SerializedAsset = Omit<AssetZig, 'texture_id'> & {
+  id: number // not needed while loading project but useful for undo/redo to maintain selection
   url: string
+  textureId: number
 }
 
 export interface CreatorAPI {
-  addImage: (img: HTMLImageElement, points?: PointUV[]) => void
+  addImage: (img: HTMLImageElement, points?: PointUV[], id?: number) => void
+  resetAssets: (assets: SerializedAsset[]) => void
   removeAsset: VoidFunction
   destroy: VoidFunction
 }
@@ -34,10 +38,18 @@ export interface TextureSource {
 
 export default async function initCreator(
   canvas: HTMLCanvasElement,
-  assets: SerializedAsset[],
+  assets: Omit<SerializedAsset, 'id' | 'textureId'>[],
   onAssetsUpdate: (assets: SerializedAsset[]) => void,
-  onAssetSelect: (assetId: number) => void
+  onAssetSelect: (assetId: number) => void,
+  onProcessingUpdate: (inProgress: boolean) => void
 ): Promise<CreatorAPI> {
+  let imagesInLoading = 0
+  let isMouseEventProcessing = false
+
+  function updateProcessing() {
+    onProcessingUpdate(imagesInLoading === 0 && isMouseEventProcessing)
+  }
+
   /* setup WebGPU stuff */
   const device = await getDevice()
 
@@ -59,11 +71,16 @@ export default async function initCreator(
 
   initPrograms(device, presentationFormat)
 
-  initMouseController(canvas)
+  initMouseController(canvas, () => {
+    isMouseEventProcessing = true
+    updateProcessing()
+  })
 
   const textures: TextureSource[] = [{} as TextureSource /*reserved for icons texture*/]
   connect_on_asset_update_callback((serializedData: AssetZig[]) => {
     const serializedAssetsTextureUrl = [...serializedData].map<SerializedAsset>((asset) => ({
+      id: asset.id,
+      textureId: asset.texture_id,
       points: [...asset.points].map((point) => ({
         x: point.x,
         y: point.y,
@@ -77,21 +94,25 @@ export default async function initCreator(
 
   connect_on_asset_selection_callback(onAssetSelect)
 
-  function addImage(img: HTMLImageElement, points?: PointUV[]) {
+  const addImage: CreatorAPI['addImage'] = (img, points, id) => {
     const newTextureId = textures.length
     textures.push({
       url: img.src,
       texture: createTextureFromSource(device, img, { flipY: true }),
     })
 
-    add_asset(points || getDefaultPoints(img, canvas), newTextureId)
+    add_asset(points || getDefaultPoints(img, canvas), newTextureId, id || 0)
   }
 
   assets.forEach((asset) => {
+    imagesInLoading++
+    updateProcessing()
     const img = new Image()
     img.src = asset.url
     img.onload = () => {
       addImage(img, asset.points)
+      imagesInLoading--
+      updateProcessing()
     }
   })
 
@@ -112,11 +133,24 @@ export default async function initCreator(
     )
   }
 
-  const stopCreator = runCreator(canvas, context, device, presentationFormat, textures)
+  const stopCreator = runCreator(canvas, context, device, presentationFormat, textures, () => {
+    isMouseEventProcessing = false
+    updateProcessing()
+  })
+
+  const resetAssets: CreatorAPI['resetAssets'] = (assets) => {
+    const zigAssets: AssetZig[] = assets.map((asset) => ({
+      points: asset.points,
+      texture_id: asset.textureId,
+      id: asset.id,
+    }))
+    reset_assets(zigAssets)
+  }
 
   return {
     addImage,
     removeAsset: remove_asset,
+    resetAssets,
     destroy: () => {
       stopCreator()
       destroy_state()

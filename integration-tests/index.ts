@@ -1,73 +1,43 @@
-import initCreator from '../src/index'
-import SampleImg from './image-sample.png'
+import initCreator, { SerializedAsset } from '../src/index'
 
 declare global {
   interface Window {
-    testLastAssetUpdate: {
-      calledTimes: number
-      assets: object[] | null
-    }
+    assetsSnapshot: SerializedAsset[]
   }
 }
 
-const params = new URLSearchParams(document.location.search)
-const isSampleParam = params.has('sample') // is the string "Jonathan"
+const assetsUpdatesHistory: SerializedAsset[][] = [[]]
 
 async function test() {
   const canvas = document.querySelector<HTMLCanvasElement>('canvas')!
 
   const selectedAssetEl = document.querySelector<HTMLSpanElement>('#selected-asset-id')!
+  const isProcessingEventsEl = document.querySelector<HTMLSpanElement>('#is-processing-events')!
   const removeAssetBtn = document.querySelector<HTMLSpanElement>('#remove-btn')!
+  const undoBtn = document.querySelector<HTMLSpanElement>('#undo-btn')!
+  const redoBtn = document.querySelector<HTMLSpanElement>('#redo-btn')!
 
-  window.testLastAssetUpdate = {
-    calledTimes: 0,
-    assets: null,
-  }
+  window.assetsSnapshot = []
+  let currentHistoryIndex = 0
 
   const creator = await initCreator(
     canvas,
-    isSampleParam
-      ? [
-          {
-            points: [
-              {
-                u: 0,
-                v: 1,
-                x: 106.5999984741211,
-                y: 693.9000244140625,
-              },
-              {
-                u: 1,
-                v: 1,
-                x: 723.4000244140625,
-                y: 693.9000244140625,
-              },
-              {
-                u: 1,
-                v: 0,
-                x: 723.4000244140625,
-                y: 77.0999984741211,
-              },
-              {
-                u: 0,
-                v: 0,
-                x: 106.5999984741211,
-                y: 77.0999984741211,
-              },
-            ],
-            url: SampleImg,
-          },
-        ]
-      : [],
+    [],
     (assets) => {
-      window.testLastAssetUpdate = {
-        calledTimes: window.testLastAssetUpdate.calledTimes + 1,
-        assets,
+      window.assetsSnapshot = assets
+      // we had to implement this whole history logic because there is no way
+      // to call creator.resetCanvas(newAssets) from test code file
+      if (currentHistoryIndex === assetsUpdatesHistory.length - 1) {
+        assetsUpdatesHistory.push(assets)
+        currentHistoryIndex = assetsUpdatesHistory.length - 1
       }
       console.log(assets)
     },
     (assetId) => {
       selectedAssetEl.textContent = assetId.toString()
+    },
+    (inProgress) => {
+      isProcessingEventsEl.textContent = inProgress ? 'true' : 'false'
     }
   )
 
@@ -81,10 +51,23 @@ async function test() {
     img.onload = () => {
       creator.addImage(img)
     }
+    fileInput.value = '' // reset input value to allow re-uploading the same file
   })
 
   removeAssetBtn.addEventListener('click', () => {
     creator.removeAsset()
+  })
+
+  undoBtn.addEventListener('click', () => {
+    currentHistoryIndex = Math.max(0, currentHistoryIndex - 1)
+    const assets = assetsUpdatesHistory[currentHistoryIndex]
+    creator.resetAssets(assets)
+  })
+
+  redoBtn.addEventListener('click', () => {
+    currentHistoryIndex = Math.min(assetsUpdatesHistory.length - 1, currentHistoryIndex + 1)
+    const assets = assetsUpdatesHistory[currentHistoryIndex]
+    creator.resetAssets(assets)
   })
 }
 

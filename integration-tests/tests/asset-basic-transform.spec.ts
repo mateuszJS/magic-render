@@ -1,7 +1,7 @@
-// npx playwright test asset-basic-transform.spec.ts --debug
+// npm run test-e2e -- asset-basic-transform.spec.ts --debug
 
 import { test, expect } from '@playwright/test'
-import * as Utils from '../utils'
+import init from '../init'
 
 test('asset performs basic transformations', async ({ page }, testinfo) => {
   if (process.env.CI) {
@@ -11,14 +11,15 @@ test('asset performs basic transformations', async ({ page }, testinfo) => {
 
   testinfo.snapshotSuffix = '' // by default is `process.platform`
 
-  await Utils.init(page)
-  await Utils.uploadAsset(page)
+  const utils = await init(page)
+  await utils.uploadAsset()
   const canvas = page.locator('canvas')
 
   // select asset
   await page.mouse.move(550, 275)
   await page.mouse.down()
   await page.mouse.up()
+  await expect(canvas).toHaveScreenshot('select-image.png')
 
   // move
   await page.mouse.down()
