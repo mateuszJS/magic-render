@@ -345,3 +345,44 @@ pub fn destroy_state() void {
 pub fn import_icons(data: []const f32) void {
     Msdf.init_icons(data);
 }
+
+test "reset_assets does not call the real update callback" {
+    // Setup initial state
+    init_state(100, 100);
+    // Ensure state is cleaned up after the test
+    defer destroy_state();
+
+    // Define a mock callback function locally, with its own static state.
+    const MockCallback = struct {
+        // This static variable will hold the state for our mock.
+        // It's reset to false before each test run.
+        var was_called: bool = false;
+
+        fn assets_update(_: []const AssetZig) void {
+            // Modify the static variable within the struct.
+            was_called = true;
+        }
+
+        fn assets_selection(_: u32) void {}
+    };
+
+    // Connect our mock callback. This is the "real" callback for this test.
+    connect_on_asset_update_callback(MockCallback.assets_update);
+    connect_on_asset_selection_callback(MockCallback.assets_selection);
+
+    // Call the function we are testing
+    const initial_assets = [_]AssetZig{AssetZig{
+        .points = [_]Types.PointUV{
+            Types.PointUV{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 },
+            Types.PointUV{ .x = 1.0, .y = 0.0, .u = 1.0, .v = 0.0 },
+            Types.PointUV{ .x = 1.0, .y = 1.0, .u = 1.0, .v = 1.0 },
+            Types.PointUV{ .x = 0.0, .y = 1.0, .u = 0.0, .v = 1.0 },
+        },
+        .texture_id = 1,
+        .id = 123,
+    }};
+    reset_assets(&initial_assets);
+
+    // for the duration of reset_assets, the update callback should NOT be called
+    try std.testing.expect(!MockCallback.was_called);
+}
