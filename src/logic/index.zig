@@ -25,7 +25,7 @@ pub fn connect_web_gpu_programs(programs: *const WebGpuPrograms) void {
     web_gpu_programs = programs; // orelse WebGpuPrograms{};
 }
 
-var on_asset_update_cb: *const fn ([]const AssetZig) void = &on_asset_update_noop;
+var on_asset_update_cb: *const fn ([]const AssetZig) void = undefined;
 pub fn connect_on_asset_update_callback(cb: *const fn ([]const AssetZig) void) void {
     on_asset_update_cb = cb;
 }
