@@ -62,12 +62,14 @@ async function test() {
     currentHistoryIndex = Math.max(0, currentHistoryIndex - 1)
     const assets = assetsUpdatesHistory[currentHistoryIndex]
     creator.resetAssets(assets)
+    window.assetsSnapshot = assets
   })
 
   redoBtn.addEventListener('click', () => {
     currentHistoryIndex = Math.min(assetsUpdatesHistory.length - 1, currentHistoryIndex + 1)
     const assets = assetsUpdatesHistory[currentHistoryIndex]
     creator.resetAssets(assets)
+    window.assetsSnapshot = assets
   })
 }
 
