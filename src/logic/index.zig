@@ -81,14 +81,14 @@ fn generate_id() u32 {
 pub fn add_asset(id_or_zero: u32, points: [4]Types.PointUV, texture_id: u32) void {
     const id = if (id_or_zero == 0) generate_id() else id_or_zero;
     state.assets.put(id, Texture.new(id, points, texture_id)) catch unreachable;
-    notify_about_assets_update();
+    check_assets_update(true);
 }
 
 pub fn remove_asset() void {
     _ = state.assets.remove(state.active_asset_id);
     state.active_asset_id = 0;
     on_asset_select_cb(state.active_asset_id);
-    notify_about_assets_update();
+    check_assets_update(true);
 }
 
 pub fn on_update_pick(id: u32) void {
@@ -111,7 +111,7 @@ pub fn on_pointer_down(x: f32, y: f32) void {
 
 // const std.heap.page_allocator.alloc(AssetZig, state.assets.count())
 var last_assets_update: []const AssetZig = &.{};
-fn notify_about_assets_update() void {
+fn check_assets_update(should_notify: bool) void {
     const cb = on_asset_update_cb orelse return;
 
     var new_assets_update = std.heap.page_allocator.alloc(AssetZig, state.assets.count()) catch unreachable;
@@ -140,10 +140,12 @@ fn notify_about_assets_update() void {
     std.heap.page_allocator.free(last_assets_update);
     last_assets_update = new_assets_update;
 
-    if (new_assets_update.len > 0) {
-        cb(new_assets_update); // would throw error if results.len == 0
-    } else {
-        cb(&.{});
+    if (should_notify) {
+        if (new_assets_update.len > 0) {
+            cb(new_assets_update); // would throw error if results.len == 0
+        } else {
+            cb(&.{});
+        }
     }
 }
 
@@ -153,7 +155,7 @@ pub fn on_pointer_up() void {
         on_asset_select_cb(state.active_asset_id);
     } else {
         state.ongoing_action = .none;
-        notify_about_assets_update();
+        check_assets_update(true);
     }
 }
 
@@ -192,7 +194,7 @@ pub fn on_pointer_move(x: f32, y: f32) void {
 pub fn on_pointer_leave() void {
     state.ongoing_action = .none;
     state.hovered_asset_id = 0;
-    notify_about_assets_update();
+    check_assets_update(true);
 }
 
 fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
@@ -332,9 +334,7 @@ pub fn reset_assets(new_assets: []const AssetZig, with_snapshot: bool) void {
 
     on_asset_update_cb = real_callback_pointer;
 
-    if (with_snapshot) {
-        notify_about_assets_update();
-    }
+    check_assets_update(with_snapshot);
 }
 
 pub fn destroy_state() void {
