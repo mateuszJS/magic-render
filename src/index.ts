@@ -170,9 +170,9 @@ export default async function initCreator(
             }
 
             const textureId = addTexture(asset.url, (width, height) => {
-              // we wait to add iamge once poitns are known because otherwise
+              // we wait to add image once points are known because otherwise
               // if we add img first with "Default" point value and update
-              // it later ocne texture is loaded, we will get history snapshot with
+              // it later once texture is loaded, we will get history snapshot with
               // that "default" points
               return resolve({
                 points: getDefaultPoints(width, height, canvas.clientWidth, canvas.clientHeight),

@@ -78,8 +78,8 @@ fn generate_id() u32 {
     return id;
 }
 
-pub fn add_asset(maybe_id: u32, points: [4]Types.PointUV, texture_id: u32) void {
-    const id = if (maybe_id == 0) generate_id() else maybe_id;
+pub fn add_asset(id_or_zero: u32, points: [4]Types.PointUV, texture_id: u32) void {
+    const id = if (id_or_zero == 0) generate_id() else id_or_zero;
     state.assets.put(id, Texture.new(id, points, texture_id)) catch unreachable;
     notify_about_assets_update();
 }

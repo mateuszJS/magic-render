@@ -112,7 +112,7 @@ export default class PickManager {
 
       let i = 0
       while (i < pointer.afterPickEventsQueue.length) {
-        // this is pretty stupid, because pointer.x, poiner.y were updated immidiately
+        // this is pretty stupid, because pointer.x, pointer.y were updated immediately
         // without waiting for this place right here
         const { requireNewPick, cb } = pointer.afterPickEventsQueue[i]
         if (requireNewPick && i > 0) break // we need to start new picking pass
