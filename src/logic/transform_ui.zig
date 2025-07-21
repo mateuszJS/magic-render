@@ -227,8 +227,8 @@ pub fn get_transform_ui(
             const icon_size = thickness - 5.0;
             const msdf_data = Msdf.get_msdf_vertex_data(
                 Msdf.IconId.rotate,
-                p1.x - icon_size * 0.5 - 0.5,
-                p1.y - icon_size * 0.5 + 0.5,
+                p1.x - icon_size * 0.5 - 0.25,
+                p1.y - icon_size * 0.5 + 0.75,
                 icon_size,
                 if (hovered_elem_id == transform_line.id) black else white,
             );
