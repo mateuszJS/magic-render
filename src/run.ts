@@ -24,8 +24,8 @@ export default function runCreator(
   textures: TextureSource[],
   onEmptyEvents: VoidFunction // call when there is no more events to process
 ): VoidFunction {
-  const canvasMatrix = getCanvasMatrix(canvas)
   let canvasPass: GPURenderPassEncoder
+  let canvasMatrix: Float32Array
 
   const pickManager = new PickManager(device)
   let pickMatrix: Float32Array
@@ -68,6 +68,8 @@ export default function runCreator(
 
     const canvasDescriptor = getCanvasRenderDescriptor(context, device)
     canvasPass = encoder.beginRenderPass(canvasDescriptor)
+    canvasMatrix = getCanvasMatrix(canvas)
+
     canvas_render()
     canvasPass.end()
 
