@@ -39,12 +39,7 @@ const STATE_AFTER_UPLOAD = [
 ]
 
 test('asset selection', async ({ page }, testinfo) => {
-  if (process.env.CI) {
-    test.skip()
-    return
-  }
   testinfo.snapshotSuffix = '' // by default is `process.platform`
-  const canvas = page.locator('canvas')
   const assetIdEl = page.locator('#selected-asset-id')
 
   const utils = await init(page)
