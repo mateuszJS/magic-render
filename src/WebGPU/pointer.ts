@@ -1,4 +1,11 @@
-import { on_pointer_move, on_pointer_down, on_pointer_up } from '../logic/index.zig'
+import {
+  on_pointer_move,
+  on_pointer_leave,
+  on_pointer_down,
+  on_pointer_up,
+} from '../logic/index.zig'
+
+const OUTSIDE_CANVAS = -1
 
 export const pointer = {
   x: 0,
@@ -15,8 +22,8 @@ export default function initMouseController(
   canvas: HTMLCanvasElement,
   onStartProcessing: VoidFunction
 ) {
-  pointer.x = 0
-  pointer.y = 0
+  pointer.x = OUTSIDE_CANVAS
+  pointer.y = OUTSIDE_CANVAS
 
   function updatePointer(e: MouseEvent) {
     const rect = canvas.getBoundingClientRect()
@@ -24,7 +31,23 @@ export default function initMouseController(
     pointer.y = e.clientY - rect.top
   }
 
-  canvas.addEventListener('mouseleave', () => {})
+  canvas.addEventListener('mouseleave', () => {
+    onStartProcessing()
+
+    const update = () => {
+      pointer.x = OUTSIDE_CANVAS
+      pointer.y = OUTSIDE_CANVAS
+      on_pointer_leave()
+    }
+    if (pointer.afterPickEventsQueue.length > 0) {
+      pointer.afterPickEventsQueue.push({
+        requireNewPick: false,
+        cb: update,
+      })
+    } else {
+      update()
+    }
+  })
 
   canvas.addEventListener('mousemove', (e) => {
     onStartProcessing()
