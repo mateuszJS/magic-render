@@ -11,28 +11,28 @@ const black = [4]f32{ 0.0, 0.0, 0.0, 1.0 };
 
 const TransformLine = struct {
     id: u32,
-    relative_start: usize,
-    relative_end: usize,
+    start: usize,
+    end: usize,
 };
 
 const UI_VERTICIES_COUNT_BORDER = 13;
 const resize_lines = [UI_VERTICIES_COUNT_BORDER]TransformLine{
     // corners, clock wise
-    .{ .id = 1, .relative_start = 0, .relative_end = 1 },
-    .{ .id = 1, .relative_start = 0, .relative_end = 3 },
-    .{ .id = 2, .relative_start = 1, .relative_end = 0 },
-    .{ .id = 2, .relative_start = 1, .relative_end = 2 },
-    .{ .id = 3, .relative_start = 2, .relative_end = 1 },
-    .{ .id = 3, .relative_start = 2, .relative_end = 3 },
-    .{ .id = 4, .relative_start = 3, .relative_end = 0 },
-    .{ .id = 4, .relative_start = 3, .relative_end = 2 },
+    .{ .id = 1, .start = 0, .end = 1 },
+    .{ .id = 1, .start = 0, .end = 3 },
+    .{ .id = 2, .start = 1, .end = 0 },
+    .{ .id = 2, .start = 1, .end = 2 },
+    .{ .id = 3, .start = 2, .end = 1 },
+    .{ .id = 3, .start = 2, .end = 3 },
+    .{ .id = 4, .start = 3, .end = 0 },
+    .{ .id = 4, .start = 3, .end = 2 },
     // straight lines, clock wise
-    .{ .id = 5, .relative_start = 0, .relative_end = 1 },
-    .{ .id = 6, .relative_start = 1, .relative_end = 2 },
-    .{ .id = 7, .relative_start = 2, .relative_end = 3 },
-    .{ .id = 8, .relative_start = 3, .relative_end = 0 },
+    .{ .id = 5, .start = 0, .end = 1 },
+    .{ .id = 6, .start = 1, .end = 2 },
+    .{ .id = 7, .start = 2, .end = 3 },
+    .{ .id = 8, .start = 3, .end = 0 },
     //  rotation
-    .{ .id = 9, .relative_start = 0, .relative_end = 0 },
+    .{ .id = 9, .start = 0, .end = 0 },
 };
 
 pub fn is_transform_ui(id: u32) bool {
@@ -43,18 +43,18 @@ pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     const asset_angle_y = points[0].angle_to(points[3]) + std.math.pi / 2.0;
     // it's important we dont meausre horizontal one, because reflecting by X axis makes no change in horizontal angle
     // but should be 180 degree opposite
-    const transform_matrix = Matrix3x3.rotation(asset_angle_y);
-    const inverted_transform_matrix = transform_matrix.inverse().?;
-    const pointer = inverted_transform_matrix.transform_point(Point{
+    const t_matrix = Matrix3x3.rotation(asset_angle_y); // transfor matrix
+    const invert_t_matrix = t_matrix.inverse().?;
+    const pointer = invert_t_matrix.transform_point(Point{
         .x = raw_x,
         .y = raw_y,
     });
 
     var un_rotated_points = [4]Point{
-        inverted_transform_matrix.transform_point(points[0]),
-        inverted_transform_matrix.transform_point(points[1]),
-        inverted_transform_matrix.transform_point(points[2]),
-        inverted_transform_matrix.transform_point(points[3]),
+        invert_t_matrix.transform_point(points[0]),
+        invert_t_matrix.transform_point(points[1]),
+        invert_t_matrix.transform_point(points[2]),
+        invert_t_matrix.transform_point(points[3]),
     };
 
     switch (ui_component_id) {
@@ -131,10 +131,10 @@ pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     }
 
     if (ui_component_id != 9) {
-        const p0 = transform_matrix.transform_point(un_rotated_points[0]);
-        const p1 = transform_matrix.transform_point(un_rotated_points[1]);
-        const p2 = transform_matrix.transform_point(un_rotated_points[2]);
-        const p3 = transform_matrix.transform_point(un_rotated_points[3]);
+        const p0 = t_matrix.transform_point(un_rotated_points[0]);
+        const p1 = t_matrix.transform_point(un_rotated_points[1]);
+        const p2 = t_matrix.transform_point(un_rotated_points[2]);
+        const p3 = t_matrix.transform_point(un_rotated_points[3]);
 
         points[0].x = p0.x;
         points[0].y = p0.y;
@@ -147,42 +147,42 @@ pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     }
 }
 
-fn get_points_of_line(asset: Asset, transform_line: TransformLine) struct { Point, Point } {
+fn get_points_of_line(asset: Asset, t_line: TransformLine) struct { Point, Point } {
     const points = asset.points;
-    if (transform_line.id <= 4) {
+    if (t_line.id <= 4) {
         // corners
-        const length = points[transform_line.relative_start].distance(points[transform_line.relative_end]);
-        const angle = points[transform_line.relative_start].angle_to(points[transform_line.relative_end]);
+        const length = points[t_line.start].distance(points[t_line.end]);
+        const angle = points[t_line.start].angle_to(points[t_line.end]);
         const sanitized_length = @min(30.0, length * 0.1);
 
         const p1 = Point{
-            .x = points[transform_line.relative_start].x,
-            .y = points[transform_line.relative_start].y,
+            .x = points[t_line.start].x,
+            .y = points[t_line.start].y,
         };
         const p2 = Point{
-            .x = points[transform_line.relative_start].x + @cos(angle) * sanitized_length,
-            .y = points[transform_line.relative_start].y + @sin(angle) * sanitized_length,
+            .x = points[t_line.start].x + @cos(angle) * sanitized_length,
+            .y = points[t_line.start].y + @sin(angle) * sanitized_length,
         };
 
         return .{ p1, p2 };
-    } else if (transform_line.id <= 8) {
+    } else if (t_line.id <= 8) {
         // straight lines
-        const relative_point = points[transform_line.relative_start].mid(points[transform_line.relative_end]);
-        const length = points[transform_line.relative_start].distance(points[transform_line.relative_end]);
-        const angle = points[transform_line.relative_start].angle_to(points[transform_line.relative_end]);
+        const point = points[t_line.start].mid(points[t_line.end]);
+        const length = points[t_line.start].distance(points[t_line.end]);
+        const angle = points[t_line.start].angle_to(points[t_line.end]);
         const sanitized_length = @min(30.0, length * 0.07);
 
         const p1 = Point{
-            .x = relative_point.x + @cos(angle) * sanitized_length,
-            .y = relative_point.y + @sin(angle) * sanitized_length,
+            .x = point.x + @cos(angle) * sanitized_length,
+            .y = point.y + @sin(angle) * sanitized_length,
         };
         const p2 = Point{
-            .x = relative_point.x - @cos(angle) * sanitized_length,
-            .y = relative_point.y - @sin(angle) * sanitized_length,
+            .x = point.x - @cos(angle) * sanitized_length,
+            .y = point.y - @sin(angle) * sanitized_length,
         };
 
         return .{ p1, p2 };
-    } else if (transform_line.id == 9) {
+    } else if (t_line.id == 9) {
         const asset_center = Point{
             .x = (points[0].x + points[2].x) * 0.5,
             .y = (points[0].y + points[2].y) * 0.5,
