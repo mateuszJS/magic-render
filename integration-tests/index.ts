@@ -1,12 +1,12 @@
-import initCreator, { SerializedAsset } from '../src/index'
+import initCreator, { SerializedOutputAsset } from '../src/index'
 
 declare global {
   interface Window {
-    assetsSnapshot: SerializedAsset[]
+    assetsSnapshot: SerializedOutputAsset[]
   }
 }
 
-const assetsUpdatesHistory: SerializedAsset[][] = [[]]
+const assetsUpdatesHistory: SerializedOutputAsset[][] = [[]]
 
 async function test() {
   const canvas = document.querySelector<HTMLCanvasElement>('canvas')!
@@ -22,7 +22,6 @@ async function test() {
 
   const creator = await initCreator(
     canvas,
-    [],
     (assets) => {
       window.assetsSnapshot = assets
       // we had to implement this whole history logic because there is no way
@@ -41,17 +40,25 @@ async function test() {
     }
   )
 
-  const fileInput = document.querySelector<HTMLInputElement>('input')!
-  fileInput.addEventListener('change', (event) => {
+  const addImageInput = document.querySelector<HTMLInputElement>('#add-image')!
+  addImageInput.addEventListener('change', (event) => {
     const { files } = event.target as HTMLInputElement
     if (!files) return
+    creator.addImage(URL.createObjectURL(files[0]))
+    addImageInput.value = '' // reset input value to allow re-uploading the same file
+  })
 
-    const img = new Image()
-    img.src = URL.createObjectURL(files[0])
-    img.onload = () => {
-      creator.addImage(img)
-    }
-    fileInput.value = '' // reset input value to allow re-uploading the same file
+  const startProjectInput = document.querySelector<HTMLInputElement>('#start-project-from-images')!
+  startProjectInput.addEventListener('change', (event) => {
+    const { files } = event.target as HTMLInputElement
+    if (!files) return
+    creator.resetAssets(
+      Array.from(files).map((file) => ({
+        url: URL.createObjectURL(file),
+      })),
+      true
+    )
+    startProjectInput.value = '' // reset input value to allow re-uploading the same file
   })
 
   removeAssetBtn.addEventListener('click', () => {

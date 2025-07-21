@@ -19,15 +19,15 @@ type AssetZig = {
 
 declare module '*.zig' {
   export const init_state: (width: number, height: number) => void
-  export const add_asset: (points: PointUV[], texture_id: number, id: number) => void
+  export const add_asset: (maybe_asset_id: number, points: PointUV[], texture_id: number) => void
   export const remove_asset: () => void
-  export const reset_assets: (assets: AssetZig[]) => void
-  export const update_points: (id: number, points: PointUV[]) => void
+  export const reset_assets: (assets: AssetZig[], with_snapshot: boolean) => void
 
   export const on_update_pick: (id: number) => void
   export const on_pointer_down: (x: number, y: number) => void
   export const on_pointer_up: () => void
   export const on_pointer_move: (x: number, y: number) => void
+  export const on_pointer_leave: VoidFunction
 
   export const connect_web_gpu_programs: (programs: {
     draw_texture: (vertexData: ZigF32Array, texture_id: number) => void

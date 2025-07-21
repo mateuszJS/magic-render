@@ -9,8 +9,8 @@ test('asset selection', async ({ page }, testinfo) => {
     return
   }
   testinfo.snapshotSuffix = '' // by default is `process.platform`
-  const undoBtn = page.locator('#undo-btn')!
-  const redoBtn = page.locator('#redo-btn')!
+  const undoBtn = page.locator('#undo-btn')
+  const redoBtn = page.locator('#redo-btn')
   const assetIdEl = page.locator('#selected-asset-id')
 
   const utils = await init(page)

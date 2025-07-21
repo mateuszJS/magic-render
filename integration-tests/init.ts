@@ -65,7 +65,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const testImagePath = path.join(__dirname, './image-sample.png')
 
 async function uploadAsset() {
-  const fileInput = (await page.$('input[type="file"]'))!
+  const fileInput = (await page.$('#add-image'))!
   await fileInput.setInputFiles(testImagePath)
   const assets = await getAssetsState()
   return assets[assets.length - 1] // return the last uploaded asset
