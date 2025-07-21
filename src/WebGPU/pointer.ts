@@ -54,7 +54,7 @@ export default function initMouseController(
 
     const move = () => {
       updatePointer(e)
-      on_pointer_move(pointer.x, canvas.height - pointer.y)
+      on_pointer_move(pointer.x, canvas.clientHeight - pointer.y)
     }
     if (pointer.afterPickEventsQueue.length > 0) {
       pointer.afterPickEventsQueue.push({
@@ -72,7 +72,7 @@ export default function initMouseController(
     updatePointer(e)
     pointer.afterPickEventsQueue.push({
       requireNewPick: true,
-      cb: on_pointer_down.bind(null, pointer.x, canvas.height - pointer.y),
+      cb: on_pointer_down.bind(null, pointer.x, canvas.clientHeight - pointer.y),
     })
   })
 

@@ -17,14 +17,26 @@ export default function canvasSizeObserver(
   const observer = new ResizeObserver((entries) => {
     for (const entry of entries) {
       const canvas = entry.target as HTMLCanvasElement
-      const width = entry.contentBoxSize[0].inlineSize | 0
-      const height = entry.contentBoxSize[0].blockSize | 0
+      // Safari does not support devicePixelContentBoxSize
+      const width =
+        entry.devicePixelContentBoxSize[0].inlineSize ||
+        entry.contentBoxSize[0].inlineSize * devicePixelRatio
+      const height =
+        entry.devicePixelContentBoxSize[0].blockSize ||
+        entry.contentBoxSize[0].blockSize * devicePixelRatio
+
       updateCanvasSize(canvas, width, height, device)
       callback()
     }
   })
-  observer.observe(canvas)
+
+  try {
+    observer.observe(canvas, { box: 'device-pixel-content-box' })
+  } catch {
+    observer.observe(canvas, { box: 'content-box' })
+  }
 
   // observer calls it anyway but it just happens late enough that user see a flicker
+  // it it just displayed for a brief second, so we don't play with devicePixelContentBoxSize or devicePixelRatio
   updateCanvasSize(canvas, canvas.clientWidth, canvas.clientHeight, device)
 }
