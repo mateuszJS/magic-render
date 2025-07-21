@@ -47,7 +47,7 @@ test('history - the next update after reset_assets should be different than inpu
   // and with next mouse event check_assets_update function was called with same data as reset_assets got
   // while should not be called at all if nothing has changed
 
-  // this case looks for this behaviour by checking if rolling back histor was interrupted with just a mouse event(no real change in assets)
+  // this test case looks for this behaviour by checking if rolling back history was interrupted with just a mouse event(no real change in assets)
 
   testinfo.snapshotSuffix = ''
   const undoBtn = page.locator('#undo-btn')
