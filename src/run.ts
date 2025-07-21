@@ -9,9 +9,8 @@ import {
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
 import { canvas_render, picks_render, connect_web_gpu_programs } from 'logic/index.zig'
-import { TextureSource } from '.'
 import { pointer } from 'WebGPU/pointer'
-import getLoadingTexture from 'loadingTexture'
+import * as Textures from 'textures'
 
 export const transformMatrix = new Float32Array()
 export const MAP_BACKGROUND_SCALE = 1000
@@ -21,7 +20,6 @@ export default function runCreator(
   context: GPUCanvasContext,
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
-  textures: TextureSource[],
   onEmptyEvents: VoidFunction // call when there is no more events to process
 ): VoidFunction {
   let canvasPass: GPURenderPassEncoder
@@ -31,32 +29,20 @@ export default function runCreator(
   let pickMatrix: Float32Array
   let pickPass: GPURenderPassEncoder
 
-  const loadingTexture = getLoadingTexture(device)
-
   connect_web_gpu_programs({
     draw_texture: (vertex_data, texture_id) =>
       drawTexture(
         canvasPass,
         canvasMatrix,
         vertex_data.typedArray,
-        textures[texture_id].texture ?? loadingTexture
+        Textures.getTexture(texture_id)
       ),
     draw_msdf: (vertex_data, texture_id) => {
-      drawMSDF(
-        canvasPass,
-        canvasMatrix,
-        vertex_data.typedArray,
-        textures[texture_id].texture ?? loadingTexture
-      )
+      drawMSDF(canvasPass, canvasMatrix, vertex_data.typedArray, Textures.getTexture(texture_id))
     },
     draw_triangle: (vertex_data) => drawTriangle(canvasPass, canvasMatrix, vertex_data.typedArray),
     pick_texture: (vertex_data, texture_id) =>
-      pickTexture(
-        pickPass,
-        pickMatrix,
-        vertex_data.typedArray,
-        textures[texture_id].texture ?? loadingTexture
-      ),
+      pickTexture(pickPass, pickMatrix, vertex_data.typedArray, Textures.getTexture(texture_id)),
     pick_triangle: (vertex_data) => pickTriangle(pickPass, pickMatrix, vertex_data.typedArray),
   })
 
