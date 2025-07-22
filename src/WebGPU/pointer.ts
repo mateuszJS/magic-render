@@ -159,10 +159,14 @@ export default function initMouseController(
   // pointer.zoom = clamp(pointer.zoom + event.deltaY * 0.01, 0.1, 100)
 
   document.body.addEventListener('keydown', (event) => {
-    if (event.code === 'Space' && cameraMode !== CameraMode.Pan) {
-      cameraMode = CameraMode.Pan
-      canvas.style.cursor = 'grab'
-    } else if (event.key === 'Alt' && cameraMode !== CameraMode.Zoom) {
+    if (event.code === 'Space') {
+      event.preventDefault()
+      if (cameraMode !== CameraMode.Pan) {
+        canvas.style.cursor = 'grab'
+        cameraMode = CameraMode.Pan
+      }
+    } else if (event.key === 'Alt') {
+      event.preventDefault()
       cameraMode = CameraMode.Zoom
     }
   })
