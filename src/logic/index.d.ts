@@ -33,6 +33,7 @@ declare module '*.zig' {
   export const on_pointer_up: () => void
   export const on_pointer_move: (x: number, y: number) => void
   export const on_pointer_leave: VoidFunction
+  export const update_render_scale: (render_scale: number) => void
 
   export const connect_web_gpu_programs: (programs: {
     draw_texture: (vertexData: ZigF32Array, texture_id: number) => void

@@ -85,13 +85,11 @@ export default class PickManager {
   }
 
   createMatrix(canvas: HTMLCanvasElement, canvasMatrix: Float32Array) {
-    const { clientWidth, clientHeight } = canvas
-
-    const tx = -(2 * (pointer.x / clientWidth) - 1)
-    const ty = 2 * (pointer.y / clientHeight) - 1
+    const tx = -(2 * (pointer.x / canvas.width) - 1)
+    const ty = 2 * (pointer.y / canvas.height) - 1
 
     const pickMatrix = [
-      mat4.scaling([clientWidth, clientHeight, 0]), // scale to 1px convers whole shader output
+      mat4.scaling([canvas.width, canvas.height, 0]), // scale to 1px convers whole shader output
       mat4.translation([tx, ty, 0]),
       canvasMatrix,
     ].reduce(
