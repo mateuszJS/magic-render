@@ -325,27 +325,27 @@ pub fn canvas_render() void {
         web_gpu_programs.draw_msdf(msdf_buffer, 0);
     }
 
-    // rest of the bod yfo this function is just testing
-    const points = [_]Types.Point{
-        Types.Point{ .x = 100.0, .y = 70.0 }, //
-        Types.Point{ .x = 300.0, .y = 100.0 }, //
-        Types.Point{ .x = 300.0, .y = 250.0 }, //
-        Types.Point{ .x = 100.0, .y = 150.0 }, //
-    };
-    const p0_v = Triangle.get_round_corner_vector(0, points, 10.0);
-    const p1_v = Triangle.get_round_corner_vector(1, points, 20.0);
-    const p2_v = Triangle.get_round_corner_vector(2, points, 80.0);
-    const p3_v = Triangle.get_round_corner_vector(3, points, 20.0);
+    // rest of the body of this function is just testing
+    // const points = [_]Types.Point{
+    //     Types.Point{ .x = 100.0, .y = 70.0 }, //
+    //     Types.Point{ .x = 300.0, .y = 100.0 }, //
+    //     Types.Point{ .x = 300.0, .y = 250.0 }, //
+    //     Types.Point{ .x = 100.0, .y = 150.0 }, //
+    // };
+    // const p0_v = Triangle.get_round_corner_vector(0, points, 10.0);
+    // const p1_v = Triangle.get_round_corner_vector(1, points, 20.0);
+    // const p2_v = Triangle.get_round_corner_vector(2, points, 80.0);
+    // const p3_v = Triangle.get_round_corner_vector(3, points, 20.0);
 
-    var shape_vertex_data: [2 * Triangle.DRAW_VERTICES_COUNT]f32 = undefined;
-    const color = [_]f32{ 0.0, 1.0, 1.0, 1.0 };
-    Triangle.get_vertex_data(shape_vertex_data[0..Triangle.DRAW_VERTICES_COUNT], p0_v, p1_v, p2_v, color);
-    Triangle.get_vertex_data(shape_vertex_data[Triangle.DRAW_VERTICES_COUNT .. 2 * Triangle.DRAW_VERTICES_COUNT], p0_v, p2_v, p3_v, color);
+    // var shape_vertex_data: [2 * Triangle.DRAW_VERTICES_COUNT]f32 = undefined;
+    // const color = [_]f32{ 0.0, 1.0, 1.0, 1.0 };
+    // Triangle.get_vertex_data(shape_vertex_data[0..Triangle.DRAW_VERTICES_COUNT], p0_v, p1_v, p2_v, color);
+    // Triangle.get_vertex_data(shape_vertex_data[Triangle.DRAW_VERTICES_COUNT .. 2 * Triangle.DRAW_VERTICES_COUNT], p0_v, p2_v, p3_v, color);
 
-    web_gpu_programs.draw_triangle(&shape_vertex_data);
+    // web_gpu_programs.draw_triangle(&shape_vertex_data);
 
-    const msdf_vertex_data = Msdf.get_msdf_vertex_data(Msdf.IconId.rotate, 10.0, 10.0, 100.0, [_]f32{ 1.0, 0.0, 0.0, 1.0 });
-    web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
+    // const msdf_vertex_data = Msdf.get_msdf_vertex_data(Msdf.IconId.rotate, 10.0, 10.0, 100.0, [_]f32{ 1.0, 0.0, 0.0, 1.0 });
+    // web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
 }
 
 pub fn picks_render() void {
