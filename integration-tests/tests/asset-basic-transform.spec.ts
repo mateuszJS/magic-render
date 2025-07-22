@@ -4,11 +4,6 @@ import { test, expect } from '@playwright/test'
 import init from '../init'
 
 test('asset performs basic transformations', async ({ page }, testinfo) => {
-  if (process.env.CI) {
-    test.skip()
-    return
-  }
-
   testinfo.snapshotSuffix = '' // by default is `process.platform`
 
   const utils = await init(page)

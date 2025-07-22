@@ -26,10 +26,11 @@ async function test() {
       window.assetsSnapshot = assets
       // we had to implement this whole history logic because there is no way
       // to call creator.resetCanvas(newAssets) from test code file
-      if (currentHistoryIndex === assetsUpdatesHistory.length - 1) {
-        assetsUpdatesHistory.push(assets)
-        currentHistoryIndex = assetsUpdatesHistory.length - 1
+      if (currentHistoryIndex < assetsUpdatesHistory.length - 1) {
+        assetsUpdatesHistory.splice(currentHistoryIndex + 1)
       }
+      assetsUpdatesHistory.push(assets)
+      currentHistoryIndex = assetsUpdatesHistory.length - 1
       console.log(assets)
     },
     (assetId) => {
@@ -48,8 +49,10 @@ async function test() {
     addImageInput.value = '' // reset input value to allow re-uploading the same file
   })
 
-  const startProjectInput = document.querySelector<HTMLInputElement>('#start-project-from-images')!
-  startProjectInput.addEventListener('change', (event) => {
+  const startProjectInputFromImages = document.querySelector<HTMLInputElement>(
+    '#start-project-from-images'
+  )!
+  startProjectInputFromImages.addEventListener('change', (event) => {
     const { files } = event.target as HTMLInputElement
     if (!files) return
     creator.resetAssets(
@@ -58,7 +61,28 @@ async function test() {
       })),
       true
     )
-    startProjectInput.value = '' // reset input value to allow re-uploading the same file
+    startProjectInputFromImages.value = '' // reset input value to allow re-uploading the same file
+  })
+
+  const startProjectInputFroMAssets = document.querySelector<HTMLInputElement>(
+    '#start-project-from-assets'
+  )!
+  startProjectInputFroMAssets.addEventListener('change', (event) => {
+    const { files } = event.target as HTMLInputElement
+    if (!files) return
+
+    const PROJECT_SAMPLE = Array.from(files).map((file) => ({
+      url: URL.createObjectURL(file),
+      points: [
+        { x: 100, y: 100, u: 0, v: 0 },
+        { x: 200, y: 100, u: 1, v: 0 },
+        { x: 200, y: 200, u: 1, v: 1 },
+        { x: 100, y: 200, u: 0, v: 1 },
+      ],
+    }))
+
+    creator.resetAssets(PROJECT_SAMPLE, true)
+    startProjectInputFroMAssets.value = '' // reset input value to allow re-uploading the same file
   })
 
   removeAssetBtn.addEventListener('click', () => {

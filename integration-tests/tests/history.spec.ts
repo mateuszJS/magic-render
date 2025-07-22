@@ -3,11 +3,7 @@
 import { test, expect } from '@playwright/test'
 import init, { TransformHandle } from '../init'
 
-test('asset selection', async ({ page }, testinfo) => {
-  if (process.env.CI) {
-    test.skip()
-    return
-  }
+test('history', async ({ page }, testinfo) => {
   testinfo.snapshotSuffix = '' // by default is `process.platform`
   const undoBtn = page.locator('#undo-btn')
   const redoBtn = page.locator('#redo-btn')
@@ -42,4 +38,30 @@ test('asset selection', async ({ page }, testinfo) => {
 
   await redoBtn.click() // redo second asset upload
   expect(await utils.getAssetsState()).toStrictEqual(stateSecondAssetTransform)
+})
+
+test('history - the next update after reset_assets should be different than input of reset_assets', async ({
+  page,
+}, testinfo) => {
+  // There was an issue where we go back in history and last_snapshot was not updated(reset_asset wasn't updating it)
+  // and with next mouse event check_assets_update function was called with same data as reset_assets got
+  // while should not be called at all if nothing has changed
+
+  // this test case looks for this behaviour by checking if rolling back history was interrupted with just a mouse event(no real change in assets)
+
+  testinfo.snapshotSuffix = ''
+  const undoBtn = page.locator('#undo-btn')
+  const redoBtn = page.locator('#redo-btn')
+
+  const utils = await init(page)
+  const firstAsset = await utils.uploadAsset()
+
+  await utils.selectAsset(firstAsset)
+  await utils.resizeAsset(firstAsset, 200, 200, TransformHandle.BOTTOM_RIGHT)
+  const afterResizeState = await utils.getAssetsState()
+  await undoBtn.click()
+  await page.mouse.move(300, 300) // move pointer on canvas
+  await page.mouse.move(0, 0) // so now can be move out and trigger mouse leave event
+  await redoBtn.click()
+  expect(await utils.getAssetsState()).toStrictEqual(afterResizeState)
 })

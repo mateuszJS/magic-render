@@ -1,4 +1,4 @@
-const Texture = @import("texture.zig").Texture;
+const Asset = @import("asset.zig").Asset;
 const Point = @import("types.zig").Point;
 const Line = @import("line.zig");
 const PointUV = @import("types.zig").PointUV;
@@ -11,28 +11,28 @@ const black = [4]f32{ 0.0, 0.0, 0.0, 1.0 };
 
 const TransformLine = struct {
     id: u32,
-    relative_start: usize,
-    relative_end: usize,
+    start: usize,
+    end: usize,
 };
 
 const UI_VERTICIES_COUNT_BORDER = 13;
 const resize_lines = [UI_VERTICIES_COUNT_BORDER]TransformLine{
     // corners, clock wise
-    .{ .id = 1, .relative_start = 0, .relative_end = 1 },
-    .{ .id = 1, .relative_start = 0, .relative_end = 3 },
-    .{ .id = 2, .relative_start = 1, .relative_end = 0 },
-    .{ .id = 2, .relative_start = 1, .relative_end = 2 },
-    .{ .id = 3, .relative_start = 2, .relative_end = 1 },
-    .{ .id = 3, .relative_start = 2, .relative_end = 3 },
-    .{ .id = 4, .relative_start = 3, .relative_end = 0 },
-    .{ .id = 4, .relative_start = 3, .relative_end = 2 },
+    .{ .id = 1, .start = 0, .end = 1 },
+    .{ .id = 1, .start = 0, .end = 3 },
+    .{ .id = 2, .start = 1, .end = 0 },
+    .{ .id = 2, .start = 1, .end = 2 },
+    .{ .id = 3, .start = 2, .end = 1 },
+    .{ .id = 3, .start = 2, .end = 3 },
+    .{ .id = 4, .start = 3, .end = 0 },
+    .{ .id = 4, .start = 3, .end = 2 },
     // straight lines, clock wise
-    .{ .id = 5, .relative_start = 0, .relative_end = 1 },
-    .{ .id = 6, .relative_start = 1, .relative_end = 2 },
-    .{ .id = 7, .relative_start = 2, .relative_end = 3 },
-    .{ .id = 8, .relative_start = 3, .relative_end = 0 },
+    .{ .id = 5, .start = 0, .end = 1 },
+    .{ .id = 6, .start = 1, .end = 2 },
+    .{ .id = 7, .start = 2, .end = 3 },
+    .{ .id = 8, .start = 3, .end = 0 },
     //  rotation
-    .{ .id = 9, .relative_start = 0, .relative_end = 0 },
+    .{ .id = 9, .start = 0, .end = 0 },
 };
 
 pub fn is_transform_ui(id: u32) bool {
@@ -43,18 +43,18 @@ pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     const asset_angle_y = points[0].angle_to(points[3]) + std.math.pi / 2.0;
     // it's important we dont meausre horizontal one, because reflecting by X axis makes no change in horizontal angle
     // but should be 180 degree opposite
-    const transform_matrix = Matrix3x3.rotation(asset_angle_y);
-    const inverted_transform_matrix = transform_matrix.inverse().?;
-    const pointer = inverted_transform_matrix.transform_point(Point{
+    const t_matrix = Matrix3x3.rotation(asset_angle_y); // transfor matrix
+    const invert_t_matrix = t_matrix.inverse().?;
+    const pointer = invert_t_matrix.transform_point(Point{
         .x = raw_x,
         .y = raw_y,
     });
 
     var un_rotated_points = [4]Point{
-        inverted_transform_matrix.transform_point(points[0]),
-        inverted_transform_matrix.transform_point(points[1]),
-        inverted_transform_matrix.transform_point(points[2]),
-        inverted_transform_matrix.transform_point(points[3]),
+        invert_t_matrix.transform_point(points[0]),
+        invert_t_matrix.transform_point(points[1]),
+        invert_t_matrix.transform_point(points[2]),
+        invert_t_matrix.transform_point(points[3]),
     };
 
     switch (ui_component_id) {
@@ -131,10 +131,10 @@ pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     }
 
     if (ui_component_id != 9) {
-        const p0 = transform_matrix.transform_point(un_rotated_points[0]);
-        const p1 = transform_matrix.transform_point(un_rotated_points[1]);
-        const p2 = transform_matrix.transform_point(un_rotated_points[2]);
-        const p3 = transform_matrix.transform_point(un_rotated_points[3]);
+        const p0 = t_matrix.transform_point(un_rotated_points[0]);
+        const p1 = t_matrix.transform_point(un_rotated_points[1]);
+        const p2 = t_matrix.transform_point(un_rotated_points[2]);
+        const p3 = t_matrix.transform_point(un_rotated_points[3]);
 
         points[0].x = p0.x;
         points[0].y = p0.y;
@@ -147,48 +147,49 @@ pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     }
 }
 
-fn get_points_of_line(texture: Texture, transform_line: TransformLine) struct { Point, Point } {
-    if (transform_line.id <= 4) {
+fn get_points_of_line(asset: Asset, t_line: TransformLine) struct { Point, Point } {
+    const points = asset.points;
+    if (t_line.id <= 4) {
         // corners
-        const length = texture.points[transform_line.relative_start].distance(texture.points[transform_line.relative_end]);
-        const angle = texture.points[transform_line.relative_start].angle_to(texture.points[transform_line.relative_end]);
+        const length = points[t_line.start].distance(points[t_line.end]);
+        const angle = points[t_line.start].angle_to(points[t_line.end]);
         const sanitized_length = @min(30.0, length * 0.1);
 
         const p1 = Point{
-            .x = texture.points[transform_line.relative_start].x,
-            .y = texture.points[transform_line.relative_start].y,
+            .x = points[t_line.start].x,
+            .y = points[t_line.start].y,
         };
         const p2 = Point{
-            .x = texture.points[transform_line.relative_start].x + @cos(angle) * sanitized_length,
-            .y = texture.points[transform_line.relative_start].y + @sin(angle) * sanitized_length,
+            .x = points[t_line.start].x + @cos(angle) * sanitized_length,
+            .y = points[t_line.start].y + @sin(angle) * sanitized_length,
         };
 
         return .{ p1, p2 };
-    } else if (transform_line.id <= 8) {
+    } else if (t_line.id <= 8) {
         // straight lines
-        const relative_point = texture.points[transform_line.relative_start].mid(texture.points[transform_line.relative_end]);
-        const length = texture.points[transform_line.relative_start].distance(texture.points[transform_line.relative_end]);
-        const angle = texture.points[transform_line.relative_start].angle_to(texture.points[transform_line.relative_end]);
+        const point = points[t_line.start].mid(points[t_line.end]);
+        const length = points[t_line.start].distance(points[t_line.end]);
+        const angle = points[t_line.start].angle_to(points[t_line.end]);
         const sanitized_length = @min(30.0, length * 0.07);
 
         const p1 = Point{
-            .x = relative_point.x + @cos(angle) * sanitized_length,
-            .y = relative_point.y + @sin(angle) * sanitized_length,
+            .x = point.x + @cos(angle) * sanitized_length,
+            .y = point.y + @sin(angle) * sanitized_length,
         };
         const p2 = Point{
-            .x = relative_point.x - @cos(angle) * sanitized_length,
-            .y = relative_point.y - @sin(angle) * sanitized_length,
+            .x = point.x - @cos(angle) * sanitized_length,
+            .y = point.y - @sin(angle) * sanitized_length,
         };
 
         return .{ p1, p2 };
-    } else if (transform_line.id == 9) {
+    } else if (t_line.id == 9) {
         const asset_center = Point{
-            .x = (texture.points[0].x + texture.points[2].x) * 0.5,
-            .y = (texture.points[0].y + texture.points[2].y) * 0.5,
+            .x = (points[0].x + points[2].x) * 0.5,
+            .y = (points[0].y + points[2].y) * 0.5,
         };
         const asset_mid_bottom = Point{
-            .x = (texture.points[2].x + texture.points[3].x) * 0.5,
-            .y = (texture.points[2].y + texture.points[3].y) * 0.5,
+            .x = (points[2].x + points[3].x) * 0.5,
+            .y = (points[2].y + points[3].y) * 0.5,
         };
         const angle = std.math.atan2(asset_mid_bottom.y - asset_center.y, asset_mid_bottom.x - asset_center.x);
         const p1 = Point{
@@ -211,14 +212,14 @@ const HALF_BUFFER = DRAW_VERTICES_COUNT / 2;
 pub fn get_transform_ui(
     triangle_buffer: *[DRAW_VERTICES_COUNT]f32,
     msdf_vertex_data: *[Msdf.DRAW_VERTICES_COUNT]f32,
-    texture: Texture,
+    asset: Asset,
     hovered_elem_id: u32,
 ) void {
     var i: usize = 0;
     for (resize_lines) |transform_line| {
         const color = if (hovered_elem_id == transform_line.id) white else black;
 
-        const p1, const p2 = get_points_of_line(texture, transform_line);
+        const p1, const p2 = get_points_of_line(asset, transform_line);
         var thickness: f32 = 10.0;
 
         if (transform_line.id == 9) {
@@ -227,8 +228,8 @@ pub fn get_transform_ui(
             const icon_size = thickness - 5.0;
             const msdf_data = Msdf.get_msdf_vertex_data(
                 Msdf.IconId.rotate,
-                p1.x - icon_size * 0.5 - 0.5,
-                p1.y - icon_size * 0.5 + 0.5,
+                p1.x - icon_size * 0.5 - 0.25,
+                p1.y - icon_size * 0.5 + 0.75,
                 icon_size,
                 if (hovered_elem_id == transform_line.id) black else white,
             );
@@ -258,10 +259,10 @@ pub fn get_transform_ui(
 }
 
 pub const PICK_BORDER_BUFFER_SIZE = UI_VERTICIES_COUNT_BORDER * Line.PICK_VERTICIES_COUNT;
-pub fn get_transform_ui_pick(buffer: *[PICK_BORDER_BUFFER_SIZE]f32, texture: Texture) void {
+pub fn get_transform_ui_pick(buffer: *[PICK_BORDER_BUFFER_SIZE]f32, asset: Asset) void {
     var i: usize = 0;
     for (resize_lines) |transform_line| {
-        const p1, const p2 = get_points_of_line(texture, transform_line);
+        const p1, const p2 = get_points_of_line(asset, transform_line);
         const thickness: f32 = if (transform_line.id == 9) 30.0 else 10.0;
 
         Line.get_vertex_data_pick(buffer[i..][0..Line.PICK_VERTICIES_COUNT], p1, p2, thickness + 10.0, @floatFromInt(transform_line.id));
