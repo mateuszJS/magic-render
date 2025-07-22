@@ -4,8 +4,24 @@ import {
   on_pointer_down,
   on_pointer_up,
 } from '../logic/index.zig'
+import clamp from '../utils/clamp'
 
 const OUTSIDE_CANVAS = -1
+
+enum CameraMode {
+  Pan,
+  Zoom,
+  None,
+}
+
+let cameraMode = CameraMode.None
+let panCameraStart: Point | null = null
+
+export const camera = {
+  x: 0,
+  y: 0,
+  zoom: 1,
+}
 
 export const pointer = {
   x: 0,
@@ -20,19 +36,29 @@ export const pointer = {
 
 export default function initMouseController(
   canvas: HTMLCanvasElement,
+  onZoom: VoidFunction,
   onStartProcessing: VoidFunction
 ) {
   pointer.x = OUTSIDE_CANVAS
   pointer.y = OUTSIDE_CANVAS
 
+  function getZigAbsolutePointer(): [number, number] {
+    return [
+      (pointer.x - camera.x) / camera.zoom,
+      (canvas.height - pointer.y - camera.y) / camera.zoom,
+    ]
+  }
+
   function updatePointer(e: MouseEvent) {
     const rect = canvas.getBoundingClientRect()
-    pointer.x = e.clientX - rect.left
-    pointer.y = e.clientY - rect.top
+    const scale = canvas.width / rect.width
+    pointer.x = (e.clientX - rect.left) * scale
+    pointer.y = (e.clientY - rect.top) * scale
   }
 
   canvas.addEventListener('mouseleave', () => {
     onStartProcessing()
+    canvas.style.cursor = 'default'
 
     const update = () => {
       pointer.x = OUTSIDE_CANVAS
@@ -50,11 +76,19 @@ export default function initMouseController(
   })
 
   canvas.addEventListener('mousemove', (e) => {
+    if (panCameraStart) {
+      updatePointer(e)
+
+      camera.x = pointer.x - panCameraStart.x
+      camera.y = -(pointer.y - panCameraStart.y)
+      return
+    }
+
     onStartProcessing()
 
     const move = () => {
       updatePointer(e)
-      on_pointer_move(pointer.x, canvas.clientHeight - pointer.y)
+      on_pointer_move(...getZigAbsolutePointer())
     }
     if (pointer.afterPickEventsQueue.length > 0) {
       pointer.afterPickEventsQueue.push({
@@ -67,16 +101,31 @@ export default function initMouseController(
   })
 
   canvas.addEventListener('mousedown', (e) => {
+    if (cameraMode === CameraMode.Pan) {
+      updatePointer(e)
+      panCameraStart = {
+        x: pointer.x - camera.x,
+        y: pointer.y + camera.y,
+      }
+      canvas.style.cursor = 'grabbing'
+      return
+    }
+    panCameraStart = null
+
     onStartProcessing()
 
     updatePointer(e)
     pointer.afterPickEventsQueue.push({
       requireNewPick: true,
-      cb: on_pointer_down.bind(null, pointer.x, canvas.clientHeight - pointer.y),
+      cb: on_pointer_down.bind(null, ...getZigAbsolutePointer()),
     })
   })
 
   canvas.addEventListener('mouseup', () => {
+    cameraMode = CameraMode.None
+    panCameraStart = null
+    canvas.style.cursor = 'default'
+
     onStartProcessing()
 
     if (pointer.afterPickEventsQueue.length > 0) {
@@ -89,7 +138,62 @@ export default function initMouseController(
     }
   })
 
+  /* panning , supports both scroll and touch, expect Safari */
   canvas.addEventListener('wheel', (event) => {
-    console.log(event.deltaY)
+    event.preventDefault()
+    if (cameraMode === CameraMode.Zoom) {
+      const oldZoom = camera.zoom
+      camera.zoom = clamp(camera.zoom - event.deltaY * 0.005, 0.1, 20)
+      onZoom()
+
+      const zoomFactor = camera.zoom / oldZoom
+
+      camera.x = pointer.x - (pointer.x - camera.x) * zoomFactor
+      const realY = canvas.height - pointer.y
+      camera.y = realY - (realY - camera.y) * zoomFactor
+    } else {
+      camera.x -= event.deltaX
+      camera.y += event.deltaY
+    }
+  })
+  // pointer.zoom = clamp(pointer.zoom + event.deltaY * 0.01, 0.1, 100)
+
+  document.body.addEventListener('keydown', (event) => {
+    if (event.code === 'Space' && cameraMode !== CameraMode.Pan) {
+      cameraMode = CameraMode.Pan
+      canvas.style.cursor = 'grab'
+    } else if (event.key === 'Alt' && cameraMode !== CameraMode.Zoom) {
+      cameraMode = CameraMode.Zoom
+    }
+  })
+  document.body.addEventListener('keyup', (event) => {
+    if (event.code === 'Space' || event.key === 'Alt') {
+      cameraMode = CameraMode.None
+    }
+    if (event.code === 'Space' && panCameraStart === null) {
+      canvas.style.cursor = 'default'
+    }
+  })
+
+  let lastTouchY: number
+
+  canvas.addEventListener('touchstart', (event) => {
+    if (event.touches.length === 2) {
+      event.preventDefault()
+
+      lastTouchY = event.touches[0].clientY
+    }
+  })
+
+  canvas.addEventListener('touchmove', (event) => {
+    if (event.touches.length === 2) {
+      event.preventDefault()
+
+      const delta = lastTouchY - event.touches[0].clientY
+      lastTouchY = event.touches[0].clientY
+
+      camera.zoom = clamp(camera.zoom - delta * 0.01, 0.1, 20)
+      onZoom()
+    }
   })
 }

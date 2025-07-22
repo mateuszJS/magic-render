@@ -53,6 +53,7 @@ const State = struct {
     active_asset_id: u32,
     ongoing_action: ActionType,
     last_pointer_coords: Types.Point,
+    render_scale: f32,
 };
 
 var state = State{
@@ -63,12 +64,17 @@ var state = State{
     .active_asset_id = 0,
     .ongoing_action = ActionType.none,
     .last_pointer_coords = Types.Point{ .x = 0.0, .y = 0.0 },
+    .render_scale = 1.0,
 };
 
 pub fn init_state(width: f32, height: f32) void {
     state.width = width;
     state.height = height;
     state.assets = std.AutoHashMap(u32, Texture).init(std.heap.page_allocator);
+}
+
+pub fn update_render_scale(scale: f32) void {
+    state.render_scale = scale;
 }
 
 var next_asset_id: u32 = ASSET_ID_TRESHOLD;
@@ -214,9 +220,9 @@ fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
                     buffer[0..Line.DRAW_VERTICES_COUNT],
                     point,
                     next_point,
-                    10.0,
+                    10.0 * state.render_scale,
                     red,
-                    5.0,
+                    5.0 * state.render_scale,
                 );
 
                 triangle_vertex_data.appendSlice(&buffer) catch unreachable;
@@ -233,9 +239,9 @@ fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
                 buffer[0..Line.DRAW_VERTICES_COUNT],
                 point,
                 next_point,
-                10.0,
+                10.0 * state.render_scale,
                 green,
-                5.0,
+                5.0 * state.render_scale,
             );
             triangle_vertex_data.appendSlice(&buffer) catch unreachable;
         }
@@ -248,6 +254,7 @@ fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
             &msdf_buffer,
             asset,
             state.hovered_asset_id,
+            state.render_scale,
         );
 
         triangle_vertex_data.appendSlice(&triangle_buffer) catch unreachable;
@@ -260,6 +267,45 @@ fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
     };
 }
 
+fn get_project_boundary() [Line.DRAW_VERTICES_COUNT * 5]f32 {
+    var buffer: [Line.DRAW_VERTICES_COUNT * 5]f32 = undefined;
+
+    const points = [_]Types.Point{
+        .{ .x = 0.0, .y = 0.0 },
+        .{ .x = state.width, .y = 0.0 },
+        .{ .x = state.width, .y = state.height },
+        .{ .x = 0.0, .y = state.height },
+    };
+
+    const light_grey = [_]f32{ 0.5, 0.5, 0.5, 1.0 }; // gray color
+
+    const dark_grey = [_]f32{ 0.1, 0.1, 0.1, 0.2 }; // gray color
+
+    Line.get_vertex_data(
+        buffer[0..Line.DRAW_VERTICES_COUNT],
+        points[0].mid(points[1]),
+        points[3].mid(points[2]),
+        200.0, //std.math.hypot(points[0].x - points[1].x, points[0].y - points[1].y), // line width
+        dark_grey,
+        0.0,
+    );
+
+    for (points, 0..) |point, i| {
+        const next_point = if (i == 3) points[0] else points[i + 1];
+
+        Line.get_vertex_data(
+            buffer[((i + 1) * Line.DRAW_VERTICES_COUNT)..][0..Line.DRAW_VERTICES_COUNT],
+            point,
+            next_point,
+            2.0 * state.render_scale,
+            light_grey,
+            0.0,
+        );
+    }
+
+    return buffer;
+}
+
 pub fn canvas_render() void {
     var iterator = state.assets.iterator();
 
@@ -269,6 +315,9 @@ pub fn canvas_render() void {
 
         web_gpu_programs.draw_texture(&vertex_data, asset.value_ptr.texture_id);
     }
+
+    const project_boundary_buffer = get_project_boundary();
+    web_gpu_programs.draw_triangle(&project_boundary_buffer);
 
     const triangle_buffer, const msdf_buffer = get_border();
     if (triangle_buffer.len > 0) {
@@ -312,7 +361,7 @@ pub fn picks_render() void {
 
     if (state.assets.get(state.active_asset_id)) |asset| {
         var vertex_buffer: [TransformUI.PICK_BORDER_BUFFER_SIZE]f32 = undefined;
-        TransformUI.get_transform_ui_pick(vertex_buffer[0..TransformUI.PICK_BORDER_BUFFER_SIZE], asset);
+        TransformUI.get_transform_ui_pick(vertex_buffer[0..TransformUI.PICK_BORDER_BUFFER_SIZE], asset, state.render_scale);
         web_gpu_programs.pick_triangle(vertex_buffer[0..TransformUI.PICK_BORDER_BUFFER_SIZE]);
     }
 }

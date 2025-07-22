@@ -12,8 +12,9 @@ import {
   connect_on_asset_selection_callback,
   destroy_state,
   import_icons,
+  update_render_scale,
 } from './logic/index.zig'
-import initMouseController from 'WebGPU/pointer'
+import initMouseController, { camera } from 'WebGPU/pointer'
 import IconsPng from '../msdf/output/icons.png'
 import IconsJson from '../msdf/output/icons.json'
 import getDefaultPoints from 'utils/getDefaultPoints'
@@ -60,7 +61,11 @@ export default async function initCreator(
   /* setup WebGPU stuff */
   const device = await getDevice()
 
-  init_state(canvas.clientWidth, canvas.clientHeight)
+  const projectWidth = canvas.clientWidth / 2
+  const projectHeight = canvas.clientHeight / 2
+
+  init_state(projectWidth, projectHeight)
+  // rotation doesnt work
   const context = canvas.getContext('webgpu')
   if (!context) throw Error('WebGPU from canvas needs to be always provided')
 
@@ -72,13 +77,23 @@ export default async function initCreator(
     // will copy out of the swapchain texture.
   })
 
+  function updateRenderScale() {
+    update_render_scale(canvas.width / (canvas.clientWidth * camera.zoom))
+  }
+
+  let wasInitialOffsetSet = false
   canvasSizeObserver(canvas, device, () => {
-    // state.needsRefresh = true
+    if (wasInitialOffsetSet === false) {
+      camera.x = (canvas.width - projectWidth) / 2
+      camera.y = (canvas.height - projectHeight) / 2
+      wasInitialOffsetSet = true
+    }
+    updateRenderScale()
   })
 
   initPrograms(device, presentationFormat)
 
-  initMouseController(canvas, () => {
+  initMouseController(canvas, updateRenderScale, () => {
     isMouseEventProcessing = true
     updateProcessing()
   })
@@ -132,7 +147,7 @@ export default async function initCreator(
 
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = addTexture(url, (width, height) => {
-      const points = getDefaultPoints(width, height, canvas.clientWidth, canvas.clientHeight)
+      const points = getDefaultPoints(width, height, projectWidth, projectHeight)
       add_asset(0 /* no id yet, needs to be generated */, points, textureId)
     })
   }
