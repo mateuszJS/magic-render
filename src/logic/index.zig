@@ -1,9 +1,7 @@
 const std = @import("std");
 const Types = @import("./types.zig");
-const Texture = @import("./texture.zig").Texture;
-const TEXTURE_VERTEX_BUFFER_SIZE = @import("./texture.zig").TEXTURE_VERTEX_BUFFER_SIZE;
-const TEXTURE_PICK_VERTEX_BUFFER_SIZE = @import("./texture.zig").TEXTURE_PICK_VERTEX_BUFFER_SIZE;
-const AssetZig = @import("./texture.zig").AssetZig;
+const Asset = @import("./asset.zig").Asset;
+const SerializedAsset = @import("./asset.zig").SerializedAsset;
 const Line = @import("line.zig");
 const Triangle = @import("triangle.zig");
 const TransformUI = @import("./transform_ui.zig");
@@ -25,12 +23,12 @@ pub fn connect_web_gpu_programs(programs: *const WebGpuPrograms) void {
     web_gpu_programs = programs; // orelse WebGpuPrograms{};
 }
 
-var on_asset_update_cb: ?*const fn ([]const AssetZig) void = undefined;
-pub fn connect_on_asset_update_callback(cb: *const fn ([]const AssetZig) void) void {
+var on_asset_update_cb: ?*const fn ([]const SerializedAsset) void = undefined;
+pub fn connect_on_asset_update_callback(cb: *const fn ([]const SerializedAsset) void) void {
     on_asset_update_cb = cb;
 }
 
-fn on_asset_update_noop(_: []const AssetZig) void {}
+fn on_asset_update_noop(_: []const SerializedAsset) void {}
 
 var on_asset_select_cb: *const fn (u32) void = undefined;
 pub fn connect_on_asset_selection_callback(cb: *const fn (u32) void) void {
@@ -48,9 +46,9 @@ const ActionType = enum {
 const State = struct {
     width: f32,
     height: f32,
-    assets: std.AutoHashMap(u32, Texture),
+    assets: std.AutoHashMap(u32, Asset),
     hovered_asset_id: u32,
-    active_asset_id: u32,
+    selected_asset_id: u32,
     ongoing_action: ActionType,
     last_pointer_coords: Types.Point,
 };
@@ -60,7 +58,7 @@ var state = State{
     .height = 0,
     .assets = undefined,
     .hovered_asset_id = 0,
-    .active_asset_id = 0,
+    .selected_asset_id = 0,
     .ongoing_action = ActionType.none,
     .last_pointer_coords = Types.Point{ .x = 0.0, .y = 0.0 },
 };
@@ -68,7 +66,7 @@ var state = State{
 pub fn init_state(width: f32, height: f32) void {
     state.width = width;
     state.height = height;
-    state.assets = std.AutoHashMap(u32, Texture).init(std.heap.page_allocator);
+    state.assets = std.AutoHashMap(u32, Asset).init(std.heap.page_allocator);
 }
 
 var next_asset_id: u32 = ASSET_ID_TRESHOLD;
@@ -80,14 +78,14 @@ fn generate_id() u32 {
 
 pub fn add_asset(id_or_zero: u32, points: [4]Types.PointUV, texture_id: u32) void {
     const id = if (id_or_zero == 0) generate_id() else id_or_zero;
-    state.assets.put(id, Texture.new(id, points, texture_id)) catch unreachable;
+    state.assets.put(id, Asset.new(id, points, texture_id)) catch unreachable;
     check_assets_update(true);
 }
 
 pub fn remove_asset() void {
-    _ = state.assets.remove(state.active_asset_id);
-    state.active_asset_id = 0;
-    on_asset_select_cb(state.active_asset_id);
+    _ = state.assets.remove(state.selected_asset_id);
+    state.selected_asset_id = 0;
+    on_asset_select_cb(state.selected_asset_id);
     check_assets_update(true);
 }
 
@@ -99,22 +97,22 @@ pub fn on_update_pick(id: u32) void {
 }
 
 pub fn on_pointer_down(x: f32, y: f32) void {
-    if (state.active_asset_id == 0) {
+    if (state.selected_asset_id == 0) {
         // No active asset, do nothing
     } else if (TransformUI.is_transform_ui(state.hovered_asset_id)) {
         state.ongoing_action = .transform;
-    } else if (state.active_asset_id >= ASSET_ID_TRESHOLD and state.active_asset_id == state.hovered_asset_id) {
+    } else if (state.selected_asset_id >= ASSET_ID_TRESHOLD and state.selected_asset_id == state.hovered_asset_id) {
         state.ongoing_action = .move;
         state.last_pointer_coords = Types.Point{ .x = x, .y = y };
     }
 }
 
-// const std.heap.page_allocator.alloc(AssetZig, state.assets.count())
-var last_assets_update: []const AssetZig = &.{};
+// const std.heap.page_allocator.alloc(SerializedAsset, state.assets.count())
+var last_assets_update: []const SerializedAsset = &.{};
 fn check_assets_update(should_notify: bool) void {
     const cb = on_asset_update_cb orelse return;
 
-    var new_assets_update = std.heap.page_allocator.alloc(AssetZig, state.assets.count()) catch unreachable;
+    var new_assets_update = std.heap.page_allocator.alloc(SerializedAsset, state.assets.count()) catch unreachable;
     var iterator = state.assets.iterator();
     var i: usize = 0;
     while (iterator.next()) |entry| {
@@ -151,8 +149,8 @@ fn check_assets_update(should_notify: bool) void {
 
 pub fn on_pointer_up() void {
     if (state.ongoing_action == .none) {
-        state.active_asset_id = state.hovered_asset_id;
-        on_asset_select_cb(state.active_asset_id);
+        state.selected_asset_id = state.hovered_asset_id;
+        on_asset_select_cb(state.selected_asset_id);
     } else {
         state.ongoing_action = .none;
         check_assets_update(true);
@@ -168,7 +166,7 @@ pub fn on_pointer_move(x: f32, y: f32) void {
             };
             state.last_pointer_coords = Types.Point{ .x = x, .y = y };
 
-            const asset_ptr: *Texture = state.assets.getPtr(state.active_asset_id).?;
+            const asset_ptr: *Asset = state.assets.getPtr(state.selected_asset_id).?;
 
             var new_points: [4]Types.PointUV = undefined;
             for (asset_ptr.points, 0..) |point, i| {
@@ -183,7 +181,7 @@ pub fn on_pointer_move(x: f32, y: f32) void {
             asset_ptr.update_coords(new_points);
         },
         .transform => {
-            const asset_ptr: *Texture = state.assets.getPtr(state.active_asset_id).?;
+            const asset_ptr: *Asset = state.assets.getPtr(state.selected_asset_id).?;
             const points_ptr: *[4]Types.PointUV = &asset_ptr.points;
             TransformUI.tranform_points(state.hovered_asset_id, points_ptr, x, y);
         },
@@ -203,7 +201,7 @@ fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
 
     // TODO: free memory, defer list.deinit();
     const red = [_]f32{ 1.0, 0.0, 0.0, 1.0 };
-    if (state.hovered_asset_id != state.active_asset_id) {
+    if (state.hovered_asset_id != state.selected_asset_id) {
         if (state.assets.get(state.hovered_asset_id)) |asset| {
             for (asset.points, 0..) |point, i| {
                 const next_point = if (i == 3) asset.points[0] else asset.points[i + 1];
@@ -225,7 +223,7 @@ fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
     }
 
     const green = [_]f32{ 0.0, 1.0, 0.0, 1.0 };
-    if (state.assets.get(state.active_asset_id)) |asset| {
+    if (state.assets.get(state.selected_asset_id)) |asset| {
         for (asset.points, 0..) |point, i| {
             const next_point = if (i == 3) asset.points[0] else asset.points[i + 1];
             var buffer: [Line.DRAW_VERTICES_COUNT]f32 = undefined;
@@ -264,7 +262,7 @@ pub fn canvas_render() void {
     var iterator = state.assets.iterator();
 
     while (iterator.next()) |asset| {
-        var vertex_data: [TEXTURE_VERTEX_BUFFER_SIZE]f32 = undefined;
+        var vertex_data: [Asset.VERTEX_BUFFER_SIZE]f32 = undefined;
         asset.value_ptr.get_vertex_data(&vertex_data);
 
         web_gpu_programs.draw_texture(&vertex_data, asset.value_ptr.texture_id);
@@ -278,46 +276,47 @@ pub fn canvas_render() void {
         web_gpu_programs.draw_msdf(msdf_buffer, 0);
     }
 
-    // const points = [_]Types.Point{
-    //     Types.Point{ .x = 100.0, .y = 70.0 }, //
-    //     Types.Point{ .x = 300.0, .y = 100.0 }, //
-    //     Types.Point{ .x = 300.0, .y = 250.0 }, //
-    //     Types.Point{ .x = 100.0, .y = 150.0 }, //
-    // };
-    // const p0_v = Triangle.get_round_corner_vector(0, points, 10.0);
-    // const p1_v = Triangle.get_round_corner_vector(1, points, 20.0);
-    // const p2_v = Triangle.get_round_corner_vector(2, points, 80.0);
-    // const p3_v = Triangle.get_round_corner_vector(3, points, 20.0);
+    // rest of the bod yfo this function is just testing
+    const points = [_]Types.Point{
+        Types.Point{ .x = 100.0, .y = 70.0 }, //
+        Types.Point{ .x = 300.0, .y = 100.0 }, //
+        Types.Point{ .x = 300.0, .y = 250.0 }, //
+        Types.Point{ .x = 100.0, .y = 150.0 }, //
+    };
+    const p0_v = Triangle.get_round_corner_vector(0, points, 10.0);
+    const p1_v = Triangle.get_round_corner_vector(1, points, 20.0);
+    const p2_v = Triangle.get_round_corner_vector(2, points, 80.0);
+    const p3_v = Triangle.get_round_corner_vector(3, points, 20.0);
 
-    // var shape_vertex_data: [2 * Triangle.DRAW_VERTICES_COUNT]f32 = undefined;
-    // const color = [_]f32{ 0.0, 1.0, 1.0, 1.0 };
-    // Triangle.get_vertex_data(shape_vertex_data[0..Triangle.DRAW_VERTICES_COUNT], p0_v, p1_v, p2_v, color);
-    // Triangle.get_vertex_data(shape_vertex_data[Triangle.DRAW_VERTICES_COUNT .. 2 * Triangle.DRAW_VERTICES_COUNT], p0_v, p2_v, p3_v, color);
+    var shape_vertex_data: [2 * Triangle.DRAW_VERTICES_COUNT]f32 = undefined;
+    const color = [_]f32{ 0.0, 1.0, 1.0, 1.0 };
+    Triangle.get_vertex_data(shape_vertex_data[0..Triangle.DRAW_VERTICES_COUNT], p0_v, p1_v, p2_v, color);
+    Triangle.get_vertex_data(shape_vertex_data[Triangle.DRAW_VERTICES_COUNT .. 2 * Triangle.DRAW_VERTICES_COUNT], p0_v, p2_v, p3_v, color);
 
-    // web_gpu_programs.draw_triangle(&shape_vertex_data);
+    web_gpu_programs.draw_triangle(&shape_vertex_data);
 
-    // const msdf_vertex_data = Msdf.get_msdf_vertex_data(Msdf.IconId.rotate, 10.0, 10.0, 100.0, [_]f32{ 1.0, 0.0, 0.0, 1.0 });
-    // web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
+    const msdf_vertex_data = Msdf.get_msdf_vertex_data(Msdf.IconId.rotate, 10.0, 10.0, 100.0, [_]f32{ 1.0, 0.0, 0.0, 1.0 });
+    web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
 }
 
 pub fn picks_render() void {
     var iterator = state.assets.iterator();
 
     while (iterator.next()) |asset| {
-        var vertex_data: [TEXTURE_PICK_VERTEX_BUFFER_SIZE]f32 = undefined;
+        var vertex_data: [Asset.PICK_VERTEX_BUFFER_SIZE]f32 = undefined;
         asset.value_ptr.get_vertex_pick_data(&vertex_data);
 
         web_gpu_programs.pick_texture(&vertex_data, asset.value_ptr.texture_id);
     }
 
-    if (state.assets.get(state.active_asset_id)) |asset| {
+    if (state.assets.get(state.selected_asset_id)) |asset| {
         var vertex_buffer: [TransformUI.PICK_BORDER_BUFFER_SIZE]f32 = undefined;
         TransformUI.get_transform_ui_pick(vertex_buffer[0..TransformUI.PICK_BORDER_BUFFER_SIZE], asset);
         web_gpu_programs.pick_triangle(vertex_buffer[0..TransformUI.PICK_BORDER_BUFFER_SIZE]);
     }
 }
 
-pub fn reset_assets(new_assets: []const AssetZig, with_snapshot: bool) void {
+pub fn reset_assets(new_assets: []const SerializedAsset, with_snapshot: bool) void {
     const real_callback_pointer = on_asset_update_cb;
     on_asset_update_cb = null;
 
@@ -327,9 +326,9 @@ pub fn reset_assets(new_assets: []const AssetZig, with_snapshot: bool) void {
         add_asset(asset.id, asset.points, asset.texture_id);
     }
 
-    if (!state.assets.contains(state.active_asset_id)) {
-        state.active_asset_id = 0;
-        on_asset_select_cb(state.active_asset_id);
+    if (!state.assets.contains(state.selected_asset_id)) {
+        state.selected_asset_id = 0;
+        on_asset_select_cb(state.selected_asset_id);
     }
 
     on_asset_update_cb = real_callback_pointer;
@@ -342,7 +341,7 @@ pub fn destroy_state() void {
     std.heap.page_allocator.free(last_assets_update);
     last_assets_update = &.{};
     Msdf.deinit_icons();
-    state.active_asset_id = 0;
+    state.selected_asset_id = 0;
     next_asset_id = ASSET_ID_TRESHOLD;
     web_gpu_programs = undefined;
     on_asset_update_cb = undefined;
@@ -366,7 +365,7 @@ test "reset_assets does not call the real update callback" {
         // It's reset to false before each test run.
         var was_called: bool = false;
 
-        fn assets_update(_: []const AssetZig) void {
+        fn assets_update(_: []const SerializedAsset) void {
             // Modify the static variable within the struct.
             was_called = true;
         }
@@ -379,7 +378,7 @@ test "reset_assets does not call the real update callback" {
     connect_on_asset_selection_callback(MockCallback.assets_selection);
 
     // Call the function we are testing
-    const initial_assets = [_]AssetZig{AssetZig{
+    const initial_assets = [_]SerializedAsset{SerializedAsset{
         .points = [_]Types.PointUV{
             Types.PointUV{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 },
             Types.PointUV{ .x = 1.0, .y = 0.0, .u = 1.0, .v = 0.0 },
