@@ -149,7 +149,7 @@ pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
 
 fn get_points_of_line(asset: Asset, t_line: TransformLine, render_scale: f32) struct { Point, Point } {
     const points = asset.points;
-    if (transform_line.id <= 4) {
+    if (t_line.id <= 4) {
         // corners
         const length = points[t_line.start].distance(points[t_line.end]);
         const angle = points[t_line.start].angle_to(points[t_line.end]);
@@ -217,13 +217,13 @@ pub fn get_transform_ui(
     render_scale: f32,
 ) void {
     var i: usize = 0;
-    for (resize_lines) |transform_line| {
-        const color = if (hovered_elem_id == transform_line.id) white else black;
+    for (resize_lines) |t_line| {
+        const color = if (hovered_elem_id == t_line.id) white else black;
 
-        const p1, const p2 = get_points_of_line(asset, transform_line, render_scale);
+        const p1, const p2 = get_points_of_line(asset, t_line, render_scale);
         var thickness: f32 = 10.0 * render_scale;
 
-        if (transform_line.id == 9) {
+        if (t_line.id == 9) {
             // rotation icon
             thickness = 30.0 * render_scale;
             const icon_size = thickness - 5.0 * render_scale;
@@ -232,7 +232,7 @@ pub fn get_transform_ui(
                 p1.x - icon_size * 0.5 - 0.12 * render_scale,
                 p1.y - icon_size * 0.5 + 0.75 * render_scale,
                 icon_size,
-                if (hovered_elem_id == transform_line.id) black else white,
+                if (hovered_elem_id == t_line.id) black else white,
             );
             msdf_vertex_data.* = msdf_data;
         }
@@ -262,11 +262,11 @@ pub fn get_transform_ui(
 pub const PICK_BORDER_BUFFER_SIZE = UI_VERTICIES_COUNT_BORDER * Line.PICK_VERTICIES_COUNT;
 pub fn get_transform_ui_pick(buffer: *[PICK_BORDER_BUFFER_SIZE]f32, asset: Asset, render_scale: f32) void {
     var i: usize = 0;
-    for (resize_lines) |transform_line| {
-        const p1, const p2 = get_points_of_line(asset, transform_line, render_scale);
-        const thickness: f32 = if (transform_line.id == 9) 30.0 * render_scale else 10.0 * render_scale;
+    for (resize_lines) |t_line| {
+        const p1, const p2 = get_points_of_line(asset, t_line, render_scale);
+        const thickness: f32 = if (t_line.id == 9) 30.0 * render_scale else 10.0 * render_scale;
 
-        Line.get_vertex_data_pick(buffer[i..][0..Line.PICK_VERTICIES_COUNT], p1, p2, thickness + 10.0 * render_scale, @floatFromInt(transform_line.id));
+        Line.get_vertex_data_pick(buffer[i..][0..Line.PICK_VERTICIES_COUNT], p1, p2, thickness + 10.0 * render_scale, @floatFromInt(t_line.id));
 
         i += Line.PICK_VERTICIES_COUNT;
     }
