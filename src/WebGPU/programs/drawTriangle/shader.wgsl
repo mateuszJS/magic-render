@@ -96,12 +96,13 @@ struct VertexOutput {
     threshold = in.threshold_list.z;
   }
 
-  let dist = distance(p, in.pixel);
 
-  if (dist < threshold) {
-    let circle_distance = distance(p_circle, in.pixel);
-    return in.color * (1.0 - smoothstep(radius - 0.5, radius + 0.5, circle_distance));
-  } else {
-    return in.color;
-  }
+  let circle_distance = distance(p_circle, in.pixel);
+  let edge_width = fwidth(circle_distance);
+
+  let circle_alpha = 1.0 - smoothstep(radius - edge_width, radius + edge_width, circle_distance);
+  let dist = distance(p, in.pixel);
+  let alpha = mix(circle_alpha, 1.0,  step(threshold, dist)); // if threshold <= dist, use circle alpha, otherwise use 1.0
+
+  return in.color * alpha;
 }
