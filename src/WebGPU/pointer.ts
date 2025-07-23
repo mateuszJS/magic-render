@@ -8,13 +8,13 @@ import clamp from '../utils/clamp'
 
 const OUTSIDE_CANVAS = -1
 
-enum CameraMode {
+enum MouseMode {
   Pan,
   Zoom,
   None,
 }
 
-let cameraMode = CameraMode.None
+let mouseMode = MouseMode.None
 let panCameraStart: Point | null = null
 
 export const camera = {
@@ -101,7 +101,7 @@ export default function initMouseController(
   })
 
   canvas.addEventListener('mousedown', (e) => {
-    if (cameraMode === CameraMode.Pan) {
+    if (mouseMode === MouseMode.Pan) {
       updatePointer(e)
       panCameraStart = {
         x: pointer.x - camera.x,
@@ -122,7 +122,7 @@ export default function initMouseController(
   })
 
   canvas.addEventListener('mouseup', () => {
-    cameraMode = CameraMode.None
+    mouseMode = MouseMode.None
     panCameraStart = null
     canvas.style.cursor = 'default'
 
@@ -138,22 +138,29 @@ export default function initMouseController(
     }
   })
 
+  function zoom(delta: number) {
+    const oldZoom = camera.zoom
+    camera.zoom = clamp(camera.zoom - delta * 0.005, 0.1, 20)
+    onZoom()
+    const zoomFactor = camera.zoom / oldZoom
+    camera.x = pointer.x - (pointer.x - camera.x) * zoomFactor
+    const realY = canvas.height - pointer.y
+    camera.y = realY - (realY - camera.y) * zoomFactor
+  }
+
   /* panning , supports both scroll and touch, expect Safari */
-  canvas.addEventListener('wheel', (event) => {
-    event.preventDefault()
-    if (cameraMode === CameraMode.Zoom) {
-      const oldZoom = camera.zoom
-      camera.zoom = clamp(camera.zoom - event.deltaY * 0.005, 0.1, 20)
-      onZoom()
-
-      const zoomFactor = camera.zoom / oldZoom
-
-      camera.x = pointer.x - (pointer.x - camera.x) * zoomFactor
-      const realY = canvas.height - pointer.y
-      camera.y = realY - (realY - camera.y) * zoomFactor
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault()
+    if (mouseMode === MouseMode.Zoom) {
+      const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : -e.deltaX
+      zoom(delta)
     } else {
-      camera.x -= event.deltaX
-      camera.y += event.deltaY
+      if (e.ctrlKey) {
+        zoom(e.deltaY * camera.zoom)
+      } else {
+        camera.x -= e.deltaX
+        camera.y += e.deltaY
+      }
     }
   })
   // pointer.zoom = clamp(pointer.zoom + event.deltaY * 0.01, 0.1, 100)
@@ -161,43 +168,121 @@ export default function initMouseController(
   document.body.addEventListener('keydown', (event) => {
     if (event.code === 'Space') {
       event.preventDefault()
-      if (cameraMode !== CameraMode.Pan) {
+      if (mouseMode !== MouseMode.Pan) {
         canvas.style.cursor = 'grab'
-        cameraMode = CameraMode.Pan
+        mouseMode = MouseMode.Pan
       }
     } else if (event.key === 'Alt') {
       event.preventDefault()
-      cameraMode = CameraMode.Zoom
+      mouseMode = MouseMode.Zoom
     }
   })
   document.body.addEventListener('keyup', (event) => {
     if (event.code === 'Space' || event.key === 'Alt') {
-      cameraMode = CameraMode.None
+      mouseMode = MouseMode.None
     }
     if (event.code === 'Space' && panCameraStart === null) {
       canvas.style.cursor = 'default'
     }
   })
 
-  let lastTouchY: number
+  // The code below is from mozzila MDN docs, and it's a good base once we can test on mobile
 
-  canvas.addEventListener('touchstart', (event) => {
-    if (event.touches.length === 2) {
-      event.preventDefault()
+  // function updateBackground(ev: TouchEvent) {
+  //   switch (ev.targetTouches.length) {
+  //     case 1:
+  //       console.log('single tap')
+  //       break
+  //     case 2:
+  //       console.log('Two simultaneous touches')
+  //       break
+  //     default:
+  //       console.log('More than two simultaneous touches')
+  //   }
+  // }
 
-      lastTouchY = event.touches[0].clientY
-    }
-  })
+  // const tpCache: Touch[] = []
 
-  canvas.addEventListener('touchmove', (event) => {
-    if (event.touches.length === 2) {
-      event.preventDefault()
+  // canvas.addEventListener('touchstart', (event) => {
+  //   // If the user makes simultaneous touches, the browser will fire a
+  //   // separate touchstart event for each touch point. Thus if there are
+  //   // three simultaneous touches, the first touchstart event will have
+  //   // targetTouches length of one, the second event will have a length
+  //   // of two, and so on.
+  //   console.log(event.targetTouches.length)
+  //   event.preventDefault()
+  //   // Cache the touch points for later processing of 2-touch pinch/zoom
+  //   if (event.targetTouches.length === 2) {
+  //     for (const touch of event.targetTouches) {
+  //       tpCache.push(touch)
+  //     }
+  //   }
+  //   // if (logEvents) log('touchStart', event, true)
+  //   updateBackground(event)
+  // })
 
-      const delta = lastTouchY - event.touches[0].clientY
-      lastTouchY = event.touches[0].clientY
+  // canvas.addEventListener('touchmove', (ev) => {
+  //   // Note: if the user makes more than one "simultaneous" touches, most browsers
+  //   // fire at least one touchmove event and some will fire several touch moves.
+  //   // Consequently, an application might want to "ignore" some touch moves.
+  //   //
+  //   // This function sets the target element's border to "dashed" to visually
+  //   // indicate the target received a move event.
+  //   //
+  //   ev.preventDefault()
+  //   // if (logEvents) log('touchMove', ev, false)
+  //   // To avoid too much color flashing many touchmove events are started,
+  //   // don't update the background if two touch points are active
+  //   if (!(ev.touches.length === 2 && ev.targetTouches.length === 2)) updateBackground(ev)
 
-      camera.zoom = clamp(camera.zoom - delta * 0.01, 0.1, 20)
-      onZoom()
-    }
-  })
+  //   // Set the target element's border to dashed to give a clear visual
+  //   // indication the element received a move event.
+  //   // ev.target.style.border = 'dashed'
+
+  //   // Check this event for 2-touch Move/Pinch/Zoom gesture
+  //   handlePinchZoom(ev)
+  // })
+
+  // function handlePinchZoom(ev: TouchEvent) {
+  //   if (ev.targetTouches.length === 2 && ev.changedTouches.length === 2) {
+  //     // Check if the two target touches are the same ones that started
+  //     // the 2-touch
+  //     const reverseTpCache = tpCache.slice().reverse()
+  //     const point1 = reverseTpCache.findIndex(
+  //       (tp) => tp.identifier === ev.targetTouches[0].identifier
+  //     )
+  //     const point2 = reverseTpCache.findIndex(
+  //       (tp) => tp.identifier === ev.targetTouches[1].identifier
+  //     )
+
+  //     if (point1 >= 0 && point2 >= 0) {
+  //       // Calculate the difference between the start and move coordinates
+  //       const diff1 = Math.abs(tpCache[point1].clientX - ev.targetTouches[0].clientX)
+  //       const diff2 = Math.abs(tpCache[point2].clientX - ev.targetTouches[1].clientX)
+
+  //       // This threshold is device dependent as well as application specific
+  //       const PINCH_THRESHOLD = (ev.target as HTMLCanvasElement).clientWidth / 10
+  //       if (diff1 >= PINCH_THRESHOLD && diff2 >= PINCH_THRESHOLD) {
+  //         // ev.target.style.background = 'green'
+  //         console.log('Pinch zoom detected')
+  //       }
+  //     } else {
+  //       // empty tpCache
+  //       tpCache.length = 0
+  //     }
+  //   }
+  // }
+
+  // function endHandler(ev: TouchEvent) {
+  //   ev.preventDefault()
+  //   // if (logEvents) log(ev.type, ev, false)
+  //   if (ev.targetTouches.length === 0) {
+  //     // Restore background and border to original values
+  //     // ev.target.style.background = 'white'
+  //     // ev.target.style.border = '1px solid black'
+  //   }
+  // }
+
+  // canvas.addEventListener('touchcancel', endHandler)
+  // canvas.addEventListener('touchend', endHandler)
 }

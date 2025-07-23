@@ -1,4 +1,5 @@
 import initCreator, { SerializedOutputAsset } from '../src/index'
+import { camera } from '../src/WebGPU/pointer'
 
 declare global {
   interface Window {
@@ -18,12 +19,24 @@ async function test() {
   const redoBtn = document.querySelector<HTMLSpanElement>('#redo-btn')!
 
   window.assetsSnapshot = []
+  function setAssetSnapshot(assets: SerializedOutputAsset[]) {
+    const scale = (canvas.width * camera.zoom) / canvas.clientWidth
+
+    window.assetsSnapshot = assets.map((asset) => ({
+      ...asset,
+      points: asset.points.map((point) => ({
+        ...point,
+        x: point.x * scale + camera.x,
+        y: point.y * scale + camera.y,
+      })),
+    }))
+  }
   let currentHistoryIndex = 0
 
   const creator = await initCreator(
     canvas,
     (assets) => {
-      window.assetsSnapshot = assets
+      setAssetSnapshot(assets)
       // we had to implement this whole history logic because there is no way
       // to call creator.resetCanvas(newAssets) from test code file
       if (currentHistoryIndex < assetsUpdatesHistory.length - 1) {
@@ -93,14 +106,14 @@ async function test() {
     currentHistoryIndex = Math.max(0, currentHistoryIndex - 1)
     const assets = assetsUpdatesHistory[currentHistoryIndex]
     creator.resetAssets(assets)
-    window.assetsSnapshot = assets
+    setAssetSnapshot(assets)
   })
 
   redoBtn.addEventListener('click', () => {
     currentHistoryIndex = Math.min(assetsUpdatesHistory.length - 1, currentHistoryIndex + 1)
     const assets = assetsUpdatesHistory[currentHistoryIndex]
     creator.resetAssets(assets)
-    window.assetsSnapshot = assets
+    setAssetSnapshot(assets)
   })
 }
 
