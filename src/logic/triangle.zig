@@ -1,6 +1,41 @@
 const Point = @import("types.zig").Point;
+const PointUV = @import("types.zig").PointUV;
 const Utils = @import("utils.zig");
 const math = @import("std").math;
+
+pub const Vertex = extern struct {
+    p0: PointUV,
+    p1: PointUV,
+    p2: PointUV,
+    color: [4]u8,
+    radius: [3]f32,
+};
+
+pub fn new_get_vertex_data(buffer: *[1]Vertex, p0: [5]f32, p1: [5]f32, p2: [5]f32, color: [4]u8) void {
+    buffer[0] = Vertex{
+        .p0 = PointUV{
+            .x = p0[0],
+            .y = p0[1],
+            .u = p0[2],
+            .v = p0[3],
+        },
+        .p1 = PointUV{
+            .x = p1[0],
+            .y = p1[1],
+            .u = p1[2],
+            .v = p1[3],
+        },
+        .p2 = PointUV{
+            .x = p2[0],
+            .y = p2[1],
+            .u = p2[2],
+            .v = p2[3],
+        },
+        .color = color,
+        // Radius list
+        .radius = [_]f32{ p0[4], p1[4], p2[4] },
+    };
+}
 
 pub const DRAW_VERTICES_COUNT: usize = 3 * 4 + 4 + 3;
 pub fn get_vertex_data(buffer: *[DRAW_VERTICES_COUNT]f32, p0: [5]f32, p1: [5]f32, p2: [5]f32, color: [4]f32) void {

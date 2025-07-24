@@ -10,7 +10,8 @@ const Msdf = @import("./msdf.zig");
 
 const WebGpuPrograms = struct {
     draw_texture: *const fn ([]const f32, u32) void,
-    draw_triangle: *const fn ([]const f32) void,
+    draw_triangle: *const fn ([]const Triangle.Vertex) void,
+    // draw_triangle: *const fn ([]const Triangle.Vertex) void,
     draw_msdf: *const fn ([]const f32, u32) void,
     pick_texture: *const fn ([]const f32, u32) void,
     pick_triangle: *const fn ([]const f32) void,
@@ -277,17 +278,17 @@ fn draw_project_background() void {
     const p2_v = Triangle.get_round_corner_vector(2, points, 0.0);
     const p3_v = Triangle.get_round_corner_vector(3, points, 0.0);
 
-    const color = [_]f32{ 0.1, 0.1, 0.1, 1.0 }; // gray color
+    const color = [_]u8{ 30, 30, 30, 255 }; // gray color
 
-    var buffer: [2 * Triangle.DRAW_VERTICES_COUNT]f32 = undefined;
-    Triangle.get_vertex_data(buffer[0..Triangle.DRAW_VERTICES_COUNT], p0_v, p1_v, p2_v, color);
-    Triangle.get_vertex_data(buffer[Triangle.DRAW_VERTICES_COUNT .. 2 * Triangle.DRAW_VERTICES_COUNT], p0_v, p2_v, p3_v, color);
+    var buffer: [2]Triangle.Vertex = undefined;
+    Triangle.new_get_vertex_data(buffer[0..1], p0_v, p1_v, p2_v, color);
+    Triangle.new_get_vertex_data(buffer[1..2], p0_v, p2_v, p3_v, color);
 
     web_gpu_programs.draw_triangle(&buffer);
 }
 
 fn draw_project_boundary() void {
-    var buffer: [Line.DRAW_VERTICES_COUNT * 4]f32 = undefined;
+    var buffer: [2 * 4]Triangle.Vertex = undefined;
 
     const points = [_]Types.Point{
         .{ .x = 0.0, .y = 0.0 },
@@ -296,13 +297,13 @@ fn draw_project_boundary() void {
         .{ .x = 0.0, .y = state.height },
     };
 
-    const color = [_]f32{ 0.5, 0.5, 0.5, 1.0 }; // gray color
+    const color = [_]u8{ 127, 127, 127, 255 }; // gray color
 
     for (points, 0..) |point, i| {
         const next_point = if (i == 3) points[0] else points[i + 1];
 
-        Line.get_vertex_data(
-            buffer[(i * Line.DRAW_VERTICES_COUNT)..][0..Line.DRAW_VERTICES_COUNT],
+        Line.new_get_vertex_data(
+            buffer[i * 2 ..][0..2],
             point,
             next_point,
             2.0 * state.render_scale,
@@ -314,30 +315,61 @@ fn draw_project_boundary() void {
     web_gpu_programs.draw_triangle(&buffer);
 }
 
+// const TextureVertex = packed struct {
+//     position: [4]f32, // destination position
+//     uv: [2]f32, // source position
+// };
+
+// 3 * 4 + 4 + 3;
+
+// pub const Triangle.Vertex = extern struct {
+//     x: f64, y: f64
+// };
+// https://github.com/chung-leong/zigar/wiki/Pointer#explicit-casting
+
+var shape_vertex_data: [2]Triangle.Vertex = undefined;
+
 pub fn canvas_render() void {
-    var iterator = state.assets.iterator();
-
-    // We can try to use depth buffer BUT with alpha we will have to sort assets anyway
-    // plus with textures we still render one by one anyway.....
-
     draw_project_background();
 
-    while (iterator.next()) |asset| {
-        var vertex_data: [Asset.VERTEX_BUFFER_SIZE]f32 = undefined;
-        asset.value_ptr.get_vertex_data(&vertex_data);
+    const points = [_]Types.Point{
+        Types.Point{ .x = 100.0, .y = 70.0 }, //
+        Types.Point{ .x = 300.0, .y = 100.0 }, //
+        Types.Point{ .x = 300.0, .y = 250.0 }, //
+        Types.Point{ .x = 100.0, .y = 150.0 }, //
+    };
+    const p0_v = Triangle.get_round_corner_vector(0, points, 10.0);
+    const p1_v = Triangle.get_round_corner_vector(1, points, 20.0);
+    const p2_v = Triangle.get_round_corner_vector(2, points, 80.0);
+    const p3_v = Triangle.get_round_corner_vector(3, points, 20.0);
 
-        web_gpu_programs.draw_texture(&vertex_data, asset.value_ptr.texture_id);
-    }
+    const color = [_]u8{ 0, 255, 255, 255 };
+    Triangle.new_get_vertex_data(shape_vertex_data[0..1], p0_v, p1_v, p2_v, color);
+    Triangle.new_get_vertex_data(shape_vertex_data[1..2], p0_v, p2_v, p3_v, color);
+
+    web_gpu_programs.draw_triangle(&shape_vertex_data);
+    // return;
+    // var iterator = state.assets.iterator();
+
+    // // We can try to use depth buffer BUT with alpha we will have to sort assets anyway
+    // // plus with textures we still render one by one anyway.....
+
+    // while (iterator.next()) |asset| {
+    //     var vertex_data: [Asset.VERTEX_BUFFER_SIZE]f32 = undefined;
+    //     asset.value_ptr.get_vertex_data(&vertex_data);
+
+    //     web_gpu_programs.draw_texture(&vertex_data, asset.value_ptr.texture_id);
+    // }
 
     draw_project_boundary();
 
-    const triangle_buffer, const msdf_buffer = get_border();
-    if (triangle_buffer.len > 0) {
-        web_gpu_programs.draw_triangle(triangle_buffer);
-    }
-    if (msdf_buffer.len > 0) {
-        web_gpu_programs.draw_msdf(msdf_buffer, 0);
-    }
+    // const triangle_buffer, const msdf_buffer = get_border();
+    // if (triangle_buffer.len > 0) {
+    //     web_gpu_programs.draw_triangle(triangle_buffer);
+    // }
+    // if (msdf_buffer.len > 0) {
+    //     web_gpu_programs.draw_msdf(msdf_buffer, 0);
+    // }
 
     // rest of the body of this function is just testing
     // const points = [_]Types.Point{
