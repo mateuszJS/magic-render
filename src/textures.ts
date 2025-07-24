@@ -21,21 +21,46 @@ export function init(
 export interface TextureSource {
   url: string
   texture?: GPUTexture
+  hash?: string
+  data?: Uint8ClampedArray // it's time consuming to obtain data from a GPUTexture later
 }
 
-export function add(url: string, callback?: (width: number, height: number) => void): number {
+export function add(
+  url: string,
+  callback?: (width: number, height: number, isNew: boolean) => void
+): number {
   loadingTextures++
   updateProcessing()
 
+  const sameUrl = textures.find((t) => t.url === url)
+  if (sameUrl) {
+    loadingTextures--
+    updateProcessing()
+    callback?.(sameUrl.texture!.width, sameUrl.texture!.height, false)
+    return textures.indexOf(sameUrl)
+  }
+
   const textureId = textures.length
+  // we allow duplicates in textures array
   textures.push({ url })
 
   const img = new Image()
   img.src = url
 
   img.onload = () => {
-    textures[textureId].texture = createTextureFromSource(device, img, { flipY: true })
-    callback?.(img.width, img.height)
+    const data = getImageData(img, img.naturalWidth, img.naturalHeight)
+    const hash = hashImageData(data)
+
+    const existingTexture = findSameTexture(data, hash)
+    if (existingTexture !== null) {
+      textures[textureId] = existingTexture
+    } else {
+      textures[textureId].texture = createTextureFromSource(device, img, { flipY: true })
+      textures[textureId].data = data
+      textures[textureId].hash = hash
+    }
+
+    callback?.(img.width, img.height, !existingTexture)
 
     loadingTextures--
     updateProcessing()
@@ -57,4 +82,53 @@ export function getTexture(textureId: number): GPUTexture {
 
 export function getUrl(textureId: number): string {
   return textures[textureId].url
+}
+
+function getImageData(img: CanvasImageSource, width: number, height: number) {
+  const canvas = document.createElement('canvas')!
+  const ctx = canvas.getContext('2d')!
+  canvas.width = width
+  canvas.height = height
+  ctx.drawImage(img, 0, 0)
+  return ctx.getImageData(0, 0, width, height).data
+}
+
+/**
+ * A simple, non-cryptographic hash function (djb2) for raw pixel data.
+ * @param data The Uint8ClampedArray from getImageData.
+ * @returns A hash string.
+ */
+function hashImageData(data: Uint8ClampedArray): string {
+  let hash = 5381
+  for (let i = 0; i < data.length; i++) {
+    // Bitwise operations are fast
+    hash = (hash << 5) + hash + data[i] /* hash * 33 + c */
+  }
+  return String(hash)
+}
+
+function findSameTexture(imgData: Uint8ClampedArray, hash: string): TextureSource | null {
+  for (let i = 0; i < textures.length; i++) {
+    const texture = textures[i]
+    if (texture.hash === hash) {
+      // if hashes match, perform more expensive data comparison
+      // 2. If hashes match, perform the more expensive full pixel check
+      if (imgData.length !== texture.data!.length) {
+        return null
+      }
+
+      for (let i = 0; i < imgData.length; i++) {
+        if (imgData[i] !== texture.data![i]) {
+          return null
+        }
+      }
+      return texture
+    }
+  }
+
+  return null
+}
+
+export function updateTextureUrl(textureId: number, url: string) {
+  textures[textureId].url = url
 }

@@ -32,9 +32,16 @@ async function test() {
     }))
   }
   let currentHistoryIndex = 0
-
+  let newTextures = 0
   const creator = await initCreator(
     canvas,
+    (url, setNewUrl) => {
+      setNewUrl(`${newTextures}-${url}`)
+      newTextures++
+      // if (url.startsWith('http://our-domain.com')) {
+      // setNewUrl('new url')
+      // }
+    },
     (assets) => {
       setAssetSnapshot(assets)
       // we had to implement this whole history logic because there is no way
@@ -58,7 +65,10 @@ async function test() {
   addImageInput.addEventListener('change', (event) => {
     const { files } = event.target as HTMLInputElement
     if (!files) return
-    creator.addImage(URL.createObjectURL(files[0]))
+
+    const url = URL.createObjectURL(files[0])
+    creator.addImage(url)
+
     addImageInput.value = '' // reset input value to allow re-uploading the same file
   })
 
