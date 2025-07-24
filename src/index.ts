@@ -42,6 +42,7 @@ export interface CreatorAPI {
 
 export default async function initCreator(
   canvas: HTMLCanvasElement,
+  uploadTexture: (url: string, onNewUrl: (newUrl: string) => void) => void,
   onAssetsUpdate: (assets: SerializedOutputAsset[]) => void,
   onAssetSelect: (assetId: number) => void,
   onProcessingUpdate: (inProgress: boolean) => void
@@ -114,9 +115,15 @@ export default async function initCreator(
   connect_on_asset_selection_callback(onAssetSelect)
 
   const addImage: CreatorAPI['addImage'] = (url) => {
-    const textureId = Textures.add(url, (width, height) => {
+    const textureId = Textures.add(url, (width, height, isNew) => {
       const points = getDefaultPoints(width, height, projectWidth, projectHeight)
       add_asset(0 /* no id yet, needs to be generated */, points, textureId)
+
+      if (isNew) {
+        uploadTexture(url, (newUrl) => {
+          Textures.updateTextureUrl(textureId, newUrl)
+        })
+      }
     })
   }
 
@@ -146,19 +153,26 @@ export default async function initCreator(
           new Promise((resolve, reject) => {
             if (asset.points) {
               return resolve({
-                points: asset.points,
-                texture_id: asset.textureId || Textures.add(asset.url),
+                points: asset.points, // here it makes sense
+                texture_id: asset.textureId || Textures.add(asset.url), // if we got points, so we have url on the server for sure
                 id: asset.id || 0,
               })
             }
 
-            const textureId = Textures.add(asset.url, (width, height) => {
+            const textureId = Textures.add(asset.url, (width, height, isNew) => {
               // we wait to add image once points are known. Other option was to add image first
               // with "default" points and then update it once texture is loaded.
               // However, that would cause issues with undo/redo since we would have history
               // snapshot with "default" points and then update it to the real points.
+              if (isNew) {
+                uploadTexture(asset.url, (newUrl) => {
+                  console.log(asset.url, newUrl)
+                  Textures.updateTextureUrl(textureId, newUrl)
+                })
+              }
+
               return resolve({
-                points: getDefaultPoints(width, height, canvas.clientWidth, canvas.clientHeight),
+                points: getDefaultPoints(width, height, projectWidth, projectHeight),
                 texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
                 id: 0,
               })
