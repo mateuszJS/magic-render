@@ -5,6 +5,8 @@ import {
   drawMSDF,
   pickTexture,
   pickTriangle,
+  canvasMatrixBuffer,
+  pickCanvasMatrixBuffer,
 } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
@@ -23,27 +25,20 @@ export default function runCreator(
   onEmptyEvents: VoidFunction // call when there is no more events to process
 ): VoidFunction {
   let canvasPass: GPURenderPassEncoder
-  let canvasMatrix: Float32Array
+  let pickPass: GPURenderPassEncoder
 
   const pickManager = new PickManager(device)
-  let pickMatrix: Float32Array
-  let pickPass: GPURenderPassEncoder
 
   connect_web_gpu_programs({
     draw_texture: (vertex_data, texture_id) =>
-      drawTexture(
-        canvasPass,
-        canvasMatrix,
-        vertex_data.typedArray,
-        Textures.getTexture(texture_id)
-      ),
+      drawTexture(canvasPass, vertex_data.typedArray, Textures.getTexture(texture_id)),
     draw_msdf: (vertex_data, texture_id) => {
-      drawMSDF(canvasPass, canvasMatrix, vertex_data.typedArray, Textures.getTexture(texture_id))
+      drawMSDF(canvasPass, vertex_data.typedArray, Textures.getTexture(texture_id))
     },
-    draw_triangle: (vertex_data) => drawTriangle(canvasPass, canvasMatrix, vertex_data.typedArray),
+    draw_triangle: (vertex_data) => drawTriangle(canvasPass, vertex_data.typedArray),
     pick_texture: (vertex_data, texture_id) =>
-      pickTexture(pickPass, pickMatrix, vertex_data.typedArray, Textures.getTexture(texture_id)),
-    pick_triangle: (vertex_data) => pickTriangle(pickPass, pickMatrix, vertex_data.typedArray),
+      pickTexture(pickPass, vertex_data.typedArray, Textures.getTexture(texture_id)),
+    pick_triangle: (vertex_data) => pickTriangle(pickPass, vertex_data.typedArray),
   })
 
   let rafId = 0
@@ -54,7 +49,8 @@ export default function runCreator(
 
     const canvasDescriptor = getCanvasRenderDescriptor(context, device)
     canvasPass = encoder.beginRenderPass(canvasDescriptor)
-    canvasMatrix = getCanvasMatrix(canvas)
+    const canvasMatrix = getCanvasMatrix(canvas)
+    device.queue.writeBuffer(canvasMatrixBuffer, 0, canvasMatrix)
 
     canvas_render()
     canvasPass.end()
@@ -71,7 +67,8 @@ export default function runCreator(
     if (needsUpdatePick) {
       lastPickPointer.x = pointer.x
       lastPickPointer.y = pointer.y
-      pickMatrix = pickManager.createMatrix(canvas, canvasMatrix)
+      const pickMatrix = pickManager.createMatrix(canvas, canvasMatrix)
+      device.queue.writeBuffer(pickCanvasMatrixBuffer, 0, pickMatrix)
       const pick = pickManager.startPicking(encoder)
       pickPass = pick.pass
       picks_render()
