@@ -28,14 +28,13 @@ struct VertexOutput {
 
 @vertex fn vs(
   vert: Vertex,
-  @builtin(vertex_index) vertexIndex : u32
+  @builtin(vertex_index) vertex_index : u32
 ) -> VertexOutput {
-  let normVertexIndex = vertexIndex % 3;
-
   var out: VertexOutput;
-  if (normVertexIndex == 0) {
+
+  if (vertex_index == 0) {
     out.position = vec4f(vert.p0.xy, 0, 1);
-  } else if (normVertexIndex == 1) {
+  } else if (vertex_index == 1) {
     out.position = vec4f(vert.p1.xy, 0, 1);
   } else {
     out.position = vec4f(vert.p2.xy, 0, 1);
@@ -49,6 +48,7 @@ struct VertexOutput {
   out.p1 = vert.p1;
   out.p2 = vert.p2;
   out.color = vert.color;
+
   out.radius_list = vert.radius_list;
 
   let p0_circle_dist = distance(vert.p0.xy, vert.p0.zw);
