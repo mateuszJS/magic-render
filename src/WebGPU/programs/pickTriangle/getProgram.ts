@@ -2,7 +2,7 @@ import shaderCode from './shader.wgsl'
 
 const STRIDE = 4 + 1
 
-export default function getProgram(device: GPUDevice) {
+export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
   const module = device.createShaderModule({
     label: 'pick triangle module',
     code: shaderCode,
@@ -50,20 +50,11 @@ export default function getProgram(device: GPUDevice) {
     // },
   })
 
-  const uniformBufferSize = 16 /*projection matrix*/ * 4
-  const uniformBuffer = device.createBuffer({
-    label: 'uniforms',
-    size: uniformBufferSize,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-  })
-
-  const uniformValues = new Float32Array(uniformBufferSize / 4)
-  const kMatrixOffset = 0
-  const matrixValue = uniformValues.subarray(kMatrixOffset, kMatrixOffset + 16)
+  // Cache bind group for this program (no texture needed)
+  let cachedBindGroup: GPUBindGroup | null = null
 
   return function pickTriangle(
     pass: GPURenderPassEncoder,
-    worldProjectionMatrix: Float32Array,
     vertexData: Float32Array<ArrayBufferLike>
   ) {
     const numVertices = (vertexData.length / STRIDE) | 0
@@ -74,20 +65,17 @@ export default function getProgram(device: GPUDevice) {
     })
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
 
-    // bind group should be pre-created and reuse instead of constantly initialized
-    const bindGroup = device.createBindGroup({
-      layout: pipeline.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
-    })
+    // Get or create bind group for this program
+    if (!cachedBindGroup) {
+      cachedBindGroup = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [{ binding: 0, resource: { buffer: matrixBuffer } }],
+      })
+    }
 
     pass.setPipeline(pipeline)
     pass.setVertexBuffer(0, vertexBuffer)
-
-    matrixValue.set(worldProjectionMatrix)
-
-    device.queue.writeBuffer(uniformBuffer, 0, uniformValues)
-
-    pass.setBindGroup(0, bindGroup)
+    pass.setBindGroup(0, cachedBindGroup)
     pass.draw(numVertices)
   }
 }
