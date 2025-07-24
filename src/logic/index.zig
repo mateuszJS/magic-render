@@ -46,7 +46,7 @@ const ActionType = enum {
 const State = struct {
     width: f32,
     height: f32,
-    assets: std.AutoHashMap(u32, Asset),
+    assets: std.AutoArrayHashMap(u32, Asset),
     hovered_asset_id: u32,
     selected_asset_id: u32,
     ongoing_action: ActionType,
@@ -68,7 +68,7 @@ var state = State{
 pub fn init_state(width: f32, height: f32) void {
     state.width = width;
     state.height = height;
-    state.assets = std.AutoHashMap(u32, Asset).init(std.heap.page_allocator);
+    state.assets = std.AutoArrayHashMap(u32, Asset).init(std.heap.page_allocator);
 }
 
 pub fn update_render_scale(scale: f32) void {
@@ -89,7 +89,7 @@ pub fn add_asset(id_or_zero: u32, points: [4]Types.PointUV, texture_id: u32) voi
 }
 
 pub fn remove_asset() void {
-    _ = state.assets.remove(state.selected_asset_id);
+    _ = state.assets.orderedRemove(state.selected_asset_id);
     state.selected_asset_id = 0;
     on_asset_select_cb(state.selected_asset_id);
     check_assets_update(true);
@@ -265,8 +265,29 @@ fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
     };
 }
 
-fn get_project_boundary() [Line.DRAW_VERTICES_COUNT * 5]f32 {
-    var buffer: [Line.DRAW_VERTICES_COUNT * 5]f32 = undefined;
+fn draw_project_background() void {
+    const points = [_]Types.Point{
+        Types.Point{ .x = 0.0, .y = 0.0 }, //
+        Types.Point{ .x = state.width, .y = 0.0 }, //
+        Types.Point{ .x = state.width, .y = state.height }, //
+        Types.Point{ .x = 0.0, .y = state.height }, //
+    };
+    const p0_v = Triangle.get_round_corner_vector(0, points, 0.0);
+    const p1_v = Triangle.get_round_corner_vector(1, points, 0.0);
+    const p2_v = Triangle.get_round_corner_vector(2, points, 0.0);
+    const p3_v = Triangle.get_round_corner_vector(3, points, 0.0);
+
+    const color = [_]f32{ 0.1, 0.1, 0.1, 1.0 }; // gray color
+
+    var buffer: [2 * Triangle.DRAW_VERTICES_COUNT]f32 = undefined;
+    Triangle.get_vertex_data(buffer[0..Triangle.DRAW_VERTICES_COUNT], p0_v, p1_v, p2_v, color);
+    Triangle.get_vertex_data(buffer[Triangle.DRAW_VERTICES_COUNT .. 2 * Triangle.DRAW_VERTICES_COUNT], p0_v, p2_v, p3_v, color);
+
+    web_gpu_programs.draw_triangle(&buffer);
+}
+
+fn draw_project_boundary() void {
+    var buffer: [Line.DRAW_VERTICES_COUNT * 4]f32 = undefined;
 
     const points = [_]Types.Point{
         .{ .x = 0.0, .y = 0.0 },
@@ -275,37 +296,31 @@ fn get_project_boundary() [Line.DRAW_VERTICES_COUNT * 5]f32 {
         .{ .x = 0.0, .y = state.height },
     };
 
-    const light_grey = [_]f32{ 0.5, 0.5, 0.5, 1.0 }; // gray color
-
-    const dark_grey = [_]f32{ 0.1, 0.1, 0.1, 0.2 }; // gray color
-
-    Line.get_vertex_data(
-        buffer[0..Line.DRAW_VERTICES_COUNT],
-        points[0].mid(points[1]),
-        points[3].mid(points[2]),
-        200.0, //std.math.hypot(points[0].x - points[1].x, points[0].y - points[1].y), // line width
-        dark_grey,
-        0.0,
-    );
+    const color = [_]f32{ 0.5, 0.5, 0.5, 1.0 }; // gray color
 
     for (points, 0..) |point, i| {
         const next_point = if (i == 3) points[0] else points[i + 1];
 
         Line.get_vertex_data(
-            buffer[((i + 1) * Line.DRAW_VERTICES_COUNT)..][0..Line.DRAW_VERTICES_COUNT],
+            buffer[(i * Line.DRAW_VERTICES_COUNT)..][0..Line.DRAW_VERTICES_COUNT],
             point,
             next_point,
             2.0 * state.render_scale,
-            light_grey,
+            color,
             0.0,
         );
     }
 
-    return buffer;
+    web_gpu_programs.draw_triangle(&buffer);
 }
 
 pub fn canvas_render() void {
     var iterator = state.assets.iterator();
+
+    // We can try to use depth buffer BUT with alpha we will have to sort assets anyway
+    // plus with textures we still render one by one anyway.....
+
+    draw_project_background();
 
     while (iterator.next()) |asset| {
         var vertex_data: [Asset.VERTEX_BUFFER_SIZE]f32 = undefined;
@@ -314,8 +329,7 @@ pub fn canvas_render() void {
         web_gpu_programs.draw_texture(&vertex_data, asset.value_ptr.texture_id);
     }
 
-    const project_boundary_buffer = get_project_boundary();
-    web_gpu_programs.draw_triangle(&project_boundary_buffer);
+    draw_project_boundary();
 
     const triangle_buffer, const msdf_buffer = get_border();
     if (triangle_buffer.len > 0) {

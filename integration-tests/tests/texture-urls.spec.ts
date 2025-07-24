@@ -20,8 +20,8 @@ test('avoids triggering upload for new textures', async ({ page }, testinfo) => 
 
   const assets = await utils.getAssetsState()
 
-  expect(assets[0].url).toMatch(/^[01]-blob:http/) // go to call of initCreator
-  expect(assets[1].url).toMatch(/^[01]-blob:http/) // to udnerstand the pattern
+  expect(assets[0].url).toMatch(/^[01]-blob:http/) // we use [01] because input with multiple fields
+  expect(assets[1].url).toMatch(/^[01]-blob:http/) // doesn't maintain the order
 
   await utils.uploadAsset() // uploads image-sample.png, should not generate a new urls/not request uploadTexture
   const thridUploadAssets = await utils.getAssetsState()

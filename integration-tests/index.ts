@@ -78,12 +78,12 @@ async function test() {
   startProjectInputFromImages.addEventListener('change', (event) => {
     const { files } = event.target as HTMLInputElement
     if (!files) return
-    creator.resetAssets(
-      Array.from(files).map((file) => ({
-        url: URL.createObjectURL(file),
-      })),
-      true
-    )
+
+    const urls = Array.from(files).map((file) => ({
+      url: URL.createObjectURL(file),
+    }))
+
+    creator.resetAssets(urls, true)
     startProjectInputFromImages.value = '' // reset input value to allow re-uploading the same file
   })
 
