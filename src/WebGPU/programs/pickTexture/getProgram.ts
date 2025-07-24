@@ -2,7 +2,7 @@ import shaderCode from './shader.wgsl'
 
 const STRIDE = 4 + 2 + 1
 
-export default function getProgram(device: GPUDevice) {
+export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
   const module = device.createShaderModule({
     label: 'pick texture module',
     code: shaderCode,
@@ -51,20 +51,11 @@ export default function getProgram(device: GPUDevice) {
     // },
   })
 
-  const uniformBufferSize = 16 /*projection matrix*/ * 4
-  const uniformBuffer = device.createBuffer({
-    label: 'uniforms',
-    size: uniformBufferSize,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-  })
-
-  const uniformValues = new Float32Array(uniformBufferSize / 4)
-  const kMatrixOffset = 0
-  const matrixValue = uniformValues.subarray(kMatrixOffset, kMatrixOffset + 16)
+  // Cache bind groups per texture to avoid recreating them
+  const bindGroupCache = new WeakMap<GPUTexture, GPUBindGroup>()
 
   return function pickTexture(
     pass: GPURenderPassEncoder,
-    worldProjectionMatrix: Float32Array,
     vertexData: Float32Array<ArrayBufferLike>,
     texture: GPUTexture
   ) {
@@ -76,25 +67,22 @@ export default function getProgram(device: GPUDevice) {
     })
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
 
-    // bind group should be pre-created and reuse instead of constantly initialized
-    // TODO: avoid creatign bind group on every render
-    const bindGroup = device.createBindGroup({
-      layout: pipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: uniformBuffer } },
-        { binding: 1, resource: sampler },
-        { binding: 2, resource: texture.createView() },
-      ],
-    })
+    // Get or create bind group for this texture
+    let bindGroup = bindGroupCache.get(texture)
+    if (!bindGroup) {
+      bindGroup = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: matrixBuffer } },
+          { binding: 1, resource: sampler },
+          { binding: 2, resource: texture.createView() },
+        ],
+      })
+      bindGroupCache.set(texture, bindGroup)
+    }
 
     pass.setPipeline(pipeline)
     pass.setVertexBuffer(0, vertexBuffer)
-
-    // const translateWorldProjMatrix = mat4.translate(worldProjectionMatrix, [])
-    matrixValue.set(worldProjectionMatrix)
-
-    device.queue.writeBuffer(uniformBuffer, 0, uniformValues)
-
     pass.setBindGroup(0, bindGroup)
     pass.draw(numVertices)
   }

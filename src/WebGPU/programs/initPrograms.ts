@@ -20,15 +20,30 @@ export let pickTexture: ReturnType<typeof getPickTexture>
 export let pickTriangle: ReturnType<typeof getPickTriangle>
 export let drawMSDF: ReturnType<typeof getDrawMSDF>
 
+export let canvasMatrixBuffer: GPUBuffer
+export let pickCanvasMatrixBuffer: GPUBuffer
+
 export default function initPrograms(device: GPUDevice, presentationFormat: GPUTextureFormat) {
-  drawTriangle = getDrawTriangle(device, presentationFormat)
+  canvasMatrixBuffer = device.createBuffer({
+    label: 'uniforms',
+    size: 16 /*projection matrix*/ * 4,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  })
+
+  pickCanvasMatrixBuffer = device.createBuffer({
+    label: 'uniforms',
+    size: 16 /*projection matrix*/ * 4,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  })
+
+  drawTriangle = getDrawTriangle(device, presentationFormat, canvasMatrixBuffer)
   drawBezier = getDrawBezier(device, presentationFormat)
   draw3dModelTexture = getDraw3dModelTexture(device, presentationFormat)
   draw3dModel = getDraw3dModel(device, presentationFormat)
   draw3dModelLight = getDraw3dModelLight(device, presentationFormat)
   drawBlur = getBlur(device)
-  drawTexture = getDrawtexture(device, presentationFormat)
-  pickTexture = getPickTexture(device)
-  pickTriangle = getPickTriangle(device)
-  drawMSDF = getDrawMSDF(device, presentationFormat)
+  drawTexture = getDrawtexture(device, presentationFormat, canvasMatrixBuffer)
+  pickTexture = getPickTexture(device, pickCanvasMatrixBuffer)
+  pickTriangle = getPickTriangle(device, pickCanvasMatrixBuffer)
+  drawMSDF = getDrawMSDF(device, presentationFormat, canvasMatrixBuffer)
 }
