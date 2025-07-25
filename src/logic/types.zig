@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const Point = struct {
+pub const Point = extern struct {
     x: f32,
     y: f32,
 
@@ -18,7 +18,7 @@ pub const Point = struct {
     }
 };
 
-pub const PointUV = struct {
+pub const PointUV = extern struct {
     x: f32,
     y: f32,
     u: f32,

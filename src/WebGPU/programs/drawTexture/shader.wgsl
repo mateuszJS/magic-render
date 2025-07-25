@@ -1,6 +1,5 @@
 struct Vertex {
   @location(0) position: vec4f,
-  @location(1) uv: vec2f,
 };
 
 struct Uniforms {
@@ -19,8 +18,8 @@ struct VertexOutput {
 @vertex fn vs(vert: Vertex) -> VertexOutput {
   var out: VertexOutput;
   // maybe we should pass offsets from the position instead of... position?
-  out.position = u.worldViewProjection * vert.position;
-  out.texCoord = vert.uv;
+  out.position = u.worldViewProjection * vec4f(vert.position.xy, 0, 1);
+  out.texCoord = vert.position.zw;
   
   return out;
 }

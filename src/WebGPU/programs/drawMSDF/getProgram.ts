@@ -1,7 +1,7 @@
 import shaderCode from './shader.wgsl'
 
 const INSTANCE_STRIDE =
-  3 /*3 verticies*/ * (4 /*destinatio position*/ + 2) /*source position*/ + 4 /*color*/
+  3 /*3 verticies*/ * 4 /*destination(xy) and texture coords(zw) */ + 1 /*color*/
 
 export default function getProgram(
   device: GPUDevice,
@@ -29,13 +29,10 @@ export default function getProgram(
           arrayStride: INSTANCE_STRIDE * 4,
           stepMode: 'instance',
           attributes: [
-            { shaderLocation: 0, offset: 0, format: 'float32x4' }, // p0 destination position
-            { shaderLocation: 1, offset: 16, format: 'float32x2' }, // p0 source position
-            { shaderLocation: 2, offset: 16 + 8, format: 'float32x4' }, // p1 destination position
-            { shaderLocation: 3, offset: 16 + 8 + 16, format: 'float32x2' }, // p1 source position
-            { shaderLocation: 4, offset: 16 + 8 + 16 + 8, format: 'float32x4' }, // p2 destination position
-            { shaderLocation: 5, offset: 16 + 8 + 16 + 8 + 16, format: 'float32x2' }, // p2 source position
-            { shaderLocation: 6, offset: 16 + 8 + 16 + 8 + 16 + 8, format: 'float32x4' }, // color
+            { shaderLocation: 0, offset: 0, format: 'float32x4' }, // p0
+            { shaderLocation: 1, offset: 16, format: 'float32x4' }, // p1
+            { shaderLocation: 2, offset: 16 + 16, format: 'float32x4' }, // p2
+            { shaderLocation: 3, offset: 16 + 16 + 16, format: 'unorm8x4' }, // color
           ] as const,
         },
       ],
@@ -62,29 +59,25 @@ export default function getProgram(
     multisample: {
       count: 4,
     },
-    // depthStencil: {
-    //   depthWriteEnabled: true,
-    //   depthCompare: 'less',
-    //   format: 'depth24plus',
-    // },
   })
 
-  // Cache bind groups per texture to avoid recreating them
   const bindGroupCache = new WeakMap<GPUTexture, GPUBindGroup>()
 
   return function drawMSDF(
     pass: GPURenderPassEncoder,
-    vertexData: Float32Array,
+    vertexData: ArrayBufferLike,
+    vertexDataOffset = 0,
+    vertexDataSize = 0,
     texture: GPUTexture
   ) {
-    const numInstances = vertexData.length / INSTANCE_STRIDE
+    const numInstances = vertexDataSize / (4 * INSTANCE_STRIDE)
 
     const vertexBuffer = device.createBuffer({
       label: 'draw msdf - vertex buffer',
-      size: vertexData.byteLength,
+      size: vertexDataSize,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
-    device.queue.writeBuffer(vertexBuffer, 0, vertexData)
+    device.queue.writeBuffer(vertexBuffer, 0, vertexData, vertexDataOffset, vertexDataSize)
 
     // Get or create bind group for this texture
     let bindGroup = bindGroupCache.get(texture)

@@ -1,7 +1,7 @@
 import shaderCode from './shader.wgsl'
 
 const INSTANCE_STRIDE =
-  4 * 3 /* positon */ + 4 /* color */ + 3 /* value of roudned corner  for each of three positions */
+  4 * 3 /* positon */ + 1 /* color */ + 3 /* value of roudned corner  for each of three positions */
 
 export default function getProgram(
   device: GPUDevice,
@@ -27,8 +27,8 @@ export default function getProgram(
             { shaderLocation: 0, offset: 0, format: 'float32x4' }, // position 0
             { shaderLocation: 1, offset: 16, format: 'float32x4' }, // position 1
             { shaderLocation: 2, offset: 16 + 16, format: 'float32x4' }, // position 2
-            { shaderLocation: 3, offset: 16 + 16 + 16, format: 'float32x4' }, // color
-            { shaderLocation: 4, offset: 16 + 16 + 16 + 16, format: 'float32x3' }, // rounded corner values
+            { shaderLocation: 3, offset: 16 + 16 + 16, format: 'unorm8x4' }, // color 'rgba8unorm'
+            { shaderLocation: 4, offset: 16 + 16 + 16 + 4, format: 'float32x3' }, // rounded corner values
           ] as const,
         },
       ],
@@ -65,16 +65,18 @@ export default function getProgram(
 
   return function drawTriangle(
     pass: GPURenderPassEncoder,
-    vertexData: Float32Array<ArrayBufferLike>
+    vertexData: ArrayBufferLike,
+    vertexDataOffset = 0,
+    vertexDataSize = 0
   ) {
-    const numInstances = vertexData.length / INSTANCE_STRIDE
+    const numInstances = vertexDataSize / (4 * INSTANCE_STRIDE)
 
     const vertexBuffer = device.createBuffer({
-      label: 'vertex buffer vertices',
-      size: vertexData.byteLength,
+      label: 'draw triangle - vertex buffer',
+      size: vertexDataSize,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
-    device.queue.writeBuffer(vertexBuffer, 0, vertexData)
+    device.queue.writeBuffer(vertexBuffer, 0, vertexData, vertexDataOffset, vertexDataSize)
 
     pass.setPipeline(pipeline)
     pass.setVertexBuffer(0, vertexBuffer)
