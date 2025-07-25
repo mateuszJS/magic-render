@@ -56,7 +56,7 @@ fn threshold_pythagorean_leg(corner: vec4f, radius: f32) -> f32 {
     threshold_pythagorean_leg(vert.p0, vert.radius_list.x),
     threshold_pythagorean_leg(vert.p1, vert.radius_list.y),
     threshold_pythagorean_leg(vert.p2, vert.radius_list.z),
-  ); // behind this value is rounded corner
+  ); // behind this value is a ounded corner
 
   return out;
 }

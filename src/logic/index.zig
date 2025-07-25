@@ -280,7 +280,7 @@ fn draw_project_background() void {
 
     var buffer: [2]Triangle.DrawInstance = undefined;
     Triangle.get_draw_vertex_data(buffer[0..1], p0_v, p1_v, p2_v, color);
-    Triangle.get_draw_vertex_data(buffer[1..2], p0_v, p3_v, p2_v, color);
+    Triangle.get_draw_vertex_data(buffer[1..2], p0_v, p2_v, p3_v, color);
 
     web_gpu_programs.draw_triangle(&buffer);
 }
@@ -337,34 +337,34 @@ pub fn render_draw() void {
 
     // testing:
 
-    const points = [_]Types.Point{
-        Types.Point{ .x = 100.0, .y = 70.0 }, //
-        Types.Point{ .x = 300.0, .y = 100.0 }, //
-        Types.Point{ .x = 300.0, .y = 250.0 }, //
-        Types.Point{ .x = 100.0, .y = 150.0 }, //
-    };
-    const p0_v = Triangle.get_round_corner_vector(0, points, 10.0);
-    const p1_v = Triangle.get_round_corner_vector(1, points, 20.0);
-    const p2_v = Triangle.get_round_corner_vector(2, points, 80.0);
-    const p3_v = Triangle.get_round_corner_vector(3, points, 20.0);
+    // const points = [_]Types.Point{
+    //     Types.Point{ .x = 100.0, .y = 70.0 }, //
+    //     Types.Point{ .x = 300.0, .y = 100.0 }, //
+    //     Types.Point{ .x = 300.0, .y = 250.0 }, //
+    //     Types.Point{ .x = 100.0, .y = 150.0 }, //
+    // };
+    // const p0_v = Triangle.get_round_corner_vector(0, points, 10.0);
+    // const p1_v = Triangle.get_round_corner_vector(1, points, 20.0);
+    // const p2_v = Triangle.get_round_corner_vector(2, points, 80.0);
+    // const p3_v = Triangle.get_round_corner_vector(3, points, 20.0);
 
-    const color = [_]u8{ 0, 255, 255, 255 };
+    // const color = [_]u8{ 0, 255, 255, 255 };
 
-    var shape_vertex_data: [2]Triangle.DrawInstance = undefined;
+    // var shape_vertex_data: [2]Triangle.DrawInstance = undefined;
 
-    Triangle.get_draw_vertex_data(shape_vertex_data[0..1], p0_v, p1_v, p2_v, color);
-    Triangle.get_draw_vertex_data(shape_vertex_data[1..2], p0_v, p3_v, p2_v, color);
+    // Triangle.get_draw_vertex_data(shape_vertex_data[0..1], p0_v, p1_v, p2_v, color);
+    // Triangle.get_draw_vertex_data(shape_vertex_data[1..2], p0_v, p2_v, p3_v, color);
 
-    web_gpu_programs.draw_triangle(&shape_vertex_data);
+    // web_gpu_programs.draw_triangle(&shape_vertex_data);
 
-    const msdf_vertex_data = Msdf.get_draw_vertex_data(
-        Msdf.IconId.rotate,
-        10.0,
-        10.0,
-        100.0,
-        [_]u8{ 255, 0, 0, 255 },
-    );
-    web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
+    // const msdf_vertex_data = Msdf.get_draw_vertex_data(
+    //     Msdf.IconId.rotate,
+    //     10.0,
+    //     10.0,
+    //     100.0,
+    //     [_]u8{ 255, 0, 0, 255 },
+    // );
+    // web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
 }
 
 pub fn render_pick() void {

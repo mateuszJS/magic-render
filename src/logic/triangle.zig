@@ -89,7 +89,7 @@ pub fn get_round_corner_vector(index: usize, points: [NUM_OF_POINTS]Point, radiu
     const mid_angle_p = Utils.findMidAngle(p_to_pa, p_to_pb);
 
     const half_of_mid_angle_p = Utils.angleDifference(mid_angle_p, p_to_pa);
-    const p0_circle_offset = radius / math.sin(half_of_mid_angle_p); // Pythagoras
+    const p0_circle_offset = radius / math.sin(half_of_mid_angle_p); // Pythagorean theorem
     const p_circle = Point{
         .x = p.x + math.cos(mid_angle_p) * p0_circle_offset,
         .y = p.y + math.sin(mid_angle_p) * p0_circle_offset,
