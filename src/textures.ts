@@ -44,11 +44,15 @@ export function add(
   // we allow duplicates in textures array
   textures.push({ url })
 
-  const img = new Image()
-  img.src = url
-
-  img.onload = () => {
-    const data = getImageData(img, img.naturalWidth, img.naturalHeight)
+  getImageWithDetails(url).then(([img, { isSvg }]) => {
+    console.log(img.naturalWidth, img.naturalHeight)
+    const data = getImageData(
+      img,
+      img.naturalWidth,
+      img.naturalHeight,
+      img.naturalWidth,
+      img.naturalHeight
+    )
     const hash = hashImageData(data)
 
     const existingTexture = findSameTexture(data, hash)
@@ -64,14 +68,7 @@ export function add(
 
     loadingTextures--
     updateProcessing()
-  }
-
-  img.onerror = () => {
-    console.error(`Failed to load image from ${url}`)
-
-    loadingTextures--
-    updateProcessing()
-  }
+  })
 
   return textureId
 }
@@ -84,13 +81,19 @@ export function getUrl(textureId: number): string {
   return textures[textureId].url
 }
 
-function getImageData(img: CanvasImageSource, width: number, height: number) {
+function getImageData(
+  img: CanvasImageSource,
+  imgWidth: number,
+  imgHeight: number,
+  canvasWidth: number,
+  canvasHeight: number
+) {
   const canvas = document.createElement('canvas')!
   const ctx = canvas.getContext('2d')!
-  canvas.width = width
-  canvas.height = height
-  ctx.drawImage(img, 0, 0)
-  return ctx.getImageData(0, 0, width, height).data
+  canvas.width = canvasWidth
+  canvas.height = canvasHeight
+  ctx.drawImage(img, 0, 0, imgWidth, imgHeight, 0, 0, canvasWidth, canvasHeight)
+  return ctx.getImageData(0, 0, canvasWidth, canvasHeight).data
 }
 
 /**
@@ -131,4 +134,21 @@ function findSameTexture(imgData: Uint8ClampedArray, hash: string): TextureSourc
 
 export function updateTextureUrl(textureId: number, url: string) {
   textures[textureId].url = url
+}
+
+async function getImageWithDetails(url: string): Promise<[HTMLImageElement, { isSvg: boolean }]> {
+  return Promise.all([
+    new Promise<HTMLImageElement>((resolve) => {
+      const img = new Image()
+      img.src = url
+      img.onload = () => resolve(img)
+    }),
+    new Promise<{ isSvg: boolean }>((resolve) => {
+      fetch(url)
+        .then((response) => response.blob())
+        .then((blob) => {
+          resolve({ isSvg: blob.type === 'image/svg+xml' })
+        })
+    }),
+  ])
 }
