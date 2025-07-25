@@ -1,14 +1,13 @@
 import shaderCode from './shader.wgsl'
 
-const STRIDE = 4 + 2 // + 1 + 1 + 4
-
+const STRIDE = 4
 export default function getProgram(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
   matrixBuffer: GPUBuffer
 ) {
   const module = device.createShaderModule({
-    label: 'texture module',
+    label: 'draw texture module',
     code: shaderCode,
   })
 
@@ -18,7 +17,7 @@ export default function getProgram(
   })
 
   const pipeline = device.createRenderPipeline({
-    label: 'texture pipeline',
+    label: 'draw texture pipeline',
     layout: 'auto',
     vertex: {
       module,
@@ -27,8 +26,7 @@ export default function getProgram(
         {
           arrayStride: STRIDE * 4,
           attributes: [
-            { shaderLocation: 0, offset: 0, format: 'float32x4' }, // destination position
-            { shaderLocation: 1, offset: 16, format: 'float32x2' }, // source position
+            { shaderLocation: 0, offset: 0, format: 'float32x4' }, // destination(xy) and source (zw) positions
           ] as const,
         },
       ],
@@ -55,11 +53,6 @@ export default function getProgram(
     multisample: {
       count: 4,
     },
-    // depthStencil: {
-    //   depthWriteEnabled: true,
-    //   depthCompare: 'less',
-    //   format: 'depth24plus',
-    // },
   })
 
   // Cache bind groups per texture to avoid recreating them
@@ -67,18 +60,20 @@ export default function getProgram(
 
   return function drawTexture(
     pass: GPURenderPassEncoder,
-    vertexData: Float32Array<ArrayBufferLike>,
+    vertexData: ArrayBufferLike,
+    vertexDataOffset = 0,
+    vertexDataSize = 0,
     texture: GPUTexture
   ) {
-    const numVertices = (vertexData.length / STRIDE) | 0
+    const numVertices = vertexDataSize / (4 * STRIDE)
 
     const vertexBuffer = device.createBuffer({
-      label: 'vertex buffer vertices',
-      size: vertexData.byteLength,
+      label: 'draw texture - vertex buffer',
+      size: vertexDataSize,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
 
-    device.queue.writeBuffer(vertexBuffer, 0, vertexData)
+    device.queue.writeBuffer(vertexBuffer, 0, vertexData, vertexDataOffset, vertexDataSize)
 
     // Get or create bind group for this texture
     let bindGroup = bindGroupCache.get(texture)

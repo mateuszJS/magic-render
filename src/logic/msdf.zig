@@ -1,4 +1,5 @@
 const std = @import("std");
+const PointUV = @import("types.zig").PointUV;
 
 pub const IconId = enum(u32) {
     rotate = 57345, // U+E001
@@ -24,9 +25,6 @@ const DEFAULT_ICON = IconData{
     .real_width = 0.0,
     .real_height = 0.0,
 }; // used when an icon is not found(not loaded yet)
-
-const TRIANGLE_DRAW_VERTICES_COUNT = (4 + 2) * 3 + 4; // 4 -> x,y,z,w, 2 -> u,v, 3 verticies, 4 -> color
-pub const DRAW_VERTICES_COUNT = TRIANGLE_DRAW_VERTICES_COUNT * 2;
 
 var icons: std.AutoHashMap(IconId, IconData) = undefined;
 
@@ -54,7 +52,12 @@ pub fn deinit_icons() void {
     icons.deinit();
 }
 
-pub fn get_msdf_vertex_data(icon_id: IconId, x: f32, y: f32, width: f32, color: [4]f32) [DRAW_VERTICES_COUNT]f32 {
+pub const DrawInstance = extern struct {
+    points: [3]PointUV,
+    color: [4]u8,
+};
+
+pub fn get_draw_vertex_data(icon_id: IconId, x: f32, y: f32, width: f32, color: [4]u8) [2]DrawInstance {
     const icon = icons.get(icon_id) orelse DEFAULT_ICON;
 
     const scale = width / icon.real_width;
@@ -68,15 +71,22 @@ pub fn get_msdf_vertex_data(icon_id: IconId, x: f32, y: f32, width: f32, color: 
     const source_x_left = icon.x;
     const source_x_right = icon.x + icon.width;
 
-    return [_]f32{
-        dest_x_left, dest_y_bottom, 0.0, 1.0, source_x_left, source_y_bottom, //
-        dest_x_left, dest_y_top, 0.0, 1.0, source_x_left, source_y_top, //
-        dest_x_right, dest_y_top, 0.0, 1.0, source_x_right, source_y_top, //
-        color[0], color[1], color[2], color[3], //
-        // second triangle
-        dest_x_right, dest_y_top, 0.0, 1.0, source_x_right, source_y_top, //
-        dest_x_right, dest_y_bottom, 0.0, 1.0, source_x_right, source_y_bottom, //
-        dest_x_left, dest_y_bottom, 0.0, 1.0, source_x_left, source_y_bottom, //
-        color[0], color[1], color[2], color[3], //
+    return [_]DrawInstance{
+        .{
+            .points = [_]PointUV{
+                .{ .x = dest_x_left, .y = dest_y_bottom, .u = source_x_left, .v = source_y_bottom },
+                .{ .x = dest_x_left, .y = dest_y_top, .u = source_x_left, .v = source_y_top },
+                .{ .x = dest_x_right, .y = dest_y_top, .u = source_x_right, .v = source_y_top },
+            },
+            .color = color,
+        },
+        .{
+            .points = [_]PointUV{
+                .{ .x = dest_x_right, .y = dest_y_top, .u = source_x_right, .v = source_y_top },
+                .{ .x = dest_x_right, .y = dest_y_bottom, .u = source_x_right, .v = source_y_bottom },
+                .{ .x = dest_x_left, .y = dest_y_bottom, .u = source_x_left, .v = source_y_bottom },
+            },
+            .color = color,
+        },
     };
 }
