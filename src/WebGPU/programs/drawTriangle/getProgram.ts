@@ -72,7 +72,7 @@ export default function getProgram(
     const numInstances = vertexDataSize / (4 * INSTANCE_STRIDE)
 
     const vertexBuffer = device.createBuffer({
-      label: 'vertex buffer vertices',
+      label: 'draw triangle - vertex buffer',
       size: vertexDataSize,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })

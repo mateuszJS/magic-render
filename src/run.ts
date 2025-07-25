@@ -10,7 +10,7 @@ import {
 } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
-import { canvas_render, picks_render, connect_web_gpu_programs } from 'logic/index.zig'
+import { render_draw, render_pick, connect_web_gpu_programs } from 'logic/index.zig'
 import { pointer } from 'WebGPU/pointer'
 import * as Textures from 'textures'
 
@@ -33,15 +33,33 @@ export default function runCreator(
   // let samplesCount = 0
 
   connect_web_gpu_programs({
-    draw_texture: (vertex_data, texture_id) =>
-      drawTexture(canvasPass, vertex_data.typedArray, Textures.getTexture(texture_id)),
+    draw_texture: (vertex_data, texture_id) => {
+      const dataView = vertex_data['*'].dataView
+      // console.log(
+      //   new Float32Array(
+      //     dataView.buffer.slice(dataView.byteOffset, dataView.byteOffset + dataView.byteLength)
+      //   )
+      // )
+      drawTexture(
+        canvasPass,
+        dataView.buffer,
+        dataView.byteOffset,
+        dataView.byteLength,
+        Textures.getTexture(texture_id)
+      )
+    },
     draw_msdf: (vertex_data, texture_id) => {
-      drawMSDF(canvasPass, vertex_data.typedArray, Textures.getTexture(texture_id))
+      const dataView = vertex_data['*'].dataView
+      drawMSDF(
+        canvasPass,
+        dataView.buffer,
+        dataView.byteOffset,
+        dataView.byteLength,
+        Textures.getTexture(texture_id)
+      )
     },
     draw_triangle: (vertex_data) => {
-      const zigPtr = (vertex_data as Record<string, unknown>)['*']
-      const dataView = (zigPtr as { dataView: DataView }).dataView
-      // started with 0.18 and goes to 0.16
+      const dataView = vertex_data['*'].dataView
       drawTriangle(canvasPass, dataView.buffer, dataView.byteOffset, dataView.byteLength)
       /*
       samplesCount++
@@ -51,9 +69,26 @@ export default function runCreator(
       }
       */
     },
-    pick_texture: (vertex_data, texture_id) =>
-      pickTexture(pickPass, vertex_data.typedArray, Textures.getTexture(texture_id)),
-    pick_triangle: (vertex_data) => pickTriangle(pickPass, vertex_data.typedArray),
+    pick_texture: (vertex_data, texture_id) => {
+      const dataView = vertex_data['*'].dataView
+      // const uints = new Uint32Array(
+      //   dataView.buffer.slice(dataView.byteOffset, dataView.byteOffset + dataView.byteLength)
+      // )
+      // for (let i = 0; i < uints.length; i += 5) {
+      //   console.log('texture id', uints[i + 4])
+      // }
+      pickTexture(
+        pickPass,
+        dataView.buffer,
+        dataView.byteOffset,
+        dataView.byteLength,
+        Textures.getTexture(texture_id)
+      )
+    },
+    pick_triangle: (vertex_data) => {
+      const dataView = vertex_data['*'].dataView
+      pickTriangle(pickPass, dataView.buffer, dataView.byteOffset, dataView.byteLength)
+    },
   })
 
   let rafId = 0
@@ -67,7 +102,7 @@ export default function runCreator(
     const canvasMatrix = getCanvasMatrix(canvas)
     device.queue.writeBuffer(canvasMatrixBuffer, 0, canvasMatrix)
     // time = performance.now()
-    canvas_render()
+    render_draw()
     canvasPass.end()
 
     if (pointer.afterPickEventsQueue.length === 0) {
@@ -86,7 +121,7 @@ export default function runCreator(
       device.queue.writeBuffer(pickCanvasMatrixBuffer, 0, pickMatrix)
       const pick = pickManager.startPicking(encoder)
       pickPass = pick.pass
-      picks_render()
+      render_pick()
       pick.end()
     }
 

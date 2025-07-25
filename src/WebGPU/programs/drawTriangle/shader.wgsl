@@ -2,7 +2,7 @@ const PI = 3.14159265358979323846;
 const EPSILON = 1.1920929e-7;
 
 struct Vertex {
-  @location(0) p0: vec4f,
+  @location(0) p0: vec4f, //xy -> corner position, zw -> circle position
   @location(1) p1: vec4f,
   @location(2) p2: vec4f,
   @location(3) color: vec4f,
@@ -26,19 +26,20 @@ struct VertexOutput {
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
 
+fn threshold_pythagorean_leg(corner: vec4f, radius: f32) -> f32 {
+  let p_circle_dist = distance(corner.xy, corner.zw);
+  // Pythagorean theorem, finding one leg of a right triangle when you know the hypotenuse and the other leg.
+  return sqrt(p_circle_dist * p_circle_dist - radius * radius);
+}
+
 @vertex fn vs(
   vert: Vertex,
   @builtin(vertex_index) vertex_index : u32
 ) -> VertexOutput {
   var out: VertexOutput;
 
-  if (vertex_index == 0) {
-    out.position = vec4f(vert.p0.xy, 0, 1);
-  } else if (vertex_index == 1) {
-    out.position = vec4f(vert.p1.xy, 0, 1);
-  } else {
-    out.position = vec4f(vert.p2.xy, 0, 1);
-  }
+  let positions = array<vec2f, 3>(vert.p0.xy, vert.p1.xy, vert.p2.xy);
+  out.position = vec4f(positions[vertex_index], 0, 1);
 
   out.pixel = vec2f(out.position.x, out.position.y);
 
@@ -51,15 +52,11 @@ struct VertexOutput {
 
   out.radius_list = vert.radius_list;
 
-  let p0_circle_dist = distance(vert.p0.xy, vert.p0.zw);
-  let p1_circle_dist = distance(vert.p1.xy, vert.p1.zw);
-  let p2_circle_dist = distance(vert.p2.xy, vert.p2.zw);
-
   out.threshold_list = vec3f(
-    sqrt(pow(p0_circle_dist, 2) - pow(vert.radius_list.x, 2)),
-    sqrt(pow(p1_circle_dist, 2) - pow(vert.radius_list.y, 2)),
-    sqrt(pow(p2_circle_dist, 2) - pow(vert.radius_list.z, 2)),
-  ); // behind this value is roudned corner
+    threshold_pythagorean_leg(vert.p0, vert.radius_list.x),
+    threshold_pythagorean_leg(vert.p1, vert.radius_list.y),
+    threshold_pythagorean_leg(vert.p2, vert.radius_list.z),
+  ); // behind this value is rounded corner
 
   return out;
 }

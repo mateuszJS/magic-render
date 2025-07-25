@@ -1,11 +1,8 @@
 struct Vertex {
-  @location(0) p0_position: vec4f,
-  @location(1) p0_uv: vec2f,
-  @location(2) p1_position: vec4f,
-  @location(3) p1_uv: vec2f,
-  @location(4) p2_position: vec4f,
-  @location(5) p2_uv: vec2f,
-  @location(6) color: vec4f,
+  @location(0) p0: vec4f,
+  @location(1) p1: vec4f,
+  @location(2) p2: vec4f,
+  @location(3) color: vec4f,
 };
 
 struct Uniforms {
@@ -22,20 +19,14 @@ struct VertexOutput {
 @group(0) @binding(1) var ourSampler: sampler;
 @group(0) @binding(2) var ourTexture: texture_2d<f32>;
 
-@vertex fn vs(vert: Vertex, @builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
-  let normVertexIndex = vertexIndex % 3;
+@vertex fn vs(vert: Vertex, @builtin(vertex_index) vertex_index : u32) -> VertexOutput {
+  let verticies = array<vec4f, 3>(vert.p0, vert.p1, vert.p2);
+  let vertex = verticies[vertex_index];
 
   var out: VertexOutput;
-  if (normVertexIndex == 0) {
-      out.position = u.worldViewProjection * vert.p0_position;
-      out.texCoord = vert.p0_uv;
-  } else if (normVertexIndex == 1) {
-      out.position = u.worldViewProjection * vert.p1_position;
-      out.texCoord = vert.p1_uv;
-  } else {
-      out.position = u.worldViewProjection * vert.p2_position;
-      out.texCoord = vert.p2_uv;
-  }
+
+  out.position = u.worldViewProjection * vec4f(vertex.xy, 0.0, 1.0);
+  out.texCoord = vertex.zw;
 
   out.color = vert.color;
   
