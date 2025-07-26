@@ -97,10 +97,10 @@ async function test() {
     const PROJECT_SAMPLE = Array.from(files).map((file) => ({
       url: URL.createObjectURL(file),
       points: [
-        { x: 100, y: 100, u: 0, v: 0 },
-        { x: 200, y: 100, u: 1, v: 0 },
-        { x: 200, y: 200, u: 1, v: 1 },
         { x: 100, y: 200, u: 0, v: 1 },
+        { x: 200, y: 200, u: 1, v: 1 },
+        { x: 200, y: 100, u: 1, v: 0 },
+        { x: 100, y: 100, u: 0, v: 0 },
       ],
     }))
 
