@@ -6,6 +6,7 @@ const Triangle = @import("triangle.zig");
 const TransformUI = @import("./transform_ui.zig");
 const zigar = @import("zigar");
 const Msdf = @import("./msdf.zig");
+const SvgTextures = @import("./svg_textures.zig");
 
 const WebGpuPrograms = struct {
     draw_texture: *const fn ([]const Assets.RenderVertex, u32) void,
@@ -70,8 +71,17 @@ pub fn init_state(width: f32, height: f32) void {
     state.assets = std.AutoArrayHashMap(u32, Assets.Asset).init(std.heap.page_allocator);
 }
 
+pub fn init_svg_textures(texture_max_size: f32, resize_texture: *const fn (u32, f32, f32) void) void {
+    SvgTextures.init(texture_max_size, resize_texture);
+}
+
+pub fn add_svg_texture(texture_id: u32, width: f32, height: f32) void {
+    SvgTextures.add_texture(texture_id, width, height);
+}
+
 pub fn update_render_scale(scale: f32) void {
     state.render_scale = scale;
+    SvgTextures.update_render_scale(scale);
 }
 
 var next_asset_id: u32 = ASSET_ID_TRESHOLD;
@@ -189,6 +199,7 @@ pub fn on_pointer_move(x: f32, y: f32) void {
             const asset_ptr: *Assets.Asset = state.assets.getPtr(state.selected_asset_id).?;
             const points_ptr: *[4]Types.PointUV = &asset_ptr.points;
             TransformUI.tranform_points(state.hovered_asset_id, points_ptr, x, y);
+            SvgTextures.handle_svg_texture(asset_ptr.*);
         },
         .none => {},
     }

@@ -1,5 +1,6 @@
 import getLoadingTexture from 'loadingTexture'
 import { createTextureFromSource } from 'WebGPU/getTexture'
+import { init_svg_textures, add_svg_texture } from 'logic/index.zig'
 
 let device: GPUDevice
 let textures: TextureSource[]
@@ -16,6 +17,7 @@ export function init(
   loadingTexture = getLoadingTexture(device)
   updateProcessing = () => _updateProcessing(loadingTextures)
   loadingTextures = 0
+  init_svg_textures(device.limits.maxTextureDimension2D, increaseSize)
 }
 
 export interface TextureSource {
@@ -23,6 +25,7 @@ export interface TextureSource {
   texture?: GPUTexture
   hash?: string
   data?: Uint8ClampedArray // it's time consuming to obtain data from a GPUTexture later
+  svgImg?: HTMLImageElement // for SVG textures, we store the original image to redraw it with bigger size if needed
 }
 
 export function add(
@@ -45,14 +48,14 @@ export function add(
   textures.push({ url })
 
   getImageWithDetails(url).then(([img, { isSvg }]) => {
-    console.log(img.naturalWidth, img.naturalHeight)
-    const data = getImageData(
+    const { ctx } = getImageData(
       img,
       img.naturalWidth,
       img.naturalHeight,
       img.naturalWidth,
       img.naturalHeight
     )
+    const data = ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data
     const hash = hashImageData(data)
 
     const existingTexture = findSameTexture(data, hash)
@@ -62,6 +65,13 @@ export function add(
       textures[textureId].texture = createTextureFromSource(device, img, { flipY: true })
       textures[textureId].data = data
       textures[textureId].hash = hash
+      if (isSvg) {
+        textures[textureId].svgImg = img
+      }
+    }
+
+    if (isSvg) {
+      add_svg_texture(textureId, img.naturalWidth, img.naturalHeight)
     }
 
     callback?.(img.width, img.height, !existingTexture)
@@ -93,7 +103,7 @@ function getImageData(
   canvas.width = canvasWidth
   canvas.height = canvasHeight
   ctx.drawImage(img, 0, 0, imgWidth, imgHeight, 0, 0, canvasWidth, canvasHeight)
-  return ctx.getImageData(0, 0, canvasWidth, canvasHeight).data
+  return { canvas, ctx }
 }
 
 /**
@@ -151,4 +161,14 @@ async function getImageWithDetails(url: string): Promise<[HTMLImageElement, { is
         })
     }),
   ])
+}
+
+function increaseSize(textureId: number, width: number, height: number) {
+  const img = textures[textureId].svgImg!
+  const { canvas } = getImageData(img, img.naturalWidth, img.naturalHeight, width, height)
+  console.log(width, height)
+  textures[textureId].texture!.destroy()
+  textures[textureId].texture = createTextureFromSource(device, canvas, {
+    flipY: true,
+  })
 }
