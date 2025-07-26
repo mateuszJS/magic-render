@@ -1,5 +1,6 @@
 import getLoadingTexture from 'loadingTexture'
 import { createTextureFromSource } from 'WebGPU/getTexture'
+import { init_svg_textures, add_svg_texture } from 'logic/index.zig'
 
 let device: GPUDevice
 let textures: TextureSource[]
@@ -16,6 +17,7 @@ export function init(
   loadingTexture = getLoadingTexture(device)
   updateProcessing = () => _updateProcessing(loadingTextures)
   loadingTextures = 0
+  init_svg_textures(device.limits.maxTextureDimension2D, increaseSize)
 }
 
 export interface TextureSource {
@@ -23,6 +25,7 @@ export interface TextureSource {
   texture?: GPUTexture
   hash?: string
   data?: Uint8ClampedArray // it's time consuming to obtain data from a GPUTexture later
+  svgImg?: HTMLImageElement // for SVG textures, we store the original image to redraw it with bigger size if needed
 }
 
 export function add(
@@ -44,11 +47,15 @@ export function add(
   // we allow duplicates in textures array
   textures.push({ url })
 
-  const img = new Image()
-  img.src = url
-
-  img.onload = () => {
-    const data = getImageData(img, img.naturalWidth, img.naturalHeight)
+  getImageWithDetails(url).then(([img, { isSvg }]) => {
+    const { ctx } = getImageData(
+      img,
+      img.naturalWidth,
+      img.naturalHeight,
+      img.naturalWidth,
+      img.naturalHeight
+    )
+    const data = ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data
     const hash = hashImageData(data)
 
     const existingTexture = findSameTexture(data, hash)
@@ -58,20 +65,20 @@ export function add(
       textures[textureId].texture = createTextureFromSource(device, img, { flipY: true })
       textures[textureId].data = data
       textures[textureId].hash = hash
+      if (isSvg) {
+        textures[textureId].svgImg = img
+      }
+    }
+
+    if (isSvg) {
+      add_svg_texture(textureId, img.naturalWidth, img.naturalHeight)
     }
 
     callback?.(img.width, img.height, !existingTexture)
 
     loadingTextures--
     updateProcessing()
-  }
-
-  img.onerror = () => {
-    console.error(`Failed to load image from ${url}`)
-
-    loadingTextures--
-    updateProcessing()
-  }
+  })
 
   return textureId
 }
@@ -84,13 +91,19 @@ export function getUrl(textureId: number): string {
   return textures[textureId].url
 }
 
-function getImageData(img: CanvasImageSource, width: number, height: number) {
+function getImageData(
+  img: CanvasImageSource,
+  imgWidth: number,
+  imgHeight: number,
+  canvasWidth: number,
+  canvasHeight: number
+) {
   const canvas = document.createElement('canvas')!
   const ctx = canvas.getContext('2d')!
-  canvas.width = width
-  canvas.height = height
-  ctx.drawImage(img, 0, 0)
-  return ctx.getImageData(0, 0, width, height).data
+  canvas.width = canvasWidth
+  canvas.height = canvasHeight
+  ctx.drawImage(img, 0, 0, imgWidth, imgHeight, 0, 0, canvasWidth, canvasHeight)
+  return { canvas, ctx }
 }
 
 /**
@@ -131,4 +144,31 @@ function findSameTexture(imgData: Uint8ClampedArray, hash: string): TextureSourc
 
 export function updateTextureUrl(textureId: number, url: string) {
   textures[textureId].url = url
+}
+
+async function getImageWithDetails(url: string): Promise<[HTMLImageElement, { isSvg: boolean }]> {
+  return Promise.all([
+    new Promise<HTMLImageElement>((resolve) => {
+      const img = new Image()
+      img.src = url
+      img.onload = () => resolve(img)
+    }),
+    new Promise<{ isSvg: boolean }>((resolve) => {
+      fetch(url)
+        .then((response) => response.blob())
+        .then((blob) => {
+          resolve({ isSvg: blob.type === 'image/svg+xml' })
+        })
+    }),
+  ])
+}
+
+function increaseSize(textureId: number, width: number, height: number) {
+  const img = textures[textureId].svgImg!
+  const { canvas } = getImageData(img, img.naturalWidth, img.naturalHeight, width, height)
+
+  textures[textureId].texture!.destroy()
+  textures[textureId].texture = createTextureFromSource(device, canvas, {
+    flipY: true,
+  })
 }

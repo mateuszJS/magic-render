@@ -6,6 +6,7 @@ const Triangle = @import("triangle.zig");
 const TransformUI = @import("./transform_ui.zig");
 const zigar = @import("zigar");
 const Msdf = @import("./msdf.zig");
+const SvgTextures = @import("./svg_textures.zig");
 
 const WebGpuPrograms = struct {
     draw_texture: *const fn ([]const Assets.RenderVertex, u32) void,
@@ -70,8 +71,26 @@ pub fn init_state(width: f32, height: f32) void {
     state.assets = std.AutoArrayHashMap(u32, Assets.Asset).init(std.heap.page_allocator);
 }
 
+pub fn init_svg_textures(texture_max_size: f32, resize_texture: *const fn (u32, f32, f32) void) void {
+    SvgTextures.init(texture_max_size, resize_texture);
+}
+
+pub fn add_svg_texture(texture_id: u32, width: f32, height: f32) void {
+    SvgTextures.add_texture(texture_id, width, height);
+
+    // When loading SVG, firstly assets will be added with their texture ID and later texture will load(so we know its svg)
+    // and now we have to make sure SVG texture is big enough to match quality of each of the assets.
+    var iterator = state.assets.iterator();
+    while (iterator.next()) |entry| {
+        if (entry.value_ptr.texture_id == texture_id) {
+            SvgTextures.ensure_svg_texture_quality(entry.value_ptr.*);
+        }
+    }
+}
+
 pub fn update_render_scale(scale: f32) void {
     state.render_scale = scale;
+    SvgTextures.update_render_scale(scale);
 }
 
 var next_asset_id: u32 = ASSET_ID_TRESHOLD;
@@ -85,6 +104,9 @@ pub fn add_asset(id_or_zero: u32, points: [4]Types.PointUV, texture_id: u32) voi
     const id = if (id_or_zero == 0) generate_id() else id_or_zero;
     state.assets.put(id, Assets.Asset.new(id, points, texture_id)) catch unreachable;
     check_assets_update(true);
+
+    const asset_ptr = state.assets.getPtr(id) orelse unreachable;
+    SvgTextures.ensure_svg_texture_quality(asset_ptr.*);
 }
 
 pub fn remove_asset() void {
@@ -189,6 +211,7 @@ pub fn on_pointer_move(x: f32, y: f32) void {
             const asset_ptr: *Assets.Asset = state.assets.getPtr(state.selected_asset_id).?;
             const points_ptr: *[4]Types.PointUV = &asset_ptr.points;
             TransformUI.tranform_points(state.hovered_asset_id, points_ptr, x, y);
+            SvgTextures.ensure_svg_texture_quality(asset_ptr.*);
         },
         .none => {},
     }
@@ -204,7 +227,9 @@ fn get_border() struct { []Triangle.DrawInstance, []Msdf.DrawInstance } {
     var triangle_vertex_data = std.ArrayList(Triangle.DrawInstance).init(std.heap.page_allocator);
     var msdf_vertex_data = std.ArrayList(Msdf.DrawInstance).init(std.heap.page_allocator);
 
-    // TODO: free memory, defer list.deinit();
+    defer triangle_vertex_data.deinit();
+    defer msdf_vertex_data.deinit();
+
     const red = [_]u8{ 255, 0, 0, 255 };
     if (state.hovered_asset_id != state.selected_asset_id) {
         if (state.assets.get(state.hovered_asset_id)) |asset| {

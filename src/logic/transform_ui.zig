@@ -154,7 +154,7 @@ fn get_points_of_line(asset: Asset, t_line: TransformLine, render_scale: f32) st
         // corners
         const length = points[t_line.start].distance(points[t_line.end]);
         const angle = points[t_line.start].angle_to(points[t_line.end]);
-        const sanitized_length = @min(30.0, length * 0.1) * render_scale;
+        const sanitized_length = @min(30.0 * render_scale, length * 0.1);
 
         const p1 = Point{
             .x = points[t_line.start].x,
@@ -171,7 +171,7 @@ fn get_points_of_line(asset: Asset, t_line: TransformLine, render_scale: f32) st
         const point = points[t_line.start].mid(points[t_line.end]);
         const length = points[t_line.start].distance(points[t_line.end]);
         const angle = points[t_line.start].angle_to(points[t_line.end]);
-        const sanitized_length = @min(30.0, length * 0.07) * render_scale;
+        const sanitized_length = @min(30.0 * render_scale, length * 0.07);
 
         const p1 = Point{
             .x = point.x + @cos(angle) * sanitized_length,
