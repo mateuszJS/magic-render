@@ -166,7 +166,7 @@ async function getImageWithDetails(url: string): Promise<[HTMLImageElement, { is
 function increaseSize(textureId: number, width: number, height: number) {
   const img = textures[textureId].svgImg!
   const { canvas } = getImageData(img, img.naturalWidth, img.naturalHeight, width, height)
-  console.log(width, height)
+
   textures[textureId].texture!.destroy()
   textures[textureId].texture = createTextureFromSource(device, canvas, {
     flipY: true,

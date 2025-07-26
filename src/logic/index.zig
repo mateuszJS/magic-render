@@ -83,7 +83,7 @@ pub fn add_svg_texture(texture_id: u32, width: f32, height: f32) void {
     var iterator = state.assets.iterator();
     while (iterator.next()) |entry| {
         if (entry.value_ptr.texture_id == texture_id) {
-            SvgTextures.handle_svg_texture(entry.value_ptr.*);
+            SvgTextures.ensure_svg_texture_quality(entry.value_ptr.*);
         }
     }
 }
@@ -106,7 +106,7 @@ pub fn add_asset(id_or_zero: u32, points: [4]Types.PointUV, texture_id: u32) voi
     check_assets_update(true);
 
     const asset_ptr = state.assets.getPtr(id) orelse unreachable;
-    SvgTextures.handle_svg_texture(asset_ptr.*);
+    SvgTextures.ensure_svg_texture_quality(asset_ptr.*);
 }
 
 pub fn remove_asset() void {
@@ -211,7 +211,7 @@ pub fn on_pointer_move(x: f32, y: f32) void {
             const asset_ptr: *Assets.Asset = state.assets.getPtr(state.selected_asset_id).?;
             const points_ptr: *[4]Types.PointUV = &asset_ptr.points;
             TransformUI.tranform_points(state.hovered_asset_id, points_ptr, x, y);
-            SvgTextures.handle_svg_texture(asset_ptr.*);
+            SvgTextures.ensure_svg_texture_quality(asset_ptr.*);
         },
         .none => {},
     }

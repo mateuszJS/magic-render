@@ -60,7 +60,7 @@ pub fn update_render_scale(scale: f32) void {
     }
 }
 
-pub fn handle_svg_texture(asset: Assets.Asset) void {
+pub fn ensure_svg_texture_quality(asset: Assets.Asset) void {
     const texture = svg_textures.getPtr(asset.texture_id) orelse return;
 
     const width = asset.points[0].distance(asset.points[1]) / render_scale;
