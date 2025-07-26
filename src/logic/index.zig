@@ -77,6 +77,15 @@ pub fn init_svg_textures(texture_max_size: f32, resize_texture: *const fn (u32, 
 
 pub fn add_svg_texture(texture_id: u32, width: f32, height: f32) void {
     SvgTextures.add_texture(texture_id, width, height);
+
+    // When loading SVG, firstly assets will be added with their texture ID and later texture will load(so we know its svg)
+    // and now we have to make sure SVG texture is big enough to match quality of each of the assets.
+    var iterator = state.assets.iterator();
+    while (iterator.next()) |entry| {
+        if (entry.value_ptr.texture_id == texture_id) {
+            SvgTextures.handle_svg_texture(entry.value_ptr.*);
+        }
+    }
 }
 
 pub fn update_render_scale(scale: f32) void {
@@ -95,6 +104,9 @@ pub fn add_asset(id_or_zero: u32, points: [4]Types.PointUV, texture_id: u32) voi
     const id = if (id_or_zero == 0) generate_id() else id_or_zero;
     state.assets.put(id, Assets.Asset.new(id, points, texture_id)) catch unreachable;
     check_assets_update(true);
+
+    const asset_ptr = state.assets.getPtr(id) orelse unreachable;
+    SvgTextures.handle_svg_texture(asset_ptr.*);
 }
 
 pub fn remove_asset() void {
@@ -215,7 +227,9 @@ fn get_border() struct { []Triangle.DrawInstance, []Msdf.DrawInstance } {
     var triangle_vertex_data = std.ArrayList(Triangle.DrawInstance).init(std.heap.page_allocator);
     var msdf_vertex_data = std.ArrayList(Msdf.DrawInstance).init(std.heap.page_allocator);
 
-    // TODO: free memory, defer list.deinit();
+    defer triangle_vertex_data.deinit();
+    defer msdf_vertex_data.deinit();
+
     const red = [_]u8{ 255, 0, 0, 255 };
     if (state.hovered_asset_id != state.selected_asset_id) {
         if (state.assets.get(state.hovered_asset_id)) |asset| {

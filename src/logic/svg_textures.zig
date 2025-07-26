@@ -24,16 +24,10 @@ pub fn init(max_size: f32, cb: *const fn (u32, f32, f32) void) void {
 pub fn add_texture(texture_id: u32, width: f32, height: f32) void {
     const texture = SvgTexture{
         .id = texture_id,
-        .width = width / render_scale,
-        .height = height / render_scale,
+        .width = width,
+        .height = height,
     };
     svg_textures.put(texture_id, texture) catch unreachable;
-
-    resize_texture(
-        svg_textures.getPtr(texture_id) orelse unreachable,
-        texture.width,
-        texture.height,
-    );
 }
 
 fn resize_texture(texture_ptr: *SvgTexture, width: f32, height: f32) void {
