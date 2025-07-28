@@ -8,6 +8,7 @@ import getDrawtexture from './drawTexture/getProgram'
 import getPickTexture from './pickTexture/getProgram'
 import getPickTriangle from './pickTriangle/getProgram'
 import getDrawMSDF from './drawMSDF/getProgram'
+import getDrawShape from './drawShape/getProgram'
 
 export let drawTriangle: ReturnType<typeof getDrawTriangle>
 export let drawBezier: ReturnType<typeof getDrawBezier>
@@ -19,6 +20,7 @@ export let drawTexture: ReturnType<typeof getDrawtexture>
 export let pickTexture: ReturnType<typeof getPickTexture>
 export let pickTriangle: ReturnType<typeof getPickTriangle>
 export let drawMSDF: ReturnType<typeof getDrawMSDF>
+export let drawShape: ReturnType<typeof getDrawShape>
 
 export let canvasMatrixBuffer: GPUBuffer
 export let pickCanvasMatrixBuffer: GPUBuffer
@@ -46,4 +48,5 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
   pickTexture = getPickTexture(device, pickCanvasMatrixBuffer)
   pickTriangle = getPickTriangle(device, pickCanvasMatrixBuffer)
   drawMSDF = getDrawMSDF(device, presentationFormat, canvasMatrixBuffer)
+  drawShape = getDrawShape(device, presentationFormat, canvasMatrixBuffer)
 }

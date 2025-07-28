@@ -7,12 +7,14 @@ import {
   pickTriangle,
   canvasMatrixBuffer,
   pickCanvasMatrixBuffer,
+  drawShape,
 } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
 import { render_draw, render_pick, connect_web_gpu_programs } from 'logic/index.zig'
 import { pointer } from 'WebGPU/pointer'
 import * as Textures from 'textures'
+import { CubicBezier, ShapeVertex } from 'WebGPU/programs/drawShape/getProgram'
 
 export const transformMatrix = new Float32Array()
 export const MAP_BACKGROUND_SCALE = 1000
@@ -103,6 +105,28 @@ export default function runCreator(
     device.queue.writeBuffer(canvasMatrixBuffer, 0, canvasMatrix)
     // time = performance.now()
     render_draw()
+
+    // Define shape vertices (typically a quad covering the shape bounds)
+    const vertices: ShapeVertex[] = [
+      { position: [0, 0], color: [1, 0, 0, 1] },
+      { position: [700, 0], color: [1, 0, 0, 1] },
+      { position: [700, 800], color: [1, 0, 0, 1] },
+      { position: [0, 800], color: [1, 0, 0, 1] },
+    ]
+
+    // Define cubic Bézier curves that form the shape boundary
+    const curves: CubicBezier[] = [
+      {
+        p0: { x: 100, y: 100 },
+        p1: { x: 300, y: 500 },
+        p2: { x: 600, y: 700 },
+        p3: { x: 500, y: 200 },
+      },
+      // ... more curves
+    ]
+
+    drawShape(canvasPass, vertices, curves, [canvas.width, canvas.height])
+
     canvasPass.end()
 
     if (pointer.afterPickEventsQueue.length === 0) {
