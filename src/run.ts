@@ -7,6 +7,7 @@ import {
   pickTriangle,
   canvasMatrixBuffer,
   pickCanvasMatrixBuffer,
+  drawShape,
 } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
@@ -103,6 +104,20 @@ export default function runCreator(
     device.queue.writeBuffer(canvasMatrixBuffer, 0, canvasMatrix)
     // time = performance.now()
     render_draw()
+
+    // Define cubic Bézier curves that form the shape boundary
+    const curves: Point[] = [
+      { x: 100, y: 100 - 100 },
+      { x: 300, y: 500 - 100 },
+      { x: 600, y: 700 - 100 },
+      { x: 500, y: 200 - 100 },
+      { x: 300, y: -200 },
+      { x: 400, y: -300 },
+      { x: 100, y: 100 - 100 },
+    ]
+
+    drawShape(canvasPass, curves)
+
     canvasPass.end()
 
     if (pointer.afterPickEventsQueue.length === 0) {

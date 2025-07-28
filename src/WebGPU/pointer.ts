@@ -150,6 +150,7 @@ export default function initMouseController(
 
   /* panning , supports both scroll and touch, expect Safari */
   canvas.addEventListener('wheel', (e) => {
+    updatePointer(e)
     e.preventDefault()
     if (mouseMode === MouseMode.Zoom) {
       const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : -e.deltaX
