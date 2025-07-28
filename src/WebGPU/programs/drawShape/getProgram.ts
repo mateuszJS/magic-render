@@ -24,7 +24,7 @@ export default function getDrawShape(
 
   const uniformBuffer = device.createBuffer({
     label: 'drawShape uniforms',
-    size: 8 + 4 + 4, // vec2 + u32 + padding
+    size: 8 + 4 + 4 + 4, // vec2 + u32 + f32 + padding
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   })
 
@@ -190,14 +190,15 @@ export default function getDrawShape(
     passEncoder: GPURenderPassEncoder,
     vertices: ShapeVertex[],
     curves: CubicBezier[],
-    canvasSize: [number, number]
+    canvasSize: [number, number],
+    strokeWidth: number = 0
   ) {
     if (vertices.length === 0) return
 
     createBuffers(vertices, curves)
 
     // Update uniforms
-    const uniformData = new ArrayBuffer(8 + 4 + 4) // vec2 + u32 + padding
+    const uniformData = new ArrayBuffer(8 + 4 + 4 + 4) // vec2 + u32 + f32 + padding
     const uniformView = new DataView(uniformData)
 
     // Canvas size
@@ -206,6 +207,9 @@ export default function getDrawShape(
 
     // Number of curves
     uniformView.setUint32(8, curves.length, true)
+
+    // Stroke width
+    uniformView.setFloat32(12, strokeWidth, true)
 
     device.queue.writeBuffer(uniformBuffer, 0, uniformData)
 

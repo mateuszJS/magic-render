@@ -108,24 +108,30 @@ export default function runCreator(
 
     // Define shape vertices (typically a quad covering the shape bounds)
     const vertices: ShapeVertex[] = [
-      { position: [0, 0], color: [1, 0, 0, 1] },
-      { position: [700, 0], color: [1, 0, 0, 1] },
+      { position: [-300, -300], color: [1, 0, 0, 1] },
+      { position: [700, -300], color: [1, 0, 0, 1] },
       { position: [700, 800], color: [1, 0, 0, 1] },
-      { position: [0, 800], color: [1, 0, 0, 1] },
+      { position: [-300, 800], color: [1, 0, 0, 1] },
     ]
 
     // Define cubic Bézier curves that form the shape boundary
     const curves: CubicBezier[] = [
       {
-        p0: { x: 100, y: 100 },
-        p1: { x: 300, y: 500 },
-        p2: { x: 600, y: 700 },
-        p3: { x: 500, y: 200 },
+        p0: { x: 100, y: 100 - 100 },
+        p1: { x: 300, y: 500 - 100 },
+        p2: { x: 600, y: 700 - 100 },
+        p3: { x: 500, y: 200 - 100 },
+      },
+      {
+        p0: { x: 500, y: 200 - 100 },
+        p1: { x: 300, y: -200 },
+        p2: { x: 400, y: -300 },
+        p3: { x: 100, y: 100 - 100 },
       },
       // ... more curves
     ]
 
-    drawShape(canvasPass, vertices, curves, [canvas.width, canvas.height])
+    drawShape(canvasPass, vertices, curves, [canvas.width, canvas.height], 30.0)
 
     canvasPass.end()
 
