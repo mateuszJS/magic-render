@@ -14,7 +14,6 @@ import PickManager from 'WebGPU/pick'
 import { render_draw, render_pick, connect_web_gpu_programs } from 'logic/index.zig'
 import { pointer } from 'WebGPU/pointer'
 import * as Textures from 'textures'
-import { CubicBezier, ShapeVertex } from 'WebGPU/programs/drawShape/getProgram'
 
 export const transformMatrix = new Float32Array()
 export const MAP_BACKGROUND_SCALE = 1000
@@ -106,32 +105,18 @@ export default function runCreator(
     // time = performance.now()
     render_draw()
 
-    // Define shape vertices (typically a quad covering the shape bounds)
-    const vertices: ShapeVertex[] = [
-      { position: [-300, -300], color: [1, 0, 0, 1] },
-      { position: [700, -300], color: [1, 0, 0, 1] },
-      { position: [700, 800], color: [1, 0, 0, 1] },
-      { position: [-300, 800], color: [1, 0, 0, 1] },
-    ]
-
     // Define cubic Bézier curves that form the shape boundary
-    const curves: CubicBezier[] = [
-      {
-        p0: { x: 100, y: 100 - 100 },
-        p1: { x: 300, y: 500 - 100 },
-        p2: { x: 600, y: 700 - 100 },
-        p3: { x: 500, y: 200 - 100 },
-      },
-      {
-        p0: { x: 500, y: 200 - 100 },
-        p1: { x: 300, y: -200 },
-        p2: { x: 400, y: -300 },
-        p3: { x: 100, y: 100 - 100 },
-      },
-      // ... more curves
+    const curves: Point[] = [
+      { x: 100, y: 100 - 100 },
+      { x: 300, y: 500 - 100 },
+      { x: 600, y: 700 - 100 },
+      { x: 500, y: 200 - 100 },
+      { x: 300, y: -200 },
+      { x: 400, y: -300 },
+      { x: 100, y: 100 - 100 },
     ]
 
-    drawShape(canvasPass, vertices, curves, [canvas.width, canvas.height], 30.0)
+    drawShape(canvasPass, curves)
 
     canvasPass.end()
 

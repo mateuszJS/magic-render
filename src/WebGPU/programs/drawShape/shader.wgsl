@@ -1,8 +1,8 @@
 
 struct Uniforms {
-  canvas_size: vec2f,
-  num_curves: u32,
   stroke_width: f32,
+  stroke_color: vec4f,
+  fill_color: vec4f,
 };
 
 struct CubicBezier {
@@ -14,28 +14,27 @@ struct CubicBezier {
 
 struct Vertex {
   @location(0) position: vec2f,
-  @location(1) color: vec4f,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
-@group(0) @binding(1) var<storage, read> curves: array<CubicBezier>;
+@group(0) @binding(1) var<storage, read> curves: array<vec2f>;
 @group(0) @binding(2) var<uniform> canvas_matrix: mat4x4f;
 
 struct VSOutput {
   @builtin(position) position: vec4f,
   @location(0) world_pos: vec2f,
-  @location(1) color: vec4f,
 };
 
 @vertex fn vs(vert: Vertex) -> VSOutput {
-  var vsOut: VSOutput;
+  // var vsOut: VSOutput;
   
-  let clip_space = canvas_matrix * vec4f(vert.position, 0.0, 1.0);
-  vsOut.position = clip_space;
-  vsOut.world_pos = vert.position;
-  vsOut.color = vert.color;
+  // vsOut.position = 
+  // vsOut.world_pos = vert.position;
   
-  return vsOut;
+  return VSOutput(
+    canvas_matrix * vec4f(vert.position, 0.0, 1.0),
+    vert.position
+  );
 }
 
 // Evaluate cubic Bézier at parameter t
@@ -224,9 +223,15 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
   var t = 0.0;
   
   // For each curve, find closest point and accumulate winding
-  for (var i = 0u; i < u.num_curves; i++) {
-    let curve = curves[i];
-    
+  let num_curves = arrayLength(&curves) / 3;
+  for (var i = 0u; i < num_curves; i++) {
+    let curve = CubicBezier(
+      curves[i * 3 + 0],
+      curves[i * 3 + 1],
+      curves[i * 3 + 2],
+      curves[i * 3 + 3]
+    );
+
     // Find closest point on this curve
     let closest_t = closest_point_on_bezier(point, curve);
     let closest_point = bezier_point(curve, closest_t);
@@ -260,12 +265,9 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
   // Evaluate shape using SDF approach
   let shape_info = evaluate_shape(vsOut.world_pos);
   
-  // Define fill and stroke colors
-  let stroke_color = vec4f(0.0, 1.0, 0.0, 1.0); // Black stroke
-
   // Combine fill and stroke
   // If stroke is visible, use stroke color, otherwise use fill color
-  let final_color = mix(vsOut.color, stroke_color, shape_info.stroke_alpha);
+  let final_color = mix(u.fill_color, u.stroke_color, shape_info.stroke_alpha);
   
   // Final alpha is maximum of fill and stroke alpha
   let final_alpha = max(shape_info.fill_alpha, shape_info.stroke_alpha);

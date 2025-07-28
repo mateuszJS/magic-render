@@ -1,16 +1,5 @@
 import shaderCode from './shader.wgsl'
-
-export interface CubicBezier {
-  p0: { x: number; y: number }
-  p1: { x: number; y: number }
-  p2: { x: number; y: number }
-  p3: { x: number; y: number }
-}
-
-export interface ShapeVertex {
-  position: [number, number]
-  color: [number, number, number, number]
-}
+import getBoundingBox from './getBoundingBox'
 
 export default function getDrawShape(
   device: GPUDevice,
@@ -22,15 +11,28 @@ export default function getDrawShape(
     code: shaderCode,
   })
 
+  const uniformBufferSize =
+    (1 /*stroke width*/ + 4 /*stroke color*/ + 4 /*fill color*/ + /*padding*/ 3) * 4
+
   const uniformBuffer = device.createBuffer({
     label: 'drawShape uniforms',
-    size: 8 + 4 + 4 + 4, // vec2 + u32 + f32 + padding
+    size: uniformBufferSize,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   })
 
-  let curvesBuffer: GPUBuffer | null = null
-  let vertexBuffer: GPUBuffer | null = null
-  let indexBuffer: GPUBuffer | null = null
+  // Update uniforms
+  const uniformValues = new Float32Array(uniformBufferSize / 4)
+
+  // offsets to the various uniform values in float32 indices
+  let start = 0
+  let end = 4 /* 1 of stroke  + 3 of padding */
+  const strokeWidthValue = uniformValues.subarray(start, (start = end))
+
+  end += 4
+  const strokeColorValue = uniformValues.subarray(start, (start = end))
+
+  end += 4
+  const fillColorValue = uniformValues.subarray(start, (start = end))
 
   const bindGroupLayout = device.createBindGroupLayout({
     label: 'drawShape bind group layout',
@@ -63,17 +65,12 @@ export default function getDrawShape(
       entryPoint: 'vs',
       buffers: [
         {
-          arrayStride: 6 * 4, // position (2) + color (4)
+          arrayStride: 2 * 4, // position (2) + color (4)
           attributes: [
             {
               shaderLocation: 0,
               offset: 0,
               format: 'float32x2', // position
-            },
-            {
-              shaderLocation: 1,
-              offset: 2 * 4,
-              format: 'float32x4', // color
             },
           ],
         },
@@ -98,125 +95,69 @@ export default function getDrawShape(
         },
       ],
     },
-    primitive: {
-      topology: 'triangle-list',
-    },
     multisample: {
       count: 4,
     },
   })
 
-  let bindGroup: GPUBindGroup | null = null
+  return function drawShape(passEncoder: GPURenderPassEncoder, curves: Point[]) {
+    const strokeWidth = 20
+    const boundingBox = getBoundingBox(curves, strokeWidth / 2)
 
-  function createBuffers(vertices: ShapeVertex[], curves: CubicBezier[]) {
-    // Create vertex buffer
-    const vertexData = new Float32Array(vertices.length * 6)
-    for (let i = 0; i < vertices.length; i++) {
-      const vertex = vertices[i]
-      const offset = i * 6
-      vertexData[offset] = vertex.position[0]
-      vertexData[offset + 1] = vertex.position[1]
-      vertexData[offset + 2] = vertex.color[0]
-      vertexData[offset + 3] = vertex.color[1]
-      vertexData[offset + 4] = vertex.color[2]
-      vertexData[offset + 5] = vertex.color[3]
+    // Create curves buffer
+    const curvesData = new Float32Array(curves.length * 2) // x y per point
+
+    for (let i = 0; i < curves.length; i++) {
+      const point = curves[i]
+      const offset = i * 2
+      curvesData[offset + 0] = point.x
+      curvesData[offset + 1] = point.y
     }
 
-    if (vertexBuffer) vertexBuffer.destroy()
-    vertexBuffer = device.createBuffer({
+    // Create vertex buffer
+    // prettier-ignore
+    const vertexData = new Float32Array([
+      boundingBox[0].x, boundingBox[0].y,
+      boundingBox[1].x, boundingBox[1].y,
+      boundingBox[2].x, boundingBox[2].y,
+      boundingBox[2].x, boundingBox[2].y,
+      boundingBox[3].x, boundingBox[3].y,
+      boundingBox[0].x, boundingBox[0].y,
+    ])
+
+    const vertexBuffer = device.createBuffer({
       label: 'drawShape vertex buffer',
       size: vertexData.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
 
-    // Create curves buffer
-    const curvesData = new Float32Array(curves.length * 8) // 4 points * 2 components each
-    for (let i = 0; i < curves.length; i++) {
-      const curve = curves[i]
-      const offset = i * 8
-      curvesData[offset] = curve.p0.x
-      curvesData[offset + 1] = curve.p0.y
-      curvesData[offset + 2] = curve.p1.x
-      curvesData[offset + 3] = curve.p1.y
-      curvesData[offset + 4] = curve.p2.x
-      curvesData[offset + 5] = curve.p2.y
-      curvesData[offset + 6] = curve.p3.x
-      curvesData[offset + 7] = curve.p3.y
-    }
-
-    if (curvesBuffer) curvesBuffer.destroy()
-    curvesBuffer = device.createBuffer({
+    const curvesBuffer = device.createBuffer({
       label: 'drawShape curves buffer',
-      size: Math.max(curvesData.byteLength, 16), // Minimum size for empty buffer
+      size: curvesData.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     })
-    if (curvesData.byteLength > 0) {
-      device.queue.writeBuffer(curvesBuffer, 0, curvesData)
-    }
+    device.queue.writeBuffer(curvesBuffer, 0, curvesData)
 
-    // Create indices for triangles (assuming quad)
-    const indices = new Uint16Array([0, 1, 2, 2, 3, 0])
-    if (indexBuffer) indexBuffer.destroy()
-    indexBuffer = device.createBuffer({
-      label: 'drawShape index buffer',
-      size: indices.byteLength,
-      usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-    })
-    device.queue.writeBuffer(indexBuffer, 0, indices)
+    strokeWidthValue.set([strokeWidth])
+    strokeColorValue.set([1, 0, 0, 1]) // Red stroke color
+    fillColorValue.set([0, 1, 0, 1]) // Green fill color
+    device.queue.writeBuffer(uniformBuffer, 0, uniformValues)
 
-    // Create bind group
-    bindGroup = device.createBindGroup({
+    passEncoder.setPipeline(renderPipeline)
+
+    const bindGroup = device.createBindGroup({
       label: 'drawShape bind group',
       layout: bindGroupLayout,
       entries: [
-        {
-          binding: 0,
-          resource: { buffer: uniformBuffer },
-        },
-        {
-          binding: 1,
-          resource: { buffer: curvesBuffer },
-        },
-        {
-          binding: 2,
-          resource: { buffer: canvasMatrixBuffer },
-        },
+        { binding: 0, resource: { buffer: uniformBuffer } },
+        { binding: 1, resource: { buffer: curvesBuffer } },
+        { binding: 2, resource: { buffer: canvasMatrixBuffer } },
       ],
     })
-  }
 
-  return function drawShape(
-    passEncoder: GPURenderPassEncoder,
-    vertices: ShapeVertex[],
-    curves: CubicBezier[],
-    canvasSize: [number, number],
-    strokeWidth: number = 0
-  ) {
-    if (vertices.length === 0) return
-
-    createBuffers(vertices, curves)
-
-    // Update uniforms
-    const uniformData = new ArrayBuffer(8 + 4 + 4 + 4) // vec2 + u32 + f32 + padding
-    const uniformView = new DataView(uniformData)
-
-    // Canvas size
-    uniformView.setFloat32(0, canvasSize[0], true)
-    uniformView.setFloat32(4, canvasSize[1], true)
-
-    // Number of curves
-    uniformView.setUint32(8, curves.length, true)
-
-    // Stroke width
-    uniformView.setFloat32(12, strokeWidth, true)
-
-    device.queue.writeBuffer(uniformBuffer, 0, uniformData)
-
-    passEncoder.setPipeline(renderPipeline)
-    passEncoder.setBindGroup(0, bindGroup!)
-    passEncoder.setVertexBuffer(0, vertexBuffer!)
-    passEncoder.setIndexBuffer(indexBuffer!, 'uint16')
-    passEncoder.drawIndexed(6, 1, 0, 0, 0) // Draw quad
+    passEncoder.setBindGroup(0, bindGroup)
+    passEncoder.setVertexBuffer(0, vertexBuffer)
+    passEncoder.draw(6) // Draw quad
   }
 }
