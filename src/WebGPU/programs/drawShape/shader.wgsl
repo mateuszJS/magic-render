@@ -18,7 +18,7 @@ struct Vertex {
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var<storage, read> curves: array<vec2f>;
-@group(0) @binding(2) var<uniform> canvas_matrix: mat4x4f;
+@group(0) @binding(2) var<uniform> camera_projection: mat4x4f;
 
 struct VSOutput {
   @builtin(position) position: vec4f,
@@ -26,13 +26,9 @@ struct VSOutput {
 };
 
 @vertex fn vs(vert: Vertex) -> VSOutput {
-  // var vsOut: VSOutput;
-  
-  // vsOut.position = 
-  // vsOut.world_pos = vert.position;
-  
+
   return VSOutput(
-    canvas_matrix * vec4f(vert.position, 0.0, 1.0),
+    camera_projection * vec4f(vert.position, 0.0, 1.0),
     vert.position
   );
 }
