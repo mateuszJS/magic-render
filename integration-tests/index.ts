@@ -1,4 +1,4 @@
-import initCreator, { SerializedOutputAsset } from '../src/index'
+import initCreator, { SerializedOutputAsset, CreatorTool } from '../src/index'
 import { camera } from '../src/WebGPU/pointer'
 
 declare global {
@@ -17,6 +17,7 @@ async function test() {
   const removeAssetBtn = document.querySelector<HTMLSpanElement>('#remove-btn')!
   const undoBtn = document.querySelector<HTMLSpanElement>('#undo-btn')!
   const redoBtn = document.querySelector<HTMLSpanElement>('#redo-btn')!
+  const toolsSelect = document.querySelector<HTMLSelectElement>('#tools-select')!
 
   window.assetsSnapshot = []
   function setAssetSnapshot(assets: SerializedOutputAsset[]) {
@@ -124,6 +125,11 @@ async function test() {
     const assets = assetsUpdatesHistory[currentHistoryIndex]
     creator.resetAssets(assets)
     setAssetSnapshot(assets)
+  })
+
+  toolsSelect.addEventListener('change', (event) => {
+    const selectedTool = Number((event.target as HTMLSelectElement).value)
+    creator.setTool(selectedTool)
   })
 }
 

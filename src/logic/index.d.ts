@@ -21,7 +21,6 @@ type ZigAssetOutput = {
   points: PointUV[]
   texture_id: number
 }
-
 type ArrayPointerDataView = {
   '*': PointerDataView
 }
@@ -67,6 +66,7 @@ declare module '*.zig' {
   export const render_draw: VoidFunction
   export const render_pick: VoidFunction
   export const destroy_state: VoidFunction
+  export const set_tool: (tool: number) => void
 
   export const import_icons: (data: number[]) => void
 }

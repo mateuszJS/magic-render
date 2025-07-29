@@ -40,18 +40,25 @@ pub fn connect_on_asset_selection_callback(cb: *const fn (u32) void) void {
 pub const ASSET_ID_TRESHOLD: u32 = 1000;
 
 const ActionType = enum {
-    move,
-    none,
-    transform,
+    Move,
+    None,
+    Transform,
+};
+
+const Tool = enum {
+    None,
+    DrawShape,
 };
 
 const State = struct {
     width: f32,
     height: f32,
     assets: std.AutoArrayHashMap(u32, Assets.Asset),
+    shapes: std.AutoArrayHashMap(u32, Shapes.Shape),
     hovered_asset_id: u32,
     selected_asset_id: u32,
-    ongoing_action: ActionType,
+    action: ActionType,
+    tool: Tool,
     last_pointer_coords: Types.Point,
     render_scale: f32,
 };
@@ -60,17 +67,21 @@ var state = State{
     .width = 0,
     .height = 0,
     .assets = undefined,
+    .shapes = undefined,
     .hovered_asset_id = 0,
     .selected_asset_id = 0,
-    .ongoing_action = ActionType.none,
+    .action = ActionType.None,
+    .tool = Tool.None,
     .last_pointer_coords = Types.Point{ .x = 0.0, .y = 0.0 },
     .render_scale = 1.0,
 };
 
-pub fn init_state(width: f32, height: f32) void {
+pub fn init_state(allocator: std.mem.Allocator, width: f32, height: f32) void {
+    _ = allocator; // autofix
     state.width = width;
     state.height = height;
     state.assets = std.AutoArrayHashMap(u32, Assets.Asset).init(std.heap.page_allocator);
+    state.shapes = std.AutoArrayHashMap(u32, Shapes.Shape).init(std.heap.page_allocator);
 }
 
 pub fn init_svg_textures(texture_max_size: f32, resize_texture: *const fn (u32, f32, f32) void) void {
@@ -119,20 +130,9 @@ pub fn remove_asset() void {
 }
 
 pub fn on_update_pick(id: u32) void {
-    if (state.ongoing_action != .transform) {
+    if (state.action != .Transform) {
         state.hovered_asset_id = id;
         // hovered_asset_id stores id of the ui transform element during transformations
-    }
-}
-
-pub fn on_pointer_down(x: f32, y: f32) void {
-    if (state.selected_asset_id == 0) {
-        // No active asset, do nothing
-    } else if (TransformUI.is_transform_ui(state.hovered_asset_id)) {
-        state.ongoing_action = .transform;
-    } else if (state.selected_asset_id >= ASSET_ID_TRESHOLD and state.selected_asset_id == state.hovered_asset_id) {
-        state.ongoing_action = .move;
-        state.last_pointer_coords = Types.Point{ .x = x, .y = y };
     }
 }
 
@@ -176,19 +176,66 @@ fn check_assets_update(should_notify: bool) void {
     }
 }
 
+pub fn on_pointer_down(allocator: std.mem.Allocator, x: f32, y: f32) void {
+    _ = allocator; // autofix
+    if (state.tool == Tool.DrawShape) {
+        const point = Types.Point{ .x = x, .y = y };
+
+        if (state.shapes.getPtr(state.selected_asset_id)) |selected_shape| {
+            selected_shape.setPreviewPoint(point);
+            selected_shape.add_point();
+        } else {
+            const id = generate_id();
+            const points = [_]Types.Point{point};
+            const shape = Shapes.Shape.new(
+                id,
+                &points,
+                std.heap.page_allocator,
+            ) catch unreachable;
+            state.shapes.put(id, shape) catch unreachable;
+            state.selected_asset_id = id;
+        }
+        return;
+    }
+
+    if (state.selected_asset_id == 0) {
+        // No active asset, do nothing
+    } else if (TransformUI.is_transform_ui(state.hovered_asset_id)) {
+        state.action = .Transform;
+    } else if (state.selected_asset_id >= ASSET_ID_TRESHOLD and state.selected_asset_id == state.hovered_asset_id) {
+        state.action = .Move;
+        state.last_pointer_coords = Types.Point{ .x = x, .y = y };
+    }
+}
+
 pub fn on_pointer_up() void {
-    if (state.ongoing_action == .none) {
-        state.selected_asset_id = state.hovered_asset_id;
-        on_asset_select_cb(state.selected_asset_id);
-    } else {
-        state.ongoing_action = .none;
-        check_assets_update(true);
+    if (state.tool == .None) {
+        if (state.action == .None) {
+            state.selected_asset_id = state.hovered_asset_id;
+            on_asset_select_cb(state.selected_asset_id);
+        } else {
+            state.action = .None;
+            check_assets_update(true);
+        }
+    } else if (state.tool == Tool.DrawShape) {
+        const asset_ptr = state.shapes.getPtr(state.selected_asset_id);
+        if (asset_ptr) |shape| {
+            shape.add_point();
+        }
     }
 }
 
 pub fn on_pointer_move(x: f32, y: f32) void {
-    switch (state.ongoing_action) {
-        .move => {
+    if (state.tool == Tool.DrawShape) {
+        const asset_ptr = state.shapes.getPtr(state.selected_asset_id);
+        if (asset_ptr) |shape| {
+            shape.setPreviewPoint(Types.Point{ .x = x, .y = y });
+        }
+        return;
+    }
+
+    switch (state.action) {
+        .Move => {
             const offset = Types.Point{
                 .x = x - state.last_pointer_coords.x,
                 .y = y - state.last_pointer_coords.y,
@@ -209,18 +256,18 @@ pub fn on_pointer_move(x: f32, y: f32) void {
 
             asset_ptr.update_coords(new_points);
         },
-        .transform => {
+        .Transform => {
             const asset_ptr: *Assets.Asset = state.assets.getPtr(state.selected_asset_id).?;
             const points_ptr: *[4]Types.PointUV = &asset_ptr.points;
             TransformUI.tranform_points(state.hovered_asset_id, points_ptr, x, y);
             SvgTextures.ensure_svg_texture_quality(asset_ptr.*);
         },
-        .none => {},
+        .None => {},
     }
 }
 
 pub fn on_pointer_leave() void {
-    state.ongoing_action = .none;
+    state.action = .None;
     state.hovered_asset_id = 0;
     check_assets_update(true);
 }
@@ -341,6 +388,7 @@ fn draw_project_boundary() void {
 }
 
 pub fn render_draw(allocator: std.mem.Allocator) void {
+    _ = allocator; // autofix
     draw_project_background();
 
     var iterator = state.assets.iterator();
@@ -362,23 +410,26 @@ pub fn render_draw(allocator: std.mem.Allocator) void {
     }
 
     // Define cubic Bézier curves that form the shape boundary
-    const curves = [_]Types.Point{
-        .{ .x = 100, .y = 0 },
-        .{ .x = 300, .y = 400 },
-        .{ .x = 600, .y = 600 },
-        .{ .x = 500, .y = 100 },
-        .{ .x = 300, .y = -200 },
-        .{ .x = 400, .y = -300 },
-        .{ .x = 100, .y = 0 },
-    };
-    const shape = Shapes.Shape.init(31, &curves, allocator) catch unreachable;
+    // const curves = [_]Types.Point{
+    //     .{ .x = 100, .y = 0 },
+    //     .{ .x = 300, .y = 400 },
+    //     .{ .x = 600, .y = 600 },
+    //     .{ .x = 500, .y = 100 },
+    //     .{ .x = 300, .y = -200 },
+    //     .{ .x = 400, .y = -300 },
+    //     .{ .x = 100, .y = 0 },
+    // };
+    // const shape = Shapes.Shape.new(31, &curves, allocator) catch unreachable;
     // defer shape.deinit(); // Free the shape itself
 
-    const shape_vertex_data = shape.get_draw_vertex_data(allocator) catch unreachable;
     // defer allocator.free(shape_vertex_data.curves); // Free the curves slice
     // defer allocator.free(shape_vertex_data.bounding_box); // Free the bounding_box slice
-
-    web_gpu_programs.draw_shape(shape_vertex_data.curves, &shape_vertex_data.bounding_box, shape_vertex_data.uniform);
+    var shapes_iter = state.shapes.iterator();
+    while (shapes_iter.next()) |shape| {
+        const shape_vertex_data = shape.value_ptr.get_draw_vertex_data(std.heap.page_allocator) catch unreachable;
+        web_gpu_programs.draw_shape(shape_vertex_data.curves, &shape_vertex_data.bounding_box, shape_vertex_data.uniform);
+    }
+    // web_gpu_programs.draw_shape(shape_vertex_data.curves, &shape_vertex_data.bounding_box, shape_vertex_data.uniform);
 
     // shape_vertex_data.curves[0].x = -200;
     // shape_vertex_data.curves[0].y = -200;
@@ -466,6 +517,10 @@ pub fn destroy_state() void {
 
 pub fn import_icons(data: []const f32) void {
     Msdf.init_icons(data);
+}
+
+pub fn set_tool(tool: Tool) void {
+    state.tool = tool;
 }
 
 test "reset_assets does not call the real update callback" {
