@@ -22,10 +22,11 @@ type ZigAssetOutput = {
   texture_id: number
 }
 
+type ArrayPointerDataView = {
+  '*': PointerDataView
+}
 type PointerDataView = {
-  '*': {
-    dataView: DataView
-  }
+  dataView: DataView
 }
 
 declare module '*.zig' {
@@ -49,11 +50,16 @@ declare module '*.zig' {
   export const update_render_scale: (render_scale: number) => void
 
   export const connect_web_gpu_programs: (programs: {
-    draw_texture: (vertexData: PointerDataView, texture_id: number) => void
-    draw_triangle: (vertexData: PointerDataView) => void
-    draw_msdf: (vertexData: PointerDataView, texture_id: number) => void
-    pick_texture: (vertexData: PointerDataView, texture_id: number) => void
-    pick_triangle: (vertexData: PointerDataView) => void
+    draw_texture: (vertex_data: ArrayPointerDataView, texture_id: number) => void
+    draw_triangle: (vertex_data: ArrayPointerDataView) => void
+    draw_msdf: (vertex_data: ArrayPointerDataView, texture_id: number) => void
+    pick_texture: (vertex_data: ArrayPointerDataView, texture_id: number) => void
+    pick_triangle: (vertex_data: ArrayPointerDataView) => void
+    draw_shape: (
+      curves_data: ArrayPointerDataView,
+      bound_box_data: ArrayPointerDataView,
+      uniformData: PointerDataView
+    ) => void
   }) => void
   export const connect_on_asset_update_callback: (cb: (data: ZigAssetOutput[]) => void) => void
   export const connect_on_asset_selection_callback: (cb: (data: number) => void) => void

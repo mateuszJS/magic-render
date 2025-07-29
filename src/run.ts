@@ -41,27 +41,30 @@ export default function runCreator(
       //     dataView.buffer.slice(dataView.byteOffset, dataView.byteOffset + dataView.byteLength)
       //   )
       // )
-      drawTexture(
-        canvasPass,
-        dataView.buffer,
-        dataView.byteOffset,
-        dataView.byteLength,
-        Textures.getTexture(texture_id)
-      )
+      drawTexture(canvasPass, dataView, Textures.getTexture(texture_id))
     },
     draw_msdf: (vertex_data, texture_id) => {
       const dataView = vertex_data['*'].dataView
-      drawMSDF(
-        canvasPass,
-        dataView.buffer,
-        dataView.byteOffset,
-        dataView.byteLength,
-        Textures.getTexture(texture_id)
-      )
+      drawMSDF(canvasPass, dataView, Textures.getTexture(texture_id))
     },
     draw_triangle: (vertex_data) => {
       const dataView = vertex_data['*'].dataView
-      drawTriangle(canvasPass, dataView.buffer, dataView.byteOffset, dataView.byteLength)
+      drawTriangle(canvasPass, dataView)
+      /*
+      samplesCount++
+      total += performance.now() - time
+      if (samplesCount % 100 === 0) {
+        console.log('Average draw time:', total / samplesCount)
+      }
+      */
+    },
+    draw_shape: (curves_data, bound_box_data, uniform_data) => {
+      const curvesDataView = curves_data['*'].dataView
+      const boundBoxDataView = bound_box_data['*'].dataView
+      // console.log(uniform_data.dataView)
+      const uniformDataView = uniform_data.dataView
+      drawShape(canvasPass, curvesDataView, boundBoxDataView, uniformDataView)
+
       /*
       samplesCount++
       total += performance.now() - time
@@ -78,17 +81,11 @@ export default function runCreator(
       // for (let i = 0; i < uints.length; i += 5) {
       //   console.log('texture id', uints[i + 4])
       // }
-      pickTexture(
-        pickPass,
-        dataView.buffer,
-        dataView.byteOffset,
-        dataView.byteLength,
-        Textures.getTexture(texture_id)
-      )
+      pickTexture(pickPass, dataView, Textures.getTexture(texture_id))
     },
     pick_triangle: (vertex_data) => {
       const dataView = vertex_data['*'].dataView
-      pickTriangle(pickPass, dataView.buffer, dataView.byteOffset, dataView.byteLength)
+      pickTriangle(pickPass, dataView)
     },
   })
 
@@ -104,20 +101,6 @@ export default function runCreator(
     device.queue.writeBuffer(canvasMatrixBuffer, 0, canvasMatrix)
     // time = performance.now()
     render_draw()
-
-    // Define cubic Bézier curves that form the shape boundary
-    const curves: Point[] = [
-      { x: 100, y: 100 - 100 },
-      { x: 300, y: 500 - 100 },
-      { x: 600, y: 700 - 100 },
-      { x: 500, y: 200 - 100 },
-      { x: 300, y: -200 },
-      { x: 400, y: -300 },
-      { x: 100, y: 100 - 100 },
-    ]
-
-    drawShape(canvasPass, curves)
-
     canvasPass.end()
 
     if (pointer.afterPickEventsQueue.length === 0) {

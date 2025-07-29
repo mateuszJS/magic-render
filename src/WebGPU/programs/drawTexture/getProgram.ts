@@ -60,20 +60,22 @@ export default function getProgram(
 
   return function drawTexture(
     pass: GPURenderPassEncoder,
-    vertexData: ArrayBufferLike,
-    vertexDataOffset = 0,
-    vertexDataSize = 0,
+    vertexData: DataView,
     texture: GPUTexture
   ) {
-    const numVertices = vertexDataSize / (4 * STRIDE)
+    const numVertices = vertexData.byteLength / (4 * STRIDE)
 
     const vertexBuffer = device.createBuffer({
       label: 'draw texture - vertex buffer',
-      size: vertexDataSize,
+      size: vertexData.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
 
-    device.queue.writeBuffer(vertexBuffer, 0, vertexData, vertexDataOffset, vertexDataSize)
+    // const dv = new DataView(vertexData)
+    // dv.setFloat32(0, -200, true) // Adjust x position for testing
+    // dv.setFloat32(1, -200, true) // Adjust y position for testing
+    // WE CAN JUST PASS DataView?????
+    device.queue.writeBuffer(vertexBuffer, 0, vertexData)
 
     // Get or create bind group for this texture
     let bindGroup = bindGroupCache.get(texture)

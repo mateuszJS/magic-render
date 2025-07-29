@@ -1,5 +1,4 @@
 import shaderCode from './shader.wgsl'
-import getBoundingBox from './getBoundingBox'
 
 export default function getDrawShape(
   device: GPUDevice,
@@ -19,20 +18,6 @@ export default function getDrawShape(
     size: uniformBufferSize,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   })
-
-  // Update uniforms
-  const uniformValues = new Float32Array(uniformBufferSize / 4)
-
-  // offsets to the various uniform values in float32 indices
-  let start = 0
-  let end = 4 /* 1 of stroke  + 3 of padding */
-  const strokeWidthValue = uniformValues.subarray(start, (start = end))
-
-  end += 4
-  const strokeColorValue = uniformValues.subarray(start, (start = end))
-
-  end += 4
-  const fillColorValue = uniformValues.subarray(start, (start = end))
 
   const bindGroupLayout = device.createBindGroupLayout({
     label: 'drawShape bind group layout',
@@ -100,49 +85,33 @@ export default function getDrawShape(
     },
   })
 
-  return function drawShape(passEncoder: GPURenderPassEncoder, curves: Point[]) {
-    const strokeWidth = 20
-    const boundingBox = getBoundingBox(curves, strokeWidth / 2)
+  return function drawShape(
+    passEncoder: GPURenderPassEncoder,
+    curvesDataView: DataView,
+    boundingBoxDataView: DataView,
+    uniformDataView: DataView
+  ) {
+    // console.log(
+    //   'uniform',
+    //   new Float32Array(uniformData.slice(uniformOffset, uniformOffset + uniformLength))
+    // )
 
-    // Create curves buffer
-    const curvesData = new Float32Array(curves.length * 2) // x y per point
-
-    for (let i = 0; i < curves.length; i++) {
-      const point = curves[i]
-      const offset = i * 2
-      curvesData[offset + 0] = point.x
-      curvesData[offset + 1] = point.y
-    }
-
-    // Create vertex buffer
-    // prettier-ignore
-    const vertexData = new Float32Array([
-      boundingBox[0].x, boundingBox[0].y,
-      boundingBox[1].x, boundingBox[1].y,
-      boundingBox[2].x, boundingBox[2].y,
-      boundingBox[2].x, boundingBox[2].y,
-      boundingBox[3].x, boundingBox[3].y,
-      boundingBox[0].x, boundingBox[0].y,
-    ])
-
-    const vertexBuffer = device.createBuffer({
+    const boundBoxBuffer = device.createBuffer({
       label: 'drawShape vertex buffer',
-      size: vertexData.byteLength,
+      size: boundingBoxDataView.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
-    device.queue.writeBuffer(vertexBuffer, 0, vertexData)
+    device.queue.writeBuffer(boundBoxBuffer, 0, boundingBoxDataView)
+    // device.queue.writeBuffer(boundBoxBuffer, 0, boundBoxData, boundBoxOffset, boundBoxLength)
 
     const curvesBuffer = device.createBuffer({
       label: 'drawShape curves buffer',
-      size: curvesData.byteLength,
+      size: curvesDataView.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     })
-    device.queue.writeBuffer(curvesBuffer, 0, curvesData)
+    device.queue.writeBuffer(curvesBuffer, 0, curvesDataView)
 
-    strokeWidthValue.set([strokeWidth])
-    strokeColorValue.set([1, 0, 0, 1]) // Red stroke color
-    fillColorValue.set([0, 1, 0, 1]) // Green fill color
-    device.queue.writeBuffer(uniformBuffer, 0, uniformValues)
+    device.queue.writeBuffer(uniformBuffer, 0, uniformDataView)
 
     passEncoder.setPipeline(renderPipeline)
 
@@ -157,7 +126,7 @@ export default function getDrawShape(
     })
 
     passEncoder.setBindGroup(0, bindGroup)
-    passEncoder.setVertexBuffer(0, vertexBuffer)
+    passEncoder.setVertexBuffer(0, boundBoxBuffer)
     passEncoder.draw(6) // Draw quad
   }
 }

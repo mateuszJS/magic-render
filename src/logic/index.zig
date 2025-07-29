@@ -7,10 +7,12 @@ const TransformUI = @import("./transform_ui.zig");
 const zigar = @import("zigar");
 const Msdf = @import("./msdf.zig");
 const SvgTextures = @import("./svg_textures.zig");
+const Shapes = @import("./shapes/shapes.zig");
 
 const WebGpuPrograms = struct {
     draw_texture: *const fn ([]const Assets.RenderVertex, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
+    draw_shape: *const fn ([]const Types.Point, []const Types.Point, Shapes.Uniform) void,
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const Assets.PickVertex, u32) void,
     pick_triangle: *const fn ([]const Triangle.PickInstance) void,
@@ -338,7 +340,7 @@ fn draw_project_boundary() void {
     web_gpu_programs.draw_triangle(&buffer);
 }
 
-pub fn render_draw() void {
+pub fn render_draw(allocator: std.mem.Allocator) void {
     draw_project_background();
 
     var iterator = state.assets.iterator();
@@ -346,7 +348,6 @@ pub fn render_draw() void {
     while (iterator.next()) |asset| {
         var vertex_data: [6]Assets.RenderVertex = undefined;
         asset.value_ptr.get_render_vertex_data(&vertex_data);
-
         web_gpu_programs.draw_texture(&vertex_data, asset.value_ptr.texture_id);
     }
 
@@ -360,6 +361,27 @@ pub fn render_draw() void {
         web_gpu_programs.draw_msdf(msdf_buffer, 0);
     }
 
+    // Define cubic Bézier curves that form the shape boundary
+    const curves = [_]Types.Point{
+        .{ .x = 100, .y = 0 },
+        .{ .x = 300, .y = 400 },
+        .{ .x = 600, .y = 600 },
+        .{ .x = 500, .y = 100 },
+        .{ .x = 300, .y = -200 },
+        .{ .x = 400, .y = -300 },
+        .{ .x = 100, .y = 0 },
+    };
+    const shape = Shapes.Shape.init(31, &curves, allocator) catch unreachable;
+    // defer shape.deinit(); // Free the shape itself
+
+    const shape_vertex_data = shape.get_draw_vertex_data(allocator) catch unreachable;
+    // defer allocator.free(shape_vertex_data.curves); // Free the curves slice
+    // defer allocator.free(shape_vertex_data.bounding_box); // Free the bounding_box slice
+
+    web_gpu_programs.draw_shape(shape_vertex_data.curves, &shape_vertex_data.bounding_box, shape_vertex_data.uniform);
+
+    // shape_vertex_data.curves[0].x = -200;
+    // shape_vertex_data.curves[0].y = -200;
     // testing:
 
     // const points = [_]Types.Point{
@@ -430,7 +452,7 @@ pub fn reset_assets(new_assets: []const Assets.SerializedAsset, with_snapshot: b
 }
 
 pub fn destroy_state() void {
-    state.assets.deinit();
+    state.assets.clearAndFree();
     std.heap.page_allocator.free(last_assets_update);
     last_assets_update = &.{};
     Msdf.deinit_icons();
