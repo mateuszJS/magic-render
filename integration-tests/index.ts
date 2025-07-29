@@ -1,4 +1,4 @@
-import initCreator, { SerializedOutputAsset, CreatorTool } from '../src/index'
+import initCreator, { SerializedOutputAsset } from '../src/index'
 import { camera } from '../src/WebGPU/pointer'
 
 declare global {
