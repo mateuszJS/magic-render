@@ -99,7 +99,6 @@ export default function getDrawShape(
     })
     device.queue.writeBuffer(boundBoxBuffer, 0, boundingBoxDataView)
     buffersToDestroy.push(boundBoxBuffer)
-    // device.queue.writeBuffer(boundBoxBuffer, 0, boundBoxData, boundBoxOffset, boundBoxLength)
 
     const curvesBuffer = device.createBuffer({
       label: 'drawShape curves buffer',

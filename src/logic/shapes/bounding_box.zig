@@ -137,7 +137,7 @@ pub fn getBoundingBox(curves: []const Point, padding: f32) [6]Point {
     }
 
     return [6]Point{
-        // Frist triangle
+        // First triangle
         .{ .x = min_x - padding, .y = min_y - padding }, // bottom-left
         .{ .x = max_x + padding, .y = min_y - padding }, // bottom-right
         .{ .x = max_x + padding, .y = max_y + padding }, // top-right

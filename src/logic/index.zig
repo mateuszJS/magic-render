@@ -415,7 +415,6 @@ pub fn render_draw() void {
     defer arena.deinit();
     const allocator = arena.allocator();
     draw_project_background();
-    // std.debug.print("allocator: {any}\n", .{allocator});
     var iterator = state.assets.iterator();
 
     while (iterator.next()) |asset| {
