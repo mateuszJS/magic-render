@@ -59,8 +59,8 @@ const baseConfig = {
           options: {
             embedWASM: isProd,
             // for now ReleaseFast gets stuck https://github.com/chung-leong/zigar/issues/666
-            // ocne solved we can come back to ReleaseFast
-            optimize: 'ReleaseSmall', //isProd ? 'ReleaseFast' : 'Debug', // we can play with ReleaseSmall also
+            // once solved we can come back to ReleaseFast
+            optimize: isProd ? 'ReleaseSmall' : 'Debug', // we can play with ReleaseSmall also
           },
         },
       },

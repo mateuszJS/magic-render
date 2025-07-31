@@ -3,6 +3,7 @@ import {
   on_pointer_leave,
   on_pointer_down,
   on_pointer_up,
+  on_press_escape,
 } from '../logic/index.zig'
 import clamp from '../utils/clamp'
 
@@ -167,15 +168,23 @@ export default function initMouseController(
   // pointer.zoom = clamp(pointer.zoom + event.deltaY * 0.01, 0.1, 100)
 
   document.body.addEventListener('keydown', (event) => {
-    if (event.code === 'Space') {
-      event.preventDefault()
-      if (mouseMode !== MouseMode.Pan) {
-        canvas.style.cursor = 'grab'
-        mouseMode = MouseMode.Pan
-      }
-    } else if (event.key === 'Alt') {
-      event.preventDefault()
-      mouseMode = MouseMode.Zoom
+    switch (event.code) {
+      case 'Space':
+        event.preventDefault()
+        if (mouseMode !== MouseMode.Pan) {
+          canvas.style.cursor = 'grab'
+          mouseMode = MouseMode.Pan
+        }
+        break
+      case 'AltLeft':
+      case 'AltRight':
+        event.preventDefault()
+        mouseMode = MouseMode.Zoom
+        break
+      case 'Escape':
+        event.preventDefault()
+        on_press_escape()
+        break
     }
   })
   document.body.addEventListener('keyup', (event) => {

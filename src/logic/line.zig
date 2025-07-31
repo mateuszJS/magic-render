@@ -13,11 +13,13 @@ fn get_points(start: anytype, end: anytype, width: f32, rounded: f32) [4]Triangl
     const bx = end.x + half_width * @cos(parallel_angle);
     const by = end.y + half_width * @sin(parallel_angle);
 
+    const angle_cos = @cos(angle) * half_width;
+    const angle_sin = @sin(angle) * half_width;
     const points = [_]Point{
-        .{ .x = ax + half_width * @cos(angle), .y = ay + half_width * @sin(angle) },
-        .{ .x = ax - half_width * @cos(angle), .y = ay - half_width * @sin(angle) },
-        .{ .x = bx - half_width * @cos(angle), .y = by - half_width * @sin(angle) },
-        .{ .x = bx + half_width * @cos(angle), .y = by + half_width * @sin(angle) },
+        .{ .x = ax + angle_cos, .y = ay + angle_sin },
+        .{ .x = ax - angle_cos, .y = ay - angle_sin },
+        .{ .x = bx - angle_cos, .y = by - angle_sin },
+        .{ .x = bx + angle_cos, .y = by + angle_sin },
     };
 
     return [_]Triangle.RoundCorner{

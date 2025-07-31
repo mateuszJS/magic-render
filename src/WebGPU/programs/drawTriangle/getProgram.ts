@@ -6,7 +6,8 @@ const INSTANCE_STRIDE =
 export default function getProgram(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
-  matrixBuffer: GPUBuffer
+  matrixBuffer: GPUBuffer,
+  buffersToDestroy: GPUBuffer[]
 ) {
   const module = device.createShaderModule({
     label: 'draw triangle module',
@@ -63,20 +64,16 @@ export default function getProgram(
     entries: [{ binding: 0, resource: { buffer: matrixBuffer } }],
   })
 
-  return function drawTriangle(
-    pass: GPURenderPassEncoder,
-    vertexData: ArrayBufferLike,
-    vertexDataOffset = 0,
-    vertexDataSize = 0
-  ) {
-    const numInstances = vertexDataSize / (4 * INSTANCE_STRIDE)
+  return function drawTriangle(pass: GPURenderPassEncoder, vertexData: DataView) {
+    const numInstances = vertexData.byteLength / (4 * INSTANCE_STRIDE)
 
     const vertexBuffer = device.createBuffer({
       label: 'draw triangle - vertex buffer',
-      size: vertexDataSize,
+      size: vertexData.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
-    device.queue.writeBuffer(vertexBuffer, 0, vertexData, vertexDataOffset, vertexDataSize)
+    device.queue.writeBuffer(vertexBuffer, 0, vertexData)
+    buffersToDestroy.push(vertexBuffer)
 
     pass.setPipeline(pipeline)
     pass.setVertexBuffer(0, vertexBuffer)

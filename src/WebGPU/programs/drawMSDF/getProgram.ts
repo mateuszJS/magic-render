@@ -63,21 +63,15 @@ export default function getProgram(
 
   const bindGroupCache = new WeakMap<GPUTexture, GPUBindGroup>()
 
-  return function drawMSDF(
-    pass: GPURenderPassEncoder,
-    vertexData: ArrayBufferLike,
-    vertexDataOffset = 0,
-    vertexDataSize = 0,
-    texture: GPUTexture
-  ) {
-    const numInstances = vertexDataSize / (4 * INSTANCE_STRIDE)
+  return function drawMSDF(pass: GPURenderPassEncoder, vertexData: DataView, texture: GPUTexture) {
+    const numInstances = vertexData.byteLength / (4 * INSTANCE_STRIDE)
 
     const vertexBuffer = device.createBuffer({
       label: 'draw msdf - vertex buffer',
-      size: vertexDataSize,
+      size: vertexData.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
-    device.queue.writeBuffer(vertexBuffer, 0, vertexData, vertexDataOffset, vertexDataSize)
+    device.queue.writeBuffer(vertexBuffer, 0, vertexData)
 
     // Get or create bind group for this texture
     let bindGroup = bindGroupCache.get(texture)

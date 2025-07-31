@@ -49,7 +49,7 @@ pub fn init_icons(data: []const f32) void {
 }
 
 pub fn deinit_icons() void {
-    icons.deinit();
+    icons.clearAndFree();
 }
 
 pub const DrawInstance = extern struct {
