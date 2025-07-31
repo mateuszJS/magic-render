@@ -6,7 +6,8 @@ const INSTANCE_STRIDE =
 export default function getProgram(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
-  matrixBuffer: GPUBuffer
+  matrixBuffer: GPUBuffer,
+  buffersToDestroy: GPUBuffer[]
 ) {
   const module = device.createShaderModule({
     label: 'draw triangle module',
@@ -72,6 +73,7 @@ export default function getProgram(
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
+    buffersToDestroy.push(vertexBuffer)
 
     pass.setPipeline(pipeline)
     pass.setVertexBuffer(0, vertexBuffer)

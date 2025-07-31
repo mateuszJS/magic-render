@@ -97,7 +97,7 @@ export default async function initCreator(
     updateRenderScale()
   })
 
-  initPrograms(device, presentationFormat)
+  const cleanupPrograms = initPrograms(device, presentationFormat)
 
   initMouseController(canvas, updateRenderScale, () => {
     isMouseEventProcessing = true
@@ -148,10 +148,17 @@ export default async function initCreator(
     )
   })
 
-  const stopCreator = runCreator(canvas, context, device, presentationFormat, () => {
-    isMouseEventProcessing = false
-    updateProcessing()
-  })
+  const stopCreator = runCreator(
+    canvas,
+    context,
+    device,
+    cleanupPrograms,
+    presentationFormat,
+    () => {
+      isMouseEventProcessing = false
+      updateProcessing()
+    }
+  )
 
   const resetAssets: CreatorAPI['resetAssets'] = async (assets, withSnapshot = false) => {
     const results = await Promise.allSettled(

@@ -22,6 +22,7 @@ export default function runCreator(
   canvas: HTMLCanvasElement,
   context: GPUCanvasContext,
   device: GPUDevice,
+  cleanupPrograms: VoidFunction,
   presentationFormat: GPUTextureFormat,
   onEmptyEvents: VoidFunction // call when there is no more events to process
 ): VoidFunction {
@@ -125,6 +126,7 @@ export default function runCreator(
 
     const commandBuffer = encoder.finish()
     device.queue.submit([commandBuffer])
+    cleanupPrograms()
 
     pickManager.asyncPick()
 

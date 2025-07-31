@@ -3,7 +3,8 @@ import shaderCode from './shader.wgsl'
 export default function getDrawShape(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
-  canvasMatrixBuffer: GPUBuffer
+  canvasMatrixBuffer: GPUBuffer,
+  buffersToDestroy: GPUBuffer[]
 ) {
   const shaderModule = device.createShaderModule({
     label: 'drawShape shader',
@@ -102,6 +103,7 @@ export default function getDrawShape(
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(boundBoxBuffer, 0, boundingBoxDataView)
+    buffersToDestroy.push(boundBoxBuffer)
     // device.queue.writeBuffer(boundBoxBuffer, 0, boundBoxData, boundBoxOffset, boundBoxLength)
 
     const curvesBuffer = device.createBuffer({
@@ -110,6 +112,7 @@ export default function getDrawShape(
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(curvesBuffer, 0, curvesDataView)
+    buffersToDestroy.push(curvesBuffer)
 
     device.queue.writeBuffer(uniformBuffer, 0, uniformDataView)
 

@@ -11,7 +11,7 @@ const Shapes = @import("./shapes/shapes.zig");
 const squares = @import("squares.zig");
 
 const WebGpuPrograms = struct {
-    draw_texture: *const fn ([]const Assets.RenderVertex, u32) void,
+    draw_texture: *const fn (Assets.DrawVertex, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
     draw_shape: *const fn ([]const Types.Point, []const Types.Point, Shapes.Uniform) void,
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
@@ -380,35 +380,40 @@ fn draw_project_boundary() void {
     web_gpu_programs.draw_triangle(&buffer);
 }
 
+const point_size: f32 = @floatFromInt(@sizeOf(Types.Point)); // 8 bytes
+const triangle_size: f32 = @floatFromInt(@sizeOf(Triangle.DrawInstance)); // 64 bytes
+const asset_size: f32 = @floatFromInt(@sizeOf(Assets.DrawVertex)); // 64 bytes
+
 pub fn render_draw() void {
-    // const point_size = @sizeOf(Types.Point);
-    // const triangle_size = @sizeOf(Triangle.DrawInstance);
-
-    // comptime std.debug.print("Point size: {} bytes\n", .{point_size});
-    // comptime std.debug.print("Triangle size: {} bytes\n", .{triangle_size});
-
-    // // Estimate your maximum usage per render call
-    // const max_shape_points = 200; // Max points in a shape
-    // const max_preview_triangles = 10; // For preview rendering
-
-    // // Add some padding for allocator overhead (usually ~16-32 bytes per allocation)
+    // Add some padding for allocator overhead (usually ~16-32 bytes per allocation)
     // const allocator_overhead = 64;
+
+    // const estimated_memory =
+    //     triangle_size * 2.0 + // project background
+    //     triangle_size * 4.0 + // project border
+    //     asset_size * @as(f32, @floatFromInt(state.assets.count())) + // assets
+    //     point_size * 100.0 + allocator_overhead; // shapes
+
     // const safety_margin = 1.2; // 20% extra
 
-    // const total_size = @as(usize, @intFromFloat((point_size * max_shape_points + triangle_size * max_preview_triangles + allocator_overhead) * safety_margin));
+    // // Are you building for WebAssembly? In this case, std.heap.wasm_allocator is likely the right
+    // // choice for your main allocator as it uses WebAssembly's memory instructions.
+
+    // const total_size = @as(usize, @intFromFloat(estimated_memory * safety_margin));
 
     // var buffer: [total_size]u8 = undefined;
     // var fba = std.heap.FixedBufferAllocator.init(&buffer);
-    // const allocator = fba.allocator();
-
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
     draw_project_background();
     // std.debug.print("allocator: {any}\n", .{allocator});
     var iterator = state.assets.iterator();
 
     while (iterator.next()) |asset| {
-        var vertex_data: [6]Assets.RenderVertex = undefined;
+        var vertex_data: Assets.DrawVertex = undefined;
         asset.value_ptr.get_render_vertex_data(&vertex_data);
-        web_gpu_programs.draw_texture(&vertex_data, asset.value_ptr.texture_id);
+        web_gpu_programs.draw_texture(vertex_data, asset.value_ptr.texture_id);
     }
 
     draw_project_boundary(); // TODO: once we support strokes for Triangles, we should use it here wit transparent fill
@@ -423,9 +428,10 @@ pub fn render_draw() void {
 
     // defer allocator.free(shape_vertex_data.curves); // Free the curves slice
     // defer allocator.free(shape_vertex_data.bounding_box); // Free the bounding_box slice
+
     var shapes_iter = state.shapes.iterator();
     while (shapes_iter.next()) |shape| {
-        const shape_vertex_data = shape.value_ptr.get_draw_vertex_data(std.heap.page_allocator) catch unreachable;
+        const shape_vertex_data = shape.value_ptr.get_draw_vertex_data(allocator) catch unreachable;
         if (shape_vertex_data) |vertex_data| {
             web_gpu_programs.draw_shape(vertex_data.curves, &vertex_data.bounding_box, vertex_data.uniform);
         }
@@ -434,7 +440,7 @@ pub fn render_draw() void {
     if (state.tool == Tool.DrawShape) {
         const selected_shape = state.shapes.getPtr(state.selected_asset_id);
         if (selected_shape) |shape| {
-            const shape_vertex_data = shape.get_draw_vertex_data(std.heap.page_allocator) catch unreachable;
+            const shape_vertex_data = shape.get_draw_vertex_data(allocator) catch unreachable;
             if (shape_vertex_data) |vertex_data| {
                 web_gpu_programs.draw_triangle(vertex_data.preview_buffer);
             }
