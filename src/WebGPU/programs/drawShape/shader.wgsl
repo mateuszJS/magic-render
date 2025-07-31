@@ -206,58 +206,79 @@ fn line_winding_contribution(point: vec2f, line_start: vec2f, line_end: vec2f) -
   return angle / (2.0 * 3.14159);
 }
 
-// Calculate winding number contribution from a curve using adaptive quality
-fn curve_winding_contribution(point: vec2f, curve: CubicBezier) -> f32 {
-  // Use fwidth to determine appropriate subdivision level based on screen-space derivatives
-  let screen_space_gradient = fwidth(point);
-  let curve_size = max(
-    distance(curve.p0, curve.p3),
-    max(distance(curve.p0, curve.p1), distance(curve.p2, curve.p3))
-  );
+// Ray casting: count intersections of horizontal ray with curve
+fn ray_cast_curve_crossing(point: vec2f, curve: CubicBezier) -> i32 {
+  // Quick Y-bounds check - if point is outside Y range, no intersection possible
+  let y_min = min(min(curve.p0.y, curve.p1.y), min(curve.p2.y, curve.p3.y));
+  let y_max = max(max(curve.p0.y, curve.p1.y), max(curve.p2.y, curve.p3.y));
+  let x_min = max(max(curve.p0.x, curve.p1.x), max(curve.p2.x, curve.p3.x));
   
-  // Adaptive step count based on curve complexity and screen resolution
-  let base_steps = 4;
-  let gradient_factor = length(screen_space_gradient);
-  let adaptive_steps = i32(clamp(
-    f32(base_steps) * (curve_size / max(gradient_factor, 0.1)),
-    f32(base_steps),
-    32.0
-  ));
+  if (point.y < y_min || point.y > y_max || point.x > x_min) {
+    return 0;
+  }
   
-  var winding = 0.0;
+  // Sample the curve at regular intervals to find intersections
+  var crossings = 0;
+  let samples = 32; // Good balance between accuracy and performance
   
-  // Use Green's theorem for more accurate winding calculation
-  for (var i = 0; i < adaptive_steps; i++) {
-    let t1 = f32(i) / f32(adaptive_steps);
-    let t2 = f32(i + 1) / f32(adaptive_steps);
+  for (var i = 0; i < samples; i++) {
+    let t1 = f32(i) / f32(samples);
+    let t2 = f32(i + 1) / f32(samples);
     
     let p1 = bezier_point(curve, t1);
     let p2 = bezier_point(curve, t2);
     
-    // Vector from query point to curve points
-    let v1 = p1 - point;
-    let v2 = p2 - point;
-    
-    // Skip if either point is very close to avoid numerical issues
-    let dist1 = length(v1);
-    let dist2 = length(v2);
-    if (dist1 < 1e-6 || dist2 < 1e-6) {
-      continue;
+    // Check if this segment crosses the horizontal ray
+    if (ray_crosses_segment(point, p1, p2)) {
+      // Calculate the actual intersection X coordinate
+      let intersection_x = get_ray_intersection_x(point.y, p1, p2);
+      
+      // Only count if intersection is to the right of the point
+      if (intersection_x > point.x) {
+        // Determine crossing direction for proper winding
+        if (p1.y < point.y && p2.y >= point.y) {
+          crossings += 1; // Upward crossing
+        } else if (p1.y >= point.y && p2.y < point.y) {
+          crossings -= 1; // Downward crossing
+        }
+      }
     }
-    
-    // Normalize vectors
-    let n1 = v1 / dist1;
-    let n2 = v2 / dist2;
-    
-    // Calculate signed angle using atan2 for better numerical stability
-    let cross_prod = n1.x * n2.y - n1.y * n2.x;
-    let dot_prod = dot(n1, n2);
-    
-    // Use atan2 for proper quadrant handling
-    winding += atan2(cross_prod, dot_prod);
   }
   
-  return winding / (2.0 * 3.14159);
+  return crossings;
+}
+
+// Check if horizontal ray from point crosses the line segment
+fn ray_crosses_segment(point: vec2f, p1: vec2f, p2: vec2f) -> bool {
+  // Check if the segment crosses the horizontal line at point.y
+  return (p1.y < point.y && p2.y >= point.y) || (p1.y >= point.y && p2.y < point.y);
+}
+
+// Calculate X coordinate where horizontal ray intersects line segment
+fn get_ray_intersection_x(ray_y: f32, p1: vec2f, p2: vec2f) -> f32 {
+  if (abs(p2.y - p1.y) < 1e-8) {
+    // Horizontal line - return leftmost X
+    return min(p1.x, p2.x);
+  }
+  
+  // Linear interpolation to find intersection X
+  let t = (ray_y - p1.y) / (p2.y - p1.y);
+  return p1.x + t * (p2.x - p1.x);
+}
+
+// Helper function: distance from point to line (for flatness test)
+fn distance_point_to_line(point: vec2f, line_start: vec2f, line_end: vec2f) -> f32 {
+  let line_vec = line_end - line_start;
+  let point_vec = point - line_start;
+  
+  let line_length_sq = dot(line_vec, line_vec);
+  if (line_length_sq < 1e-8) {
+    return length(point_vec);
+  }
+  
+  let t = dot(point_vec, line_vec) / line_length_sq;
+  let closest = line_start + clamp(t, 0.0, 1.0) * line_vec;
+  return length(point - closest);
 }
 
 struct ShapeInfo {
@@ -266,13 +287,12 @@ struct ShapeInfo {
   fill_alpha: f32,
 }
 
-// Main shape evaluation function using SDF approach
+// Main shape evaluation function using SDF approach with ray casting
 fn evaluate_shape(point: vec2f) -> ShapeInfo {
   var min_distance = 1e10;
-  var winding_number = 0.0;
-  var t = 0.0;
+  var total_crossings: i32 = 0;
   
-  // For each curve, find closest point and accumulate winding
+  // For each curve, find closest point and count ray crossings
   let num_curves = arrayLength(&curves) / 3;
   for (var i = 0u; i < num_curves; i++) {
     let curve = CubicBezier(
@@ -291,23 +311,34 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
       // Handle as straight line from p0 to p3
       distance = distance_to_line_segment(point, curve.p0, curve.p3);
       
-      // Calculate winding contribution for the line segment
-      winding_number += line_winding_contribution(point, curve.p0, curve.p3);
+      // Simple ray casting for line segment
+      if (ray_crosses_segment(point, curve.p0, curve.p3)) {
+        let intersection_x = get_ray_intersection_x(point.y, curve.p0, curve.p3);
+        if (intersection_x > point.x) {
+          if (curve.p0.y < point.y && curve.p3.y >= point.y) {
+            total_crossings += 1; // Upward crossing
+          } else if (curve.p0.y >= point.y && curve.p3.y < point.y) {
+            total_crossings -= 1; // Downward crossing
+          }
+        }
+      }
     } else {
       // Handle as normal cubic Bézier curve
       let closest_t = closest_point_on_bezier(point, curve);
       let closest_point = bezier_point(curve, closest_t);
       distance = length(point - closest_point);
       
-      // Calculate winding contribution for the curve
-      winding_number += curve_winding_contribution(point, curve);
+      // Ray casting for curve
+      total_crossings += ray_cast_curve_crossing(point, curve);
     }
     
     min_distance = min(min_distance, distance);
   }
   
-  // Determine if point is inside based on winding number
-  let is_inside = abs(winding_number) > 0.5;
+  // Determine if point is inside using odd-even rule (ray casting)
+  // Count total crossings and check if odd
+  let crossing_count = abs(total_crossings);
+  let is_inside = (crossing_count % 2) == 1;
   let signed_dist = select(min_distance, -min_distance, is_inside);
   let pixel_gradient = fwidth(signed_dist);
   
