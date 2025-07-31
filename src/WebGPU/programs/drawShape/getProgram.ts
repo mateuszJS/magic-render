@@ -92,11 +92,6 @@ export default function getDrawShape(
     boundingBoxDataView: DataView,
     uniformDataView: DataView
   ) {
-    // console.log(
-    //   'uniform',
-    //   new Float32Array(uniformData.slice(uniformOffset, uniformOffset + uniformLength))
-    // )
-
     const boundBoxBuffer = device.createBuffer({
       label: 'drawShape vertex buffer',
       size: boundingBoxDataView.byteLength,

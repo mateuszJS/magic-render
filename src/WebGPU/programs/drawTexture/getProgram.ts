@@ -71,10 +71,6 @@ export default function getProgram(
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
 
-    // const dv = new DataView(vertexData)
-    // dv.setFloat32(0, -200, true) // Adjust x position for testing
-    // dv.setFloat32(1, -200, true) // Adjust y position for testing
-    // WE CAN JUST PASS DataView?????
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
 
     // Get or create bind group for this texture

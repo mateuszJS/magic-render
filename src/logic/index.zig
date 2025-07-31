@@ -390,7 +390,7 @@ fn draw_project_boundary() void {
 
 const point_size: f32 = @floatFromInt(@sizeOf(Types.Point)); // 8 bytes
 const triangle_size: f32 = @floatFromInt(@sizeOf(Triangle.DrawInstance)); // 64 bytes
-const asset_size: f32 = @floatFromInt(@sizeOf(Assets.DrawVertex)); // 64 bytes
+const asset_size: f32 = @floatFromInt(@sizeOf(Assets.DrawVertex)); // 96 bytes
 
 pub fn render_draw() void {
     // Add some padding for allocator overhead (usually ~16-32 bytes per allocation)
@@ -434,9 +434,6 @@ pub fn render_draw() void {
         web_gpu_programs.draw_msdf(msdf_buffer, 0);
     }
 
-    // defer allocator.free(shape_vertex_data.curves); // Free the curves slice
-    // defer allocator.free(shape_vertex_data.bounding_box); // Free the bounding_box slice
-
     var shapes_iter = state.shapes.iterator();
     while (shapes_iter.next()) |shape| {
         const shape_vertex_data = shape.value_ptr.get_draw_vertex_data(allocator) catch unreachable;
@@ -455,10 +452,6 @@ pub fn render_draw() void {
         }
     }
 
-    // web_gpu_programs.draw_shape(shape_vertex_data.curves, &shape_vertex_data.bounding_box, shape_vertex_data.uniform);
-
-    // shape_vertex_data.curves[0].x = -200;
-    // shape_vertex_data.curves[0].y = -200;
     // testing:
 
     // const points = [_]Types.Point{
