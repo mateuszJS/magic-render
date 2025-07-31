@@ -7,10 +7,13 @@ const TransformUI = @import("./transform_ui.zig");
 const zigar = @import("zigar");
 const Msdf = @import("./msdf.zig");
 const SvgTextures = @import("./svg_textures.zig");
+const Shapes = @import("./shapes/shapes.zig");
+const squares = @import("squares.zig");
 
 const WebGpuPrograms = struct {
-    draw_texture: *const fn ([]const Assets.RenderVertex, u32) void,
+    draw_texture: *const fn (Assets.DrawVertex, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
+    draw_shape: *const fn ([]const Types.Point, []const Types.Point, Shapes.Uniform) void,
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const Assets.PickVertex, u32) void,
     pick_triangle: *const fn ([]const Triangle.PickInstance) void,
@@ -38,18 +41,25 @@ pub fn connect_on_asset_selection_callback(cb: *const fn (u32) void) void {
 pub const ASSET_ID_TRESHOLD: u32 = 1000;
 
 const ActionType = enum {
-    move,
-    none,
-    transform,
+    Move,
+    None,
+    Transform,
+};
+
+const Tool = enum {
+    None,
+    DrawShape,
 };
 
 const State = struct {
     width: f32,
     height: f32,
     assets: std.AutoArrayHashMap(u32, Assets.Asset),
+    shapes: std.AutoArrayHashMap(u32, Shapes.Shape),
     hovered_asset_id: u32,
     selected_asset_id: u32,
-    ongoing_action: ActionType,
+    action: ActionType,
+    tool: Tool,
     last_pointer_coords: Types.Point,
     render_scale: f32,
 };
@@ -58,17 +68,21 @@ var state = State{
     .width = 0,
     .height = 0,
     .assets = undefined,
+    .shapes = undefined,
     .hovered_asset_id = 0,
     .selected_asset_id = 0,
-    .ongoing_action = ActionType.none,
+    .action = ActionType.None,
+    .tool = Tool.None,
     .last_pointer_coords = Types.Point{ .x = 0.0, .y = 0.0 },
     .render_scale = 1.0,
 };
 
-pub fn init_state(width: f32, height: f32) void {
+pub fn init_state(allocator: std.mem.Allocator, width: f32, height: f32) void {
+    _ = allocator; // autofix
     state.width = width;
     state.height = height;
     state.assets = std.AutoArrayHashMap(u32, Assets.Asset).init(std.heap.page_allocator);
+    state.shapes = std.AutoArrayHashMap(u32, Shapes.Shape).init(std.heap.page_allocator);
 }
 
 pub fn init_svg_textures(texture_max_size: f32, resize_texture: *const fn (u32, f32, f32) void) void {
@@ -117,20 +131,9 @@ pub fn remove_asset() void {
 }
 
 pub fn on_update_pick(id: u32) void {
-    if (state.ongoing_action != .transform) {
+    if (state.action != .Transform) {
         state.hovered_asset_id = id;
         // hovered_asset_id stores id of the ui transform element during transformations
-    }
-}
-
-pub fn on_pointer_down(x: f32, y: f32) void {
-    if (state.selected_asset_id == 0) {
-        // No active asset, do nothing
-    } else if (TransformUI.is_transform_ui(state.hovered_asset_id)) {
-        state.ongoing_action = .transform;
-    } else if (state.selected_asset_id >= ASSET_ID_TRESHOLD and state.selected_asset_id == state.hovered_asset_id) {
-        state.ongoing_action = .move;
-        state.last_pointer_coords = Types.Point{ .x = x, .y = y };
     }
 }
 
@@ -174,19 +177,69 @@ fn check_assets_update(should_notify: bool) void {
     }
 }
 
+pub fn on_pointer_down(allocator: std.mem.Allocator, x: f32, y: f32) void {
+    _ = allocator; // autofix
+    if (state.tool == Tool.DrawShape) {
+        const point = Types.Point{ .x = x, .y = y };
+
+        if (state.shapes.getPtr(state.selected_asset_id)) |selected_shape| {
+            if (!selected_shape.is_closed) {
+                selected_shape.setPreviewPoint(point);
+                selected_shape.add_point_start() catch unreachable;
+                return;
+            }
+        }
+
+        const id = generate_id();
+        const shape = Shapes.Shape.new(
+            id,
+            point,
+            std.heap.page_allocator,
+        ) catch unreachable;
+        state.shapes.put(id, shape) catch unreachable;
+        state.selected_asset_id = id;
+
+        return;
+    }
+
+    if (state.selected_asset_id == 0) {
+        // No active asset, do nothing
+    } else if (TransformUI.is_transform_ui(state.hovered_asset_id)) {
+        state.action = .Transform;
+    } else if (state.selected_asset_id >= ASSET_ID_TRESHOLD and state.selected_asset_id == state.hovered_asset_id) {
+        state.action = .Move;
+        state.last_pointer_coords = Types.Point{ .x = x, .y = y };
+    }
+}
+
 pub fn on_pointer_up() void {
-    if (state.ongoing_action == .none) {
-        state.selected_asset_id = state.hovered_asset_id;
-        on_asset_select_cb(state.selected_asset_id);
-    } else {
-        state.ongoing_action = .none;
-        check_assets_update(true);
+    if (state.tool == .None) {
+        if (state.action == .None) {
+            state.selected_asset_id = state.hovered_asset_id;
+            on_asset_select_cb(state.selected_asset_id);
+        } else {
+            state.action = .None;
+            check_assets_update(true);
+        }
+    } else if (state.tool == Tool.DrawShape) {
+        const asset_ptr = state.shapes.getPtr(state.selected_asset_id);
+        if (asset_ptr) |shape| {
+            shape.add_point_end() catch unreachable;
+        }
     }
 }
 
 pub fn on_pointer_move(x: f32, y: f32) void {
-    switch (state.ongoing_action) {
-        .move => {
+    if (state.tool == Tool.DrawShape) {
+        const asset_ptr = state.shapes.getPtr(state.selected_asset_id);
+        if (asset_ptr) |shape| {
+            shape.setPreviewPoint(Types.Point{ .x = x, .y = y });
+        }
+        return;
+    }
+
+    switch (state.action) {
+        .Move => {
             const offset = Types.Point{
                 .x = x - state.last_pointer_coords.x,
                 .y = y - state.last_pointer_coords.y,
@@ -207,20 +260,24 @@ pub fn on_pointer_move(x: f32, y: f32) void {
 
             asset_ptr.update_coords(new_points);
         },
-        .transform => {
+        .Transform => {
             const asset_ptr: *Assets.Asset = state.assets.getPtr(state.selected_asset_id).?;
             const points_ptr: *[4]Types.PointUV = &asset_ptr.points;
             TransformUI.tranform_points(state.hovered_asset_id, points_ptr, x, y);
             SvgTextures.ensure_svg_texture_quality(asset_ptr.*);
         },
-        .none => {},
+        .None => {},
     }
 }
 
 pub fn on_pointer_leave() void {
-    state.ongoing_action = .none;
+    state.action = .None;
     state.hovered_asset_id = 0;
     check_assets_update(true);
+}
+
+pub fn on_press_escape() void {
+    state.selected_asset_id = 0;
 }
 
 fn get_border() struct { []Triangle.DrawInstance, []Msdf.DrawInstance } {
@@ -290,23 +347,16 @@ fn get_border() struct { []Triangle.DrawInstance, []Msdf.DrawInstance } {
 }
 
 fn draw_project_background() void {
-    const points = [_]Types.Point{
-        Types.Point{ .x = 0.0, .y = 0.0 }, //
-        Types.Point{ .x = state.width, .y = 0.0 }, //
-        Types.Point{ .x = state.width, .y = state.height }, //
-        Types.Point{ .x = 0.0, .y = state.height }, //
-    };
-    const p0_v = Triangle.get_round_corner_vector(0, points, 0.0);
-    const p1_v = Triangle.get_round_corner_vector(1, points, 0.0);
-    const p2_v = Triangle.get_round_corner_vector(2, points, 0.0);
-    const p3_v = Triangle.get_round_corner_vector(3, points, 0.0);
-
-    const color = [_]u8{ 30, 30, 30, 255 }; // gray color
-
     var buffer: [2]Triangle.DrawInstance = undefined;
-    Triangle.get_draw_vertex_data(buffer[0..1], p0_v, p1_v, p2_v, color);
-    Triangle.get_draw_vertex_data(buffer[1..2], p0_v, p2_v, p3_v, color);
-
+    squares.get_draw_vertex_data(
+        &buffer,
+        0.0,
+        0.0,
+        state.width,
+        state.height,
+        0.0,
+        [_]u8{ 30, 30, 30, 255 },
+    );
     web_gpu_programs.draw_triangle(&buffer);
 }
 
@@ -338,19 +388,42 @@ fn draw_project_boundary() void {
     web_gpu_programs.draw_triangle(&buffer);
 }
 
-pub fn render_draw() void {
-    draw_project_background();
+const point_size: f32 = @floatFromInt(@sizeOf(Types.Point)); // 8 bytes
+const triangle_size: f32 = @floatFromInt(@sizeOf(Triangle.DrawInstance)); // 64 bytes
+const asset_size: f32 = @floatFromInt(@sizeOf(Assets.DrawVertex)); // 96 bytes
 
+pub fn render_draw() void {
+    // Add some padding for allocator overhead (usually ~16-32 bytes per allocation)
+    // const allocator_overhead = 64;
+
+    // const estimated_memory =
+    //     triangle_size * 2.0 + // project background
+    //     triangle_size * 4.0 + // project border
+    //     asset_size * @as(f32, @floatFromInt(state.assets.count())) + // assets
+    //     point_size * 100.0 + allocator_overhead; // shapes
+
+    // const safety_margin = 1.2; // 20% extra
+
+    // // Are you building for WebAssembly? In this case, std.heap.wasm_allocator is likely the right
+    // // choice for your main allocator as it uses WebAssembly's memory instructions.
+
+    // const total_size = @as(usize, @intFromFloat(estimated_memory * safety_margin));
+
+    // var buffer: [total_size]u8 = undefined;
+    // var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    draw_project_background();
     var iterator = state.assets.iterator();
 
     while (iterator.next()) |asset| {
-        var vertex_data: [6]Assets.RenderVertex = undefined;
+        var vertex_data: Assets.DrawVertex = undefined;
         asset.value_ptr.get_render_vertex_data(&vertex_data);
-
-        web_gpu_programs.draw_texture(&vertex_data, asset.value_ptr.texture_id);
+        web_gpu_programs.draw_texture(vertex_data, asset.value_ptr.texture_id);
     }
 
-    draw_project_boundary();
+    draw_project_boundary(); // TODO: once we support strokes for Triangles, we should use it here wit transparent fill
 
     const triangle_buffer, const msdf_buffer = get_border();
     if (triangle_buffer.len > 0) {
@@ -358,6 +431,24 @@ pub fn render_draw() void {
     }
     if (msdf_buffer.len > 0) {
         web_gpu_programs.draw_msdf(msdf_buffer, 0);
+    }
+
+    var shapes_iter = state.shapes.iterator();
+    while (shapes_iter.next()) |shape| {
+        const shape_vertex_data = shape.value_ptr.get_draw_vertex_data(allocator) catch unreachable;
+        if (shape_vertex_data) |vertex_data| {
+            web_gpu_programs.draw_shape(vertex_data.curves, &vertex_data.bounding_box, vertex_data.uniform);
+        }
+    }
+
+    if (state.tool == Tool.DrawShape) {
+        const selected_shape = state.shapes.getPtr(state.selected_asset_id);
+        if (selected_shape) |shape| {
+            const shape_vertex_data = shape.get_draw_vertex_data(allocator) catch unreachable;
+            if (shape_vertex_data) |vertex_data| {
+                web_gpu_programs.draw_triangle(vertex_data.preview_buffer);
+            }
+        }
     }
 
     // testing:
@@ -430,7 +521,7 @@ pub fn reset_assets(new_assets: []const Assets.SerializedAsset, with_snapshot: b
 }
 
 pub fn destroy_state() void {
-    state.assets.deinit();
+    state.assets.clearAndFree();
     std.heap.page_allocator.free(last_assets_update);
     last_assets_update = &.{};
     Msdf.deinit_icons();
@@ -444,6 +535,14 @@ pub fn destroy_state() void {
 
 pub fn import_icons(data: []const f32) void {
     Msdf.init_icons(data);
+}
+
+pub fn set_tool(tool: Tool) void {
+    state.tool = tool;
+}
+
+pub fn stop_drawing_shape() void {
+    state.selected_asset_id = 0;
 }
 
 test "reset_assets does not call the real update callback" {

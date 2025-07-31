@@ -12,6 +12,7 @@ import {
   destroy_state,
   import_icons,
   update_render_scale,
+  set_tool,
 } from './logic/index.zig'
 import initMouseController, { camera } from 'WebGPU/pointer'
 import IconsPng from '../msdf/output/icons.png'
@@ -33,11 +34,17 @@ export type SerializedOutputAsset = {
   textureId: number
 }
 
+export enum CreatorTool {
+  None = 0,
+  DrawShape = 1,
+}
+
 export interface CreatorAPI {
   addImage: (url: string) => void
   resetAssets: (assets: SerializedInputAsset[], withSnapshot?: boolean) => void
   removeAsset: VoidFunction
   destroy: VoidFunction
+  setTool: (tool: CreatorTool) => void
 }
 
 export default async function initCreator(
@@ -90,7 +97,7 @@ export default async function initCreator(
     updateRenderScale()
   })
 
-  initPrograms(device, presentationFormat)
+  const cleanupPrograms = initPrograms(device, presentationFormat)
 
   initMouseController(canvas, updateRenderScale, () => {
     isMouseEventProcessing = true
@@ -141,10 +148,17 @@ export default async function initCreator(
     )
   })
 
-  const stopCreator = runCreator(canvas, context, device, presentationFormat, () => {
-    isMouseEventProcessing = false
-    updateProcessing()
-  })
+  const stopCreator = runCreator(
+    canvas,
+    context,
+    device,
+    cleanupPrograms,
+    presentationFormat,
+    () => {
+      isMouseEventProcessing = false
+      updateProcessing()
+    }
+  )
 
   const resetAssets: CreatorAPI['resetAssets'] = async (assets, withSnapshot = false) => {
     const results = await Promise.allSettled(
@@ -198,5 +212,6 @@ export default async function initCreator(
       context.unconfigure()
       device.destroy()
     },
+    setTool: set_tool,
   }
 }

@@ -38,7 +38,9 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   })
 
-  drawTriangle = getDrawTriangle(device, presentationFormat, canvasMatrixBuffer)
+  const buffersToDestroy: GPUBuffer[] = []
+
+  drawTriangle = getDrawTriangle(device, presentationFormat, canvasMatrixBuffer, buffersToDestroy)
   drawBezier = getDrawBezier(device, presentationFormat)
   draw3dModelTexture = getDraw3dModelTexture(device, presentationFormat)
   draw3dModel = getDraw3dModel(device, presentationFormat)
@@ -48,5 +50,9 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
   pickTexture = getPickTexture(device, pickCanvasMatrixBuffer)
   pickTriangle = getPickTriangle(device, pickCanvasMatrixBuffer)
   drawMSDF = getDrawMSDF(device, presentationFormat, canvasMatrixBuffer)
-  drawShape = getDrawShape(device, presentationFormat, canvasMatrixBuffer)
+  drawShape = getDrawShape(device, presentationFormat, canvasMatrixBuffer, buffersToDestroy)
+
+  return function cleanup() {
+    buffersToDestroy.forEach((buffer) => buffer.destroy())
+  }
 }
