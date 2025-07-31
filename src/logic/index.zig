@@ -183,18 +183,22 @@ pub fn on_pointer_down(allocator: std.mem.Allocator, x: f32, y: f32) void {
         const point = Types.Point{ .x = x, .y = y };
 
         if (state.shapes.getPtr(state.selected_asset_id)) |selected_shape| {
-            selected_shape.setPreviewPoint(point);
-            selected_shape.add_point_start() catch unreachable;
-        } else {
-            const id = generate_id();
-            const shape = Shapes.Shape.new(
-                id,
-                point,
-                std.heap.page_allocator,
-            ) catch unreachable;
-            state.shapes.put(id, shape) catch unreachable;
-            state.selected_asset_id = id;
+            if (!selected_shape.is_closed) {
+                selected_shape.setPreviewPoint(point);
+                selected_shape.add_point_start() catch unreachable;
+                return;
+            }
         }
+
+        const id = generate_id();
+        const shape = Shapes.Shape.new(
+            id,
+            point,
+            std.heap.page_allocator,
+        ) catch unreachable;
+        state.shapes.put(id, shape) catch unreachable;
+        state.selected_asset_id = id;
+
         return;
     }
 
@@ -270,6 +274,10 @@ pub fn on_pointer_leave() void {
     state.action = .None;
     state.hovered_asset_id = 0;
     check_assets_update(true);
+}
+
+pub fn on_press_escape() void {
+    state.selected_asset_id = 0;
 }
 
 fn get_border() struct { []Triangle.DrawInstance, []Msdf.DrawInstance } {
@@ -539,6 +547,10 @@ pub fn import_icons(data: []const f32) void {
 
 pub fn set_tool(tool: Tool) void {
     state.tool = tool;
+}
+
+pub fn stop_drawing_shape() void {
+    state.selected_asset_id = 0;
 }
 
 test "reset_assets does not call the real update callback" {

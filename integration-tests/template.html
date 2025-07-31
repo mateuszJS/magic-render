@@ -26,6 +26,12 @@
     canvas {
       min-height: 0;
     }
+
+    aside>* {
+      display: block;
+      padding: 0.7rem 0;
+      border-top: 1px solid #777;
+    }
   </style>
 </head>
 
@@ -36,14 +42,16 @@
     <label>Start project from project assets<input type="file" multiple id="start-project-from-assets" /></label>
     <p>Selected asset: <span id="selected-asset-id">0</span></p>
     <p>Is processing events: <span id="is-processing-events">false</span></p>
-    <button id="remove-btn">Remove Asset</button>
-    <button id="undo-btn">Undo</button>
-    <button id="redo-btn">Redo</button>
-    Tools:
-    <select id="tools-select">
-      <option value="0">None</option>
-      <option value="1">Draw Shape</option>
-    </select>
+    <div><button id="remove-btn">Remove Asset</button></div>
+    <div><button id="undo-btn">Undo</button></div>
+    <div><button id="redo-btn">Redo</button></div>
+    <div>
+      Tools:
+      <select id="tools-select">
+        <option value="0">None</option>
+        <option value="1">Draw Shape</option>
+      </select>
+    </div>
   </aside>
   <canvas></canvas>
 </body>

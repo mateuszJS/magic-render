@@ -11,12 +11,23 @@ const STRAIGHT_LINE_HANDLE = Point{
     .y = 0.0,
 };
 
+fn getOppositeHandle(control_point: Point, handle: Point) Point {
+    const diff = control_point.diff(handle);
+    const opposite_point = Point{
+        .x = control_point.x + diff.x,
+        .y = control_point.y + diff.y,
+    };
+
+    return opposite_point;
+}
+
 pub const Shape = struct {
     id: u32,
     points: std.ArrayList(Point),
     stroke_width: f32,
     preview_point: ?Point = null, // Optional preview points for rendering
     is_handle_preview: bool = false, // Whether to show the preview point as a handle
+    is_closed: bool = false, // Whether the shape is closed
 
     // Arrays: Use &array to get a slice reference
     // Slices: Pass directly (they're already slices)
@@ -38,9 +49,16 @@ pub const Shape = struct {
 
     pub fn add_point_start(self: *Shape) !void {
         if (self.preview_point) |point| {
+            const first_point = self.points.items[0];
+            const distance = first_point.distance(point);
             try self.points.append(STRAIGHT_LINE_HANDLE);
-            try self.points.append(point);
-            try self.points.append(STRAIGHT_LINE_HANDLE);
+            if (distance < 10.0) {
+                // path is closed
+                self.is_closed = true;
+            } else {
+                try self.points.append(point);
+                try self.points.append(STRAIGHT_LINE_HANDLE);
+            }
             self.preview_point = null;
             self.is_handle_preview = true;
         }
@@ -51,10 +69,6 @@ pub const Shape = struct {
     }
 
     pub fn get_draw_vertex_data(self: Shape, allocator: std.mem.Allocator) !?VertexOutput {
-        // if (self.points.items.len <= 2 and self.preview_point == null) {
-        //     return null;
-        // }
-
         var curves = std.ArrayList(Point).init(allocator);
 
         // Copy points manually
@@ -62,12 +76,14 @@ pub const Shape = struct {
             try curves.append(point);
         }
 
-        if (self.preview_point) |preview| {
-            if (!self.is_handle_preview) {
+        if (!self.is_closed) {
+            if (self.preview_point) |preview| {
+                if (!self.is_handle_preview) {
+                    try curves.append(STRAIGHT_LINE_HANDLE);
+                    try curves.append(preview);
+                }
                 try curves.append(STRAIGHT_LINE_HANDLE);
-                try curves.append(preview);
             }
-            try curves.append(STRAIGHT_LINE_HANDLE);
         }
 
         var preview_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
@@ -92,7 +108,7 @@ pub const Shape = struct {
                 );
                 try preview_buffer.appendSlice(&buffer);
             }
-            // const
+
             var buffer: [2]triangles.DrawInstance = undefined;
             squares.get_draw_vertex_data(
                 buffer[0..2],
@@ -106,8 +122,10 @@ pub const Shape = struct {
             try preview_buffer.appendSlice(&buffer);
         }
 
-        // close the shape
-        try curves.append(STRAIGHT_LINE_HANDLE);
+        // close the shape for ray casting/winding number
+        if (!self.is_closed) {
+            try curves.append(STRAIGHT_LINE_HANDLE);
+        }
         try curves.append(self.points.items[0]); // repeat first point
 
         const box = bounding_box.getBoundingBox(curves.items, self.stroke_width);
@@ -129,9 +147,14 @@ pub const Shape = struct {
         const control_point = points[points.len - 2];
 
         if (self.is_handle_preview) {
-            points[points.len - 1] = point;
-            if (points.len != 2) {
-                points[points.len - 3] = getOppositeHandle(control_point, point);
+            if (self.is_closed) {
+                points[points.len - 1] = getOppositeHandle(points[0], point);
+                points[1] = point;
+            } else {
+                points[points.len - 1] = point;
+                if (points.len != 2) { // there is only starting control point(no reflection of handle needed)
+                    points[points.len - 3] = getOppositeHandle(control_point, point);
+                }
             }
         } else {
             const distance = control_point.distance(point);
@@ -141,16 +164,6 @@ pub const Shape = struct {
                 self.preview_point = point;
             }
         }
-    }
-
-    pub fn getOppositeHandle(control_point: Point, handle: Point) Point {
-        const diff = control_point.diff(handle);
-        const opposite_point = Point{
-            .x = control_point.x + diff.x,
-            .y = control_point.y + diff.y,
-        };
-
-        return opposite_point;
     }
 
     pub fn deinit(self: *Shape) void {
