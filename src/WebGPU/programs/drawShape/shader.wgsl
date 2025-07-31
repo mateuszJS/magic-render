@@ -152,6 +152,60 @@ fn project_point_to_line_segment(point: vec2f, line_start: vec2f, line_end: vec2
   return clamp(t, 0.0, 1.0);
 }
 
+// Calculate distance from point to line segment
+fn distance_to_line_segment(point: vec2f, line_start: vec2f, line_end: vec2f) -> f32 {
+  let line_vec = line_end - line_start;
+  let point_vec = point - line_start;
+  
+  let line_length_sq = dot(line_vec, line_vec);
+  
+  if (line_length_sq < 1e-8) {
+    // Degenerate line - distance to start point
+    return length(point_vec);
+  }
+  
+  let t = dot(point_vec, line_vec) / line_length_sq;
+  
+  if (t <= 0.0) {
+    // Closest point is the start of the line segment
+    return length(point_vec);
+  } else if (t >= 1.0) {
+    // Closest point is the end of the line segment
+    return length(point - line_end);
+  } else {
+    // Closest point is on the line segment
+    let closest_point = line_start + t * line_vec;
+    return length(point - closest_point);
+  }
+}
+
+// Calculate winding number contribution from a line segment
+fn line_winding_contribution(point: vec2f, line_start: vec2f, line_end: vec2f) -> f32 {
+  // Vector from query point to line endpoints
+  let v1 = line_start - point;
+  let v2 = line_end - point;
+  
+  // Skip if either point is very close to avoid numerical issues
+  let dist1 = length(v1);
+  let dist2 = length(v2);
+  if (dist1 < 1e-6 || dist2 < 1e-6) {
+    return 0.0;
+  }
+  
+  // Normalize vectors
+  let n1 = v1 / dist1;
+  let n2 = v2 / dist2;
+  
+  // Calculate signed angle using atan2 for proper quadrant handling
+  let cross_prod = n1.x * n2.y - n1.y * n2.x;
+  let dot_prod = dot(n1, n2);
+  
+  // Use atan2 for proper quadrant handling
+  let angle = atan2(cross_prod, dot_prod);
+  
+  return angle / (2.0 * 3.14159);
+}
+
 // Calculate winding number contribution from a curve using adaptive quality
 fn curve_winding_contribution(point: vec2f, curve: CubicBezier) -> f32 {
   // Use fwidth to determine appropriate subdivision level based on screen-space derivatives
@@ -228,19 +282,28 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
       curves[i * 3 + 3]
     );
 
-    // Find closest point on this curve
-    let closest_t = closest_point_on_bezier(point, curve);
-    let closest_point = bezier_point(curve, closest_t);
-    let distance = length(point - closest_point);
-
-    if (min_distance > distance) {
-      t = closest_t;
+    // Check if this is a straight line (handle points have x >= 9999.0)
+    let is_straight_line = curve.p1.x >= 9999.0 || curve.p2.x >= 9999.0;
+    
+    var distance: f32;
+    
+    if (is_straight_line) {
+      // Handle as straight line from p0 to p3
+      distance = distance_to_line_segment(point, curve.p0, curve.p3);
+      
+      // Calculate winding contribution for the line segment
+      winding_number += line_winding_contribution(point, curve.p0, curve.p3);
+    } else {
+      // Handle as normal cubic Bézier curve
+      let closest_t = closest_point_on_bezier(point, curve);
+      let closest_point = bezier_point(curve, closest_t);
+      distance = length(point - closest_point);
+      
+      // Calculate winding contribution for the curve
+      winding_number += curve_winding_contribution(point, curve);
     }
     
     min_distance = min(min_distance, distance);
-    
-    // Calculate winding contribution for fill determination
-    winding_number += curve_winding_contribution(point, curve);
   }
   
   // Determine if point is inside based on winding number

@@ -8,6 +8,7 @@ const zigar = @import("zigar");
 const Msdf = @import("./msdf.zig");
 const SvgTextures = @import("./svg_textures.zig");
 const Shapes = @import("./shapes/shapes.zig");
+const squares = @import("squares.zig");
 
 const WebGpuPrograms = struct {
     draw_texture: *const fn ([]const Assets.RenderVertex, u32) void,
@@ -183,13 +184,12 @@ pub fn on_pointer_down(allocator: std.mem.Allocator, x: f32, y: f32) void {
 
         if (state.shapes.getPtr(state.selected_asset_id)) |selected_shape| {
             selected_shape.setPreviewPoint(point);
-            selected_shape.add_point();
+            selected_shape.add_point_start() catch unreachable;
         } else {
             const id = generate_id();
-            const points = [_]Types.Point{point};
             const shape = Shapes.Shape.new(
                 id,
-                &points,
+                point,
                 std.heap.page_allocator,
             ) catch unreachable;
             state.shapes.put(id, shape) catch unreachable;
@@ -220,7 +220,7 @@ pub fn on_pointer_up() void {
     } else if (state.tool == Tool.DrawShape) {
         const asset_ptr = state.shapes.getPtr(state.selected_asset_id);
         if (asset_ptr) |shape| {
-            shape.add_point();
+            shape.add_point_end() catch unreachable;
         }
     }
 }
@@ -339,23 +339,16 @@ fn get_border() struct { []Triangle.DrawInstance, []Msdf.DrawInstance } {
 }
 
 fn draw_project_background() void {
-    const points = [_]Types.Point{
-        Types.Point{ .x = 0.0, .y = 0.0 }, //
-        Types.Point{ .x = state.width, .y = 0.0 }, //
-        Types.Point{ .x = state.width, .y = state.height }, //
-        Types.Point{ .x = 0.0, .y = state.height }, //
-    };
-    const p0_v = Triangle.get_round_corner_vector(0, points, 0.0);
-    const p1_v = Triangle.get_round_corner_vector(1, points, 0.0);
-    const p2_v = Triangle.get_round_corner_vector(2, points, 0.0);
-    const p3_v = Triangle.get_round_corner_vector(3, points, 0.0);
-
-    const color = [_]u8{ 30, 30, 30, 255 }; // gray color
-
     var buffer: [2]Triangle.DrawInstance = undefined;
-    Triangle.get_draw_vertex_data(buffer[0..1], p0_v, p1_v, p2_v, color);
-    Triangle.get_draw_vertex_data(buffer[1..2], p0_v, p2_v, p3_v, color);
-
+    squares.get_draw_vertex_data(
+        &buffer,
+        0.0,
+        0.0,
+        state.width,
+        state.height,
+        0.0,
+        [_]u8{ 30, 30, 30, 255 },
+    );
     web_gpu_programs.draw_triangle(&buffer);
 }
 
@@ -387,10 +380,29 @@ fn draw_project_boundary() void {
     web_gpu_programs.draw_triangle(&buffer);
 }
 
-pub fn render_draw(allocator: std.mem.Allocator) void {
-    _ = allocator; // autofix
-    draw_project_background();
+pub fn render_draw() void {
+    // const point_size = @sizeOf(Types.Point);
+    // const triangle_size = @sizeOf(Triangle.DrawInstance);
 
+    // comptime std.debug.print("Point size: {} bytes\n", .{point_size});
+    // comptime std.debug.print("Triangle size: {} bytes\n", .{triangle_size});
+
+    // // Estimate your maximum usage per render call
+    // const max_shape_points = 200; // Max points in a shape
+    // const max_preview_triangles = 10; // For preview rendering
+
+    // // Add some padding for allocator overhead (usually ~16-32 bytes per allocation)
+    // const allocator_overhead = 64;
+    // const safety_margin = 1.2; // 20% extra
+
+    // const total_size = @as(usize, @intFromFloat((point_size * max_shape_points + triangle_size * max_preview_triangles + allocator_overhead) * safety_margin));
+
+    // var buffer: [total_size]u8 = undefined;
+    // var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    // const allocator = fba.allocator();
+
+    draw_project_background();
+    // std.debug.print("allocator: {any}\n", .{allocator});
     var iterator = state.assets.iterator();
 
     while (iterator.next()) |asset| {
@@ -399,7 +411,7 @@ pub fn render_draw(allocator: std.mem.Allocator) void {
         web_gpu_programs.draw_texture(&vertex_data, asset.value_ptr.texture_id);
     }
 
-    draw_project_boundary();
+    draw_project_boundary(); // TODO: once we support strokes for Triangles, we should use it here wit transparent fill
 
     const triangle_buffer, const msdf_buffer = get_border();
     if (triangle_buffer.len > 0) {
@@ -409,26 +421,26 @@ pub fn render_draw(allocator: std.mem.Allocator) void {
         web_gpu_programs.draw_msdf(msdf_buffer, 0);
     }
 
-    // Define cubic Bézier curves that form the shape boundary
-    // const curves = [_]Types.Point{
-    //     .{ .x = 100, .y = 0 },
-    //     .{ .x = 300, .y = 400 },
-    //     .{ .x = 600, .y = 600 },
-    //     .{ .x = 500, .y = 100 },
-    //     .{ .x = 300, .y = -200 },
-    //     .{ .x = 400, .y = -300 },
-    //     .{ .x = 100, .y = 0 },
-    // };
-    // const shape = Shapes.Shape.new(31, &curves, allocator) catch unreachable;
-    // defer shape.deinit(); // Free the shape itself
-
     // defer allocator.free(shape_vertex_data.curves); // Free the curves slice
     // defer allocator.free(shape_vertex_data.bounding_box); // Free the bounding_box slice
     var shapes_iter = state.shapes.iterator();
     while (shapes_iter.next()) |shape| {
         const shape_vertex_data = shape.value_ptr.get_draw_vertex_data(std.heap.page_allocator) catch unreachable;
-        web_gpu_programs.draw_shape(shape_vertex_data.curves, &shape_vertex_data.bounding_box, shape_vertex_data.uniform);
+        if (shape_vertex_data) |vertex_data| {
+            web_gpu_programs.draw_shape(vertex_data.curves, &vertex_data.bounding_box, vertex_data.uniform);
+        }
     }
+
+    if (state.tool == Tool.DrawShape) {
+        const selected_shape = state.shapes.getPtr(state.selected_asset_id);
+        if (selected_shape) |shape| {
+            const shape_vertex_data = shape.get_draw_vertex_data(std.heap.page_allocator) catch unreachable;
+            if (shape_vertex_data) |vertex_data| {
+                web_gpu_programs.draw_triangle(vertex_data.preview_buffer);
+            }
+        }
+    }
+
     // web_gpu_programs.draw_shape(shape_vertex_data.curves, &shape_vertex_data.bounding_box, shape_vertex_data.uniform);
 
     // shape_vertex_data.curves[0].x = -200;
