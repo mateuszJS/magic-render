@@ -277,7 +277,13 @@ pub fn on_pointer_leave() void {
 }
 
 pub fn on_press_escape() void {
-    state.selected_asset_id = 0;
+    if (state.tool == Tool.DrawShape) {
+        const shape_ptr = state.shapes.getPtr(state.selected_asset_id);
+        if (shape_ptr) |shape| {
+            shape.complete_shape();
+            state.selected_asset_id = 0;
+        }
+    }
 }
 
 fn get_border(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []Msdf.DrawInstance } {
@@ -441,10 +447,8 @@ pub fn render_draw() void {
     if (state.tool == Tool.DrawShape) {
         const selected_shape = state.shapes.getPtr(state.selected_asset_id);
         if (selected_shape) |shape| {
-            const shape_vertex_data = shape.get_draw_vertex_data(allocator) catch unreachable;
-            if (shape_vertex_data) |vertex_data| {
-                web_gpu_programs.draw_triangle(vertex_data.preview_buffer);
-            }
+            const vertex_data = shape.get_skeleton_draw_vertex_data(allocator) catch unreachable;
+            web_gpu_programs.draw_triangle(vertex_data);
         }
     }
 

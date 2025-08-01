@@ -68,25 +68,13 @@ pub const Shape = struct {
         self.is_handle_preview = false;
     }
 
-    pub fn get_draw_vertex_data(self: Shape, allocator: std.mem.Allocator) !?VertexOutput {
-        var curves = std.ArrayList(Point).init(allocator);
+    pub fn complete_shape(self: *Shape) void {
+        self.is_handle_preview = false;
+        self.preview_point = null;
+    }
 
-        // Copy points manually
-        for (self.points.items) |point| {
-            try curves.append(point);
-        }
-
-        if (!self.is_closed) {
-            if (self.preview_point) |preview| {
-                if (!self.is_handle_preview) {
-                    try curves.append(STRAIGHT_LINE_HANDLE);
-                    try curves.append(preview);
-                }
-                try curves.append(STRAIGHT_LINE_HANDLE);
-            }
-        }
-
-        var preview_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
+    pub fn get_skeleton_draw_vertex_data(self: Shape, allocator: std.mem.Allocator) ![]triangles.DrawInstance {
+        var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         const size = 20.0;
 
         for (self.points.items, 0..) |point, i| {
@@ -106,7 +94,7 @@ pub const Shape = struct {
                     [_]u8{ 0, 0, 255, 255 },
                     0.0,
                 );
-                try preview_buffer.appendSlice(&buffer);
+                try skeleton_buffer.appendSlice(&buffer);
             }
 
             var buffer: [2]triangles.DrawInstance = undefined;
@@ -119,48 +107,92 @@ pub const Shape = struct {
                 0.0,
                 [_]u8{ 0, 0, 255, 255 },
             );
-            try preview_buffer.appendSlice(&buffer);
+            try skeleton_buffer.appendSlice(&buffer);
+        }
+
+        if (self.preview_point) |preview| {
+            if (!self.is_handle_preview) {
+                var buffer: [2]triangles.DrawInstance = undefined;
+                squares.get_draw_vertex_data(
+                    buffer[0..2],
+                    preview.x - size / 2.0,
+                    preview.y - size / 2.0,
+                    size,
+                    size,
+                    0.0,
+                    [_]u8{ 0, 0, 255, 255 },
+                );
+                try skeleton_buffer.appendSlice(&buffer);
+            }
+        }
+
+        return skeleton_buffer.toOwnedSlice();
+    }
+
+    fn get_closed_shape_points(self: Shape, allocator: std.mem.Allocator) ![]Point {
+        var curves_list = std.ArrayList(Point).init(allocator);
+
+        // Copy points manually
+        for (self.points.items) |point| {
+            try curves_list.append(point);
+        }
+
+        if (!self.is_closed) {
+            if (self.preview_point) |preview| {
+                if (!self.is_handle_preview) {
+                    try curves_list.append(STRAIGHT_LINE_HANDLE);
+                    try curves_list.append(preview);
+                }
+                try curves_list.append(STRAIGHT_LINE_HANDLE);
+            }
         }
 
         // close the shape for ray casting/winding number
         if (!self.is_closed) {
-            try curves.append(STRAIGHT_LINE_HANDLE);
+            try curves_list.append(STRAIGHT_LINE_HANDLE);
         }
-        try curves.append(self.points.items[0]); // repeat first point
+        try curves_list.append(self.points.items[0]); // repeat first point
 
-        var final_curves = curves.items;
+        return curves_list.toOwnedSlice();
+    }
 
+    fn prepare_half_straight_lines(curves: []Point) void {
         // Handle half straight lines to be treated as bezier curves
-        for (final_curves, 0..) |point, i| {
+        for (curves, 0..) |point, i| {
             const is_straight_line_handle = point.x >= STRAIGHT_LINE_THRESHOLD;
-            if (final_curves.len >= 4 and is_straight_line_handle) {
+            if (curves.len >= 4 and is_straight_line_handle) {
                 if (i % 3 == 1) { // first handle
-                    const second_handle = final_curves[i + 1];
+                    const second_handle = curves[i + 1];
                     const is_full_straight_line = second_handle.x >= STRAIGHT_LINE_THRESHOLD;
                     if (!is_full_straight_line) {
-                        final_curves[i] = final_curves[i - 1]; // assign to closest control point
+                        curves[i] = curves[i - 1]; // assign to closest control point
                     }
                 } else if (i % 3 == 2) { // second handle
-                    const first_handle = final_curves[i - 1];
+                    const first_handle = curves[i - 1];
                     const is_full_straight_line = first_handle.x >= STRAIGHT_LINE_THRESHOLD;
                     if (!is_full_straight_line) {
-                        final_curves[i] = final_curves[i + 1]; // assign to closest control point
+                        curves[i] = curves[i + 1]; // assign to closest control point
                     }
                 }
             }
         }
+    }
 
-        const box = bounding_box.getBoundingBox(final_curves, self.stroke_width);
+    pub fn get_draw_vertex_data(self: Shape, allocator: std.mem.Allocator) !?VertexOutput {
+        const curves = try self.get_closed_shape_points(allocator);
+
+        Shape.prepare_half_straight_lines(curves);
+
+        const box = bounding_box.getBoundingBox(curves, self.stroke_width);
 
         return VertexOutput{
-            .curves = final_curves, // Transfer ownership directly
+            .curves = curves, // Transfer ownership directly
             .bounding_box = box,
             .uniform = Uniform{
                 .stroke_width = self.stroke_width,
                 .fill_color = [4]f32{ 1.0, 0.0, 0.0, 1.0 },
                 .stroke_color = [4]f32{ 0.0, 1.0, 0.0, 1.0 },
             },
-            .preview_buffer = preview_buffer.items, // Transfer ownership directly
         };
     }
 
@@ -197,7 +229,6 @@ const VertexOutput = struct {
     curves: []const Point,
     bounding_box: [6]Point,
     uniform: Uniform,
-    preview_buffer: []triangles.DrawInstance,
 };
 
 pub const Uniform = extern struct {
