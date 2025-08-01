@@ -1,3 +1,4 @@
+const STRAIGHT_LINE_THRESHOLD = 1e10;
 
 struct Uniforms {
   stroke_width: f32,
@@ -302,8 +303,8 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
       curves[i * 3 + 3]
     );
 
-    // Check if this is a straight line (handle points have x >= 9999.0)
-    let is_straight_line = curve.p1.x >= 9999.0 || curve.p2.x >= 9999.0;
+    // Check if this is a straight line (handle points have x >= STRAIGHT_LINE_THRESHOLD)
+    let is_straight_line = curve.p1.x > STRAIGHT_LINE_THRESHOLD && curve.p2.x > STRAIGHT_LINE_THRESHOLD;
     
     var distance: f32;
     

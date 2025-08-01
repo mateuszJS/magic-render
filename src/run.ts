@@ -36,13 +36,7 @@ export default function runCreator(
 
   connect_web_gpu_programs({
     draw_texture: (vertex_data, texture_id) => {
-      const dataView = vertex_data['*'].dataView
-      // console.log(
-      //   new Float32Array(
-      //     dataView.buffer.slice(dataView.byteOffset, dataView.byteOffset + dataView.byteLength)
-      //   )
-      // )
-      drawTexture(canvasPass, dataView, Textures.getTexture(texture_id))
+      drawTexture(canvasPass, vertex_data.dataView, Textures.getTexture(texture_id))
     },
     draw_msdf: (vertex_data, texture_id) => {
       const dataView = vertex_data['*'].dataView
@@ -62,9 +56,7 @@ export default function runCreator(
     draw_shape: (curves_data, bound_box_data, uniform_data) => {
       const curvesDataView = curves_data['*'].dataView
       const boundBoxDataView = bound_box_data['*'].dataView
-      // console.log(uniform_data.dataView)
-      const uniformDataView = uniform_data.dataView
-      drawShape(canvasPass, curvesDataView, boundBoxDataView, uniformDataView)
+      drawShape(canvasPass, curvesDataView, boundBoxDataView, uniform_data.dataView)
 
       /*
       samplesCount++
