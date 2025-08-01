@@ -50,7 +50,7 @@ declare module '*.zig' {
   export const update_render_scale: (render_scale: number) => void
 
   export const connect_web_gpu_programs: (programs: {
-    draw_texture: (vertex_data: ArrayPointerDataView, texture_id: number) => void
+    draw_texture: (vertex_data: PointerDataView, texture_id: number) => void
     draw_triangle: (vertex_data: ArrayPointerDataView) => void
     draw_msdf: (vertex_data: ArrayPointerDataView, texture_id: number) => void
     pick_texture: (vertex_data: ArrayPointerDataView, texture_id: number) => void

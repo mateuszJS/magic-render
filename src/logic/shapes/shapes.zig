@@ -5,9 +5,9 @@ const triangles = @import("../triangle.zig");
 const squares = @import("../squares.zig");
 const lines = @import("../line.zig");
 
-const STRAIGHT_LINE_THRESHOLD = 99999.0;
+const STRAIGHT_LINE_THRESHOLD = 1e+10;
 const STRAIGHT_LINE_HANDLE = Point{
-    .x = STRAIGHT_LINE_THRESHOLD + 1.0,
+    .x = 1e+11,
     .y = 0.0,
 };
 
@@ -128,10 +128,32 @@ pub const Shape = struct {
         }
         try curves.append(self.points.items[0]); // repeat first point
 
-        const box = bounding_box.getBoundingBox(curves.items, self.stroke_width);
+        var final_curves = curves.items;
+
+        // Handle half straight lines to be treated as bezier curves
+        for (final_curves, 0..) |point, i| {
+            const is_straight_line_handle = point.x >= STRAIGHT_LINE_THRESHOLD;
+            if (final_curves.len >= 4 and is_straight_line_handle) {
+                if (i % 3 == 1) { // first handle
+                    const second_handle = final_curves[i + 1];
+                    const is_full_straight_line = second_handle.x >= STRAIGHT_LINE_THRESHOLD;
+                    if (!is_full_straight_line) {
+                        final_curves[i] = final_curves[i - 1]; // assign to closest control point
+                    }
+                } else if (i % 3 == 2) { // second handle
+                    const first_handle = final_curves[i - 1];
+                    const is_full_straight_line = first_handle.x >= STRAIGHT_LINE_THRESHOLD;
+                    if (!is_full_straight_line) {
+                        final_curves[i] = final_curves[i + 1]; // assign to closest control point
+                    }
+                }
+            }
+        }
+
+        const box = bounding_box.getBoundingBox(final_curves, self.stroke_width);
 
         return VertexOutput{
-            .curves = curves.items, // Transfer ownership directly
+            .curves = final_curves, // Transfer ownership directly
             .bounding_box = box,
             .uniform = Uniform{
                 .stroke_width = self.stroke_width,

@@ -280,12 +280,9 @@ pub fn on_press_escape() void {
     state.selected_asset_id = 0;
 }
 
-fn get_border() struct { []Triangle.DrawInstance, []Msdf.DrawInstance } {
-    var triangle_vertex_data = std.ArrayList(Triangle.DrawInstance).init(std.heap.page_allocator);
-    var msdf_vertex_data = std.ArrayList(Msdf.DrawInstance).init(std.heap.page_allocator);
-
-    defer triangle_vertex_data.deinit();
-    defer msdf_vertex_data.deinit();
+fn get_border(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []Msdf.DrawInstance } {
+    var triangle_vertex_data = std.ArrayList(Triangle.DrawInstance).init(allocator);
+    var msdf_vertex_data = std.ArrayList(Msdf.DrawInstance).init(allocator);
 
     const red = [_]u8{ 255, 0, 0, 255 };
     if (state.hovered_asset_id != state.selected_asset_id) {
@@ -425,7 +422,7 @@ pub fn render_draw() void {
 
     draw_project_boundary(); // TODO: once we support strokes for Triangles, we should use it here wit transparent fill
 
-    const triangle_buffer, const msdf_buffer = get_border();
+    const triangle_buffer, const msdf_buffer = get_border(allocator);
     if (triangle_buffer.len > 0) {
         web_gpu_programs.draw_triangle(triangle_buffer);
     }
@@ -453,25 +450,25 @@ pub fn render_draw() void {
 
     // testing:
 
-    // const points = [_]Types.Point{
-    //     Types.Point{ .x = 100.0, .y = 70.0 }, //
-    //     Types.Point{ .x = 300.0, .y = 100.0 }, //
-    //     Types.Point{ .x = 300.0, .y = 250.0 }, //
-    //     Types.Point{ .x = 100.0, .y = 150.0 }, //
-    // };
-    // const p0_v = Triangle.get_round_corner_vector(0, points, 10.0);
-    // const p1_v = Triangle.get_round_corner_vector(1, points, 20.0);
-    // const p2_v = Triangle.get_round_corner_vector(2, points, 80.0);
-    // const p3_v = Triangle.get_round_corner_vector(3, points, 20.0);
+    const points = [_]Types.Point{
+        Types.Point{ .x = 100.0, .y = 70.0 }, //
+        Types.Point{ .x = 300.0, .y = 100.0 }, //
+        Types.Point{ .x = 300.0, .y = 250.0 }, //
+        Types.Point{ .x = 100.0, .y = 150.0 }, //
+    };
+    const p0_v = Triangle.get_round_corner_vector(0, points, 10.0);
+    const p1_v = Triangle.get_round_corner_vector(1, points, 20.0);
+    const p2_v = Triangle.get_round_corner_vector(2, points, 80.0);
+    const p3_v = Triangle.get_round_corner_vector(3, points, 20.0);
 
-    // const color = [_]u8{ 0, 255, 255, 255 };
+    const color = [_]u8{ 0, 255, 255, 255 };
 
-    // var shape_vertex_data: [2]Triangle.DrawInstance = undefined;
+    var shape_vertex_data: [2]Triangle.DrawInstance = undefined;
 
-    // Triangle.get_draw_vertex_data(shape_vertex_data[0..1], p0_v, p1_v, p2_v, color);
-    // Triangle.get_draw_vertex_data(shape_vertex_data[1..2], p0_v, p2_v, p3_v, color);
+    Triangle.get_draw_vertex_data(shape_vertex_data[0..1], p0_v, p1_v, p2_v, color);
+    Triangle.get_draw_vertex_data(shape_vertex_data[1..2], p0_v, p2_v, p3_v, color);
 
-    // web_gpu_programs.draw_triangle(&shape_vertex_data);
+    web_gpu_programs.draw_triangle(&shape_vertex_data);
 
     // const msdf_vertex_data = Msdf.get_draw_vertex_data(
     //     Msdf.IconId.rotate,
