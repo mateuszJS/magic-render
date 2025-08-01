@@ -1,21 +1,21 @@
 const std = @import("std");
 const Types = @import("./types.zig");
-const Assets = @import("./assets.zig");
+const images = @import("./images.zig");
 const Line = @import("line.zig");
 const Triangle = @import("triangle.zig");
 const TransformUI = @import("./transform_ui.zig");
 const zigar = @import("zigar");
 const Msdf = @import("./msdf.zig");
 const SvgTextures = @import("./svg_textures.zig");
-const Shapes = @import("./shapes/shapes.zig");
+const shapes = @import("./shapes/shapes.zig");
 const squares = @import("squares.zig");
 
 const WebGpuPrograms = struct {
-    draw_texture: *const fn (Assets.DrawVertex, u32) void,
+    draw_texture: *const fn (images.DrawVertex, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
-    draw_shape: *const fn ([]const Types.Point, []const Types.Point, Shapes.Uniform) void,
+    draw_shape: *const fn ([]const Types.Point, []const Types.Point, shapes.Uniform) void,
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
-    pick_texture: *const fn ([]const Assets.PickVertex, u32) void,
+    pick_texture: *const fn ([]const images.PickVertex, u32) void,
     pick_triangle: *const fn ([]const Triangle.PickInstance) void,
 };
 var web_gpu_programs: *const WebGpuPrograms = undefined;
@@ -26,12 +26,12 @@ pub fn connect_web_gpu_programs(programs: *const WebGpuPrograms) void {
     web_gpu_programs = programs; // orelse WebGpuPrograms{};
 }
 
-var on_asset_update_cb: ?*const fn ([]const Assets.SerializedAsset) void = undefined;
-pub fn connect_on_asset_update_callback(cb: *const fn ([]const Assets.SerializedAsset) void) void {
+var on_asset_update_cb: ?*const fn ([]const images.Serialized) void = undefined;
+pub fn connect_on_asset_update_callback(cb: *const fn ([]const images.Serialized) void) void {
     on_asset_update_cb = cb;
 }
 
-fn on_asset_update_noop(_: []const Assets.SerializedAsset) void {}
+fn on_asset_update_noop(_: []const images.Serialized) void {}
 
 var on_asset_select_cb: *const fn (u32) void = undefined;
 pub fn connect_on_asset_selection_callback(cb: *const fn (u32) void) void {
@@ -51,11 +51,15 @@ const Tool = enum {
     DrawShape,
 };
 
+const Asset = union(enum) {
+    img: images.Image,
+    shape: shapes.Shape,
+};
+
 const State = struct {
     width: f32,
     height: f32,
-    assets: std.AutoArrayHashMap(u32, Assets.Asset),
-    shapes: std.AutoArrayHashMap(u32, Shapes.Shape),
+    assets: std.AutoArrayHashMap(u32, Asset),
     hovered_asset_id: u32,
     selected_asset_id: u32,
     action: ActionType,
@@ -68,7 +72,6 @@ var state = State{
     .width = 0,
     .height = 0,
     .assets = undefined,
-    .shapes = undefined,
     .hovered_asset_id = 0,
     .selected_asset_id = 0,
     .action = ActionType.None,
@@ -81,8 +84,7 @@ pub fn init_state(allocator: std.mem.Allocator, width: f32, height: f32) void {
     _ = allocator; // autofix
     state.width = width;
     state.height = height;
-    state.assets = std.AutoArrayHashMap(u32, Assets.Asset).init(std.heap.page_allocator);
-    state.shapes = std.AutoArrayHashMap(u32, Shapes.Shape).init(std.heap.page_allocator);
+    state.assets = std.AutoArrayHashMap(u32, Asset).init(std.heap.page_allocator);
 }
 
 pub fn init_svg_textures(texture_max_size: f32, resize_texture: *const fn (u32, f32, f32) void) void {
@@ -95,9 +97,14 @@ pub fn add_svg_texture(texture_id: u32, width: f32, height: f32) void {
     // When loading SVG, firstly assets will be added with their texture ID and later texture will load(so we know its svg)
     // and now we have to make sure SVG texture is big enough to match quality of each of the assets.
     var iterator = state.assets.iterator();
-    while (iterator.next()) |entry| {
-        if (entry.value_ptr.texture_id == texture_id) {
-            SvgTextures.ensure_svg_texture_quality(entry.value_ptr.*);
+    while (iterator.next()) |asset| {
+        switch (asset.value_ptr.*) {
+            .img => |img| {
+                if (img.texture_id == texture_id) {
+                    SvgTextures.ensure_svg_texture_quality(img);
+                }
+            },
+            .shape => {},
         }
     }
 }
@@ -114,20 +121,24 @@ fn generate_id() u32 {
     return id;
 }
 
-pub fn add_asset(id_or_zero: u32, points: [4]Types.PointUV, texture_id: u32) void {
+pub fn add_asset(id_or_zero: u32, points: [4]Types.PointUV, texture_id: u32) !void {
     const id = if (id_or_zero == 0) generate_id() else id_or_zero;
-    state.assets.put(id, Assets.Asset.new(id, points, texture_id)) catch unreachable;
-    check_assets_update(true);
+    const img = images.Image.new(id, points, texture_id);
 
-    const asset_ptr = state.assets.getPtr(id) orelse unreachable;
-    SvgTextures.ensure_svg_texture_quality(asset_ptr.*);
+    const asset = Asset{
+        .img = img,
+    };
+    try state.assets.put(id, asset);
+
+    SvgTextures.ensure_svg_texture_quality(img);
+    try check_assets_update(true);
 }
 
-pub fn remove_asset() void {
+pub fn remove_asset() !void {
     _ = state.assets.orderedRemove(state.selected_asset_id);
     state.selected_asset_id = 0;
     on_asset_select_cb(state.selected_asset_id);
-    check_assets_update(true);
+    try check_assets_update(true);
 }
 
 pub fn on_update_pick(id: u32) void {
@@ -137,66 +148,85 @@ pub fn on_update_pick(id: u32) void {
     }
 }
 
-// const std.heap.page_allocator.alloc(SerializedAsset, state.assets.count())
-var last_assets_update: []const Assets.SerializedAsset = &.{};
-fn check_assets_update(should_notify: bool) void {
+var last_assets_update: []const images.Serialized = &.{};
+fn check_assets_update(should_notify: bool) !void {
     const cb = on_asset_update_cb orelse return;
 
-    var new_assets_update = std.heap.page_allocator.alloc(Assets.SerializedAsset, state.assets.count()) catch unreachable;
+    var new_assets_update = std.ArrayList(images.Serialized).init(std.heap.page_allocator);
     var iterator = state.assets.iterator();
-    var i: usize = 0;
-    while (iterator.next()) |entry| {
-        new_assets_update[i] = entry.value_ptr.serialize();
-        i += 1;
+    while (iterator.next()) |asset_entry| {
+        switch (asset_entry.value_ptr.*) {
+            .img => |img| {
+                try new_assets_update.append(img.serialize());
+            },
+            .shape => {},
+        }
     }
 
-    if (new_assets_update.len == last_assets_update.len) {
+    if (new_assets_update.items.len == last_assets_update.len) {
         var all_match = true;
-        for (new_assets_update, 0..) |new_asset, j| {
-            if (!std.meta.eql(new_asset, last_assets_update[j])) {
+        for (new_assets_update.items, 0..) |new_asset, i| {
+            if (!std.meta.eql(new_asset, last_assets_update[i])) {
                 all_match = false;
                 break;
             }
         }
 
         if (all_match) {
-            std.heap.page_allocator.free(new_assets_update);
+            new_assets_update.clearAndFree();
+            new_assets_update.deinit();
             return;
         }
     }
 
     std.heap.page_allocator.free(last_assets_update);
-    last_assets_update = new_assets_update;
+    last_assets_update = try new_assets_update.toOwnedSlice();
 
     if (should_notify) {
-        if (new_assets_update.len > 0) {
-            cb(new_assets_update); // would throw error if results.len == 0
+        if (last_assets_update.len > 0) {
+            cb(last_assets_update); // would throw error if results.len == 0
         } else {
             cb(&.{});
         }
     }
 }
 
-pub fn on_pointer_down(allocator: std.mem.Allocator, x: f32, y: f32) void {
+fn get_selected_img() ?*images.Image {
+    const asset = state.assets.getPtr(state.selected_asset_id) orelse return null;
+    switch (asset.*) {
+        .img => |*img| return img,
+        .shape => return null,
+    }
+}
+
+fn get_selected_shape() ?*shapes.Shape {
+    const asset = state.assets.getPtr(state.selected_asset_id) orelse return null;
+    switch (asset.*) {
+        .img => return null,
+        .shape => |*shape| return shape,
+    }
+}
+
+pub fn on_pointer_down(allocator: std.mem.Allocator, x: f32, y: f32) !void {
     _ = allocator; // autofix
     if (state.tool == Tool.DrawShape) {
         const point = Types.Point{ .x = x, .y = y };
 
-        if (state.shapes.getPtr(state.selected_asset_id)) |selected_shape| {
-            if (!selected_shape.is_closed) {
-                selected_shape.setPreviewPoint(point);
-                selected_shape.add_point_start() catch unreachable;
+        if (get_selected_shape()) |shape| {
+            if (!shape.is_closed) {
+                shape.setPreviewPoint(point);
+                shape.add_point_start() catch unreachable;
                 return;
             }
         }
 
         const id = generate_id();
-        const shape = Shapes.Shape.new(
+        const shape = shapes.Shape.new(
             id,
             point,
             std.heap.page_allocator,
         ) catch unreachable;
-        state.shapes.put(id, shape) catch unreachable;
+        try state.assets.put(id, Asset{ .shape = shape });
         state.selected_asset_id = id;
 
         return;
@@ -212,75 +242,72 @@ pub fn on_pointer_down(allocator: std.mem.Allocator, x: f32, y: f32) void {
     }
 }
 
-pub fn on_pointer_up() void {
+pub fn on_pointer_up() !void {
     if (state.tool == .None) {
         if (state.action == .None) {
             state.selected_asset_id = state.hovered_asset_id;
             on_asset_select_cb(state.selected_asset_id);
         } else {
             state.action = .None;
-            check_assets_update(true);
+            try check_assets_update(true);
         }
     } else if (state.tool == Tool.DrawShape) {
-        const asset_ptr = state.shapes.getPtr(state.selected_asset_id);
-        if (asset_ptr) |shape| {
-            shape.add_point_end() catch unreachable;
+        if (get_selected_shape()) |shape| {
+            try shape.add_point_end();
         }
     }
 }
 
 pub fn on_pointer_move(x: f32, y: f32) void {
     if (state.tool == Tool.DrawShape) {
-        const asset_ptr = state.shapes.getPtr(state.selected_asset_id);
-        if (asset_ptr) |shape| {
+        if (get_selected_shape()) |shape| {
             shape.setPreviewPoint(Types.Point{ .x = x, .y = y });
         }
+
         return;
     }
 
-    switch (state.action) {
-        .Move => {
-            const offset = Types.Point{
-                .x = x - state.last_pointer_coords.x,
-                .y = y - state.last_pointer_coords.y,
-            };
-            state.last_pointer_coords = Types.Point{ .x = x, .y = y };
-
-            const asset_ptr: *Assets.Asset = state.assets.getPtr(state.selected_asset_id).?;
-
-            var new_points: [4]Types.PointUV = undefined;
-            for (asset_ptr.points, 0..) |point, i| {
-                new_points[i] = Types.PointUV{
-                    .x = point.x + offset.x,
-                    .y = point.y + offset.y,
-                    .u = point.u,
-                    .v = point.v,
+    if (get_selected_img()) |img| {
+        switch (state.action) {
+            .Move => {
+                const offset = Types.Point{
+                    .x = x - state.last_pointer_coords.x,
+                    .y = y - state.last_pointer_coords.y,
                 };
-            }
+                state.last_pointer_coords = Types.Point{ .x = x, .y = y };
 
-            asset_ptr.update_coords(new_points);
-        },
-        .Transform => {
-            const asset_ptr: *Assets.Asset = state.assets.getPtr(state.selected_asset_id).?;
-            const points_ptr: *[4]Types.PointUV = &asset_ptr.points;
-            TransformUI.tranform_points(state.hovered_asset_id, points_ptr, x, y);
-            SvgTextures.ensure_svg_texture_quality(asset_ptr.*);
-        },
-        .None => {},
+                var new_points: [4]Types.PointUV = undefined;
+                for (img.points, 0..) |point, i| {
+                    new_points[i] = Types.PointUV{
+                        .x = point.x + offset.x,
+                        .y = point.y + offset.y,
+                        .u = point.u,
+                        .v = point.v,
+                    };
+                }
+
+                img.update_coords(new_points);
+            },
+            .Transform => {
+                const points_ptr: *[4]Types.PointUV = &img.points;
+                TransformUI.tranform_points(state.hovered_asset_id, points_ptr, x, y);
+                SvgTextures.ensure_svg_texture_quality(img.*);
+            },
+            .None => {},
+        }
     }
 }
 
-pub fn on_pointer_leave() void {
+pub fn on_pointer_leave() !void {
     state.action = .None;
     state.hovered_asset_id = 0;
-    check_assets_update(true);
+    try check_assets_update(true);
 }
 
 pub fn on_press_escape() void {
     if (state.tool == Tool.DrawShape) {
-        const shape_ptr = state.shapes.getPtr(state.selected_asset_id);
-        if (shape_ptr) |shape| {
-            shape.complete_shape();
+        if (get_selected_shape()) |shape| {
+            shape.completeShape();
             state.selected_asset_id = 0;
         }
     }
@@ -293,54 +320,64 @@ fn get_border(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []
     const red = [_]u8{ 255, 0, 0, 255 };
     if (state.hovered_asset_id != state.selected_asset_id) {
         if (state.assets.get(state.hovered_asset_id)) |asset| {
-            for (asset.points, 0..) |point, i| {
-                const next_point = if (i == 3) asset.points[0] else asset.points[i + 1];
-                var buffer: [2]Triangle.DrawInstance = undefined;
+            switch (asset) {
+                .img => |img| {
+                    for (img.points, 0..) |point, i| {
+                        const next_point = if (i == 3) img.points[0] else img.points[i + 1];
+                        var buffer: [2]Triangle.DrawInstance = undefined;
 
-                Line.get_draw_vertex_data(
-                    buffer[0..2],
-                    point,
-                    next_point,
-                    10.0 * state.render_scale,
-                    red,
-                    5.0 * state.render_scale,
-                );
+                        Line.get_draw_vertex_data(
+                            buffer[0..2],
+                            point,
+                            next_point,
+                            10.0 * state.render_scale,
+                            red,
+                            5.0 * state.render_scale,
+                        );
 
-                triangle_vertex_data.appendSlice(&buffer) catch unreachable;
+                        triangle_vertex_data.appendSlice(&buffer) catch unreachable;
+                    }
+                },
+                .shape => {},
             }
         }
     }
 
     const green = [_]u8{ 0, 255, 0, 255 };
     if (state.assets.get(state.selected_asset_id)) |asset| {
-        for (asset.points, 0..) |point, i| {
-            const next_point = if (i == 3) asset.points[0] else asset.points[i + 1];
-            var buffer: [2]Triangle.DrawInstance = undefined;
+        switch (asset) {
+            .img => |img| {
+                for (img.points, 0..) |point, i| {
+                    const next_point = if (i == 3) img.points[0] else img.points[i + 1];
+                    var buffer: [2]Triangle.DrawInstance = undefined;
 
-            Line.get_draw_vertex_data(
-                buffer[0..2],
-                point,
-                next_point,
-                10.0 * state.render_scale,
-                green,
-                5.0 * state.render_scale,
-            );
-            triangle_vertex_data.appendSlice(&buffer) catch unreachable;
+                    Line.get_draw_vertex_data(
+                        buffer[0..2],
+                        point,
+                        next_point,
+                        10.0 * state.render_scale,
+                        green,
+                        5.0 * state.render_scale,
+                    );
+                    triangle_vertex_data.appendSlice(&buffer) catch unreachable;
+                }
+
+                var triangle_buffer: [TransformUI.RENDER_TRIANGLE_INSTANCES]Triangle.DrawInstance = undefined;
+                var msdf_buffer: [2]Msdf.DrawInstance = undefined;
+
+                TransformUI.get_draw_vertex_data(
+                    &triangle_buffer,
+                    &msdf_buffer,
+                    img,
+                    state.hovered_asset_id,
+                    state.render_scale,
+                );
+
+                triangle_vertex_data.appendSlice(&triangle_buffer) catch unreachable;
+                msdf_vertex_data.appendSlice(&msdf_buffer) catch unreachable;
+            },
+            .shape => {},
         }
-
-        var triangle_buffer: [TransformUI.RENDER_TRIANGLE_INSTANCES]Triangle.DrawInstance = undefined;
-        var msdf_buffer: [2]Msdf.DrawInstance = undefined;
-
-        TransformUI.get_draw_vertex_data(
-            &triangle_buffer,
-            &msdf_buffer,
-            asset,
-            state.hovered_asset_id,
-            state.render_scale,
-        );
-
-        triangle_vertex_data.appendSlice(&triangle_buffer) catch unreachable;
-        msdf_vertex_data.appendSlice(&msdf_buffer) catch unreachable;
     }
 
     return .{
@@ -393,7 +430,7 @@ fn draw_project_boundary() void {
 
 const point_size: f32 = @floatFromInt(@sizeOf(Types.Point)); // 8 bytes
 const triangle_size: f32 = @floatFromInt(@sizeOf(Triangle.DrawInstance)); // 64 bytes
-const asset_size: f32 = @floatFromInt(@sizeOf(Assets.DrawVertex)); // 96 bytes
+const asset_size: f32 = @floatFromInt(@sizeOf(images.DrawVertex)); // 96 bytes
 
 pub fn render_draw() void {
     // Add some padding for allocator overhead (usually ~16-32 bytes per allocation)
@@ -417,13 +454,24 @@ pub fn render_draw() void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
-    draw_project_background();
-    var iterator = state.assets.iterator();
 
+    draw_project_background();
+
+    var iterator = state.assets.iterator();
     while (iterator.next()) |asset| {
-        var vertex_data: Assets.DrawVertex = undefined;
-        asset.value_ptr.get_render_vertex_data(&vertex_data);
-        web_gpu_programs.draw_texture(vertex_data, asset.value_ptr.texture_id);
+        switch (asset.value_ptr.*) {
+            .img => |img| {
+                var vertex_data: images.DrawVertex = undefined;
+                img.get_render_vertex_data(&vertex_data);
+                web_gpu_programs.draw_texture(vertex_data, img.texture_id);
+            },
+            .shape => |shape| {
+                const shape_vertex_data = shape.get_draw_vertex_data(allocator) catch unreachable;
+                if (shape_vertex_data) |vertex_data| {
+                    web_gpu_programs.draw_shape(vertex_data.curves, &vertex_data.bounding_box, vertex_data.uniform);
+                }
+            },
+        }
     }
 
     draw_project_boundary(); // TODO: once we support strokes for Triangles, we should use it here wit transparent fill
@@ -436,17 +484,8 @@ pub fn render_draw() void {
         web_gpu_programs.draw_msdf(msdf_buffer, 0);
     }
 
-    var shapes_iter = state.shapes.iterator();
-    while (shapes_iter.next()) |shape| {
-        const shape_vertex_data = shape.value_ptr.get_draw_vertex_data(allocator) catch unreachable;
-        if (shape_vertex_data) |vertex_data| {
-            web_gpu_programs.draw_shape(vertex_data.curves, &vertex_data.bounding_box, vertex_data.uniform);
-        }
-    }
-
     if (state.tool == Tool.DrawShape) {
-        const selected_shape = state.shapes.getPtr(state.selected_asset_id);
-        if (selected_shape) |shape| {
+        if (get_selected_shape()) |shape| {
             const vertex_data = shape.get_skeleton_draw_vertex_data(allocator) catch unreachable;
             web_gpu_programs.draw_triangle(vertex_data);
         }
@@ -486,29 +525,38 @@ pub fn render_draw() void {
 
 pub fn render_pick() void {
     var iterator = state.assets.iterator();
-
     while (iterator.next()) |asset| {
-        var vertex_data: [6]Assets.PickVertex = undefined;
-        asset.value_ptr.get_pick_vertex_data(&vertex_data);
+        switch (asset.value_ptr.*) {
+            .img => |img| {
+                var vertex_data: [6]images.PickVertex = undefined;
+                img.get_pick_vertex_data(&vertex_data);
 
-        web_gpu_programs.pick_texture(&vertex_data, asset.value_ptr.texture_id);
+                web_gpu_programs.pick_texture(&vertex_data, img.texture_id);
+            },
+            .shape => {},
+        }
     }
 
     if (state.assets.get(state.selected_asset_id)) |asset| {
-        var vertex_buffer: [TransformUI.PICK_TRIANGLE_INSTANCES]Triangle.PickInstance = undefined;
-        TransformUI.get_pick_vertex_data(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES], asset, state.render_scale);
-        web_gpu_programs.pick_triangle(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES]);
+        switch (asset) {
+            .img => |img| {
+                var vertex_buffer: [TransformUI.PICK_TRIANGLE_INSTANCES]Triangle.PickInstance = undefined;
+                TransformUI.get_pick_vertex_data(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES], img, state.render_scale);
+                web_gpu_programs.pick_triangle(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES]);
+            },
+            .shape => {},
+        }
     }
 }
 
-pub fn reset_assets(new_assets: []const Assets.SerializedAsset, with_snapshot: bool) void {
+pub fn reset_assets(new_assets: []const images.Serialized, with_snapshot: bool) !void {
     const real_callback_pointer = on_asset_update_cb;
     on_asset_update_cb = null;
 
     state.assets.clearAndFree();
 
     for (new_assets) |asset| {
-        add_asset(asset.id, asset.points, asset.texture_id);
+        try add_asset(asset.id, asset.points, asset.texture_id);
     }
 
     if (!state.assets.contains(state.selected_asset_id)) {
@@ -518,7 +566,7 @@ pub fn reset_assets(new_assets: []const Assets.SerializedAsset, with_snapshot: b
 
     on_asset_update_cb = real_callback_pointer;
 
-    check_assets_update(with_snapshot);
+    try check_assets_update(with_snapshot);
 }
 
 pub fn destroy_state() void {
@@ -558,7 +606,7 @@ test "reset_assets does not call the real update callback" {
         // It's reset to false before each test run.
         var was_called: bool = false;
 
-        fn assets_update(_: []const Assets.SerializedAsset) void {
+        fn assets_update(_: []const images.Serialized) void {
             // Modify the static variable within the struct.
             was_called = true;
         }
@@ -571,7 +619,7 @@ test "reset_assets does not call the real update callback" {
     connect_on_asset_selection_callback(MockCallback.assets_selection);
 
     // Call the function we are testing
-    const initial_assets = [_]Assets.SerializedAsset{.{
+    const initial_assets = [_]images.Serialized{.{
         .points = [_]Types.PointUV{
             Types.PointUV{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 },
             Types.PointUV{ .x = 1.0, .y = 0.0, .u = 1.0, .v = 0.0 },

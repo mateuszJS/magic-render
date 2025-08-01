@@ -68,7 +68,7 @@ pub const Shape = struct {
         self.is_handle_preview = false;
     }
 
-    pub fn complete_shape(self: *Shape) void {
+    pub fn completeShape(self: *Shape) void {
         self.is_handle_preview = false;
         self.preview_point = null;
     }

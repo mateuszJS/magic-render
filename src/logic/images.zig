@@ -10,20 +10,20 @@ const SHADER_TRIANGLE_INDICIES = [_]usize{
 pub const DrawVertex = [6]PointUV;
 pub const PickVertex = extern struct { point: PointUV, id: u32 };
 
-pub const Asset = struct {
+pub const Image = struct {
     id: u32,
     points: [4]PointUV,
     texture_id: u32,
 
-    pub fn new(id: u32, points: [4]PointUV, texture_id: u32) Asset {
-        return Asset{
+    pub fn new(id: u32, points: [4]PointUV, texture_id: u32) Image {
+        return Image{
             .id = id,
             .points = points,
             .texture_id = texture_id,
         };
     }
 
-    pub fn get_render_vertex_data(self: Asset, buffer: *DrawVertex) void {
+    pub fn get_render_vertex_data(self: Image, buffer: *DrawVertex) void {
         var i: usize = 0;
 
         for (SHADER_TRIANGLE_INDICIES) |index| {
@@ -32,7 +32,7 @@ pub const Asset = struct {
         }
     }
 
-    pub fn get_pick_vertex_data(self: Asset, buffer: *[6]PickVertex) void {
+    pub fn get_pick_vertex_data(self: Image, buffer: *[6]PickVertex) void {
         for (SHADER_TRIANGLE_INDICIES, 0..) |index, i| {
             buffer[i] = .{
                 .point = self.points[index],
@@ -41,14 +41,14 @@ pub const Asset = struct {
         }
     }
 
-    pub fn update_coords(self: *Asset, new_points: [4]Types.PointUV) void {
+    pub fn update_coords(self: *Image, new_points: [4]Types.PointUV) void {
         for (&self.points, 0..) |*item, i| {
             item.* = new_points[i];
         }
     }
 
-    pub fn serialize(self: Asset) SerializedAsset {
-        return SerializedAsset{
+    pub fn serialize(self: Image) Serialized {
+        return Serialized{
             .points = self.points,
             .texture_id = self.texture_id,
             .id = self.id,
@@ -56,7 +56,7 @@ pub const Asset = struct {
     }
 };
 
-pub const SerializedAsset = struct {
+pub const Serialized = struct {
     points: [4]PointUV,
     texture_id: u32,
     id: u32,

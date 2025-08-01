@@ -1,4 +1,4 @@
-const Asset = @import("assets.zig").Asset;
+const Image = @import("images.zig").Image;
 const Point = @import("types.zig").Point;
 const Line = @import("line.zig");
 const PointUV = @import("types.zig").PointUV;
@@ -148,8 +148,8 @@ pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     }
 }
 
-fn get_points_of_line(asset: Asset, t_line: TransformLine, render_scale: f32) struct { Point, Point } {
-    const points = asset.points;
+fn get_points_of_line(img: Image, t_line: TransformLine, render_scale: f32) struct { Point, Point } {
+    const points = img.points;
     if (t_line.id <= 4) {
         // corners
         const length = points[t_line.start].distance(points[t_line.end]);
@@ -212,7 +212,7 @@ pub const RENDER_TRIANGLE_INSTANCES = UI_VERTICIES_COUNT_BORDER * 2 * 2; // two 
 pub fn get_draw_vertex_data(
     triangle_buffer: *[RENDER_TRIANGLE_INSTANCES]Triangle.DrawInstance,
     msdf_vertex_data: *[2]Msdf.DrawInstance,
-    asset: Asset,
+    img: Image,
     hovered_elem_id: u32,
     render_scale: f32,
 ) void {
@@ -220,7 +220,7 @@ pub fn get_draw_vertex_data(
     for (resize_lines) |t_line| {
         const color = if (hovered_elem_id == t_line.id) white else black;
 
-        const p1, const p2 = get_points_of_line(asset, t_line, render_scale);
+        const p1, const p2 = get_points_of_line(img, t_line, render_scale);
         var thickness: f32 = 10.0 * render_scale;
 
         if (t_line.id == 9) {
@@ -260,10 +260,10 @@ pub fn get_draw_vertex_data(
 }
 
 pub const PICK_TRIANGLE_INSTANCES = UI_VERTICIES_COUNT_BORDER * 2;
-pub fn get_pick_vertex_data(buffer: *[PICK_TRIANGLE_INSTANCES]Triangle.PickInstance, asset: Asset, render_scale: f32) void {
+pub fn get_pick_vertex_data(buffer: *[PICK_TRIANGLE_INSTANCES]Triangle.PickInstance, img: Image, render_scale: f32) void {
     var i: usize = 0;
     for (resize_lines) |t_line| {
-        const p1, const p2 = get_points_of_line(asset, t_line, render_scale);
+        const p1, const p2 = get_points_of_line(img, t_line, render_scale);
         const thickness: f32 = if (t_line.id == 9) 30.0 * render_scale else 10.0 * render_scale;
 
         Line.get_pick_vertex_data(
