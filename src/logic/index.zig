@@ -277,15 +277,18 @@ pub fn on_pointer_leave() void {
 }
 
 pub fn on_press_escape() void {
-    state.selected_asset_id = 0;
+    if (state.tool == Tool.DrawShape) {
+        const shape_ptr = state.shapes.getPtr(state.selected_asset_id);
+        if (shape_ptr) |shape| {
+            shape.complete_shape();
+            state.selected_asset_id = 0;
+        }
+    }
 }
 
-fn get_border() struct { []Triangle.DrawInstance, []Msdf.DrawInstance } {
-    var triangle_vertex_data = std.ArrayList(Triangle.DrawInstance).init(std.heap.page_allocator);
-    var msdf_vertex_data = std.ArrayList(Msdf.DrawInstance).init(std.heap.page_allocator);
-
-    defer triangle_vertex_data.deinit();
-    defer msdf_vertex_data.deinit();
+fn get_border(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []Msdf.DrawInstance } {
+    var triangle_vertex_data = std.ArrayList(Triangle.DrawInstance).init(allocator);
+    var msdf_vertex_data = std.ArrayList(Msdf.DrawInstance).init(allocator);
 
     const red = [_]u8{ 255, 0, 0, 255 };
     if (state.hovered_asset_id != state.selected_asset_id) {
@@ -425,7 +428,7 @@ pub fn render_draw() void {
 
     draw_project_boundary(); // TODO: once we support strokes for Triangles, we should use it here wit transparent fill
 
-    const triangle_buffer, const msdf_buffer = get_border();
+    const triangle_buffer, const msdf_buffer = get_border(allocator);
     if (triangle_buffer.len > 0) {
         web_gpu_programs.draw_triangle(triangle_buffer);
     }
@@ -444,10 +447,8 @@ pub fn render_draw() void {
     if (state.tool == Tool.DrawShape) {
         const selected_shape = state.shapes.getPtr(state.selected_asset_id);
         if (selected_shape) |shape| {
-            const shape_vertex_data = shape.get_draw_vertex_data(allocator) catch unreachable;
-            if (shape_vertex_data) |vertex_data| {
-                web_gpu_programs.draw_triangle(vertex_data.preview_buffer);
-            }
+            const vertex_data = shape.get_skeleton_draw_vertex_data(allocator) catch unreachable;
+            web_gpu_programs.draw_triangle(vertex_data);
         }
     }
 
