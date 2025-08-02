@@ -17,7 +17,7 @@ export function startCache(
   presentationFormat: GPUTextureFormat,
   currTextureId: number | null,
   boundingBox: BoundingBox,
-  outputWWidth: number,
+  outputWidth: number,
   outputHeight: number
 ): number {
   const width = boundingBox.max_x - boundingBox.min_x
@@ -27,14 +27,14 @@ export function startCache(
     label: 'texture cache',
     format: presentationFormat,
     usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-    size: [outputWWidth, outputHeight],
+    size: [outputWidth, outputHeight],
   })
 
   const encoder = device.createCommandEncoder()
 
   const multisampleTexture = getMultisampleTexture(
     device,
-    outputWWidth,
+    outputWidth,
     outputHeight,
     presentationFormat
   )
