@@ -244,7 +244,8 @@ fn get_selected_shape() ?*shapes.Shape {
     }
 }
 
-pub fn on_pointer_down(allocator: std.mem.Allocator, x: f32, y: f32) !void {
+pub fn on_pointer_down(_allocator: std.mem.Allocator, x: f32, y: f32) !void {
+    _ = _allocator; // autofix
     if (state.tool == Tool.DrawShape) {
         const point = Types.Point{ .x = x, .y = y };
 
@@ -254,8 +255,11 @@ pub fn on_pointer_down(allocator: std.mem.Allocator, x: f32, y: f32) !void {
                 const is_completed = try shape.add_point_start();
                 if (is_completed) {
                     // Shape is completed, we can finalize it
+                    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                    defer arena.deinit();
+                    const allocator = arena.allocator();
+
                     try shape.completeShape(allocator);
-                    try shape.drawTextureCache(std.heap.page_allocator);
                 }
                 return;
             }
@@ -348,7 +352,11 @@ pub fn on_pointer_leave() !void {
 pub fn commitChanges() !void {
     if (state.tool == Tool.DrawShape) {
         if (get_selected_shape()) |shape| {
-            try shape.completeShape(std.heap.page_allocator);
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer arena.deinit();
+            const allocator = arena.allocator();
+
+            try shape.completeShape(allocator);
         }
     }
 }

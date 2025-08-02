@@ -93,7 +93,7 @@ pub const Shape = struct {
         try self.drawTextureCache(allocator);
     }
 
-    // receives boolean indciating if texture size was updated or not
+    // receives boolean indicating if texture size was updated or not
     pub fn updateTextureSize(self: *Shape) bool {
         const width = self.bounding_box.max_x - self.bounding_box.min_x;
         const height = self.bounding_box.max_y - self.bounding_box.min_y;
@@ -125,12 +125,11 @@ pub const Shape = struct {
         }
 
         self.texture_id = cache_shape(self.texture_id, self.bounding_box, vertex_output, self.texture_width, self.texture_height);
-        allocator.free(vertex_output.curves); // just in case if not arena allocator was used
     }
 
     pub fn get_skeleton_draw_vertex_data(self: Shape, allocator: std.mem.Allocator) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
-        const size = 20.0;
+        const size = 20.0 * render_scale;
 
         for (self.points.items, 0..) |point, i| {
             const is_control_point = i % 3 == 0;
@@ -145,7 +144,7 @@ pub const Shape = struct {
                     buffer[0..2],
                     self.points.items[connected_control_point],
                     point,
-                    3.0,
+                    3.0 * render_scale,
                     [_]u8{ 0, 0, 255, 255 },
                     0.0,
                 );
