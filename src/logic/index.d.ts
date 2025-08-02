@@ -10,6 +10,13 @@ interface PointUV {
   v: number
 }
 
+interface BoundingBox {
+  min_x: number
+  min_y: number
+  max_x: number
+  max_y: number
+}
+
 type ZigF32Array = { typedArray: Float32Array }
 type ZigAssetInput = {
   id: number
@@ -29,7 +36,7 @@ type PointerDataView = {
 }
 
 declare module '*.zig' {
-  export const init_state: (width: number, height: number) => void
+  export const init_state: (width: number, height: number, max_texture_size: number) => void
   export const add_asset: (maybe_asset_id: number, points: PointUV[], texture_id: number) => void
   export const remove_asset: () => void
   export const reset_assets: (assets: ZigAssetInput[], with_snapshot: boolean) => void
@@ -46,7 +53,7 @@ declare module '*.zig' {
   export const on_pointer_up: () => void
   export const on_pointer_move: (x: number, y: number) => void
   export const on_pointer_leave: VoidFunction
-  export const on_press_escape: VoidFunction
+  export const commitChanges: VoidFunction
   export const update_render_scale: (render_scale: number) => void
 
   export const connect_web_gpu_programs: (programs: {
@@ -63,6 +70,15 @@ declare module '*.zig' {
   }) => void
   export const connect_on_asset_update_callback: (cb: (data: ZigAssetOutput[]) => void) => void
   export const connect_on_asset_selection_callback: (cb: (data: number) => void) => void
+  export const connect_cache_callbacks: (
+    start_cache: (
+      texture_id: number | null,
+      box: BoundingBox,
+      width: number,
+      height: number
+    ) => number,
+    end_cache: VoidFunction
+  ) => void
 
   export const render_draw: VoidFunction
   export const render_pick: VoidFunction

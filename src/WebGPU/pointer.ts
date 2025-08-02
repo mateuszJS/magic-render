@@ -1,10 +1,4 @@
-import {
-  on_pointer_move,
-  on_pointer_leave,
-  on_pointer_down,
-  on_pointer_up,
-  on_press_escape,
-} from '../logic/index.zig'
+import * as Logic from '../logic/index.zig'
 import clamp from '../utils/clamp'
 
 const OUTSIDE_CANVAS = -1
@@ -64,7 +58,7 @@ export default function initMouseController(
     const update = () => {
       pointer.x = OUTSIDE_CANVAS
       pointer.y = OUTSIDE_CANVAS
-      on_pointer_leave()
+      Logic.on_pointer_leave()
     }
     if (pointer.afterPickEventsQueue.length > 0) {
       pointer.afterPickEventsQueue.push({
@@ -89,7 +83,7 @@ export default function initMouseController(
 
     const move = () => {
       updatePointer(e)
-      on_pointer_move(...getZigAbsolutePointer())
+      Logic.on_pointer_move(...getZigAbsolutePointer())
     }
     if (pointer.afterPickEventsQueue.length > 0) {
       pointer.afterPickEventsQueue.push({
@@ -118,7 +112,7 @@ export default function initMouseController(
     updatePointer(e)
     pointer.afterPickEventsQueue.push({
       requireNewPick: true,
-      cb: on_pointer_down.bind(null, ...getZigAbsolutePointer()),
+      cb: Logic.on_pointer_down.bind(null, ...getZigAbsolutePointer()),
     })
   })
 
@@ -132,10 +126,10 @@ export default function initMouseController(
     if (pointer.afterPickEventsQueue.length > 0) {
       pointer.afterPickEventsQueue.push({
         requireNewPick: false,
-        cb: on_pointer_up,
+        cb: Logic.on_pointer_up,
       })
     } else {
-      on_pointer_up()
+      Logic.on_pointer_up()
     }
   })
 
@@ -183,7 +177,7 @@ export default function initMouseController(
         break
       case 'Escape':
         event.preventDefault()
-        on_press_escape()
+        Logic.commitChanges()
         break
     }
   })

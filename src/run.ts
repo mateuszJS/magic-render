@@ -15,8 +15,10 @@ import { render_draw, render_pick, connect_web_gpu_programs } from 'logic/index.
 import { pointer } from 'WebGPU/pointer'
 import * as Textures from 'textures'
 
-export const transformMatrix = new Float32Array()
-export const MAP_BACKGROUND_SCALE = 1000
+let renderPass: GPURenderPassEncoder
+export function updateRenderPass(newRenderPass: GPURenderPassEncoder) {
+  renderPass = newRenderPass
+}
 
 export default function runCreator(
   canvas: HTMLCanvasElement,
@@ -26,7 +28,6 @@ export default function runCreator(
   presentationFormat: GPUTextureFormat,
   onEmptyEvents: VoidFunction // call when there is no more events to process
 ): VoidFunction {
-  let canvasPass: GPURenderPassEncoder
   let pickPass: GPURenderPassEncoder
 
   const pickManager = new PickManager(device)
@@ -36,15 +37,15 @@ export default function runCreator(
 
   connect_web_gpu_programs({
     draw_texture: (vertex_data, texture_id) => {
-      drawTexture(canvasPass, vertex_data.dataView, Textures.getTexture(texture_id))
+      drawTexture(renderPass, vertex_data.dataView, Textures.getTexture(texture_id))
     },
     draw_msdf: (vertex_data, texture_id) => {
       const dataView = vertex_data['*'].dataView
-      drawMSDF(canvasPass, dataView, Textures.getTexture(texture_id))
+      drawMSDF(renderPass, dataView, Textures.getTexture(texture_id))
     },
     draw_triangle: (vertex_data) => {
       const dataView = vertex_data['*'].dataView
-      drawTriangle(canvasPass, dataView)
+      drawTriangle(renderPass, dataView)
       /*
       samplesCount++
       total += performance.now() - time
@@ -56,7 +57,7 @@ export default function runCreator(
     draw_shape: (curves_data, bound_box_data, uniform_data) => {
       const curvesDataView = curves_data['*'].dataView
       const boundBoxDataView = bound_box_data['*'].dataView
-      drawShape(canvasPass, curvesDataView, boundBoxDataView, uniform_data.dataView)
+      drawShape(renderPass, curvesDataView, boundBoxDataView, uniform_data.dataView)
 
       /*
       samplesCount++
@@ -89,12 +90,12 @@ export default function runCreator(
     const encoder = device.createCommandEncoder()
 
     const canvasDescriptor = getCanvasRenderDescriptor(context, device)
-    canvasPass = encoder.beginRenderPass(canvasDescriptor)
+    renderPass = encoder.beginRenderPass(canvasDescriptor)
     const canvasMatrix = getCanvasMatrix(canvas)
     device.queue.writeBuffer(canvasMatrixBuffer, 0, canvasMatrix)
     // time = performance.now()
     render_draw()
-    canvasPass.end()
+    renderPass.end()
 
     if (pointer.afterPickEventsQueue.length === 0) {
       onEmptyEvents()

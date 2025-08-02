@@ -87,6 +87,20 @@ export function getTexture(textureId: number): GPUTexture {
   return textures[textureId].texture ?? loadingTexture
 }
 
+export function setTexture(texture: GPUTexture, optionalId: number | null) {
+  if (optionalId !== null) {
+    textures[optionalId].texture?.destroy()
+  }
+
+  const id = optionalId ?? textures.length
+  textures[id] = {
+    url: 'cache',
+    texture,
+  }
+
+  return id
+}
+
 export function getUrl(textureId: number): string {
   return textures[textureId].url
 }

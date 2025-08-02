@@ -9,6 +9,7 @@ const Msdf = @import("./msdf.zig");
 const SvgTextures = @import("./svg_textures.zig");
 const shapes = @import("./shapes/shapes.zig");
 const squares = @import("squares.zig");
+const bounding_box = @import("shapes/bounding_box.zig");
 
 const WebGpuPrograms = struct {
     draw_texture: *const fn (images.DrawVertex, u32) void,
@@ -36,6 +37,23 @@ fn on_asset_update_noop(_: []const images.Serialized) void {}
 var on_asset_select_cb: *const fn (u32) void = undefined;
 pub fn connect_on_asset_selection_callback(cb: *const fn (u32) void) void {
     on_asset_select_cb = cb;
+}
+
+var start_cache_callback: *const fn (?u32, bounding_box.BoundingBox, f32, f32) u32 = undefined;
+var end_cache_callback: *const fn () void = undefined;
+
+pub fn connect_cache_callbacks(start_cache: *const fn (?u32, bounding_box.BoundingBox, f32, f32) u32, end_cache: *const fn () void) void {
+    start_cache_callback = start_cache;
+    end_cache_callback = end_cache;
+
+    shapes.cache_shape = cache_shape_cb;
+}
+
+fn cache_shape_cb(curr_texture_id: ?u32, box: bounding_box.BoundingBox, vertex_data: shapes.DrawVertexOutput, width: f32, height: f32) u32 {
+    const texture_id = start_cache_callback(curr_texture_id, box, width, height);
+    web_gpu_programs.draw_shape(vertex_data.curves, &vertex_data.bounding_box, vertex_data.uniform);
+    end_cache_callback();
+    return texture_id;
 }
 
 pub const ASSET_ID_TRESHOLD: u32 = 1000;
@@ -80,11 +98,12 @@ var state = State{
     .render_scale = 1.0,
 };
 
-pub fn init_state(allocator: std.mem.Allocator, width: f32, height: f32) void {
+pub fn init_state(allocator: std.mem.Allocator, width: f32, height: f32, texture_max_size: f32) void {
     _ = allocator; // autofix
     state.width = width;
     state.height = height;
     state.assets = std.AutoArrayHashMap(u32, Asset).init(std.heap.page_allocator);
+    shapes.max_texture_size = texture_max_size;
 }
 
 pub fn init_svg_textures(texture_max_size: f32, resize_texture: *const fn (u32, f32, f32) void) void {
@@ -109,9 +128,27 @@ pub fn add_svg_texture(texture_id: u32, width: f32, height: f32) void {
     }
 }
 
-pub fn update_render_scale(scale: f32) void {
+pub fn update_render_scale(scale: f32) !void {
     state.render_scale = scale;
+    shapes.render_scale = scale;
+
     SvgTextures.update_render_scale(scale);
+    var iterator = state.assets.iterator();
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    while (iterator.next()) |asset| {
+        switch (asset.value_ptr.*) {
+            .img => {},
+            .shape => |*shape| {
+                if (shape.updateTextureSize()) {
+                    try shape.drawTextureCache(allocator);
+                }
+            },
+        }
+    }
 }
 
 var next_asset_id: u32 = ASSET_ID_TRESHOLD;
@@ -207,15 +244,23 @@ fn get_selected_shape() ?*shapes.Shape {
     }
 }
 
-pub fn on_pointer_down(allocator: std.mem.Allocator, x: f32, y: f32) !void {
-    _ = allocator; // autofix
+pub fn on_pointer_down(_allocator: std.mem.Allocator, x: f32, y: f32) !void {
+    _ = _allocator; // autofix
     if (state.tool == Tool.DrawShape) {
         const point = Types.Point{ .x = x, .y = y };
 
         if (get_selected_shape()) |shape| {
             if (!shape.is_closed) {
                 shape.setPreviewPoint(point);
-                shape.add_point_start() catch unreachable;
+                const is_completed = try shape.add_point_start();
+                if (is_completed) {
+                    // Shape is completed, we can finalize it
+                    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                    defer arena.deinit();
+                    const allocator = arena.allocator();
+
+                    try shape.completeShape(allocator);
+                }
                 return;
             }
         }
@@ -304,11 +349,14 @@ pub fn on_pointer_leave() !void {
     try check_assets_update(true);
 }
 
-pub fn on_press_escape() void {
+pub fn commitChanges() !void {
     if (state.tool == Tool.DrawShape) {
         if (get_selected_shape()) |shape| {
-            shape.completeShape();
-            state.selected_asset_id = 0;
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer arena.deinit();
+            const allocator = arena.allocator();
+
+            try shape.completeShape(allocator);
         }
     }
 }
@@ -466,8 +514,20 @@ pub fn render_draw() void {
                 web_gpu_programs.draw_texture(vertex_data, img.texture_id);
             },
             .shape => |shape| {
-                const shape_vertex_data = shape.get_draw_vertex_data(allocator) catch unreachable;
-                if (shape_vertex_data) |vertex_data| {
+                if (shape.texture_id) |texture_id| {
+                    const vertex_data = images.DrawVertex{
+                        // first triangle
+                        .{ .x = shape.bounding_box.min_x, .y = shape.bounding_box.min_y, .u = 0.0, .v = 0.0 }, // Assuming texture coordinates start at (0, 0)
+                        .{ .x = shape.bounding_box.min_x, .y = shape.bounding_box.max_y, .u = 0.0, .v = 1.0 }, // Top-right
+                        .{ .x = shape.bounding_box.max_x, .y = shape.bounding_box.max_y, .u = 1.0, .v = 1.0 }, // Bottom-right
+                        // second triangle
+                        .{ .x = shape.bounding_box.max_x, .y = shape.bounding_box.max_y, .u = 1.0, .v = 1.0 }, // Bottom-right
+                        .{ .x = shape.bounding_box.max_x, .y = shape.bounding_box.min_y, .u = 1.0, .v = 0.0 }, // Closing the rectangle
+                        .{ .x = shape.bounding_box.min_x, .y = shape.bounding_box.min_y, .u = 0.0, .v = 0.0 }, // Top-right
+                    };
+                    web_gpu_programs.draw_texture(vertex_data, texture_id);
+                } else {
+                    const vertex_data = shape.get_draw_vertex_data(allocator) catch unreachable;
                     web_gpu_programs.draw_shape(vertex_data.curves, &vertex_data.bounding_box, vertex_data.uniform);
                 }
             },
@@ -586,7 +646,8 @@ pub fn import_icons(data: []const f32) void {
     Msdf.init_icons(data);
 }
 
-pub fn set_tool(tool: Tool) void {
+pub fn set_tool(tool: Tool) !void {
+    try commitChanges();
     state.tool = tool;
 }
 
