@@ -44,7 +44,6 @@ export function startCache(
       {
         view: multisampleTexture.createView(),
         resolveTarget: texture.createView(),
-        clearValue: [0, 0, 0, 1],
         loadOp: 'clear',
         storeOp: 'store',
       },
@@ -53,16 +52,14 @@ export function startCache(
 
   const pass = encoder.beginRenderPass(descriptor)
   updateRenderPass(pass)
-  const ortho = mat4.ortho(
+  const matrix = mat4.ortho(
     boundingBox.min_x, // left
     boundingBox.min_x + width, // right
-    boundingBox.min_y, // bottom
-    boundingBox.min_y + height, // top
+    boundingBox.min_y + height, // bottom
+    boundingBox.min_y, // top, yes top and bottom and reversed on purpose to make texture start at bottom-left corner
     1, // near
     -1 // far
   )
-  const scaling = mat4.scaling([1, -1, 1]) // flip Y to make texture coords start(0,0) at bottom left corner
-  const matrix = mat4.multiply(scaling, ortho)
 
   device.queue.writeBuffer(canvasMatrixBuffer, 0, matrix)
 
