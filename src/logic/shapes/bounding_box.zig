@@ -2,7 +2,7 @@ const Point = @import("../types.zig").Point;
 const std = @import("std");
 
 /// Represents a 2D bounding box with minimum and maximum coordinates
-pub const BoundingBox = extern struct {
+pub const BoundingBox = struct {
     min_x: f32,
     min_y: f32,
     max_x: f32,
