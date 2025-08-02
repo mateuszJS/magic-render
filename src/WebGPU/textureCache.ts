@@ -15,24 +15,29 @@ export function endCache() {
 export function startCache(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
-  textureId: number | null,
-  boundingBox: BoundingBox
+  currTextureId: number | null,
+  boundingBox: BoundingBox,
+  outputWWidth: number,
+  outputHeight: number
 ): number {
   const width = boundingBox.max_x - boundingBox.min_x
   const height = boundingBox.max_y - boundingBox.min_y
 
-  const texture = textureId
-    ? Textures.getTexture(textureId)
-    : device.createTexture({
-        label: 'texture cache',
-        format: presentationFormat,
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-        size: [width, height],
-      })
+  const texture = device.createTexture({
+    label: 'texture cache',
+    format: presentationFormat,
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    size: [outputWWidth, outputHeight],
+  })
 
   const encoder = device.createCommandEncoder()
 
-  const multisampleTexture = getMultisampleTexture(device, width, height, presentationFormat)
+  const multisampleTexture = getMultisampleTexture(
+    device,
+    outputWWidth,
+    outputHeight,
+    presentationFormat
+  )
   const descriptor: GPURenderPassDescriptor = {
     label: 'texture cache pass',
     colorAttachments: [
@@ -62,11 +67,10 @@ export function startCache(
   device.queue.writeBuffer(canvasMatrixBuffer, 0, matrix)
 
   endCacheCallback = () => {
-    console.log('end cache')
     pass.end()
     const commandBuffer = encoder.finish()
     device.queue.submit([commandBuffer])
   }
 
-  return Textures.setTexture(texture, textureId)
+  return Textures.setTexture(texture, currTextureId)
 }

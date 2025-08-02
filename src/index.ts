@@ -60,7 +60,7 @@ export default async function initCreator(
   const projectWidth = canvas.clientWidth / 2
   const projectHeight = canvas.clientHeight / 2
 
-  Logic.init_state(projectWidth, projectHeight)
+  Logic.init_state(projectWidth, projectHeight, device.limits.maxTextureDimension2D)
   // rotation doesnt work
   const context = canvas.getContext('webgpu')
   if (!context) throw Error('WebGPU from canvas needs to be always provided')
@@ -111,8 +111,8 @@ export default async function initCreator(
 
   Logic.connect_on_asset_selection_callback(onAssetSelect)
 
-  Logic.connect_cache_callbacks((textureId, boundingBox) => {
-    return startCache(device, presentationFormat, textureId, boundingBox)
+  Logic.connect_cache_callbacks((textureId, boundingBox, width, height) => {
+    return startCache(device, presentationFormat, textureId, boundingBox, width, height)
   }, endCache)
 
   const addImage: CreatorAPI['addImage'] = (url) => {

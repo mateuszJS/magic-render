@@ -1,9 +1,12 @@
+const Utils = @import("../utils.zig");
 const Point = @import("../types.zig").Point;
 const std = @import("std");
 const bounding_box = @import("bounding_box.zig");
 const triangles = @import("../triangle.zig");
 const squares = @import("../squares.zig");
 const lines = @import("../line.zig");
+
+const EPSILON = std.math.floatEps(f32);
 
 const STRAIGHT_LINE_THRESHOLD = 1e+10;
 const STRAIGHT_LINE_HANDLE = Point{
@@ -21,7 +24,9 @@ fn getOppositeHandle(control_point: Point, handle: Point) Point {
     return opposite_point;
 }
 
-pub var cache_shape: *const fn (?u32, bounding_box.BoundingBox, DrawVertexOutput) u32 = undefined;
+pub var cache_shape: *const fn (?u32, bounding_box.BoundingBox, DrawVertexOutput, f32, f32) u32 = undefined;
+pub var render_scale: f32 = 1.0;
+pub var max_texture_size: f32 = 0.0;
 
 pub const Shape = struct {
     id: u32,
@@ -34,6 +39,8 @@ pub const Shape = struct {
     // texture related
     bounding_box: bounding_box.BoundingBox = undefined,
     texture_id: ?u32 = null,
+    texture_width: f32 = 0.0,
+    texture_height: f32 = 0.0,
 
     // Arrays: Use &array to get a slice reference
     // Slices: Pass directly (they're already slices)
@@ -54,7 +61,8 @@ pub const Shape = struct {
         return shape;
     }
 
-    pub fn add_point_start(self: *Shape) !void {
+    // return bool indicating if shape is done or not
+    pub fn add_point_start(self: *Shape) !bool {
         if (self.preview_point) |point| {
             const first_point = self.points.items[0];
             const distance = first_point.distance(point);
@@ -62,6 +70,7 @@ pub const Shape = struct {
             if (distance < 10.0) {
                 // path is closed
                 self.is_closed = true;
+                return true;
             } else {
                 try self.points.append(point);
                 try self.points.append(STRAIGHT_LINE_HANDLE);
@@ -69,6 +78,7 @@ pub const Shape = struct {
             self.preview_point = null;
             self.is_handle_preview = true;
         }
+        return false;
     }
 
     pub fn add_point_end(self: *Shape) !void {
@@ -80,6 +90,27 @@ pub const Shape = struct {
         self.preview_point = null;
         self.is_editing = false;
 
+        try self.drawTextureCache(allocator);
+    }
+
+    // receives boolean indciating if texture size was updated or not
+    pub fn updateTextureSize(self: *Shape) bool {
+        const width = self.bounding_box.max_x - self.bounding_box.min_x;
+        const height = self.bounding_box.max_y - self.bounding_box.min_y;
+        const new_width = @min(Utils.get_next_power_of_two(@max(self.texture_width, width / render_scale)), max_texture_size);
+        const new_height = @min(Utils.get_next_power_of_two(@max(self.texture_height, height / render_scale)), max_texture_size);
+
+        if (self.texture_width >= new_width - EPSILON and self.texture_height >= new_height - EPSILON) {
+            return false; // No resize needed
+        }
+
+        self.texture_width = new_width;
+        self.texture_height = new_height;
+
+        return true;
+    }
+
+    pub fn drawTextureCache(self: *Shape, allocator: std.mem.Allocator) !void {
         const vertex_output = try self.get_draw_vertex_data(allocator);
         self.bounding_box = bounding_box.BoundingBox{
             .min_x = vertex_output.bounding_box[0].x,
@@ -88,7 +119,13 @@ pub const Shape = struct {
             .max_y = vertex_output.bounding_box[2].y,
         };
 
-        self.texture_id = cache_shape(self.texture_id, self.bounding_box, vertex_output);
+        if (self.texture_width < EPSILON) {
+            // we need to calculate bounding box first(we did this above) to set initial size
+            _ = self.updateTextureSize();
+        }
+
+        self.texture_id = cache_shape(self.texture_id, self.bounding_box, vertex_output, self.texture_width, self.texture_height);
+        allocator.free(vertex_output.curves); // just in case if not arena allocator was used
     }
 
     pub fn get_skeleton_draw_vertex_data(self: Shape, allocator: std.mem.Allocator) ![]triangles.DrawInstance {
@@ -201,7 +238,7 @@ pub const Shape = struct {
 
         Shape.prepare_half_straight_lines(curves);
 
-        const box = bounding_box.getBoundingBox(curves, self.stroke_width);
+        const box = bounding_box.getBoundingBox(curves, self.stroke_width / 2.0);
         const box_vertex = [6]Point{
             // First triangle
             .{ .x = box.min_x, .y = box.min_y }, // bottom-left
