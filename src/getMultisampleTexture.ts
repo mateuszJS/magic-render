@@ -13,11 +13,6 @@ export default function getMultisampleTexture(
   ) {
     multisampleTexture?.destroy()
     multisampleTexture = device.createTexture({
-      size: [width, height],
-      format: 'depth24plus',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT,
-    })
-    multisampleTexture = device.createTexture({
       format: format,
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
       size: [width, height],

@@ -9,6 +9,7 @@ const Msdf = @import("./msdf.zig");
 const SvgTextures = @import("./svg_textures.zig");
 const shapes = @import("./shapes/shapes.zig");
 const squares = @import("squares.zig");
+const bounding_box = @import("shapes/bounding_box.zig");
 
 const WebGpuPrograms = struct {
     draw_texture: *const fn (images.DrawVertex, u32) void,
@@ -36,6 +37,23 @@ fn on_asset_update_noop(_: []const images.Serialized) void {}
 var on_asset_select_cb: *const fn (u32) void = undefined;
 pub fn connect_on_asset_selection_callback(cb: *const fn (u32) void) void {
     on_asset_select_cb = cb;
+}
+
+var start_cache_callback: *const fn (?u32, bounding_box.BoundingBox) u32 = undefined;
+var end_cache_callback: *const fn () void = undefined;
+
+pub fn connect_cache_callbacks(start_cache: *const fn (?u32, bounding_box.BoundingBox) u32, end_cache: *const fn () void) void {
+    start_cache_callback = start_cache;
+    end_cache_callback = end_cache;
+
+    shapes.cache_shape = cache_shape_cb;
+}
+
+fn cache_shape_cb(curr_texture_id: ?u32, box: bounding_box.BoundingBox, vertex_data: shapes.DrawVertexOutput) u32 {
+    const texture_id = start_cache_callback(curr_texture_id, box);
+    web_gpu_programs.draw_shape(vertex_data.curves, &vertex_data.bounding_box, vertex_data.uniform);
+    end_cache_callback();
+    return texture_id;
 }
 
 pub const ASSET_ID_TRESHOLD: u32 = 1000;
@@ -304,11 +322,10 @@ pub fn on_pointer_leave() !void {
     try check_assets_update(true);
 }
 
-pub fn on_press_escape() void {
+pub fn commitChanges() !void {
     if (state.tool == Tool.DrawShape) {
         if (get_selected_shape()) |shape| {
-            shape.completeShape();
-            state.selected_asset_id = 0;
+            try shape.completeShape(std.heap.page_allocator);
         }
     }
 }
@@ -466,8 +483,20 @@ pub fn render_draw() void {
                 web_gpu_programs.draw_texture(vertex_data, img.texture_id);
             },
             .shape => |shape| {
-                const shape_vertex_data = shape.get_draw_vertex_data(allocator) catch unreachable;
-                if (shape_vertex_data) |vertex_data| {
+                if (shape.texture_id) |texture_id| {
+                    const vertex_data = images.DrawVertex{
+                        // first triangle
+                        .{ .x = shape.bounding_box.min_x, .y = shape.bounding_box.min_y, .u = 0.0, .v = 0.0 }, // Assuming texture coordinates start at (0, 0)
+                        .{ .x = shape.bounding_box.min_x, .y = shape.bounding_box.max_y, .u = 0.0, .v = 1.0 }, // Top-right
+                        .{ .x = shape.bounding_box.max_x, .y = shape.bounding_box.max_y, .u = 1.0, .v = 1.0 }, // Bottom-right
+                        // second triangle
+                        .{ .x = shape.bounding_box.max_x, .y = shape.bounding_box.max_y, .u = 1.0, .v = 1.0 }, // Bottom-right
+                        .{ .x = shape.bounding_box.max_x, .y = shape.bounding_box.min_y, .u = 1.0, .v = 0.0 }, // Closing the rectangle
+                        .{ .x = shape.bounding_box.min_x, .y = shape.bounding_box.min_y, .u = 0.0, .v = 0.0 }, // Top-right
+                    };
+                    web_gpu_programs.draw_texture(vertex_data, texture_id);
+                } else {
+                    const vertex_data = shape.get_draw_vertex_data(allocator) catch unreachable;
                     web_gpu_programs.draw_shape(vertex_data.curves, &vertex_data.bounding_box, vertex_data.uniform);
                 }
             },
@@ -586,7 +615,8 @@ pub fn import_icons(data: []const f32) void {
     Msdf.init_icons(data);
 }
 
-pub fn set_tool(tool: Tool) void {
+pub fn set_tool(tool: Tool) !void {
+    try commitChanges();
     state.tool = tool;
 }
 

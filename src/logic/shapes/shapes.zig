@@ -21,6 +21,8 @@ fn getOppositeHandle(control_point: Point, handle: Point) Point {
     return opposite_point;
 }
 
+pub var cache_shape: *const fn (?u32, bounding_box.BoundingBox, DrawVertexOutput) u32 = undefined;
+
 pub const Shape = struct {
     id: u32,
     points: std.ArrayList(Point),
@@ -28,6 +30,10 @@ pub const Shape = struct {
     preview_point: ?Point = null, // Optional preview points for rendering
     is_handle_preview: bool = false, // Whether to show the preview point as a handle
     is_closed: bool = false, // Whether the shape is closed
+    is_editing: bool = false, // Whether the shape is being edited
+    // texture related
+    bounding_box: bounding_box.BoundingBox = undefined,
+    texture_id: ?u32 = null,
 
     // Arrays: Use &array to get a slice reference
     // Slices: Pass directly (they're already slices)
@@ -42,6 +48,7 @@ pub const Shape = struct {
             .points = point_list,
             .stroke_width = 20.0,
             .is_handle_preview = true,
+            .is_editing = true,
         };
 
         return shape;
@@ -68,9 +75,20 @@ pub const Shape = struct {
         self.is_handle_preview = false;
     }
 
-    pub fn completeShape(self: *Shape) void {
+    pub fn completeShape(self: *Shape, allocator: std.mem.Allocator) !void {
         self.is_handle_preview = false;
         self.preview_point = null;
+        self.is_editing = false;
+
+        const vertex_output = try self.get_draw_vertex_data(allocator);
+        self.bounding_box = bounding_box.BoundingBox{
+            .min_x = vertex_output.bounding_box[0].x,
+            .min_y = vertex_output.bounding_box[0].y,
+            .max_x = vertex_output.bounding_box[2].x,
+            .max_y = vertex_output.bounding_box[2].y,
+        };
+
+        self.texture_id = cache_shape(self.texture_id, self.bounding_box, vertex_output);
     }
 
     pub fn get_skeleton_draw_vertex_data(self: Shape, allocator: std.mem.Allocator) ![]triangles.DrawInstance {
@@ -178,16 +196,27 @@ pub const Shape = struct {
         }
     }
 
-    pub fn get_draw_vertex_data(self: Shape, allocator: std.mem.Allocator) !?VertexOutput {
+    pub fn get_draw_vertex_data(self: Shape, allocator: std.mem.Allocator) !DrawVertexOutput {
         const curves = try self.get_closed_shape_points(allocator);
 
         Shape.prepare_half_straight_lines(curves);
 
         const box = bounding_box.getBoundingBox(curves, self.stroke_width);
+        const box_vertex = [6]Point{
+            // First triangle
+            .{ .x = box.min_x, .y = box.min_y }, // bottom-left
+            .{ .x = box.max_x, .y = box.min_y }, // bottom-right
+            .{ .x = box.max_x, .y = box.max_y }, // top-right
 
-        return VertexOutput{
+            // Second triangle
+            .{ .x = box.max_x, .y = box.max_y }, // top-right
+            .{ .x = box.min_x, .y = box.max_y }, // top-left
+            .{ .x = box.min_x, .y = box.min_y }, // bottom-left
+        };
+
+        return DrawVertexOutput{
             .curves = curves, // Transfer ownership directly
-            .bounding_box = box,
+            .bounding_box = box_vertex,
             .uniform = Uniform{
                 .stroke_width = self.stroke_width,
                 .fill_color = [4]f32{ 1.0, 0.0, 0.0, 1.0 },
@@ -225,7 +254,7 @@ pub const Shape = struct {
     }
 };
 
-const VertexOutput = struct {
+pub const DrawVertexOutput = struct {
     curves: []const Point,
     bounding_box: [6]Point,
     uniform: Uniform,

@@ -2,23 +2,13 @@ import canvasSizeObserver from 'WebGPU/canvasSizeObserver'
 import getDevice from 'WebGPU/getDevice'
 import initPrograms from 'WebGPU/programs/initPrograms'
 import runCreator from 'run'
-import {
-  init_state,
-  add_asset,
-  remove_asset,
-  reset_assets,
-  connect_on_asset_update_callback,
-  connect_on_asset_selection_callback,
-  destroy_state,
-  import_icons,
-  update_render_scale,
-  set_tool,
-} from './logic/index.zig'
+import * as Logic from './logic/index.zig'
 import initMouseController, { camera } from 'WebGPU/pointer'
 import IconsPng from '../msdf/output/icons.png'
 import IconsJson from '../msdf/output/icons.json'
 import getDefaultPoints from 'utils/getDefaultPoints'
 import * as Textures from 'textures'
+import { startCache, endCache } from 'WebGPU/textureCache'
 
 export type SerializedInputAsset = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
@@ -70,7 +60,7 @@ export default async function initCreator(
   const projectWidth = canvas.clientWidth / 2
   const projectHeight = canvas.clientHeight / 2
 
-  init_state(projectWidth, projectHeight)
+  Logic.init_state(projectWidth, projectHeight)
   // rotation doesnt work
   const context = canvas.getContext('webgpu')
   if (!context) throw Error('WebGPU from canvas needs to be always provided')
@@ -84,7 +74,7 @@ export default async function initCreator(
   })
 
   function updateRenderScale() {
-    update_render_scale(canvas.width / (canvas.clientWidth * camera.zoom))
+    Logic.update_render_scale(canvas.width / (canvas.clientWidth * camera.zoom))
   }
 
   let wasInitialOffsetSet = false
@@ -104,7 +94,7 @@ export default async function initCreator(
     updateProcessing()
   })
 
-  connect_on_asset_update_callback((serializedData: ZigAssetOutput[]) => {
+  Logic.connect_on_asset_update_callback((serializedData: ZigAssetOutput[]) => {
     const serializedAssetsTextureUrl = [...serializedData].map<SerializedOutputAsset>((asset) => ({
       id: asset.id,
       textureId: asset.texture_id,
@@ -119,12 +109,16 @@ export default async function initCreator(
     onAssetsUpdate(serializedAssetsTextureUrl)
   })
 
-  connect_on_asset_selection_callback(onAssetSelect)
+  Logic.connect_on_asset_selection_callback(onAssetSelect)
+
+  Logic.connect_cache_callbacks((textureId, boundingBox) => {
+    return startCache(device, presentationFormat, textureId, boundingBox)
+  }, endCache)
 
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = Textures.add(url, (width, height, isNew) => {
       const points = getDefaultPoints(width, height, projectWidth, projectHeight)
-      add_asset(0 /* no id yet, needs to be generated */, points, textureId)
+      Logic.add_asset(0 /* no id yet, needs to be generated */, points, textureId)
 
       if (isNew) {
         uploadTexture(url, (newUrl) => {
@@ -135,7 +129,7 @@ export default async function initCreator(
   }
 
   Textures.add(IconsPng, (width, height) => {
-    import_icons(
+    Logic.import_icons(
       IconsJson.chars.flatMap((char) => [
         char.id,
         char.x / width,
@@ -199,19 +193,19 @@ export default async function initCreator(
       .filter((result) => result.status === 'fulfilled')
       .map((result) => result.value)
 
-    reset_assets(serializedAssets, withSnapshot)
+    Logic.reset_assets(serializedAssets, withSnapshot)
   }
 
   return {
     addImage,
-    removeAsset: remove_asset,
+    removeAsset: Logic.remove_asset,
     resetAssets,
     destroy: () => {
       stopCreator()
-      destroy_state()
+      Logic.destroy_state()
       context.unconfigure()
       device.destroy()
     },
-    setTool: set_tool,
+    setTool: Logic.set_tool,
   }
 }
