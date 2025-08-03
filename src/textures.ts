@@ -1,6 +1,8 @@
 import getLoadingTexture from 'loadingTexture'
+import { parse, RootNode, Node } from 'svg-parser'
 import { createTextureFromSource } from 'WebGPU/getTexture'
-import { init_svg_textures, add_svg_texture } from 'logic/index.zig'
+import * as Logic from 'logic/index.zig'
+import parsePathData from 'parsePathData'
 
 let device: GPUDevice
 let textures: TextureSource[]
@@ -17,7 +19,6 @@ export function init(
   loadingTexture = getLoadingTexture(device)
   updateProcessing = () => _updateProcessing(loadingTextures)
   loadingTextures = 0
-  init_svg_textures(device.limits.maxTextureDimension2D, increaseSize)
 }
 
 export interface TextureSource {
@@ -25,7 +26,24 @@ export interface TextureSource {
   texture?: GPUTexture
   hash?: string
   data?: Uint8ClampedArray // it's time consuming to obtain data from a GPUTexture later
-  svgImg?: HTMLImageElement // for SVG textures, we store the original image to redraw it with bigger size if needed
+}
+
+function createShapes(node: Node): void {
+  if (!('children' in node)) return
+
+  node.children.forEach((child) => {
+    if (typeof child !== 'string') {
+      if (
+        'properties' in child &&
+        typeof child.properties?.d === 'string' &&
+        child.properties?.fill
+      ) {
+        const result = parsePathData(child.properties.d)
+        Logic.add_shape(result.lines)
+      }
+      createShapes(child)
+    }
+  })
 }
 
 export function add(
@@ -47,14 +65,14 @@ export function add(
   // we allow duplicates in textures array
   textures.push({ url })
 
-  getImageWithDetails(url).then(([img, { isSvg }]) => {
-    const { ctx } = getImageData(
-      img,
-      img.naturalWidth,
-      img.naturalHeight,
-      img.naturalWidth,
-      img.naturalHeight
-    )
+  getImageWithDetails(url).then(([img, svgRootNode]) => {
+    if (svgRootNode) {
+      svgRootNode.children.forEach((child) => {
+        createShapes(child)
+      })
+      return
+    }
+    const { ctx } = getImageData(img, img.naturalWidth, img.naturalHeight)
     const data = ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data
     const hash = hashImageData(data)
 
@@ -65,13 +83,6 @@ export function add(
       textures[textureId].texture = createTextureFromSource(device, img, { flipY: true })
       textures[textureId].data = data
       textures[textureId].hash = hash
-      if (isSvg) {
-        textures[textureId].svgImg = img
-      }
-    }
-
-    if (isSvg) {
-      add_svg_texture(textureId, img.naturalWidth, img.naturalHeight)
     }
 
     callback?.(img.width, img.height, !existingTexture)
@@ -105,18 +116,12 @@ export function getUrl(textureId: number): string {
   return textures[textureId].url
 }
 
-function getImageData(
-  img: CanvasImageSource,
-  imgWidth: number,
-  imgHeight: number,
-  canvasWidth: number,
-  canvasHeight: number
-) {
+function getImageData(img: CanvasImageSource, width: number, height: number) {
   const canvas = document.createElement('canvas')!
   const ctx = canvas.getContext('2d')!
-  canvas.width = canvasWidth
-  canvas.height = canvasHeight
-  ctx.drawImage(img, 0, 0, imgWidth, imgHeight, 0, 0, canvasWidth, canvasHeight)
+  canvas.width = width
+  canvas.height = height
+  ctx.drawImage(img, 0, 0, width, height)
   return { canvas, ctx }
 }
 
@@ -138,8 +143,7 @@ function findSameTexture(imgData: Uint8ClampedArray, hash: string): TextureSourc
   for (let i = 0; i < textures.length; i++) {
     const texture = textures[i]
     if (texture.hash === hash) {
-      // if hashes match, perform more expensive data comparison
-      // 2. If hashes match, perform the more expensive full pixel check
+      // if hashes match, perform the more expensive full pixel check
       if (imgData.length !== texture.data!.length) {
         return null
       }
@@ -160,29 +164,23 @@ export function updateTextureUrl(textureId: number, url: string) {
   textures[textureId].url = url
 }
 
-async function getImageWithDetails(url: string): Promise<[HTMLImageElement, { isSvg: boolean }]> {
+async function getImageWithDetails(url: string): Promise<[HTMLImageElement, RootNode | null]> {
   return Promise.all([
     new Promise<HTMLImageElement>((resolve) => {
       const img = new Image()
       img.src = url
       img.onload = () => resolve(img)
     }),
-    new Promise<{ isSvg: boolean }>((resolve) => {
+    new Promise<RootNode | null>((resolve) => {
       fetch(url)
-        .then((response) => response.blob())
-        .then((blob) => {
-          resolve({ isSvg: blob.type === 'image/svg+xml' })
+        .then((response) => response.text())
+        .then((text) => {
+          if (text.includes('<svg')) {
+            resolve(parse(text))
+          } else {
+            resolve(null)
+          }
         })
     }),
   ])
-}
-
-function increaseSize(textureId: number, width: number, height: number) {
-  const img = textures[textureId].svgImg!
-  const { canvas } = getImageData(img, img.naturalWidth, img.naturalHeight, width, height)
-
-  textures[textureId].texture!.destroy()
-  textures[textureId].texture = createTextureFromSource(device, canvas, {
-    flipY: true,
-  })
 }

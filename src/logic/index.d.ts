@@ -41,13 +41,6 @@ declare module '*.zig' {
   export const remove_asset: () => void
   export const reset_assets: (assets: ZigAssetInput[], with_snapshot: boolean) => void
 
-  export const init_svg_textures: (
-    texture_max_size: number,
-    resize_texture: (texture_id: number, width: number, height: number) => void
-  ) => void
-
-  export const add_svg_texture: (texture_id: number, width: number, height: number) => void
-
   export const on_update_pick: (id: number) => void
   export const on_pointer_down: (x: number, y: number) => void
   export const on_pointer_up: () => void
@@ -86,4 +79,6 @@ declare module '*.zig' {
   export const set_tool: (tool: number) => void
 
   export const import_icons: (data: number[]) => void
+
+  export const add_shape: (lines: Array<Array<[Point, Point]>>) => void
 }
