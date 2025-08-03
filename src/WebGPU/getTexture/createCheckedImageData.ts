@@ -1,4 +1,3 @@
-
 const FAKE_MIPMAPS_COLORS = [
   '#FF0000',
   '#FF00C4',
@@ -13,7 +12,7 @@ const FAKE_MIPMAPS_COLORS = [
   '#FFBC00',
 ]
 
-const ctx = document.createElement('canvas').getContext('2d', {willReadFrequently: true})!
+const ctx = new OffscreenCanvas(0, 0).getContext('2d', { willReadFrequently: true })!
 
 export default function createCheckedImageData(size: number, index: number): ImageData {
   ctx.canvas.width = size
@@ -33,10 +32,9 @@ export default function createCheckedImageData(size: number, index: number): Ima
     { x: 0.25, y: 0.75 },
     { x: 0.75, y: 0.75 },
     { x: 0.75, y: 0.25 },
-  ].forEach(p => {
+  ].forEach((p) => {
     ctx.fillText(index.toString(), p.x * size, p.y * size)
   })
-
 
   return ctx.getImageData(0, 0, size, size)
 }

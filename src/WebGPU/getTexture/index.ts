@@ -1,5 +1,5 @@
-import createCheckedImageData from "./createCheckedImageData"
-import generateMipmapsArray from "./generateMimapsArray"
+import createCheckedImageData from './createCheckedImageData'
+import generateMipmapsArray from './generateMimapsArray'
 
 interface Options {
   mips?: boolean
@@ -8,15 +8,15 @@ interface Options {
 }
 
 type TextureSource =
-| ImageBitmap
-| HTMLVideoElement
-| HTMLCanvasElement
-| HTMLImageElement
-| OffscreenCanvas;
+  | ImageBitmap
+  | HTMLVideoElement
+  | HTMLCanvasElement
+  | HTMLImageElement
+  | OffscreenCanvas
 
 const numMipLevels = (...sizes: number[]) => {
   const maxSize = Math.max(...sizes)
-  return 1 + Math.log2(maxSize) | 0
+  return (1 + Math.log2(maxSize)) | 0
 }
 
 export interface TextureSlice {
@@ -24,10 +24,10 @@ export interface TextureSlice {
   fakeMipmaps: boolean
 }
 
-function createCheckedMipmap(levels: Array<{ size: number, color: string }>) {
-  const ctx = document.createElement('canvas').getContext('2d', {willReadFrequently: true})!
+function createCheckedMipmap(levels: Array<{ size: number; color: string }>) {
+  const ctx = new OffscreenCanvas(0, 0).getContext('2d', { willReadFrequently: true })!
 
-  return levels.map(({size, color}, i) => {
+  return levels.map(({ size, color }, i) => {
     ctx.canvas.width = size
     ctx.canvas.height = size
     ctx.fillStyle = i & 1 ? '#000' : '#fff'
@@ -45,24 +45,29 @@ function createCheckedMipmap(levels: Array<{ size: number, color: string }>) {
       { x: 0.25, y: 0.75 },
       { x: 0.75, y: 0.75 },
       { x: 0.75, y: 0.25 },
-    ].forEach(p => {
+    ].forEach((p) => {
       ctx.fillText(i.toString(), p.x * size, p.y * size)
     })
-
 
     return ctx.getImageData(0, 0, size, size)
   })
 }
 
-export function createTextureArray(device: GPUDevice, width: number, height: number, slices: number) {
+export function createTextureArray(
+  device: GPUDevice,
+  width: number,
+  height: number,
+  slices: number
+) {
   return device.createTexture({
     label: '2d array texture',
     format: 'rgba8unorm',
     mipLevelCount: 1 + Math.log2(2048),
     size: [width, height, slices],
-    usage: GPUTextureUsage.TEXTURE_BINDING |
-           GPUTextureUsage.COPY_DST |
-           GPUTextureUsage.RENDER_ATTACHMENT,
+    usage:
+      GPUTextureUsage.TEXTURE_BINDING |
+      GPUTextureUsage.COPY_DST |
+      GPUTextureUsage.RENDER_ATTACHMENT,
   })
 }
 
@@ -79,7 +84,7 @@ export function attachSlice(
   device.queue.copyExternalImageToTexture(
     { source },
     { texture: textue2dArray, origin: { z: sliceIndex }, mipLevel: 0 },
-    { width, height },
+    { width, height }
   )
 
   // if (texSlice.fakeMipmaps) {
@@ -102,28 +107,37 @@ export function attachSlice(
   // }
 }
 
-
-export function createTextureFromSource(device: GPUDevice, source: TextureSource, options: Options = {}) {
+export function createTextureFromSource(
+  device: GPUDevice,
+  source: TextureSource,
+  options: Options = {}
+) {
   const texture = device.createTexture({
     format: 'rgba8unorm',
     mipLevelCount: options.mips ? numMipLevels(source.width, source.height) : 1,
     size: [source.width, source.height],
-    usage: GPUTextureUsage.TEXTURE_BINDING |
-           GPUTextureUsage.COPY_DST |
-           GPUTextureUsage.RENDER_ATTACHMENT,
+    usage:
+      GPUTextureUsage.TEXTURE_BINDING |
+      GPUTextureUsage.COPY_DST |
+      GPUTextureUsage.RENDER_ATTACHMENT,
   })
   copySourceToTexture(device, texture, source, options)
   return texture
 }
 
-function copySourceToTexture(device: GPUDevice, texture: GPUTexture, source: TextureSource, {flipY, depthOrArrayLayers}: Options = {}) {
-
+function copySourceToTexture(
+  device: GPUDevice,
+  texture: GPUTexture,
+  source: TextureSource,
+  { flipY, depthOrArrayLayers }: Options = {}
+) {
   device.queue.copyExternalImageToTexture(
-    { source, flipY, },
-    { texture,
+    { source, flipY },
+    {
+      texture,
       // premultipliedAlpha: true
     },
-    { width: source.width, height: source.height, depthOrArrayLayers },
+    { width: source.width, height: source.height, depthOrArrayLayers }
   )
 
   // if (texture.mipLevelCount > 1) {
@@ -134,7 +148,10 @@ function copySourceToTexture(device: GPUDevice, texture: GPUTexture, source: Tex
 export async function loadImageBitmap(url: string) {
   const res = await fetch(url)
   const blob = await res.blob()
-  return await createImageBitmap(blob, { colorSpaceConversion: 'none', premultiplyAlpha: 'premultiply' })
+  return await createImageBitmap(blob, {
+    colorSpaceConversion: 'none',
+    premultiplyAlpha: 'premultiply',
+  })
 }
 
 export async function createTextureFromImage(device: GPUDevice, url: string, options: Options) {

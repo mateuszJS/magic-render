@@ -17,6 +17,12 @@ interface BoundingBox {
   max_y: number
 }
 
+type ShapeProps = Partial<{
+  fill_color: [number, number, number, number]
+  stroke_color: [number, number, number, number]
+  stroke_width: number
+}>
+
 type ZigF32Array = { typedArray: Float32Array }
 type ZigAssetInput = {
   id: number
@@ -80,5 +86,8 @@ declare module '*.zig' {
 
   export const import_icons: (data: number[]) => void
 
-  export const add_shape: (lines: Array<Array<[Point, Point, Point, Point]>>) => void
+  export const add_shape: (
+    paths: Array<Array<[Point, Point, Point, Point]>>,
+    props: ShapeProps
+  ) => void
 }

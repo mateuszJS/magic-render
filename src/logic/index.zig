@@ -625,9 +625,9 @@ pub fn stop_drawing_shape() void {
     state.selected_asset_id = 0;
 }
 
-pub fn add_shape(paths: []const []const [4]Types.Point) !void {
+pub fn add_shape(paths: []const []const [4]Types.Point, props: shapes.ShapeProps) !void {
     const id = generate_id();
-    const shape = try shapes.Shape.new_from_points(id, paths, std.heap.page_allocator);
+    const shape = try shapes.Shape.new_from_points(id, paths, props, std.heap.page_allocator);
     try state.assets.put(id, Asset{ .shape = shape });
     state.selected_asset_id = id;
 }

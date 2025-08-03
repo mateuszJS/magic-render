@@ -24,10 +24,17 @@ fn getOppositeHandle(control_point: Point, handle: Point) Point {
 pub var cache_shape: *const fn (?u32, bounding_box.BoundingBox, DrawVertexOutput, f32, f32) u32 = undefined;
 pub var max_texture_size: f32 = 0.0;
 
+pub const ShapeProps = struct {
+    // f32 instead of u8 because Uniforms in wgsl doesn't support u8 anyway
+    fill_color: [4]f32 = .{ 0.0, 0.0, 0.0, 1.0 }, // Default fill color (red)
+    stroke_color: [4]f32 = .{ 0.0, 0.0, 0.0, 1.0 }, // Default stroke color (green)
+    stroke_width: f32 = 0.0, // Default stroke width
+};
+
 pub const Shape = struct {
     id: u32,
     paths: std.ArrayList(Path),
-    stroke_width: f32,
+    props: ShapeProps,
     preview_point: ?Point = null, // Optional preview points for rendering
     is_handle_preview: bool = false, // Whether to show the preview point as a handle
     active_path_index: ?usize = null, // Index of the active path for editing
@@ -46,7 +53,7 @@ pub const Shape = struct {
         const shape = Shape{
             .id = id,
             .paths = paths_list,
-            .stroke_width = 10.0,
+            .props = ShapeProps{},
             .is_handle_preview = true,
             .active_path_index = 0,
         };
@@ -57,7 +64,7 @@ pub const Shape = struct {
     // Arrays: Use &array to get a slice reference
     // Slices: Pass directly (they're already slices)
     // ArrayList: Use .items to get the underlying slice
-    pub fn new_from_points(id: u32, input_paths: []const []const [4]Point, allocator: std.mem.Allocator) !Shape {
+    pub fn new_from_points(id: u32, input_paths: []const []const [4]Point, props: ShapeProps, allocator: std.mem.Allocator) !Shape {
         var paths_list = std.ArrayList(Path).init(allocator);
 
         for (input_paths) |input_path| {
@@ -68,7 +75,7 @@ pub const Shape = struct {
         const shape = Shape{
             .id = id,
             .paths = paths_list,
-            .stroke_width = 10.0,
+            .props = props,
             .is_handle_preview = false,
             .active_path_index = 0,
         };
@@ -212,7 +219,7 @@ pub const Shape = struct {
         if (curves_buffer.items.len > 0) {
             // Shape.prepare_half_straight_lines(curves);
 
-            const box = bounding_box.getBoundingBox(curves_buffer.items, self.stroke_width / 2.0);
+            const box = bounding_box.getBoundingBox(curves_buffer.items, self.props.stroke_width / 2.0);
             const box_vertex = [6]Point{
                 // First triangle
                 .{ .x = box.min_x, .y = box.min_y }, // bottom-left
@@ -229,9 +236,9 @@ pub const Shape = struct {
                 .curves = curves_buffer.items, // Transfer ownership directly
                 .bounding_box = box_vertex,
                 .uniform = Uniform{
-                    .stroke_width = self.stroke_width,
-                    .fill_color = [4]f32{ 1.0, 0.0, 0.0, 1.0 },
-                    .stroke_color = [4]f32{ 0.0, 1.0, 0.0, 1.0 },
+                    .stroke_width = self.props.stroke_width,
+                    .fill_color = self.props.fill_color,
+                    .stroke_color = self.props.stroke_color,
                 },
             };
         } else {
