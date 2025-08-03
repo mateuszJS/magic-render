@@ -48,18 +48,15 @@ pub const Path = struct {
     // Arrays: Use &array to get a slice reference
     // Slices: Pass directly (they're already slices)
     // ArrayList: Use .items to get the underlying slice
-    pub fn newFromPoints(points: []const [2]Point, allocator: std.mem.Allocator) !Path {
+    pub fn newFromPoints(path: []const [4]Point, allocator: std.mem.Allocator) !Path {
         var point_list = std.ArrayList(Point).init(allocator);
         var closed = false;
 
-        for (points, 0..) |line, i| {
-            try point_list.append(line[0]);
-            try point_list.append(STRAIGHT_LINE_HANDLE);
-            try point_list.append(STRAIGHT_LINE_HANDLE);
-            try point_list.append(line[1]);
+        for (path, 0..) |curve, i| {
+            try point_list.appendSlice(&curve);
 
-            if (i == points.len - 1) {
-                const distance = points[0][0].distance(line[1]);
+            if (i == path.len - 1) {
+                const distance = path[0][0].distance(curve[3]);
                 if (distance < POINT_SNAP_DISTANCE) {
                     // here is the problem, it should be overlap with exactly one point, then it might be caunted a closed
                     // althouhg the better word might be that a curve is open. More than one curve in a shape might be open!

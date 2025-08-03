@@ -1,8 +1,10 @@
 import getLoadingTexture from 'loadingTexture'
-import { parse, RootNode, Node } from 'svg-parser'
+import { parse, RootNode, Node, ElementNode } from 'svg-parser'
 import { createTextureFromSource } from 'WebGPU/getTexture'
 import * as Logic from 'logic/index.zig'
-import parsePathData from 'parsePathData'
+import parsePathData from 'parseSvg/parsePathData'
+import parseRect from 'parseSvg/parseRect'
+import type { PathSegment } from 'parseSvg/types'
 
 let device: GPUDevice
 let textures: TextureSource[]
@@ -28,20 +30,37 @@ export interface TextureSource {
   data?: Uint8ClampedArray // it's time consuming to obtain data from a GPUTexture later
 }
 
-function createShapes(node: Node): void {
+function createShapes(node: Node, svgHeight: number): void {
   if (!('children' in node)) return
 
   node.children.forEach((child) => {
     if (typeof child !== 'string') {
-      if (
-        'properties' in child &&
-        typeof child.properties?.d === 'string' &&
-        child.properties?.fill
-      ) {
-        const result = parsePathData(child.properties.d)
-        Logic.add_shape(result.lines)
+      if ('properties' in child) {
+        let result: PathSegment[][] | undefined = undefined
+
+        switch (child.tagName) {
+          case 'path':
+            if (typeof child.properties?.d !== 'string') {
+              throw Error("Path without 'd' property")
+            }
+            result = parsePathData(child.properties.d, svgHeight)
+            break
+          case 'rect':
+            if (
+              typeof child.properties?.width !== 'number' ||
+              typeof child.properties?.height !== 'number'
+            ) {
+              throw Error("Path without 'd' property")
+            }
+            result = [parseRect(child.properties.width, child.properties.height, svgHeight)]
+            break
+        }
+
+        if (result) {
+          Logic.add_shape(result)
+        }
       }
-      createShapes(child)
+      createShapes(child, svgHeight)
     }
   })
 }
@@ -65,11 +84,14 @@ export function add(
   // we allow duplicates in textures array
   textures.push({ url })
 
-  getImageWithDetails(url).then(([img, svgRootNode]) => {
-    if (svgRootNode) {
-      svgRootNode.children.forEach((child) => {
-        createShapes(child)
-      })
+  getImageWithDetails(url).then(([img, svgTree]) => {
+    if (svgTree) {
+      const svgRoot = svgTree.children[0] as ElementNode
+      console.log(svgRoot)
+
+      const svgHeight = svgRoot.properties?.height || img.naturalHeight
+      if (!svgHeight || typeof svgHeight !== 'number') throw Error('SVG height is required')
+      createShapes(svgRoot, svgHeight)
       return
     }
     const { ctx } = getImageData(img, img.naturalWidth, img.naturalHeight)

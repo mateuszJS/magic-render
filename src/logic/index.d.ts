@@ -80,5 +80,5 @@ declare module '*.zig' {
 
   export const import_icons: (data: number[]) => void
 
-  export const add_shape: (lines: Array<Array<[Point, Point]>>) => void
+  export const add_shape: (lines: Array<Array<[Point, Point, Point, Point]>>) => void
 }
