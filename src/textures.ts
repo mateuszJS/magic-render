@@ -1,10 +1,7 @@
 import getLoadingTexture from 'loadingTexture'
-import { parse, RootNode, Node, ElementNode } from 'svg-parser'
+import { parse, RootNode, ElementNode } from 'svg-parser'
 import { createTextureFromSource } from 'WebGPU/getTexture'
-import * as Logic from 'logic/index.zig'
-import parsePathData from 'parseSvg/parsePathData'
-import parseRect from 'parseSvg/parseRect'
-import type { PathSegment } from 'parseSvg/types'
+import createShapes from 'shapes/createShape'
 
 let device: GPUDevice
 let textures: TextureSource[]
@@ -28,41 +25,6 @@ export interface TextureSource {
   texture?: GPUTexture
   hash?: string
   data?: Uint8ClampedArray // it's time consuming to obtain data from a GPUTexture later
-}
-
-function createShapes(node: Node, svgHeight: number): void {
-  if (!('children' in node)) return
-
-  node.children.forEach((child) => {
-    if (typeof child !== 'string') {
-      if ('properties' in child) {
-        let result: PathSegment[][] | undefined = undefined
-
-        switch (child.tagName) {
-          case 'path':
-            if (typeof child.properties?.d !== 'string') {
-              throw Error("Path without 'd' property")
-            }
-            result = parsePathData(child.properties.d, svgHeight)
-            break
-          case 'rect':
-            if (
-              typeof child.properties?.width !== 'number' ||
-              typeof child.properties?.height !== 'number'
-            ) {
-              throw Error("Path without 'd' property")
-            }
-            result = [parseRect(child.properties.width, child.properties.height, svgHeight)]
-            break
-        }
-
-        if (result) {
-          Logic.add_shape(result)
-        }
-      }
-      createShapes(child, svgHeight)
-    }
-  })
 }
 
 export function add(
@@ -139,10 +101,8 @@ export function getUrl(textureId: number): string {
 }
 
 function getImageData(img: CanvasImageSource, width: number, height: number) {
-  const canvas = document.createElement('canvas')!
+  const canvas = new OffscreenCanvas(width, height)
   const ctx = canvas.getContext('2d')!
-  canvas.width = width
-  canvas.height = height
   ctx.drawImage(img, 0, 0, width, height)
   return { canvas, ctx }
 }

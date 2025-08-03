@@ -1,9 +1,10 @@
 const STRAIGHT_LINE_THRESHOLD = 1e10;
+const EPSILON = 1e-10;
 
 struct Uniforms {
   stroke_width: f32,
-  stroke_color: vec4f,
   fill_color: vec4f,
+  stroke_color: vec4f,
 };
 
 struct CubicBezier {
@@ -305,12 +306,14 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
 
     // Check if this is a straight line (handle points have x >= STRAIGHT_LINE_THRESHOLD)
     let is_straight_line = curve.p1.x > STRAIGHT_LINE_THRESHOLD && curve.p2.x > STRAIGHT_LINE_THRESHOLD;
-    
-    var distance: f32;
-    
+
+    var distance: f32 = 1e+10;
+
     if (is_straight_line) {
       // Handle as straight line from p0 to p3
-      distance = distance_to_line_segment(point, curve.p0, curve.p3);
+      if (u.stroke_width > EPSILON) {
+        distance = distance_to_line_segment(point, curve.p0, curve.p3);
+      }
       
       // Simple ray casting for line segment
       if (ray_crosses_segment(point, curve.p0, curve.p3)) {
@@ -325,9 +328,12 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
       }
     } else {
       // Handle as normal cubic Bézier curve
-      let closest_t = closest_point_on_bezier(point, curve);
-      let closest_point = bezier_point(curve, closest_t);
-      distance = length(point - closest_point);
+
+      if (u.stroke_width > EPSILON) {
+        let closest_t = closest_point_on_bezier(point, curve);
+        let closest_point = bezier_point(curve, closest_t);
+        distance = length(point - closest_point);
+      }
       
       // Ray casting for curve
       total_crossings += ray_cast_curve_crossing(point, curve);

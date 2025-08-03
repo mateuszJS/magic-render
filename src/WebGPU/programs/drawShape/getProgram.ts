@@ -14,12 +14,6 @@ export default function getDrawShape(
   const uniformBufferSize =
     (1 /*stroke width*/ + 4 /*stroke color*/ + 4 /*fill color*/ + /*padding*/ 3) * 4
 
-  const uniformBuffer = device.createBuffer({
-    label: 'drawShape uniforms',
-    size: uniformBufferSize,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-  })
-
   const bindGroupLayout = device.createBindGroupLayout({
     label: 'drawShape bind group layout',
     entries: [
@@ -108,7 +102,13 @@ export default function getDrawShape(
     device.queue.writeBuffer(curvesBuffer, 0, curvesDataView)
     buffersToDestroy.push(curvesBuffer)
 
+    const uniformBuffer = device.createBuffer({
+      label: 'drawShape uniforms',
+      size: uniformBufferSize,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    })
     device.queue.writeBuffer(uniformBuffer, 0, uniformDataView)
+    buffersToDestroy.push(uniformBuffer)
 
     passEncoder.setPipeline(renderPipeline)
 
