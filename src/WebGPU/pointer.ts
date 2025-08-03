@@ -133,6 +133,19 @@ export default function initMouseController(
     }
   })
 
+  /* zoom functionality shared between wheel and keyboard */
+  function performZoom(zoomDelta: number, centerX: number, centerY: number) {
+    const oldZoom = camera.zoom
+    camera.zoom = clamp(camera.zoom + zoomDelta, 0.1, 20)
+    onZoom()
+
+    const zoomFactor = camera.zoom / oldZoom
+
+    camera.x = centerX - (centerX - camera.x) * zoomFactor
+    const realY = canvas.height - centerY
+    camera.y = realY - (realY - camera.y) * zoomFactor
+  }
+
   function zoom(delta: number) {
     const oldZoom = camera.zoom
     camera.zoom = clamp(camera.zoom - delta * 0.005, 0.1, 20)
@@ -144,18 +157,18 @@ export default function initMouseController(
   }
 
   /* panning , supports both scroll and touch, expect Safari */
-  canvas.addEventListener('wheel', (e) => {
-    updatePointer(e)
-    e.preventDefault()
+  canvas.addEventListener('wheel', (event) => {
+    updatePointer(event)
+    event.preventDefault()
     if (mouseMode === MouseMode.Zoom) {
-      const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : -e.deltaX
+      const delta = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : -event.deltaX
       zoom(delta)
     } else {
-      if (e.ctrlKey) {
-        zoom(e.deltaY * camera.zoom)
+      if (event.ctrlKey) {
+        zoom(event.deltaY * camera.zoom)
       } else {
-        camera.x -= e.deltaX
-        camera.y += e.deltaY
+        camera.x -= event.deltaX
+        camera.y += event.deltaY
       }
     }
   })
@@ -178,6 +191,26 @@ export default function initMouseController(
       case 'Escape':
         event.preventDefault()
         Logic.commitChanges()
+        break
+      case '=':
+      case '+':
+        // Zoom in with Ctrl/Cmd + Plus
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault()
+          const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
+          const centerY = pointer.y !== OUTSIDE_CANVAS ? pointer.y : canvas.height / 2
+          performZoom(0.1, centerX, centerY)
+        }
+        break
+      case '-':
+      case '_':
+        // Zoom out with Ctrl/Cmd/Shift + Minus
+        if (event.ctrlKey || event.metaKey || event.shiftKey) {
+          event.preventDefault()
+          const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
+          const centerY = pointer.y !== OUTSIDE_CANVAS ? pointer.y : canvas.height / 2
+          performZoom(-0.1, centerX, centerY)
+        }
         break
     }
   })
