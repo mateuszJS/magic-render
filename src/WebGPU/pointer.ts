@@ -146,20 +146,35 @@ export default function initMouseController(
     camera.y = realY - (realY - camera.y) * zoomFactor
   }
 
+  function zoom(delta: number) {
+    const oldZoom = camera.zoom
+    camera.zoom = clamp(camera.zoom - delta * 0.005, 0.1, 20)
+    onZoom()
+    const zoomFactor = camera.zoom / oldZoom
+    camera.x = pointer.x - (pointer.x - camera.x) * zoomFactor
+    const realY = canvas.height - pointer.y
+    camera.y = realY - (realY - camera.y) * zoomFactor
+  }
+
   /* panning , supports both scroll and touch, expect Safari */
   canvas.addEventListener('wheel', (event) => {
+    updatePointer(event)
     event.preventDefault()
     if (mouseMode === MouseMode.Zoom) {
-      performZoom(-event.deltaY * 0.005, pointer.x, pointer.y)
+      const delta = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : -event.deltaX
+      zoom(delta)
     } else {
-      camera.x -= event.deltaX
-      camera.y += event.deltaY
+      if (event.ctrlKey) {
+        zoom(event.deltaY * camera.zoom)
+      } else {
+        camera.x -= event.deltaX
+        camera.y += event.deltaY
+      }
     }
   })
   // pointer.zoom = clamp(pointer.zoom + event.deltaY * 0.01, 0.1, 100)
 
   document.body.addEventListener('keydown', (event) => {
-
     switch (event.code) {
       case 'Space':
         event.preventDefault()
@@ -180,19 +195,18 @@ export default function initMouseController(
       case '=':
       case '+':
         // Zoom in with Ctrl/Cmd + Plus
-        if ((!event.ctrlKey && !event.metaKey)) break
-        event.preventDefault()
-        {
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault()
           const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
           const centerY = pointer.y !== OUTSIDE_CANVAS ? pointer.y : canvas.height / 2
           performZoom(0.1, centerX, centerY)
         }
         break
       case '-':
+      case '_':
         // Zoom out with Ctrl/Cmd/Shift + Minus
-        if ((!event.ctrlKey && !event.metaKey && !event.shiftKey)) break
-        event.preventDefault()
-        {
+        if (event.ctrlKey || event.metaKey || event.shiftKey) {
+          event.preventDefault()
           const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
           const centerY = pointer.y !== OUTSIDE_CANVAS ? pointer.y : canvas.height / 2
           performZoom(-0.1, centerX, centerY)
