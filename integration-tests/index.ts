@@ -1,4 +1,5 @@
 import initCreator, { SerializedOutputAsset } from '../src/index'
+import { camera } from '../src/WebGPU/pointer'
 
 declare global {
   interface Window {
@@ -16,14 +17,34 @@ async function test() {
   const removeAssetBtn = document.querySelector<HTMLSpanElement>('#remove-btn')!
   const undoBtn = document.querySelector<HTMLSpanElement>('#undo-btn')!
   const redoBtn = document.querySelector<HTMLSpanElement>('#redo-btn')!
+  const toolsSelect = document.querySelector<HTMLSelectElement>('#tools-select')!
 
   window.assetsSnapshot = []
-  let currentHistoryIndex = 0
+  function setAssetSnapshot(assets: SerializedOutputAsset[]) {
+    const scale = (canvas.width * camera.zoom) / canvas.clientWidth
 
+    window.assetsSnapshot = assets.map((asset) => ({
+      ...asset,
+      points: asset.points.map((point) => ({
+        ...point,
+        x: point.x * scale + camera.x,
+        y: point.y * scale + camera.y,
+      })),
+    }))
+  }
+  let currentHistoryIndex = 0
+  let newTextures = 0
   const creator = await initCreator(
     canvas,
+    (url, setNewUrl) => {
+      setNewUrl(`${newTextures}-${url}`)
+      newTextures++
+      // if (url.startsWith('http://our-domain.com')) {
+      // setNewUrl('new url')
+      // }
+    },
     (assets) => {
-      window.assetsSnapshot = assets
+      setAssetSnapshot(assets)
       // we had to implement this whole history logic because there is no way
       // to call creator.resetCanvas(newAssets) from test code file
       if (currentHistoryIndex < assetsUpdatesHistory.length - 1) {
@@ -45,7 +66,10 @@ async function test() {
   addImageInput.addEventListener('change', (event) => {
     const { files } = event.target as HTMLInputElement
     if (!files) return
-    creator.addImage(URL.createObjectURL(files[0]))
+
+    const url = URL.createObjectURL(files[0])
+    creator.addImage(url)
+
     addImageInput.value = '' // reset input value to allow re-uploading the same file
   })
 
@@ -55,12 +79,12 @@ async function test() {
   startProjectInputFromImages.addEventListener('change', (event) => {
     const { files } = event.target as HTMLInputElement
     if (!files) return
-    creator.resetAssets(
-      Array.from(files).map((file) => ({
-        url: URL.createObjectURL(file),
-      })),
-      true
-    )
+
+    const urls = Array.from(files).map((file) => ({
+      url: URL.createObjectURL(file),
+    }))
+
+    creator.resetAssets(urls, true)
     startProjectInputFromImages.value = '' // reset input value to allow re-uploading the same file
   })
 
@@ -74,10 +98,10 @@ async function test() {
     const PROJECT_SAMPLE = Array.from(files).map((file) => ({
       url: URL.createObjectURL(file),
       points: [
-        { x: 100, y: 100, u: 0, v: 0 },
-        { x: 200, y: 100, u: 1, v: 0 },
-        { x: 200, y: 200, u: 1, v: 1 },
         { x: 100, y: 200, u: 0, v: 1 },
+        { x: 200, y: 200, u: 1, v: 1 },
+        { x: 200, y: 100, u: 1, v: 0 },
+        { x: 100, y: 100, u: 0, v: 0 },
       ],
     }))
 
@@ -93,14 +117,19 @@ async function test() {
     currentHistoryIndex = Math.max(0, currentHistoryIndex - 1)
     const assets = assetsUpdatesHistory[currentHistoryIndex]
     creator.resetAssets(assets)
-    window.assetsSnapshot = assets
+    setAssetSnapshot(assets)
   })
 
   redoBtn.addEventListener('click', () => {
     currentHistoryIndex = Math.min(assetsUpdatesHistory.length - 1, currentHistoryIndex + 1)
     const assets = assetsUpdatesHistory[currentHistoryIndex]
     creator.resetAssets(assets)
-    window.assetsSnapshot = assets
+    setAssetSnapshot(assets)
+  })
+
+  toolsSelect.addEventListener('change', (event) => {
+    const selectedTool = Number((event.target as HTMLSelectElement).value)
+    creator.setTool(selectedTool)
   })
 }
 

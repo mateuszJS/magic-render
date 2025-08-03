@@ -55,10 +55,12 @@ const baseConfig = {
         test: /\.zig$/,
         exclude: /node_modules/,
         use: {
-          loader: path.resolve('zigar-loader.cjs'),
+          loader: 'zigar-loader',
           options: {
             embedWASM: isProd,
-            optimize: isProd ? 'ReleaseFast' : 'Debug', // we can play with ReleaseSmall also
+            // for now ReleaseFast gets stuck https://github.com/chung-leong/zigar/issues/666
+            // once solved we can come back to ReleaseFast
+            optimize: isProd ? 'ReleaseSmall' : 'Debug', // we can play with ReleaseSmall also
           },
         },
       },

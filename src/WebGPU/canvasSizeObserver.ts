@@ -19,10 +19,10 @@ export default function canvasSizeObserver(
       const canvas = entry.target as HTMLCanvasElement
       // Safari does not support devicePixelContentBoxSize
       const width =
-        entry.devicePixelContentBoxSize[0].inlineSize ||
+        entry.devicePixelContentBoxSize?.[0].inlineSize ??
         entry.contentBoxSize[0].inlineSize * devicePixelRatio
       const height =
-        entry.devicePixelContentBoxSize[0].blockSize ||
+        entry.devicePixelContentBoxSize?.[0].blockSize ??
         entry.contentBoxSize[0].blockSize * devicePixelRatio
 
       updateCanvasSize(canvas, width, height, device)

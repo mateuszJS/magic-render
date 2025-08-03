@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const Point = struct {
+pub const Point = extern struct {
     x: f32,
     y: f32,
 
@@ -16,9 +16,24 @@ pub const Point = struct {
         const dy = other.y - self.y;
         return std.math.atan2(dy, dx);
     }
+
+    pub fn distance(self: Point, other: Point) f32 {
+        return std.math.hypot(self.x - other.x, self.y - other.y);
+    }
+
+    pub fn diff(self: Point, other: Point) Point {
+        return Point{
+            .x = self.x - other.x,
+            .y = self.y - other.y,
+        };
+    }
+
+    pub fn clone(self: Point) Point {
+        return Point{ .x = self.x, .y = self.y };
+    }
 };
 
-pub const PointUV = struct {
+pub const PointUV = extern struct {
     x: f32,
     y: f32,
     u: f32,

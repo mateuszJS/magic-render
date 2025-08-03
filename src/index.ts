@@ -2,22 +2,13 @@ import canvasSizeObserver from 'WebGPU/canvasSizeObserver'
 import getDevice from 'WebGPU/getDevice'
 import initPrograms from 'WebGPU/programs/initPrograms'
 import runCreator from 'run'
-import {
-  init_state,
-  add_asset,
-  remove_asset,
-  reset_assets,
-  connect_on_asset_update_callback,
-  connect_on_asset_selection_callback,
-  destroy_state,
-  import_icons,
-  update_render_scale,
-} from './logic/index.zig'
+import * as Logic from './logic/index.zig'
 import initMouseController, { camera } from 'WebGPU/pointer'
 import IconsPng from '../msdf/output/icons.png'
 import IconsJson from '../msdf/output/icons.json'
 import getDefaultPoints from 'utils/getDefaultPoints'
 import * as Textures from 'textures'
+import { startCache, endCache } from 'WebGPU/textureCache'
 
 export type SerializedInputAsset = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
@@ -33,15 +24,22 @@ export type SerializedOutputAsset = {
   textureId: number
 }
 
+export enum CreatorTool {
+  None = 0,
+  DrawShape = 1,
+}
+
 export interface CreatorAPI {
   addImage: (url: string) => void
   resetAssets: (assets: SerializedInputAsset[], withSnapshot?: boolean) => void
   removeAsset: VoidFunction
   destroy: VoidFunction
+  setTool: (tool: CreatorTool) => void
 }
 
 export default async function initCreator(
   canvas: HTMLCanvasElement,
+  uploadTexture: (url: string, onNewUrl: (newUrl: string) => void) => void,
   onAssetsUpdate: (assets: SerializedOutputAsset[]) => void,
   onAssetSelect: (assetId: number) => void,
   onProcessingUpdate: (inProgress: boolean) => void
@@ -62,7 +60,7 @@ export default async function initCreator(
   const projectWidth = canvas.clientWidth / 2
   const projectHeight = canvas.clientHeight / 2
 
-  init_state(projectWidth, projectHeight)
+  Logic.init_state(projectWidth, projectHeight, device.limits.maxTextureDimension2D)
   // rotation doesnt work
   const context = canvas.getContext('webgpu')
   if (!context) throw Error('WebGPU from canvas needs to be always provided')
@@ -76,7 +74,7 @@ export default async function initCreator(
   })
 
   function updateRenderScale() {
-    update_render_scale(canvas.width / (canvas.clientWidth * camera.zoom))
+    Logic.update_render_scale(canvas.width / (canvas.clientWidth * camera.zoom))
   }
 
   let wasInitialOffsetSet = false
@@ -89,14 +87,14 @@ export default async function initCreator(
     updateRenderScale()
   })
 
-  initPrograms(device, presentationFormat)
+  const cleanupPrograms = initPrograms(device, presentationFormat)
 
   initMouseController(canvas, updateRenderScale, () => {
     isMouseEventProcessing = true
     updateProcessing()
   })
 
-  connect_on_asset_update_callback((serializedData: ZigAssetOutput[]) => {
+  Logic.connect_on_asset_update_callback((serializedData: ZigAssetOutput[]) => {
     const serializedAssetsTextureUrl = [...serializedData].map<SerializedOutputAsset>((asset) => ({
       id: asset.id,
       textureId: asset.texture_id,
@@ -111,17 +109,27 @@ export default async function initCreator(
     onAssetsUpdate(serializedAssetsTextureUrl)
   })
 
-  connect_on_asset_selection_callback(onAssetSelect)
+  Logic.connect_on_asset_selection_callback(onAssetSelect)
+
+  Logic.connect_cache_callbacks((textureId, boundingBox, width, height) => {
+    return startCache(device, presentationFormat, textureId, boundingBox, width, height)
+  }, endCache)
 
   const addImage: CreatorAPI['addImage'] = (url) => {
-    const textureId = Textures.add(url, (width, height) => {
+    const textureId = Textures.add(url, (width, height, isNew) => {
       const points = getDefaultPoints(width, height, projectWidth, projectHeight)
-      add_asset(0 /* no id yet, needs to be generated */, points, textureId)
+      Logic.add_asset(0 /* no id yet, needs to be generated */, points, textureId)
+
+      if (isNew) {
+        uploadTexture(url, (newUrl) => {
+          Textures.updateTextureUrl(textureId, newUrl)
+        })
+      }
     })
   }
 
   Textures.add(IconsPng, (width, height) => {
-    import_icons(
+    Logic.import_icons(
       IconsJson.chars.flatMap((char) => [
         char.id,
         char.x / width,
@@ -134,10 +142,17 @@ export default async function initCreator(
     )
   })
 
-  const stopCreator = runCreator(canvas, context, device, presentationFormat, () => {
-    isMouseEventProcessing = false
-    updateProcessing()
-  })
+  const stopCreator = runCreator(
+    canvas,
+    context,
+    device,
+    cleanupPrograms,
+    presentationFormat,
+    () => {
+      isMouseEventProcessing = false
+      updateProcessing()
+    }
+  )
 
   const resetAssets: CreatorAPI['resetAssets'] = async (assets, withSnapshot = false) => {
     const results = await Promise.allSettled(
@@ -146,19 +161,26 @@ export default async function initCreator(
           new Promise((resolve, reject) => {
             if (asset.points) {
               return resolve({
-                points: asset.points,
-                texture_id: asset.textureId || Textures.add(asset.url),
+                points: asset.points, // here it makes sense
+                texture_id: asset.textureId || Textures.add(asset.url), // if we got points, so we have url on the server for sure
                 id: asset.id || 0,
               })
             }
 
-            const textureId = Textures.add(asset.url, (width, height) => {
+            const textureId = Textures.add(asset.url, (width, height, isNew) => {
               // we wait to add image once points are known. Other option was to add image first
               // with "default" points and then update it once texture is loaded.
               // However, that would cause issues with undo/redo since we would have history
               // snapshot with "default" points and then update it to the real points.
+              if (isNew) {
+                uploadTexture(asset.url, (newUrl) => {
+                  console.log(asset.url, newUrl)
+                  Textures.updateTextureUrl(textureId, newUrl)
+                })
+              }
+
               return resolve({
-                points: getDefaultPoints(width, height, canvas.clientWidth, canvas.clientHeight),
+                points: getDefaultPoints(width, height, projectWidth, projectHeight),
                 texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
                 id: 0,
               })
@@ -171,18 +193,19 @@ export default async function initCreator(
       .filter((result) => result.status === 'fulfilled')
       .map((result) => result.value)
 
-    reset_assets(serializedAssets, withSnapshot)
+    Logic.reset_assets(serializedAssets, withSnapshot)
   }
 
   return {
     addImage,
-    removeAsset: remove_asset,
+    removeAsset: Logic.remove_asset,
     resetAssets,
     destroy: () => {
       stopCreator()
-      destroy_state()
+      Logic.destroy_state()
       context.unconfigure()
       device.destroy()
     },
+    setTool: Logic.set_tool,
   }
 }

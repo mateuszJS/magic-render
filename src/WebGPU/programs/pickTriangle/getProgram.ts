@@ -1,8 +1,9 @@
 import shaderCode from './shader.wgsl'
 
-const STRIDE = 4 + 1
+const INSTANCE_STRIDE =
+  4 * 3 /* positon */ + 1 /* id */ + 3 /* value of roudned corner  for each of three positions */
 
-export default function getProgram(device: GPUDevice) {
+export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
   const module = device.createShaderModule({
     label: 'pick triangle module',
     code: shaderCode,
@@ -16,10 +17,14 @@ export default function getProgram(device: GPUDevice) {
       entryPoint: 'vs',
       buffers: [
         {
-          arrayStride: STRIDE * 4,
+          arrayStride: INSTANCE_STRIDE * 4,
+          stepMode: 'instance',
           attributes: [
-            { shaderLocation: 0, offset: 0, format: 'float32x4' }, // destination position
-            { shaderLocation: 1, offset: 16, format: 'float32' }, // id
+            { shaderLocation: 0, offset: 0, format: 'float32x4' }, // position 0
+            { shaderLocation: 1, offset: 16, format: 'float32x4' }, // position 1
+            { shaderLocation: 2, offset: 16 + 16, format: 'float32x4' }, // position 2
+            { shaderLocation: 3, offset: 16 + 16 + 16, format: 'uint32' }, // id'
+            { shaderLocation: 4, offset: 16 + 16 + 16 + 4, format: 'float32x3' }, // rounded corner values
           ] as const,
         },
       ],
@@ -30,43 +35,17 @@ export default function getProgram(device: GPUDevice) {
       targets: [
         {
           format: 'r32uint',
-          // blend: {
-          //   color: {
-          //     srcFactor: 'one',
-          //     dstFactor: 'one-minus-src-alpha'
-          //   },
-          //   alpha: {
-          //     srcFactor: 'one',
-          //     dstFactor: 'one-minus-src-alpha'
-          //   },
-          // },
         },
       ],
     },
-    // depthStencil: {
-    //   depthWriteEnabled: true,
-    //   depthCompare: 'less',
-    //   format: 'depth24plus',
-    // },
   })
 
-  const uniformBufferSize = 16 /*projection matrix*/ * 4
-  const uniformBuffer = device.createBuffer({
-    label: 'uniforms',
-    size: uniformBufferSize,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-  })
+  // Cache bind group for this program (no texture needed)
+  let cachedBindGroup: GPUBindGroup | null = null
 
-  const uniformValues = new Float32Array(uniformBufferSize / 4)
-  const kMatrixOffset = 0
-  const matrixValue = uniformValues.subarray(kMatrixOffset, kMatrixOffset + 16)
+  return function pickTriangle(pass: GPURenderPassEncoder, vertexData: DataView) {
+    const numInstances = vertexData.byteLength / (4 * INSTANCE_STRIDE)
 
-  return function pickTriangle(
-    pass: GPURenderPassEncoder,
-    worldProjectionMatrix: Float32Array,
-    vertexData: Float32Array<ArrayBufferLike>
-  ) {
-    const numVertices = (vertexData.length / STRIDE) | 0
     const vertexBuffer = device.createBuffer({
       label: 'pick triangle vertex buffer vertices',
       size: vertexData.byteLength,
@@ -74,20 +53,17 @@ export default function getProgram(device: GPUDevice) {
     })
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
 
-    // bind group should be pre-created and reuse instead of constantly initialized
-    const bindGroup = device.createBindGroup({
-      layout: pipeline.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
-    })
+    // Get or create bind group for this program
+    if (!cachedBindGroup) {
+      cachedBindGroup = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [{ binding: 0, resource: { buffer: matrixBuffer } }],
+      })
+    }
 
     pass.setPipeline(pipeline)
     pass.setVertexBuffer(0, vertexBuffer)
-
-    matrixValue.set(worldProjectionMatrix)
-
-    device.queue.writeBuffer(uniformBuffer, 0, uniformValues)
-
-    pass.setBindGroup(0, bindGroup)
-    pass.draw(numVertices)
+    pass.setBindGroup(0, cachedBindGroup)
+    pass.draw(3, numInstances)
   }
 }

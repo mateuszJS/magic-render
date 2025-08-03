@@ -1,13 +1,15 @@
-const Asset = @import("asset.zig").Asset;
+const Image = @import("images.zig").Image;
 const Point = @import("types.zig").Point;
 const Line = @import("line.zig");
 const PointUV = @import("types.zig").PointUV;
 const std = @import("std");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 const Msdf = @import("msdf.zig");
+const Triangle = @import("triangle.zig");
+const shared = @import("shared.zig");
 
-const white = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
-const black = [4]f32{ 0.0, 0.0, 0.0, 1.0 };
+const white = [4]u8{ 255, 255, 255, 255 };
+const black = [4]u8{ 0, 0, 0, 255 };
 
 const TransformLine = struct {
     id: u32,
@@ -147,13 +149,13 @@ pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     }
 }
 
-fn get_points_of_line(asset: Asset, t_line: TransformLine, render_scale: f32) struct { Point, Point } {
-    const points = asset.points;
+fn get_points_of_line(img: Image, t_line: TransformLine) struct { Point, Point } {
+    const points = img.points;
     if (t_line.id <= 4) {
         // corners
         const length = points[t_line.start].distance(points[t_line.end]);
         const angle = points[t_line.start].angle_to(points[t_line.end]);
-        const sanitized_length = @min(30.0, length * 0.1) * render_scale;
+        const sanitized_length = @min(30.0 * shared.render_scale, length * 0.1);
 
         const p1 = Point{
             .x = points[t_line.start].x,
@@ -170,7 +172,7 @@ fn get_points_of_line(asset: Asset, t_line: TransformLine, render_scale: f32) st
         const point = points[t_line.start].mid(points[t_line.end]);
         const length = points[t_line.start].distance(points[t_line.end]);
         const angle = points[t_line.start].angle_to(points[t_line.end]);
-        const sanitized_length = @min(30.0, length * 0.07) * render_scale;
+        const sanitized_length = @min(30.0 * shared.render_scale, length * 0.07);
 
         const p1 = Point{
             .x = point.x + @cos(angle) * sanitized_length,
@@ -193,8 +195,8 @@ fn get_points_of_line(asset: Asset, t_line: TransformLine, render_scale: f32) st
         };
         const angle = std.math.atan2(asset_mid_bottom.y - asset_center.y, asset_mid_bottom.x - asset_center.x);
         const p1 = Point{
-            .x = asset_mid_bottom.x + @cos(angle) * 60.0 * render_scale,
-            .y = asset_mid_bottom.y + @sin(angle) * 60.0 * render_scale,
+            .x = asset_mid_bottom.x + @cos(angle) * 60.0 * shared.render_scale,
+            .y = asset_mid_bottom.y + @sin(angle) * 60.0 * shared.render_scale,
         };
         const p2 = Point{
             .x = p1.x + @cos(angle + std.math.pi / 4.0) * 0.1, // 0.01 just to make it 45 degree
@@ -206,48 +208,46 @@ fn get_points_of_line(asset: Asset, t_line: TransformLine, render_scale: f32) st
     }
 }
 
-pub const DRAW_VERTICES_COUNT = UI_VERTICIES_COUNT_BORDER * Line.DRAW_VERTICES_COUNT * 2;
-const HALF_BUFFER = DRAW_VERTICES_COUNT / 2;
+pub const RENDER_TRIANGLE_INSTANCES = UI_VERTICIES_COUNT_BORDER * 2 * 2; // two triangle per line, each line has front and back color
 
-pub fn get_transform_ui(
-    triangle_buffer: *[DRAW_VERTICES_COUNT]f32,
-    msdf_vertex_data: *[Msdf.DRAW_VERTICES_COUNT]f32,
-    asset: Asset,
+pub fn get_draw_vertex_data(
+    triangle_buffer: *[RENDER_TRIANGLE_INSTANCES]Triangle.DrawInstance,
+    msdf_vertex_data: *[2]Msdf.DrawInstance,
+    img: Image,
     hovered_elem_id: u32,
-    render_scale: f32,
 ) void {
     var i: usize = 0;
     for (resize_lines) |t_line| {
         const color = if (hovered_elem_id == t_line.id) white else black;
 
-        const p1, const p2 = get_points_of_line(asset, t_line, render_scale);
-        var thickness: f32 = 10.0 * render_scale;
+        const p1, const p2 = get_points_of_line(img, t_line);
+        var thickness: f32 = 10.0 * shared.render_scale;
 
         if (t_line.id == 9) {
             // rotation icon
-            thickness = 30.0 * render_scale;
-            const icon_size = thickness - 5.0 * render_scale;
-            const msdf_data = Msdf.get_msdf_vertex_data(
+            thickness = 30.0 * shared.render_scale;
+            const icon_size = thickness - 5.0 * shared.render_scale;
+            const msdf_data = Msdf.get_draw_vertex_data(
                 Msdf.IconId.rotate,
-                p1.x - icon_size * 0.5 - 0.12 * render_scale,
-                p1.y - icon_size * 0.5 + 0.75 * render_scale,
+                p1.x - icon_size * 0.5 - 0.12 * shared.render_scale,
+                p1.y - icon_size * 0.5 + 0.75 * shared.render_scale,
                 icon_size,
                 if (hovered_elem_id == t_line.id) black else white,
             );
             msdf_vertex_data.* = msdf_data;
         }
 
-        const outer_line_width = thickness + 10.0 * render_scale;
-        Line.get_vertex_data(
-            triangle_buffer[i..][0..Line.DRAW_VERTICES_COUNT],
+        const outer_line_width = thickness + 10.0 * shared.render_scale;
+        Line.get_draw_vertex_data(
+            triangle_buffer[i..][0..2],
             p1,
             p2,
             outer_line_width,
             white,
             outer_line_width / 2.0,
         );
-        Line.get_vertex_data(
-            triangle_buffer[(HALF_BUFFER + i)..][0..Line.DRAW_VERTICES_COUNT],
+        Line.get_draw_vertex_data(
+            triangle_buffer[(RENDER_TRIANGLE_INSTANCES / 2) + i ..][0..2],
             p1,
             p2,
             thickness,
@@ -255,19 +255,26 @@ pub fn get_transform_ui(
             thickness / 2.0,
         );
 
-        i += Line.DRAW_VERTICES_COUNT;
+        i += 2;
     }
 }
 
-pub const PICK_BORDER_BUFFER_SIZE = UI_VERTICIES_COUNT_BORDER * Line.PICK_VERTICIES_COUNT;
-pub fn get_transform_ui_pick(buffer: *[PICK_BORDER_BUFFER_SIZE]f32, asset: Asset, render_scale: f32) void {
+pub const PICK_TRIANGLE_INSTANCES = UI_VERTICIES_COUNT_BORDER * 2;
+pub fn get_pick_vertex_data(buffer: *[PICK_TRIANGLE_INSTANCES]Triangle.PickInstance, img: Image) void {
     var i: usize = 0;
     for (resize_lines) |t_line| {
-        const p1, const p2 = get_points_of_line(asset, t_line, render_scale);
-        const thickness: f32 = if (t_line.id == 9) 30.0 * render_scale else 10.0 * render_scale;
+        const p1, const p2 = get_points_of_line(img, t_line);
+        const thickness: f32 = if (t_line.id == 9) 30.0 * shared.render_scale else 10.0 * shared.render_scale;
 
-        Line.get_vertex_data_pick(buffer[i..][0..Line.PICK_VERTICIES_COUNT], p1, p2, thickness + 10.0 * render_scale, @floatFromInt(t_line.id));
+        Line.get_pick_vertex_data(
+            buffer[i..][0..2],
+            p1,
+            p2,
+            thickness + 10.0 * shared.render_scale,
+            thickness / 2.0,
+            t_line.id,
+        );
 
-        i += Line.PICK_VERTICIES_COUNT;
+        i += 2;
     }
 }
