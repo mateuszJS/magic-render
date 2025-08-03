@@ -57,7 +57,7 @@ pub const Shape = struct {
     // Arrays: Use &array to get a slice reference
     // Slices: Pass directly (they're already slices)
     // ArrayList: Use .items to get the underlying slice
-    pub fn new_from_points(id: u32, input_paths: []const []const [2]Point, allocator: std.mem.Allocator) !Shape {
+    pub fn new_from_points(id: u32, input_paths: []const []const [4]Point, allocator: std.mem.Allocator) !Shape {
         var paths_list = std.ArrayList(Path).init(allocator);
 
         for (input_paths) |input_path| {
