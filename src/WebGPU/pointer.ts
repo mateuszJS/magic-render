@@ -148,18 +148,12 @@ export default function initMouseController(
 
   /* panning , supports both scroll and touch, expect Safari */
   canvas.addEventListener('wheel', (event) => {
-    updatePointer(e)
     event.preventDefault()
-    if (cameraMode === CameraMode.Zoom) {
-      const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : -e.deltaX
-      performZoom(-delta * 0.005, pointer.x, pointer.y)
+    if (mouseMode === MouseMode.Zoom) {
+      performZoom(-event.deltaY * 0.005, pointer.x, pointer.y)
     } else {
-      if (e.ctrlKey) {
-        zoom(e.deltaY * camera.zoom)
-      } else {
-        camera.x -= e.deltaX
-        camera.y += e.deltaY
-      }
+      camera.x -= event.deltaX
+      camera.y += event.deltaY
     }
   })
   // pointer.zoom = clamp(pointer.zoom + event.deltaY * 0.01, 0.1, 100)
@@ -186,19 +180,23 @@ export default function initMouseController(
       case '=':
       case '+':
         // Zoom in with Ctrl/Cmd + Plus
-          if ((!event.ctrlKey && !event.metaKey)) break
-          event.preventDefault()
+        if ((!event.ctrlKey && !event.metaKey)) break
+        event.preventDefault()
+        {
           const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
           const centerY = pointer.y !== OUTSIDE_CANVAS ? pointer.y : canvas.height / 2
           performZoom(0.1, centerX, centerY)
-          break
+        }
+        break
       case '-':
         // Zoom out with Ctrl/Cmd/Shift + Minus
-        if ((!event.ctrlKey && !event.metaKey)) break
+        if ((!event.ctrlKey && !event.metaKey && !event.shiftKey)) break
         event.preventDefault()
-        const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
-        const centerY = pointer.y !== OUTSIDE_CANVAS ? pointer.y : canvas.height / 2
-        performZoom(-0.1, centerX, centerY)
+        {
+          const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
+          const centerY = pointer.y !== OUTSIDE_CANVAS ? pointer.y : canvas.height / 2
+          performZoom(-0.1, centerX, centerY)
+        }
         break
     }
   })
