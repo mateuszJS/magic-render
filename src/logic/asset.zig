@@ -11,15 +11,21 @@ pub const Asset = struct {
     id: u32,
     points: [4]PointUV,
     texture_id: u32,
+    fill_color: [4]f32,
+    stroke_color: [4]f32,
+    stroke_width: f32,
 
     pub const VERTEX_BUFFER_SIZE: usize = 6 * 6; // 6 vertices, each with 6 attributes (x, y, z, w, u, v)
     pub const PICK_VERTEX_BUFFER_SIZE: usize = 7 * 6; // 6 vertices, each with 7 attributes (x, y, z, w, u, v, id)
 
-    pub fn new(id: u32, points: [4]PointUV, texture_id: u32) Asset {
+    pub fn new(id: u32, points: [4]PointUV, texture_id: u32, fill_color: [4]f32, stroke_color: [4]f32, stroke_width: f32) Asset {
         return Asset{
             .id = id,
             .points = points,
             .texture_id = texture_id,
+            .fill_color = fill_color,
+            .stroke_color = stroke_color,
+            .stroke_width = stroke_width,
         };
     }
 
@@ -65,6 +71,9 @@ pub const Asset = struct {
             .points = self.points,
             .texture_id = self.texture_id,
             .id = self.id,
+            .fill_color = self.fill_color,
+            .stroke_color = self.stroke_color,
+            .stroke_width = self.stroke_width,
         };
     }
 };
@@ -73,4 +82,7 @@ pub const SerializedAsset = struct {
     points: [4]PointUV,
     texture_id: u32,
     id: u32,
+    fill_color: [4]f32,
+    stroke_color: [4]f32,
+    stroke_width: f32,
 };

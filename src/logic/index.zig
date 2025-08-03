@@ -82,10 +82,19 @@ fn generate_id() u32 {
     return id;
 }
 
-pub fn add_asset(id_or_zero: u32, points: [4]Types.PointUV, texture_id: u32) void {
+pub fn add_shape(id_or_zero: u32, points: [4]Types.PointUV, texture_id: u32, fill_color: [4]f32, stroke_color: [4]f32, stroke_width: f32) void {
     const id = if (id_or_zero == 0) generate_id() else id_or_zero;
-    state.assets.put(id, Asset.new(id, points, texture_id)) catch unreachable;
+    state.assets.put(id, Asset.new(id, points, texture_id, fill_color, stroke_color, stroke_width)) catch unreachable;
     check_assets_update(true);
+}
+
+pub fn add_asset(id_or_zero: u32, points: [4]Types.PointUV, texture_id: u32) void {
+    // Default colors for backward compatibility - white fill, black stroke, 1.0 width
+    const default_fill_color = [_]f32{ 1.0, 1.0, 1.0, 1.0 };
+    const default_stroke_color = [_]f32{ 0.0, 0.0, 0.0, 1.0 };
+    const default_stroke_width: f32 = 1.0;
+    
+    add_shape(id_or_zero, points, texture_id, default_fill_color, default_stroke_color, default_stroke_width);
 }
 
 pub fn remove_asset() void {
@@ -372,7 +381,7 @@ pub fn reset_assets(new_assets: []const SerializedAsset, with_snapshot: bool) vo
     state.assets.clearAndFree();
 
     for (new_assets) |asset| {
-        add_asset(asset.id, asset.points, asset.texture_id);
+        add_shape(asset.id, asset.points, asset.texture_id, asset.fill_color, asset.stroke_color, asset.stroke_width);
     }
 
     if (!state.assets.contains(state.selected_asset_id)) {
@@ -436,6 +445,9 @@ test "reset_assets does not call the real update callback" {
         },
         .texture_id = 1,
         .id = 123,
+        .fill_color = [_]f32{ 1.0, 1.0, 1.0, 1.0 },
+        .stroke_color = [_]f32{ 0.0, 0.0, 0.0, 1.0 },
+        .stroke_width = 1.0,
     }};
     reset_assets(&initial_assets, false);
 

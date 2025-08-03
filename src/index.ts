@@ -5,6 +5,7 @@ import runCreator from 'run'
 import {
   init_state,
   add_asset,
+  add_shape,
   remove_asset,
   reset_assets,
   connect_on_asset_update_callback,
@@ -24,6 +25,9 @@ export type SerializedInputAsset = {
   points?: PointUV[]
   url: string
   textureId?: number
+  fillColor?: number[]
+  strokeColor?: number[]
+  strokeWidth?: number
 }
 
 export type SerializedOutputAsset = {
@@ -31,6 +35,9 @@ export type SerializedOutputAsset = {
   points: PointUV[]
   url: string
   textureId: number
+  fillColor: number[]
+  strokeColor: number[]
+  strokeWidth: number
 }
 
 export interface CreatorAPI {
@@ -107,6 +114,9 @@ export default async function initCreator(
         v: point.v,
       })),
       url: Textures.getUrl(asset.texture_id),
+      fillColor: [...asset.fill_color],
+      strokeColor: [...asset.stroke_color],
+      strokeWidth: asset.stroke_width,
     }))
     onAssetsUpdate(serializedAssetsTextureUrl)
   })
@@ -149,6 +159,9 @@ export default async function initCreator(
                 points: asset.points,
                 texture_id: asset.textureId || Textures.add(asset.url),
                 id: asset.id || 0,
+                fill_color: asset.fillColor || [1.0, 1.0, 1.0, 1.0],
+                stroke_color: asset.strokeColor || [0.0, 0.0, 0.0, 1.0],
+                stroke_width: asset.strokeWidth || 1.0,
               })
             }
 
@@ -161,6 +174,9 @@ export default async function initCreator(
                 points: getDefaultPoints(width, height, canvas.clientWidth, canvas.clientHeight),
                 texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
                 id: 0,
+                fill_color: asset.fillColor || [1.0, 1.0, 1.0, 1.0],
+                stroke_color: asset.strokeColor || [0.0, 0.0, 0.0, 1.0],
+                stroke_width: asset.strokeWidth || 1.0,
               })
             })
           })
