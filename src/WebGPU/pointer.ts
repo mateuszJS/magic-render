@@ -138,19 +138,24 @@ export default function initMouseController(
     }
   })
 
+  /* zoom functionality shared between wheel and keyboard */
+  function performZoom(zoomDelta: number, centerX: number, centerY: number) {
+    const oldZoom = camera.zoom
+    camera.zoom = clamp(camera.zoom + zoomDelta, 0.1, 20)
+    onZoom()
+
+    const zoomFactor = camera.zoom / oldZoom
+
+    camera.x = centerX - (centerX - camera.x) * zoomFactor
+    const realY = canvas.height - centerY
+    camera.y = realY - (realY - camera.y) * zoomFactor
+  }
+
   /* panning , supports both scroll and touch, expect Safari */
   canvas.addEventListener('wheel', (event) => {
     event.preventDefault()
     if (cameraMode === CameraMode.Zoom) {
-      const oldZoom = camera.zoom
-      camera.zoom = clamp(camera.zoom - event.deltaY * 0.005, 0.1, 20)
-      onZoom()
-
-      const zoomFactor = camera.zoom / oldZoom
-
-      camera.x = pointer.x - (pointer.x - camera.x) * zoomFactor
-      const realY = canvas.height - pointer.y
-      camera.y = realY - (realY - camera.y) * zoomFactor
+      performZoom(-event.deltaY * 0.005, pointer.x, pointer.y)
     } else {
       camera.x -= event.deltaX
       camera.y += event.deltaY
@@ -168,6 +173,18 @@ export default function initMouseController(
     } else if (event.key === 'Alt') {
       event.preventDefault()
       cameraMode = CameraMode.Zoom
+    } else if ((event.ctrlKey || event.metaKey) && (event.key === '=' || event.key === '+')) {
+      // Zoom in with Ctrl/Cmd + Plus
+      event.preventDefault()
+      const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
+      const centerY = pointer.y !== OUTSIDE_CANVAS ? pointer.y : canvas.height / 2
+      performZoom(0.1, centerX, centerY)
+    } else if ((event.ctrlKey || event.metaKey) && event.key === '-') {
+      // Zoom out with Ctrl/Cmd + Minus
+      event.preventDefault()
+      const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
+      const centerY = pointer.y !== OUTSIDE_CANVAS ? pointer.y : canvas.height / 2
+      performZoom(-0.1, centerX, centerY)
     }
   })
   document.body.addEventListener('keyup', (event) => {
