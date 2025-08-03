@@ -67,7 +67,9 @@ export function add(
 
   getImageWithDetails(url).then(([img, svgRootNode]) => {
     if (svgRootNode) {
-      createShapes(svgRootNode as unknown as Node)
+      svgRootNode.children.forEach((child) => {
+        createShapes(child)
+      })
       return
     }
     const { ctx } = getImageData(img, img.naturalWidth, img.naturalHeight)
