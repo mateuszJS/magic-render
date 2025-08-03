@@ -179,8 +179,8 @@ export default function initMouseController(
       const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
       const centerY = pointer.y !== OUTSIDE_CANVAS ? pointer.y : canvas.height / 2
       performZoom(0.1, centerX, centerY)
-    } else if ((event.ctrlKey || event.metaKey) && event.key === '-') {
-      // Zoom out with Ctrl/Cmd + Minus
+    } else if ((event.ctrlKey || event.metaKey || event.shiftKey) && event.key === '-') {
+      // Zoom out with Ctrl/Cmd/Shift + Minus
       event.preventDefault()
       const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
       const centerY = pointer.y !== OUTSIDE_CANVAS ? pointer.y : canvas.height / 2
