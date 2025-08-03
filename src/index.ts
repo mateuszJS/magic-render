@@ -6,6 +6,7 @@ import {
   init_state,
   add_asset,
   add_shape,
+  add_vector_shape,
   remove_asset,
   reset_assets,
   connect_on_asset_update_callback,
@@ -42,6 +43,8 @@ export type SerializedOutputAsset = {
 
 export interface CreatorAPI {
   addImage: (url: string) => void
+  addShape: (url: string, fillColor?: number[], strokeColor?: number[], strokeWidth?: number) => void
+  addVectorShape: (points: PointUV[], fillColor?: number[], strokeColor?: number[], strokeWidth?: number) => void
   resetAssets: (assets: SerializedInputAsset[], withSnapshot?: boolean) => void
   removeAsset: VoidFunction
   destroy: VoidFunction
@@ -130,6 +133,23 @@ export default async function initCreator(
     })
   }
 
+  const addShape: CreatorAPI['addShape'] = (url, fillColor, strokeColor, strokeWidth) => {
+    const textureId = Textures.add(url, (width, height) => {
+      const points = getDefaultPoints(width, height, projectWidth, projectHeight)
+      const defaultFillColor = fillColor || [1.0, 1.0, 1.0, 1.0]
+      const defaultStrokeColor = strokeColor || [0.0, 0.0, 0.0, 1.0]
+      const defaultStrokeWidth = strokeWidth || 1.0
+      add_shape(0 /* no id yet, needs to be generated */, points, textureId, defaultFillColor, defaultStrokeColor, defaultStrokeWidth)
+    })
+  }
+
+  const addVectorShape: CreatorAPI['addVectorShape'] = (points, fillColor, strokeColor, strokeWidth) => {
+    const defaultFillColor = fillColor || [1.0, 1.0, 1.0, 1.0]
+    const defaultStrokeColor = strokeColor || [0.0, 0.0, 0.0, 1.0]
+    const defaultStrokeWidth = strokeWidth || 1.0
+    add_vector_shape(0 /* no id yet, needs to be generated */, points, defaultFillColor, defaultStrokeColor, defaultStrokeWidth)
+  }
+
   Textures.add(IconsPng, (width, height) => {
     import_icons(
       IconsJson.chars.flatMap((char) => [
@@ -192,6 +212,8 @@ export default async function initCreator(
 
   return {
     addImage,
+    addShape,
+    addVectorShape,
     removeAsset: remove_asset,
     resetAssets,
     destroy: () => {

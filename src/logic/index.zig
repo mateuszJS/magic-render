@@ -82,6 +82,10 @@ fn generate_id() u32 {
     return id;
 }
 
+pub fn add_vector_shape(id_or_zero: u32, points: [4]Types.PointUV, fill_color: [4]f32, stroke_color: [4]f32, stroke_width: f32) void {
+    add_shape(id_or_zero, points, 0, fill_color, stroke_color, stroke_width); // texture_id = 0 for vector shapes
+}
+
 pub fn add_shape(id_or_zero: u32, points: [4]Types.PointUV, texture_id: u32, fill_color: [4]f32, stroke_color: [4]f32, stroke_width: f32) void {
     const id = if (id_or_zero == 0) generate_id() else id_or_zero;
     state.assets.put(id, Asset.new(id, points, texture_id, fill_color, stroke_color, stroke_width)) catch unreachable;
@@ -215,9 +219,12 @@ fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
     var msdf_vertex_data = std.ArrayList(f32).init(std.heap.page_allocator);
 
     // TODO: free memory, defer list.deinit();
-    const red = [_]f32{ 1.0, 0.0, 0.0, 1.0 };
     if (state.hovered_asset_id != state.selected_asset_id) {
         if (state.assets.get(state.hovered_asset_id)) |asset| {
+            // Use asset's stroke color for hover border, fallback to red for visibility
+            const hover_color = if (asset.stroke_color[0] + asset.stroke_color[1] + asset.stroke_color[2] > 0.1) 
+                asset.stroke_color else [_]f32{ 1.0, 0.0, 0.0, 1.0 };
+            
             for (asset.points, 0..) |point, i| {
                 const next_point = if (i == 3) asset.points[0] else asset.points[i + 1];
                 var buffer: [Line.DRAW_VERTICES_COUNT]f32 = undefined;
@@ -227,8 +234,8 @@ fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
                     buffer[0..Line.DRAW_VERTICES_COUNT],
                     point,
                     next_point,
-                    10.0 * state.render_scale,
-                    red,
+                    (asset.stroke_width + 4.0) * state.render_scale, // slightly wider than stroke for visibility
+                    hover_color,
                     5.0 * state.render_scale,
                 );
 
@@ -237,8 +244,11 @@ fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
         }
     }
 
-    const green = [_]f32{ 0.0, 1.0, 0.0, 1.0 };
     if (state.assets.get(state.selected_asset_id)) |asset| {
+        // Use asset's stroke color for selection border, fallback to green for visibility
+        const selection_color = if (asset.stroke_color[0] + asset.stroke_color[1] + asset.stroke_color[2] > 0.1) 
+            asset.stroke_color else [_]f32{ 0.0, 1.0, 0.0, 1.0 };
+            
         for (asset.points, 0..) |point, i| {
             const next_point = if (i == 3) asset.points[0] else asset.points[i + 1];
             var buffer: [Line.DRAW_VERTICES_COUNT]f32 = undefined;
@@ -246,8 +256,8 @@ fn get_border() struct { []f32, []f32 } { // { triangle vertex, msdf vertex }
                 buffer[0..Line.DRAW_VERTICES_COUNT],
                 point,
                 next_point,
-                10.0 * state.render_scale,
-                green,
+                (asset.stroke_width + 6.0) * state.render_scale, // wider than stroke for visibility
+                selection_color,
                 5.0 * state.render_scale,
             );
             triangle_vertex_data.appendSlice(&buffer) catch unreachable;
@@ -313,14 +323,64 @@ fn get_project_boundary() [Line.DRAW_VERTICES_COUNT * 5]f32 {
     return buffer;
 }
 
+fn render_asset_as_vector_shape(asset: Asset) void {
+    // Render fill if alpha > 0
+    if (asset.fill_color[3] > 0.0) {
+        var fill_vertex_data: [2 * Triangle.DRAW_VERTICES_COUNT]f32 = undefined;
+        
+        // Convert asset points to triangle vertices for fill
+        const p0 = [_]f32{ asset.points[0].x, asset.points[0].y, 0.0, 1.0, 0.0 };
+        const p1 = [_]f32{ asset.points[1].x, asset.points[1].y, 0.0, 1.0, 0.0 };
+        const p2 = [_]f32{ asset.points[2].x, asset.points[2].y, 0.0, 1.0, 0.0 };
+        const p3 = [_]f32{ asset.points[3].x, asset.points[3].y, 0.0, 1.0, 0.0 };
+        
+        Triangle.get_vertex_data(fill_vertex_data[0..Triangle.DRAW_VERTICES_COUNT], p0, p1, p2, asset.fill_color);
+        Triangle.get_vertex_data(fill_vertex_data[Triangle.DRAW_VERTICES_COUNT .. 2 * Triangle.DRAW_VERTICES_COUNT], p0, p2, p3, asset.fill_color);
+        
+        web_gpu_programs.draw_triangle(&fill_vertex_data);
+    }
+    
+    // Render stroke if alpha > 0 and width > 0
+    if (asset.stroke_color[3] > 0.0 and asset.stroke_width > 0.0) {
+        var stroke_vertex_data = std.ArrayList(f32).init(std.heap.page_allocator);
+        
+        for (asset.points, 0..) |point, i| {
+            const next_point = if (i == 3) asset.points[0] else asset.points[i + 1];
+            var buffer: [Line.DRAW_VERTICES_COUNT]f32 = undefined;
+            
+            Line.get_vertex_data(
+                buffer[0..Line.DRAW_VERTICES_COUNT],
+                point,
+                next_point,
+                asset.stroke_width * state.render_scale,
+                asset.stroke_color,
+                2.0 * state.render_scale,
+            );
+            
+            stroke_vertex_data.appendSlice(&buffer) catch unreachable;
+        }
+        
+        if (stroke_vertex_data.items.len > 0) {
+            web_gpu_programs.draw_triangle(stroke_vertex_data.items);
+        }
+        
+        stroke_vertex_data.deinit();
+    }
+}
+
 pub fn canvas_render() void {
     var iterator = state.assets.iterator();
 
     while (iterator.next()) |asset| {
-        var vertex_data: [Asset.VERTEX_BUFFER_SIZE]f32 = undefined;
-        asset.value_ptr.get_vertex_data(&vertex_data);
-
-        web_gpu_programs.draw_texture(&vertex_data, asset.value_ptr.texture_id);
+        // Check if this is a vector shape (texture_id 0 indicates vector shape)
+        if (asset.value_ptr.texture_id == 0) {
+            render_asset_as_vector_shape(asset.value_ptr.*);
+        } else {
+            // Render as texture
+            var vertex_data: [Asset.VERTEX_BUFFER_SIZE]f32 = undefined;
+            asset.value_ptr.get_vertex_data(&vertex_data);
+            web_gpu_programs.draw_texture(&vertex_data, asset.value_ptr.texture_id);
+        }
     }
 
     const project_boundary_buffer = get_project_boundary();

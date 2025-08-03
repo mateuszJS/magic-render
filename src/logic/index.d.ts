@@ -32,6 +32,7 @@ declare module '*.zig' {
   export const init_state: (width: number, height: number) => void
   export const add_asset: (maybe_asset_id: number, points: PointUV[], texture_id: number) => void
   export const add_shape: (maybe_asset_id: number, points: PointUV[], texture_id: number, fill_color: number[], stroke_color: number[], stroke_width: number) => void
+  export const add_vector_shape: (maybe_asset_id: number, points: PointUV[], fill_color: number[], stroke_color: number[], stroke_width: number) => void
   export const remove_asset: () => void
   export const reset_assets: (assets: ZigAssetInput[], with_snapshot: boolean) => void
 
