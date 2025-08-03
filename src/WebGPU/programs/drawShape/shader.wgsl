@@ -294,13 +294,13 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
   var total_crossings: i32 = 0;
   
   // For each curve, find closest point and count ray crossings
-  let num_curves = arrayLength(&curves) / 3;
+  let num_curves = arrayLength(&curves) / 4;
   for (var i = 0u; i < num_curves; i++) {
     let curve = CubicBezier(
-      curves[i * 3 + 0],
-      curves[i * 3 + 1],
-      curves[i * 3 + 2],
-      curves[i * 3 + 3]
+      curves[i * 4 + 0],
+      curves[i * 4 + 1],
+      curves[i * 4 + 2],
+      curves[i * 4 + 3]
     );
 
     // Check if this is a straight line (handle points have x >= STRAIGHT_LINE_THRESHOLD)

@@ -27,6 +27,10 @@ pub const Point = extern struct {
             .y = self.y - other.y,
         };
     }
+
+    pub fn clone(self: Point) Point {
+        return Point{ .x = self.x, .y = self.y };
+    }
 };
 
 pub const PointUV = extern struct {
