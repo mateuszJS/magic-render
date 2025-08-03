@@ -6,10 +6,10 @@ const Triangle = @import("triangle.zig");
 const TransformUI = @import("./transform_ui.zig");
 const zigar = @import("zigar");
 const Msdf = @import("./msdf.zig");
-const SvgTextures = @import("./svg_textures.zig");
 const shapes = @import("./shapes/shapes.zig");
 const squares = @import("squares.zig");
 const bounding_box = @import("shapes/bounding_box.zig");
+const shared = @import("./shared.zig");
 
 const WebGpuPrograms = struct {
     draw_texture: *const fn (images.DrawVertex, u32) void,
@@ -83,7 +83,6 @@ const State = struct {
     action: ActionType,
     tool: Tool,
     last_pointer_coords: Types.Point,
-    render_scale: f32,
 };
 
 var state = State{
@@ -95,7 +94,6 @@ var state = State{
     .action = ActionType.None,
     .tool = Tool.None,
     .last_pointer_coords = Types.Point{ .x = 0.0, .y = 0.0 },
-    .render_scale = 1.0,
 };
 
 pub fn init_state(allocator: std.mem.Allocator, width: f32, height: f32, texture_max_size: f32) void {
@@ -106,33 +104,9 @@ pub fn init_state(allocator: std.mem.Allocator, width: f32, height: f32, texture
     shapes.max_texture_size = texture_max_size;
 }
 
-pub fn init_svg_textures(texture_max_size: f32, resize_texture: *const fn (u32, f32, f32) void) void {
-    SvgTextures.init(texture_max_size, resize_texture);
-}
-
-pub fn add_svg_texture(texture_id: u32, width: f32, height: f32) void {
-    SvgTextures.add_texture(texture_id, width, height);
-
-    // When loading SVG, firstly assets will be added with their texture ID and later texture will load(so we know its svg)
-    // and now we have to make sure SVG texture is big enough to match quality of each of the assets.
-    var iterator = state.assets.iterator();
-    while (iterator.next()) |asset| {
-        switch (asset.value_ptr.*) {
-            .img => |img| {
-                if (img.texture_id == texture_id) {
-                    SvgTextures.ensure_svg_texture_quality(img);
-                }
-            },
-            .shape => {},
-        }
-    }
-}
-
 pub fn update_render_scale(scale: f32) !void {
-    state.render_scale = scale;
-    shapes.render_scale = scale;
+    shared.render_scale = scale;
 
-    SvgTextures.update_render_scale(scale);
     var iterator = state.assets.iterator();
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -160,14 +134,11 @@ fn generate_id() u32 {
 
 pub fn add_asset(id_or_zero: u32, points: [4]Types.PointUV, texture_id: u32) !void {
     const id = if (id_or_zero == 0) generate_id() else id_or_zero;
-    const img = images.Image.new(id, points, texture_id);
-
     const asset = Asset{
-        .img = img,
+        .img = images.Image.new(id, points, texture_id),
     };
     try state.assets.put(id, asset);
 
-    SvgTextures.ensure_svg_texture_quality(img);
     try check_assets_update(true);
 }
 
@@ -250,19 +221,18 @@ pub fn on_pointer_down(_allocator: std.mem.Allocator, x: f32, y: f32) !void {
         const point = Types.Point{ .x = x, .y = y };
 
         if (get_selected_shape()) |shape| {
-            if (!shape.is_closed) {
-                shape.setPreviewPoint(point);
-                const is_completed = try shape.add_point_start();
-                if (is_completed) {
-                    // Shape is completed, we can finalize it
-                    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-                    defer arena.deinit();
-                    const allocator = arena.allocator();
+            shape.setPreviewPoint(point);
+            try shape.addPointStart();
+            // const is_completed = try shape.addPointStart();
+            // if (is_completed) {
+            //     // Shape is completed, we can finalize it
+            //     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            //     defer arena.deinit();
+            //     const allocator = arena.allocator();
 
-                    try shape.completeShape(allocator);
-                }
-                return;
-            }
+            //     try shape.completeShape(allocator);
+            // }
+            return;
         }
 
         const id = generate_id();
@@ -336,7 +306,6 @@ pub fn on_pointer_move(x: f32, y: f32) void {
             .Transform => {
                 const points_ptr: *[4]Types.PointUV = &img.points;
                 TransformUI.tranform_points(state.hovered_asset_id, points_ptr, x, y);
-                SvgTextures.ensure_svg_texture_quality(img.*);
             },
             .None => {},
         }
@@ -356,7 +325,7 @@ pub fn commitChanges() !void {
             defer arena.deinit();
             const allocator = arena.allocator();
 
-            try shape.completeShape(allocator);
+            try shape.complete(allocator);
         }
     }
 }
@@ -378,9 +347,9 @@ fn get_border(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []
                             buffer[0..2],
                             point,
                             next_point,
-                            10.0 * state.render_scale,
+                            10.0 * shared.render_scale,
                             red,
-                            5.0 * state.render_scale,
+                            5.0 * shared.render_scale,
                         );
 
                         triangle_vertex_data.appendSlice(&buffer) catch unreachable;
@@ -403,9 +372,9 @@ fn get_border(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []
                         buffer[0..2],
                         point,
                         next_point,
-                        10.0 * state.render_scale,
+                        10.0 * shared.render_scale,
                         green,
-                        5.0 * state.render_scale,
+                        5.0 * shared.render_scale,
                     );
                     triangle_vertex_data.appendSlice(&buffer) catch unreachable;
                 }
@@ -418,7 +387,6 @@ fn get_border(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []
                     &msdf_buffer,
                     img,
                     state.hovered_asset_id,
-                    state.render_scale,
                 );
 
                 triangle_vertex_data.appendSlice(&triangle_buffer) catch unreachable;
@@ -467,7 +435,7 @@ fn draw_project_boundary() void {
             buffer[i * 2 ..][0..2],
             point,
             next_point,
-            2.0 * state.render_scale,
+            2.0 * shared.render_scale,
             color,
             0.0,
         );
@@ -480,7 +448,7 @@ const point_size: f32 = @floatFromInt(@sizeOf(Types.Point)); // 8 bytes
 const triangle_size: f32 = @floatFromInt(@sizeOf(Triangle.DrawInstance)); // 64 bytes
 const asset_size: f32 = @floatFromInt(@sizeOf(images.DrawVertex)); // 96 bytes
 
-pub fn render_draw() void {
+pub fn render_draw() !void {
     // Add some padding for allocator overhead (usually ~16-32 bytes per allocation)
     // const allocator_overhead = 64;
 
@@ -527,8 +495,10 @@ pub fn render_draw() void {
                     };
                     web_gpu_programs.draw_texture(vertex_data, texture_id);
                 } else {
-                    const vertex_data = shape.get_draw_vertex_data(allocator) catch unreachable;
-                    web_gpu_programs.draw_shape(vertex_data.curves, &vertex_data.bounding_box, vertex_data.uniform);
+                    const option_vertex_data = try shape.get_draw_vertex_data(allocator);
+                    if (option_vertex_data) |vertex_data| {
+                        web_gpu_programs.draw_shape(vertex_data.curves, &vertex_data.bounding_box, vertex_data.uniform);
+                    }
                 }
             },
         }
@@ -601,7 +571,7 @@ pub fn render_pick() void {
         switch (asset) {
             .img => |img| {
                 var vertex_buffer: [TransformUI.PICK_TRIANGLE_INSTANCES]Triangle.PickInstance = undefined;
-                TransformUI.get_pick_vertex_data(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES], img, state.render_scale);
+                TransformUI.get_pick_vertex_data(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES], img);
                 web_gpu_programs.pick_triangle(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES]);
             },
             .shape => {},
@@ -653,6 +623,13 @@ pub fn set_tool(tool: Tool) !void {
 
 pub fn stop_drawing_shape() void {
     state.selected_asset_id = 0;
+}
+
+pub fn add_shape(lines: []const []const [2]Types.Point) !void {
+    const id = generate_id();
+    const shape = try shapes.Shape.new_from_points(id, lines, std.heap.page_allocator);
+    try state.assets.put(id, Asset{ .shape = shape });
+    state.selected_asset_id = id;
 }
 
 test "reset_assets does not call the real update callback" {

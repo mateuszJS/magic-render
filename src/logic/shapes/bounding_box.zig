@@ -120,14 +120,14 @@ pub fn getBoundingBox(curves: []const Point, padding: f32) BoundingBox {
         .max_y = -std.math.inf(f32),
     };
 
-    const num_cubic_curves = curves.len / 3;
+    const num_cubic_curves = curves.len / 4;
 
     var i: usize = 0;
     while (i < num_cubic_curves) : (i += 1) {
-        const p0 = curves[i * 3 + 0];
-        const p1 = curves[i * 3 + 1];
-        const p2 = curves[i * 3 + 2];
-        const p3 = curves[i * 3 + 3];
+        const p0 = curves[i * 4 + 0];
+        const p1 = curves[i * 4 + 1];
+        const p2 = curves[i * 4 + 2];
+        const p3 = curves[i * 4 + 3];
 
         // Calculate real bounding box for this cubic Bézier curve
         const bounds = calculateCubicBezierRealBounds(p0, p1, p2, p3);
