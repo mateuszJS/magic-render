@@ -52,7 +52,7 @@ declare module '*.zig' {
   export const on_pointer_up: () => void
   export const on_pointer_move: (x: number, y: number) => void
   export const on_pointer_leave: VoidFunction
-  export const commitChanges: VoidFunction
+  export const commit_changes: VoidFunction
   export const update_render_scale: (render_scale: number) => void
 
   export const connect_web_gpu_programs: (programs: {

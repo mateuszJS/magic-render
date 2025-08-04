@@ -1,5 +1,6 @@
 const Utils = @import("../utils.zig");
 const Point = @import("../types.zig").Point;
+const PointUV = @import("../types.zig").PointUV;
 const std = @import("std");
 const bounding_box = @import("bounding_box.zig");
 const triangles = @import("../triangle.zig");
@@ -7,9 +8,9 @@ const squares = @import("../squares.zig");
 const lines = @import("../line.zig");
 const Path = @import("paths.zig").Path;
 const shared = @import("../shared.zig");
+const images = @import("../images.zig");
 
 const EPSILON = std.math.floatEps(f32);
-const MIN_NEW_CONTROL_POINT_DISTANCE = 10.0; // Minimum distance to consider a new control point
 
 fn getOppositeHandle(control_point: Point, handle: Point) Point {
     const diff = control_point.diff(handle);
@@ -35,27 +36,22 @@ pub const Shape = struct {
     id: u32,
     paths: std.ArrayList(Path),
     props: ShapeProps,
-    preview_point: ?Point = null, // Optional preview points for rendering
-    is_handle_preview: bool = false, // Whether to show the preview point as a handle
-    active_path_index: ?usize = null, // Index of the active path for editing
-
     // texture related
-    bounding_box: bounding_box.BoundingBox = undefined,
+    points: [4]PointUV = undefined,
     texture_id: ?u32 = null,
     texture_width: f32 = 0.0,
     texture_height: f32 = 0.0,
+    invalid_cache: bool = false, // if true, we need to update the cache texture
 
-    pub fn new(id: u32, point: Point, allocator: std.mem.Allocator) !Shape {
-        var paths_list = std.ArrayList(Path).init(allocator);
-        const path = try Path.new(point, allocator);
-        try paths_list.append(path);
-
+    pub fn new(id: u32, allocator: std.mem.Allocator) !Shape {
         const shape = Shape{
             .id = id,
-            .paths = paths_list,
-            .props = ShapeProps{},
-            .is_handle_preview = true,
-            .active_path_index = 0,
+            .paths = std.ArrayList(Path).init(allocator),
+            .props = ShapeProps{
+                .fill_color = .{ 1.0, 1.0, 1.0, 1.0 }, // Red
+                .stroke_color = .{ 0.0, 0.0, 0.0, 1.0 }, // Green
+                .stroke_width = 2.0,
+            },
         };
 
         return shape;
@@ -76,81 +72,33 @@ pub const Shape = struct {
             .id = id,
             .paths = paths_list,
             .props = props,
-            .is_handle_preview = false,
-            .active_path_index = 0,
+            .invalid_cache = true,
         };
 
         return shape;
     }
 
-    // fn is_matching_open_point(self: *Shape, point: Point) ?Point {
-    //     var result = null;
-    //     // maybe isntead we should have a list of open points, and then use it during the render?
-    //     for (self.points.items, 0..) |p, i| {
-    //         var is_open = false;
-    //         if (i % 4 == 0) { // first cp
-    //             const distance = p.distance(self.points.items[i + 3]);
-    //             if (distance > 10.0) {
-    //                 is_open = true;
-    //             }
-    //         } else if (i % 4 == 3) { // second cp
-    //             const distance = p.distance(self.points.items[i - 1]);
-    //             if (distance > 10.0) {
-    //                 is_open = true;
-    //             }
-    //         }
-
-    //         if (is_open) {
-    //             const distance = p.distance(point);
-    //             if (distance < 10.0) {
-    //                 result = p;
-    //             }
-    //         }
-    //     }
-    //     return result;
-    // }
-
-    // return bool indicating if shape is done or not
-    pub fn addPointStart(self: *Shape) !void {
-        if (self.preview_point) |point| {
-            if (self.active_path_index) |active_path_index| {
-                var active_path = &self.paths.items[active_path_index];
-                try active_path.addPoint(point);
-                self.preview_point = null;
-                self.is_handle_preview = true;
-
-                // if (active_path.closed) {
-                //     self.active_path_index = null;
-                // }
-            } else {
-                // if there is no active path, we create a new one
-                const new_path = try Path.new(point, self.paths.allocator);
-                try self.paths.append(new_path);
-                self.active_path_index = self.paths.items.len - 1;
-                self.is_handle_preview = true;
-            }
+    pub fn addPointStart(self: *Shape, allocator: std.mem.Allocator, point: Point, option_active_path_index: ?usize) !usize {
+        if (option_active_path_index) |active_path_index| {
+            var active_path = &self.paths.items[active_path_index];
+            try active_path.addPoint(point);
+            self.invalid_cache = true;
+            return active_path_index;
+        } else {
+            const new_path = try Path.new(point, allocator);
+            try self.paths.append(new_path);
+            return self.paths.items.len - 1;
         }
-    }
-
-    pub fn add_point_end(self: *Shape) !void {
-        self.is_handle_preview = false;
-    }
-
-    pub fn complete(self: *Shape, allocator: std.mem.Allocator) !void {
-        self.is_handle_preview = false;
-        self.preview_point = null;
-
-        try self.drawTextureCache(allocator);
     }
 
     // receives boolean indicating if texture size was updated or not
     pub fn updateTextureSize(self: *Shape) bool {
-        const width = self.bounding_box.max_x - self.bounding_box.min_x;
-        const height = self.bounding_box.max_y - self.bounding_box.min_y;
+        const width = self.points[0].distance(self.points[1]);
+        const height = self.points[0].distance(self.points[3]);
         const new_width = @min(Utils.get_next_power_of_two(@max(self.texture_width, width / shared.render_scale)), max_texture_size);
         const new_height = @min(Utils.get_next_power_of_two(@max(self.texture_height, height / shared.render_scale)), max_texture_size);
 
-        if (self.texture_width >= new_width - EPSILON and self.texture_height >= new_height - EPSILON) {
+        if (self.texture_width > new_width - EPSILON and self.texture_height > new_height - EPSILON) {
             return false; // No resize needed
         }
 
@@ -160,14 +108,22 @@ pub const Shape = struct {
         return true;
     }
 
-    pub fn drawTextureCache(self: *Shape, allocator: std.mem.Allocator) !void {
-        const option_vertex_output = try self.get_draw_vertex_data(allocator);
+    pub fn drawTextureCache(self: *Shape, allocator: std.mem.Allocator, force: bool) !void {
+        if (!self.invalid_cache and !force) return; // texture is up to date
+
+        const option_vertex_output = try self.get_draw_vertex_data(
+            allocator,
+            null,
+            null,
+        );
         if (option_vertex_output) |vertex_output| {
-            self.bounding_box = bounding_box.BoundingBox{
-                .min_x = vertex_output.bounding_box[0].x,
-                .min_y = vertex_output.bounding_box[0].y,
-                .max_x = vertex_output.bounding_box[2].x,
-                .max_y = vertex_output.bounding_box[2].y,
+            const left_bottom = vertex_output.bounding_box[0];
+            const right_top = vertex_output.bounding_box[2];
+            self.points = [4]PointUV{
+                .{ .x = left_bottom.x, .y = right_top.y, .u = 0.0, .v = 1.0 },
+                .{ .x = right_top.x, .y = right_top.y, .u = 1.0, .v = 1.0 },
+                .{ .x = right_top.x, .y = left_bottom.y, .u = 1.0, .v = 0.0 },
+                .{ .x = left_bottom.x, .y = left_bottom.y, .u = 0.0, .v = 0.0 },
             };
 
             if (self.texture_width < EPSILON) {
@@ -175,25 +131,39 @@ pub const Shape = struct {
                 _ = self.updateTextureSize();
             }
 
-            self.texture_id = cache_shape(self.texture_id, self.bounding_box, vertex_output, self.texture_width, self.texture_height);
+            const cache_bounding_box = bounding_box.BoundingBox{
+                .min_x = left_bottom.x,
+                .min_y = left_bottom.y,
+                .max_x = right_top.x,
+                .max_y = right_top.y,
+            };
+
+            self.texture_id = cache_shape(
+                self.texture_id,
+                cache_bounding_box,
+                vertex_output,
+                self.texture_width,
+                self.texture_height,
+            );
+            self.invalid_cache = false;
         }
     }
 
-    pub fn get_skeleton_draw_vertex_data(self: Shape, allocator: std.mem.Allocator) ![]triangles.DrawInstance {
+    pub fn get_skeleton_draw_vertex_data(self: Shape, allocator: std.mem.Allocator, preview_point: ?Point, is_handle_preview: bool) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         for (self.paths.items) |path| {
             const path_skeleton = try path.get_skeleton_draw_vertex_data(allocator);
             try skeleton_buffer.appendSlice(path_skeleton);
         }
 
-        if (self.preview_point) |preview| {
-            if (!self.is_handle_preview) {
+        if (preview_point) |point| {
+            if (!is_handle_preview) {
                 const size = 20.0 * shared.render_scale;
                 var buffer: [2]triangles.DrawInstance = undefined;
                 squares.get_draw_vertex_data(
                     buffer[0..2],
-                    preview.x - size / 2.0,
-                    preview.y - size / 2.0,
+                    point.x - size / 2.0,
+                    point.y - size / 2.0,
                     size,
                     size,
                     0.0,
@@ -206,10 +176,10 @@ pub const Shape = struct {
         return skeleton_buffer.toOwnedSlice();
     }
 
-    pub fn get_draw_vertex_data(self: Shape, allocator: std.mem.Allocator) !?DrawVertexOutput {
+    pub fn get_draw_vertex_data(self: Shape, allocator: std.mem.Allocator, active_path_index: ?usize, option_preview_point: ?Point) !?DrawVertexOutput {
         var curves_buffer = std.ArrayList(Point).init(allocator);
         for (self.paths.items, 0..) |path, i| {
-            const preview_point = if (self.active_path_index == i) self.preview_point else null;
+            const preview_point = if (active_path_index == i) option_preview_point else null;
             const option_curves = try path.get_draw_vertex_data(allocator, preview_point);
             if (option_curves) |curves| {
                 try curves_buffer.appendSlice(curves);
@@ -246,33 +216,49 @@ pub const Shape = struct {
         }
     }
 
-    pub fn setPreviewPoint(self: *Shape, point: Point) void {
-        if (self.active_path_index) |active_path_index| {
-            const active_path = self.paths.items[active_path_index];
-            const points = active_path.points.items;
-            const control_point = points[points.len - 1];
+    pub fn getCacheTextureDrawVertexData(self: Shape) images.DrawVertex {
+        return images.DrawVertex{
+            // first triangle
+            self.points[0],
+            self.points[1],
+            self.points[2],
+            // second triangle
+            self.points[2],
+            self.points[3],
+            self.points[0],
+        };
+    }
 
-            if (self.is_handle_preview) {
-                if (active_path.closed) {
-                    points[points.len - 2] = getOppositeHandle(points[0], point);
-                    points[1] = point;
-                } else {
-                    if (points.len == 2) { // there is only starting control point(no reflection of handle needed)
-                        points[points.len - 1] = point;
-                    } else {
-                        points[points.len - 2] = getOppositeHandle(control_point, point);
-                    }
-                }
+    pub fn getCacheTexturePickVertexData(self: Shape) [6]images.PickVertex {
+        return [_]images.PickVertex{
+            // first triangle
+            .{ .id = self.id, .point = self.points[0] },
+            .{ .id = self.id, .point = self.points[1] },
+            .{ .id = self.id, .point = self.points[2] },
+            // second triangle
+            .{ .id = self.id, .point = self.points[2] },
+            .{ .id = self.id, .point = self.points[3] },
+            .{ .id = self.id, .point = self.points[0] },
+        };
+    }
+
+    pub fn updateLastHandle(self: *Shape, active_path_index: usize, preview_point: Point) void {
+        const active_path = self.paths.items[active_path_index];
+        const points = active_path.points.items;
+
+        if (active_path.closed) {
+            points[points.len - 2] = getOppositeHandle(points[0], preview_point);
+            points[1] = preview_point;
+        } else {
+            if (points.len == 2) { // there is only starting control point(no reflection of handle needed)
+                points[points.len - 1] = preview_point;
             } else {
-                const distance = control_point.distance(point);
-                if (distance < MIN_NEW_CONTROL_POINT_DISTANCE) {
-                    self.preview_point = null;
-                    return;
-                } else {
-                    self.preview_point = point;
-                }
+                const control_point = points[points.len - 1];
+                points[points.len - 2] = getOppositeHandle(control_point, preview_point);
             }
         }
+
+        self.invalid_cache = true;
     }
 
     pub fn deinit(self: *Shape) void {

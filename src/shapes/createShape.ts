@@ -4,7 +4,7 @@ import parsePathData from './parsePathData'
 import parseRect from './parseRect'
 import type { PathSegment } from './types'
 import parseColor from './parseColor'
-import parseElipse from './parseEllipse'
+import parseEllipse from './parseEllipse'
 
 export default function createShapes(node: Node, svgHeight: number): void {
   if (!('children' in node)) return
@@ -40,7 +40,7 @@ export default function createShapes(node: Node, svgHeight: number): void {
             if (typeof props?.cx !== 'number' || typeof props?.cy !== 'number') {
               throw Error("Ellipse without 'cx' or 'cy' property")
             }
-            result = [parseElipse(props.cx, props.cy, props.rx, props.ry, svgHeight)]
+            result = [parseEllipse(props.cx, props.cy, props.rx, props.ry, svgHeight)]
         }
 
         if (result) {
