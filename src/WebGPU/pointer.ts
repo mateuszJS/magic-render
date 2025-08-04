@@ -190,7 +190,7 @@ export default function initMouseController(
         break
       case 'Escape':
         event.preventDefault()
-        Logic.commitChanges()
+        Logic.commit_changes()
         break
       case '=':
       case '+':

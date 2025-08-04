@@ -90,7 +90,6 @@ pub const Path = struct {
         const distance = first_point.distance(point);
 
         if (distance < POINT_SNAP_DISTANCE) {
-            // path is closed
             self.closed = true;
             try self.points.append(first_point);
         } else {

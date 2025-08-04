@@ -5,7 +5,7 @@ interface Point {
   y: number
 }
 
-export default function parseElipse(
+export default function parseEllipse(
   cx: number,
   cy: number,
   rx: number,
