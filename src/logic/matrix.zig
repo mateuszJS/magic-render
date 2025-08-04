@@ -126,7 +126,7 @@ pub const Matrix3x3 = struct {
         return true;
     }
 
-    pub fn transform_point(self: Matrix3x3, p: anytype) Point {
+    pub fn transformPoint(self: Matrix3x3, p: anytype) Point {
         // Applies the matrix to a 2D point (x, y) and returns the transformed point
         const m = self.values;
         const tx = m[0] * p.x + m[1] * p.y + m[2];
@@ -235,9 +235,9 @@ test "inverse non-mutating" {
 }
 
 // Test point transformation
-test "transform_point" {
+test "transformPoint" {
     const m = Matrix3x3.translation(10.0, 5.0);
-    const pt = m.transform_point(Point{ .x = 2.0, .y = 3.0 });
+    const pt = m.transformPoint(Point{ .x = 2.0, .y = 3.0 });
     try std.testing.expect(@abs(pt.x - 12.0) < 1e-6);
     try std.testing.expect(@abs(pt.y - 8.0) < 1e-6);
 }

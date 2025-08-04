@@ -97,7 +97,7 @@ pub const Path = struct {
         }
     }
 
-    pub fn get_skeleton_draw_vertex_data(self: Path, allocator: std.mem.Allocator) ![]triangles.DrawInstance {
+    pub fn getSkeletonDrawVertexData(self: Path, allocator: std.mem.Allocator) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         const size = 20.0 * shared.render_scale;
 
@@ -110,7 +110,7 @@ pub const Path = struct {
                 }
                 const connected_control_point = if (i % 4 == 1) i - 1 else (i + 1) % self.points.items.len;
                 var buffer: [2]triangles.DrawInstance = undefined;
-                lines.get_draw_vertex_data(
+                lines.getDrawVertexData(
                     buffer[0..2],
                     self.points.items[connected_control_point],
                     point,
@@ -122,7 +122,7 @@ pub const Path = struct {
             }
 
             var buffer: [2]triangles.DrawInstance = undefined;
-            squares.get_draw_vertex_data(
+            squares.getDrawVertexData(
                 buffer[0..2],
                 point.x - size / 2.0,
                 point.y - size / 2.0,
@@ -139,7 +139,7 @@ pub const Path = struct {
             const last_cp = self.points.getLast();
             const forward_handle = getOppositeHandle(last_cp, last_handle);
             var line_buffer: [2]triangles.DrawInstance = undefined;
-            lines.get_draw_vertex_data(
+            lines.getDrawVertexData(
                 line_buffer[0..2],
                 last_cp,
                 forward_handle,
@@ -150,7 +150,7 @@ pub const Path = struct {
             try skeleton_buffer.appendSlice(&line_buffer);
 
             var square_buffer: [2]triangles.DrawInstance = undefined;
-            squares.get_draw_vertex_data(
+            squares.getDrawVertexData(
                 square_buffer[0..2],
                 forward_handle.x - size / 2.0,
                 forward_handle.y - size / 2.0,
@@ -165,7 +165,7 @@ pub const Path = struct {
         return skeleton_buffer.toOwnedSlice();
     }
 
-    fn get_closed_path_points(self: Path, allocator: std.mem.Allocator, preview_point: ?Point) !?[]Point {
+    fn getClosedPathPoints(self: Path, allocator: std.mem.Allocator, preview_point: ?Point) !?[]Point {
         if (self.points.items.len <= 2 and preview_point == null) {
             return null;
         }
@@ -201,7 +201,7 @@ pub const Path = struct {
         return try curves_list.toOwnedSlice();
     }
 
-    fn prepare_half_straight_lines(curves: []Point) void {
+    fn prepareHalfStraightLines(curves: []Point) void {
         if (curves.len < 4) {
             return; // Not enough points to process
         }
@@ -226,10 +226,10 @@ pub const Path = struct {
         }
     }
 
-    pub fn get_draw_vertex_data(self: Path, allocator: std.mem.Allocator, preview_point: ?Point) !?[]const Point {
-        const option_curves = try self.get_closed_path_points(allocator, preview_point);
+    pub fn getDrawVertexData(self: Path, allocator: std.mem.Allocator, preview_point: ?Point) !?[]const Point {
+        const option_curves = try self.getClosedPathPoints(allocator, preview_point);
         if (option_curves) |curves| {
-            Path.prepare_half_straight_lines(curves);
+            Path.prepareHalfStraightLines(curves);
 
             return curves;
         } else {

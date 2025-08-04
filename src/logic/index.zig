@@ -21,7 +21,7 @@ const WebGpuPrograms = struct {
 };
 var web_gpu_programs: *const WebGpuPrograms = undefined;
 
-pub fn connect_web_gpu_programs(programs: *const WebGpuPrograms) void {
+pub fn connectWebGpuPrograms(programs: *const WebGpuPrograms) void {
     // https://github.com/chung-leong/zigar/wiki/JavaScript-to-Zig-function-conversion
     // callback = cb orelse &none;
     web_gpu_programs = programs; // orelse WebGpuPrograms{};
@@ -46,7 +46,7 @@ pub fn connect_cache_callbacks(start_cache: *const fn (?u32, bounding_box.Boundi
     start_cache_callback = start_cache;
     end_cache_callback = end_cache;
 
-    shapes.cache_shape = cache_shape_cb;
+    shapes.cacheShape = cache_shape_cb;
 }
 
 fn cache_shape_cb(curr_texture_id: ?u32, box: bounding_box.BoundingBox, vertex_data: shapes.DrawVertexOutput, width: f32, height: f32) u32 {
@@ -107,7 +107,7 @@ pub fn init_state(allocator: std.mem.Allocator, width: f32, height: f32, texture
     state.width = width;
     state.height = height;
     state.assets = std.AutoArrayHashMap(u32, Asset).init(std.heap.page_allocator);
-    shapes.max_texture_size = texture_max_size;
+    shapes.maxTextureSize = texture_max_size;
 }
 
 pub fn update_render_scale(scale: f32) !void {
@@ -260,7 +260,7 @@ pub fn on_pointer_down(_allocator: std.mem.Allocator, x: f32, y: f32) !void {
 
     if (state.selected_asset_id == NO_SELECTION) {
         // No active asset, do nothing
-    } else if (TransformUI.is_transform_ui(state.hovered_asset_id)) {
+    } else if (TransformUI.isTransformUi(state.hovered_asset_id)) {
         state.action = .Transform;
     } else if (state.selected_asset_id >= ASSET_ID_TRESHOLD and state.selected_asset_id == state.hovered_asset_id) {
         state.action = .Move;
@@ -322,11 +322,11 @@ pub fn on_pointer_move(x: f32, y: f32) void {
                     };
                 }
 
-                img.update_coords(new_points);
+                img.updateCoords(new_points);
             },
             .Transform => {
                 const points_ptr: *[4]types.PointUV = &img.points;
-                TransformUI.tranform_points(state.hovered_asset_id, points_ptr, x, y);
+                TransformUI.transformPoints(state.hovered_asset_id, points_ptr, x, y);
             },
             .None => {},
         }
@@ -376,7 +376,7 @@ fn get_border(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []
                 const next_point = if (i == 3) points[0] else points[i + 1];
                 var buffer: [2]Triangle.DrawInstance = undefined;
 
-                Line.get_draw_vertex_data(
+                Line.getDrawVertexData(
                     buffer[0..2],
                     point,
                     next_point,
@@ -406,7 +406,7 @@ fn get_border(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []
             const next_point = if (i == 3) points[0] else points[i + 1];
             var buffer: [2]Triangle.DrawInstance = undefined;
 
-            Line.get_draw_vertex_data(
+            Line.getDrawVertexData(
                 buffer[0..2],
                 point,
                 next_point,
@@ -420,7 +420,7 @@ fn get_border(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []
         var triangle_buffer: [TransformUI.RENDER_TRIANGLE_INSTANCES]Triangle.DrawInstance = undefined;
         var msdf_buffer: [2]Msdf.DrawInstance = undefined;
 
-        TransformUI.get_draw_vertex_data(
+        TransformUI.getDrawVertexData(
             &triangle_buffer,
             &msdf_buffer,
             points,
@@ -439,7 +439,7 @@ fn get_border(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []
 
 fn draw_project_background() void {
     var buffer: [2]Triangle.DrawInstance = undefined;
-    squares.get_draw_vertex_data(
+    squares.getDrawVertexData(
         &buffer,
         0.0,
         0.0,
@@ -466,7 +466,7 @@ fn draw_project_boundary() void {
     for (points, 0..) |point, i| {
         const next_point = if (i == 3) points[0] else points[i + 1];
 
-        Line.get_draw_vertex_data(
+        Line.getDrawVertexData(
             buffer[i * 2 ..][0..2],
             point,
             next_point,
@@ -513,7 +513,7 @@ pub fn render_draw() !void {
         switch (asset.value_ptr.*) {
             .img => |img| {
                 var vertex_data: images.DrawVertex = undefined;
-                img.get_render_vertex_data(&vertex_data);
+                img.getRenderVertexData(&vertex_data);
                 web_gpu_programs.draw_texture(vertex_data, img.texture_id);
             },
             .shape => |shape| {
@@ -521,7 +521,7 @@ pub fn render_draw() !void {
                     const vertex_data = shape.getCacheTextureDrawVertexData();
                     web_gpu_programs.draw_texture(vertex_data, texture_id);
                 } else {
-                    const option_vertex_data = try shape.get_draw_vertex_data(
+                    const option_vertex_data = try shape.getDrawVertexData(
                         allocator,
                         state.active_path_index,
                         state.preview_point,
@@ -548,7 +548,7 @@ pub fn render_draw() !void {
 
     if (state.tool == Tool.DrawShape) {
         if (get_selected_shape()) |shape| {
-            const vertex_data = shape.get_skeleton_draw_vertex_data(allocator, state.preview_point, state.is_handle_preview) catch unreachable;
+            const vertex_data = shape.getSkeletonDrawVertexData(allocator, state.preview_point, state.is_handle_preview) catch unreachable;
             web_gpu_programs.draw_triangle(vertex_data);
         }
     }
@@ -591,7 +591,7 @@ pub fn render_pick() void {
         switch (asset.value_ptr.*) {
             .img => |img| {
                 var vertex_data: [6]images.PickVertex = undefined;
-                img.get_pick_vertex_data(&vertex_data);
+                img.getPickVertexData(&vertex_data);
 
                 web_gpu_programs.pick_texture(&vertex_data, img.texture_id);
             },
@@ -615,7 +615,7 @@ pub fn render_pick() void {
             },
         }
         var vertex_buffer: [TransformUI.PICK_TRIANGLE_INSTANCES]Triangle.PickInstance = undefined;
-        TransformUI.get_pick_vertex_data(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES], points);
+        TransformUI.getPickVertexData(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES], points);
         web_gpu_programs.pick_triangle(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES]);
     }
 }
@@ -643,7 +643,7 @@ pub fn destroy_state() void {
     state.assets.clearAndFree();
     std.heap.page_allocator.free(last_assets_update);
     last_assets_update = &.{};
-    Msdf.deinit_icons();
+    Msdf.deinitIcons();
     state.selected_asset_id = 0;
     next_asset_id = ASSET_ID_TRESHOLD;
     web_gpu_programs = undefined;
@@ -653,7 +653,7 @@ pub fn destroy_state() void {
 }
 
 pub fn import_icons(data: []const f32) void {
-    Msdf.init_icons(data);
+    Msdf.initIcons(data);
 }
 
 pub fn set_tool(tool: Tool) !void {
@@ -667,7 +667,7 @@ pub fn stop_drawing_shape() void {
 
 pub fn add_shape(paths: []const []const [4]types.Point, props: shapes.ShapeProps) !void {
     const id = generate_id();
-    const shape = try shapes.Shape.new_from_points(id, paths, props, std.heap.page_allocator);
+    const shape = try shapes.Shape.newFromPoints(id, paths, props, std.heap.page_allocator);
     try state.assets.put(id, Asset{ .shape = shape });
     state.selected_asset_id = id;
 }

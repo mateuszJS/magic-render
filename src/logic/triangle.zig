@@ -20,7 +20,7 @@ pub const PickInstance = extern struct {
     radius: [3]f32,
 };
 
-pub fn get_draw_vertex_data(buffer: *[1]DrawInstance, p0: RoundCorner, p1: RoundCorner, p2: RoundCorner, color: [4]u8) void {
+pub fn getDrawVertexData(buffer: *[1]DrawInstance, p0: RoundCorner, p1: RoundCorner, p2: RoundCorner, color: [4]u8) void {
     buffer[0] = DrawInstance{
         .p0 = PointUV{
             .x = p0.corner.x,
@@ -46,7 +46,7 @@ pub fn get_draw_vertex_data(buffer: *[1]DrawInstance, p0: RoundCorner, p1: Round
     };
 }
 
-pub fn get_pick_vertex_data(buffer: *[1]PickInstance, p0: RoundCorner, p1: RoundCorner, p2: RoundCorner, id: u32) void {
+pub fn getPickVertexData(buffer: *[1]PickInstance, p0: RoundCorner, p1: RoundCorner, p2: RoundCorner, id: u32) void {
     buffer[0] = PickInstance{
         .p0 = PointUV{
             .x = p0.corner.x,
@@ -79,13 +79,13 @@ pub const RoundCorner = struct {
 };
 
 const NUM_OF_POINTS: usize = 4;
-pub fn get_round_corner_vector(index: usize, points: [NUM_OF_POINTS]Point, radius: f32) RoundCorner {
+pub fn getRoundCornerVector(index: usize, points: [NUM_OF_POINTS]Point, radius: f32) RoundCorner {
     const p = points[index];
     const pa = points[(index + 1) % NUM_OF_POINTS];
     const pb = points[@min((index -% 1), (NUM_OF_POINTS - 1)) % NUM_OF_POINTS];
 
-    const p_to_pa = p.angle_to(pa);
-    const p_to_pb = p.angle_to(pb);
+    const p_to_pa = p.angleTo(pa);
+    const p_to_pb = p.angleTo(pb);
     const mid_angle_p = Utils.findMidAngle(p_to_pa, p_to_pb);
 
     const half_of_mid_angle_p = Utils.angleDifference(mid_angle_p, p_to_pa);

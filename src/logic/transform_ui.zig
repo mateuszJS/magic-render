@@ -17,8 +17,8 @@ const TransformLine = struct {
     end: usize,
 };
 
-const UI_VERTICIES_COUNT_BORDER = 13;
-const resize_lines = [UI_VERTICIES_COUNT_BORDER]TransformLine{
+const UI_VERTICES_COUNT_BORDER = 13;
+const resize_lines = [UI_VERTICES_COUNT_BORDER]TransformLine{
     // corners, clock wise
     .{ .id = 1, .start = 0, .end = 1 },
     .{ .id = 1, .start = 0, .end = 3 },
@@ -37,26 +37,26 @@ const resize_lines = [UI_VERTICIES_COUNT_BORDER]TransformLine{
     .{ .id = 9, .start = 0, .end = 0 },
 };
 
-pub fn is_transform_ui(id: u32) bool {
+pub fn isTransformUi(id: u32) bool {
     return id >= 1 and id <= 9;
 }
 
-pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, raw_y: f32) void {
-    const asset_angle_y = points[0].angle_to(points[3]) + std.math.pi / 2.0;
+pub fn transformPoints(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, raw_y: f32) void {
+    const asset_angle_y = points[0].angleTo(points[3]) + std.math.pi / 2.0;
     // it's important we dont meausre horizontal one, because reflecting by X axis makes no change in horizontal angle
     // but should be 180 degree opposite
     const t_matrix = Matrix3x3.rotation(asset_angle_y); // transfor matrix
     const invert_t_matrix = t_matrix.inverse().?;
-    const pointer = invert_t_matrix.transform_point(Point{
+    const pointer = invert_t_matrix.transformPoint(Point{
         .x = raw_x,
         .y = raw_y,
     });
 
     var un_rotated_points = [4]Point{
-        invert_t_matrix.transform_point(points[0]),
-        invert_t_matrix.transform_point(points[1]),
-        invert_t_matrix.transform_point(points[2]),
-        invert_t_matrix.transform_point(points[3]),
+        invert_t_matrix.transformPoint(points[0]),
+        invert_t_matrix.transformPoint(points[1]),
+        invert_t_matrix.transformPoint(points[2]),
+        invert_t_matrix.transformPoint(points[3]),
     };
 
     switch (ui_component_id) {
@@ -133,10 +133,10 @@ pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     }
 
     if (ui_component_id != 9) {
-        const p0 = t_matrix.transform_point(un_rotated_points[0]);
-        const p1 = t_matrix.transform_point(un_rotated_points[1]);
-        const p2 = t_matrix.transform_point(un_rotated_points[2]);
-        const p3 = t_matrix.transform_point(un_rotated_points[3]);
+        const p0 = t_matrix.transformPoint(un_rotated_points[0]);
+        const p1 = t_matrix.transformPoint(un_rotated_points[1]);
+        const p2 = t_matrix.transformPoint(un_rotated_points[2]);
+        const p3 = t_matrix.transformPoint(un_rotated_points[3]);
 
         points[0].x = p0.x;
         points[0].y = p0.y;
@@ -149,11 +149,11 @@ pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     }
 }
 
-fn get_points_of_line(points: [4]PointUV, t_line: TransformLine) struct { Point, Point } {
+fn getPointsOfLine(points: [4]PointUV, t_line: TransformLine) struct { Point, Point } {
     if (t_line.id <= 4) {
         // corners
         const length = points[t_line.start].distance(points[t_line.end]);
-        const angle = points[t_line.start].angle_to(points[t_line.end]);
+        const angle = points[t_line.start].angleTo(points[t_line.end]);
         const sanitized_length = @min(30.0 * shared.render_scale, length * 0.1);
 
         const p1 = Point{
@@ -170,7 +170,7 @@ fn get_points_of_line(points: [4]PointUV, t_line: TransformLine) struct { Point,
         // straight lines
         const point = points[t_line.start].mid(points[t_line.end]);
         const length = points[t_line.start].distance(points[t_line.end]);
-        const angle = points[t_line.start].angle_to(points[t_line.end]);
+        const angle = points[t_line.start].angleTo(points[t_line.end]);
         const sanitized_length = @min(30.0 * shared.render_scale, length * 0.07);
 
         const p1 = Point{
@@ -209,7 +209,7 @@ fn get_points_of_line(points: [4]PointUV, t_line: TransformLine) struct { Point,
 
 pub const RENDER_TRIANGLE_INSTANCES = UI_VERTICIES_COUNT_BORDER * 2 * 2; // two triangle per line, each line has front and back color
 
-pub fn get_draw_vertex_data(
+pub fn getDrawVertexData(
     triangle_buffer: *[RENDER_TRIANGLE_INSTANCES]Triangle.DrawInstance,
     msdf_vertex_data: *[2]Msdf.DrawInstance,
     points: [4]PointUV,
@@ -219,14 +219,14 @@ pub fn get_draw_vertex_data(
     for (resize_lines) |t_line| {
         const color = if (hovered_elem_id == t_line.id) white else black;
 
-        const p1, const p2 = get_points_of_line(points, t_line);
+        const p1, const p2 = getPointsOfLine(points, t_line);
         var thickness: f32 = 10.0 * shared.render_scale;
 
         if (t_line.id == 9) {
             // rotation icon
             thickness = 30.0 * shared.render_scale;
             const icon_size = thickness - 5.0 * shared.render_scale;
-            const msdf_data = Msdf.get_draw_vertex_data(
+            const msdf_data = Msdf.getDrawVertexData(
                 Msdf.IconId.rotate,
                 p1.x - icon_size * 0.5 - 0.12 * shared.render_scale,
                 p1.y - icon_size * 0.5 + 0.75 * shared.render_scale,
@@ -237,7 +237,7 @@ pub fn get_draw_vertex_data(
         }
 
         const outer_line_width = thickness + 10.0 * shared.render_scale;
-        Line.get_draw_vertex_data(
+        Line.getDrawVertexData(
             triangle_buffer[i..][0..2],
             p1,
             p2,
@@ -245,7 +245,7 @@ pub fn get_draw_vertex_data(
             white,
             outer_line_width / 2.0,
         );
-        Line.get_draw_vertex_data(
+        Line.getDrawVertexData(
             triangle_buffer[(RENDER_TRIANGLE_INSTANCES / 2) + i ..][0..2],
             p1,
             p2,
@@ -259,13 +259,13 @@ pub fn get_draw_vertex_data(
 }
 
 pub const PICK_TRIANGLE_INSTANCES = UI_VERTICIES_COUNT_BORDER * 2;
-pub fn get_pick_vertex_data(buffer: *[PICK_TRIANGLE_INSTANCES]Triangle.PickInstance, points: [4]PointUV) void {
+pub fn getPickVertexData(buffer: *[PICK_TRIANGLE_INSTANCES]Triangle.PickInstance, points: [4]PointUV) void {
     var i: usize = 0;
     for (resize_lines) |t_line| {
-        const p1, const p2 = get_points_of_line(points, t_line);
+        const p1, const p2 = getPointsOfLine(points, t_line);
         const thickness: f32 = if (t_line.id == 9) 30.0 * shared.render_scale else 10.0 * shared.render_scale;
 
-        Line.get_pick_vertex_data(
+        Line.getPickVertexData(
             buffer[i..][0..2],
             p1,
             p2,
