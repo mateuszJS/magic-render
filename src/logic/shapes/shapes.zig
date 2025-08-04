@@ -78,46 +78,13 @@ pub const Shape = struct {
         return shape;
     }
 
-    // fn is_matching_open_point(self: *Shape, point: Point) ?Point {
-    //     var result = null;
-    //     // maybe isntead we should have a list of open points, and then use it during the render?
-    //     for (self.points.items, 0..) |p, i| {
-    //         var is_open = false;
-    //         if (i % 4 == 0) { // first cp
-    //             const distance = p.distance(self.points.items[i + 3]);
-    //             if (distance > 10.0) {
-    //                 is_open = true;
-    //             }
-    //         } else if (i % 4 == 3) { // second cp
-    //             const distance = p.distance(self.points.items[i - 1]);
-    //             if (distance > 10.0) {
-    //                 is_open = true;
-    //             }
-    //         }
-
-    //         if (is_open) {
-    //             const distance = p.distance(point);
-    //             if (distance < 10.0) {
-    //                 result = p;
-    //             }
-    //         }
-    //     }
-    //     return result;
-    // }
-
-    // returns null if path is done and is no lonnger active or id if it's active
     pub fn addPointStart(self: *Shape, allocator: std.mem.Allocator, point: Point, option_active_path_index: ?usize) !usize {
         if (option_active_path_index) |active_path_index| {
             var active_path = &self.paths.items[active_path_index];
-            const closed = try active_path.addPoint(point);
-            _ = closed; // autofix
-            // if (closed) {
-            //     return null;
-            // }
+            try active_path.addPoint(point);
             self.invalid_cache = true;
             return active_path_index;
         } else {
-            // if there is no active path, we create a new one
             const new_path = try Path.new(point, allocator);
             try self.paths.append(new_path);
             return self.paths.items.len - 1;
@@ -144,7 +111,11 @@ pub const Shape = struct {
     pub fn drawTextureCache(self: *Shape, allocator: std.mem.Allocator, force: bool) !void {
         if (!self.invalid_cache and !force) return; // texture is up to date
 
-        const option_vertex_output = try self.get_draw_vertex_data(allocator, null, null);
+        const option_vertex_output = try self.get_draw_vertex_data(
+            allocator,
+            null,
+            null,
+        );
         if (option_vertex_output) |vertex_output| {
             const left_bottom = vertex_output.bounding_box[0];
             const right_top = vertex_output.bounding_box[2];

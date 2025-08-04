@@ -71,7 +71,7 @@ pub const Path = struct {
         };
     }
 
-    pub fn addPoint(self: *Path, point: Point) !bool {
+    pub fn addPoint(self: *Path, point: Point) !void {
         if (self.closed) {
             @panic("Attempting to add point to already closed path!");
         }
@@ -90,14 +90,11 @@ pub const Path = struct {
         const distance = first_point.distance(point);
 
         if (distance < POINT_SNAP_DISTANCE) {
-            // path is closed
             self.closed = true;
             try self.points.append(first_point);
         } else {
             try self.points.append(point);
         }
-
-        return self.closed;
     }
 
     pub fn get_skeleton_draw_vertex_data(self: Path, allocator: std.mem.Allocator) ![]triangles.DrawInstance {
