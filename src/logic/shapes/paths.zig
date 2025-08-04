@@ -71,7 +71,7 @@ pub const Path = struct {
         };
     }
 
-    pub fn addPoint(self: *Path, point: Point) !void {
+    pub fn addPoint(self: *Path, point: Point) !bool {
         if (self.closed) {
             @panic("Attempting to add point to already closed path!");
         }
@@ -96,6 +96,8 @@ pub const Path = struct {
         } else {
             try self.points.append(point);
         }
+
+        return self.closed;
     }
 
     pub fn get_skeleton_draw_vertex_data(self: Path, allocator: std.mem.Allocator) ![]triangles.DrawInstance {

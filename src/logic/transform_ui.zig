@@ -149,8 +149,7 @@ pub fn tranform_points(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     }
 }
 
-fn get_points_of_line(img: Image, t_line: TransformLine) struct { Point, Point } {
-    const points = img.points;
+fn get_points_of_line(points: [4]PointUV, t_line: TransformLine) struct { Point, Point } {
     if (t_line.id <= 4) {
         // corners
         const length = points[t_line.start].distance(points[t_line.end]);
@@ -213,14 +212,14 @@ pub const RENDER_TRIANGLE_INSTANCES = UI_VERTICIES_COUNT_BORDER * 2 * 2; // two 
 pub fn get_draw_vertex_data(
     triangle_buffer: *[RENDER_TRIANGLE_INSTANCES]Triangle.DrawInstance,
     msdf_vertex_data: *[2]Msdf.DrawInstance,
-    img: Image,
+    points: [4]PointUV,
     hovered_elem_id: u32,
 ) void {
     var i: usize = 0;
     for (resize_lines) |t_line| {
         const color = if (hovered_elem_id == t_line.id) white else black;
 
-        const p1, const p2 = get_points_of_line(img, t_line);
+        const p1, const p2 = get_points_of_line(points, t_line);
         var thickness: f32 = 10.0 * shared.render_scale;
 
         if (t_line.id == 9) {
@@ -260,10 +259,10 @@ pub fn get_draw_vertex_data(
 }
 
 pub const PICK_TRIANGLE_INSTANCES = UI_VERTICIES_COUNT_BORDER * 2;
-pub fn get_pick_vertex_data(buffer: *[PICK_TRIANGLE_INSTANCES]Triangle.PickInstance, img: Image) void {
+pub fn get_pick_vertex_data(buffer: *[PICK_TRIANGLE_INSTANCES]Triangle.PickInstance, points: [4]PointUV) void {
     var i: usize = 0;
     for (resize_lines) |t_line| {
-        const p1, const p2 = get_points_of_line(img, t_line);
+        const p1, const p2 = get_points_of_line(points, t_line);
         const thickness: f32 = if (t_line.id == 9) 30.0 * shared.render_scale else 10.0 * shared.render_scale;
 
         Line.get_pick_vertex_data(
