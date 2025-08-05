@@ -94,20 +94,30 @@ export default async function initCreator(
     updateProcessing()
   })
 
+  let lastAssetsSnapshot: ZigAssetOutput[] = []
   Logic.connect_on_asset_update_callback((serializedData: ZigAssetOutput[]) => {
-    const serializedAssetsTextureUrl = [...serializedData].map<SerializedOutputAsset>((asset) => ({
-      id: asset.id,
-      textureId: asset.texture_id,
-      points: [...asset.points].map((point) => ({
-        x: point.x,
-        y: point.y,
-        u: point.u,
-        v: point.v,
-      })),
-      url: Textures.getUrl(asset.texture_id),
-    }))
-    onAssetsUpdate(serializedAssetsTextureUrl)
+    lastAssetsSnapshot = serializedData
+    newAssetsSnapshot()
   })
+
+  function newAssetsSnapshot() {
+    // this function is not part of Logic.connect_on_asset_update_callback
+    // only because once we update a texture url, we have to notify about the assets update
+    const serializedAssetsTextureUrl = [...lastAssetsSnapshot].map<SerializedOutputAsset>(
+      (asset) => ({
+        id: asset.id,
+        textureId: asset.texture_id,
+        points: [...asset.points].map((point) => ({
+          x: point.x,
+          y: point.y,
+          u: point.u,
+          v: point.v,
+        })),
+        url: Textures.getUrl(asset.texture_id),
+      })
+    )
+    onAssetsUpdate(serializedAssetsTextureUrl)
+  }
 
   Logic.connect_on_asset_selection_callback(onAssetSelect)
 
@@ -123,6 +133,7 @@ export default async function initCreator(
       if (isNew) {
         uploadTexture(url, (newUrl) => {
           Textures.updateTextureUrl(textureId, newUrl)
+          newAssetsSnapshot()
         })
       }
     })
@@ -174,8 +185,8 @@ export default async function initCreator(
               // snapshot with "default" points and then update it to the real points.
               if (isNew) {
                 uploadTexture(asset.url, (newUrl) => {
-                  console.log(asset.url, newUrl)
                   Textures.updateTextureUrl(textureId, newUrl)
+                  newAssetsSnapshot()
                 })
               }
 
