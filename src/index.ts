@@ -9,6 +9,8 @@ import IconsJson from '../msdf/output/icons.json'
 import getDefaultPoints from 'utils/getDefaultPoints'
 import * as Textures from 'textures'
 import { startCache, endCache } from 'WebGPU/textureCache'
+import debounce from 'utils/debounce'
+import generatePreview from 'WebGPU/generatePreview'
 
 export type SerializedInputAsset = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
@@ -42,7 +44,8 @@ export default async function initCreator(
   uploadTexture: (url: string, onNewUrl: (newUrl: string) => void) => void,
   onAssetsUpdate: (assets: SerializedOutputAsset[]) => void,
   onAssetSelect: (assetId: number) => void,
-  onProcessingUpdate: (inProgress: boolean) => void
+  onProcessingUpdate: (inProgress: boolean) => void,
+  onPreviewUpdate: (canvas: HTMLCanvasElement) => void
 ): Promise<CreatorAPI> {
   let loadingTextures = 0
   let isMouseEventProcessing = false
@@ -94,6 +97,18 @@ export default async function initCreator(
     updateProcessing()
   })
 
+  const triggerGeneratePreview = debounce(() => {
+    generatePreview(
+      device,
+      presentationFormat,
+      canvas,
+      projectWidth,
+      projectHeight,
+      capturePreview,
+      onPreviewUpdate
+    )
+  }, 1000 * 5)
+
   Logic.connect_on_asset_update_callback((serializedData: ZigAssetOutput[]) => {
     const serializedAssetsTextureUrl = [...serializedData].map<SerializedOutputAsset>((asset) => ({
       id: asset.id,
@@ -123,6 +138,7 @@ export default async function initCreator(
       if (isNew) {
         uploadTexture(url, (newUrl) => {
           Textures.updateTextureUrl(textureId, newUrl)
+          triggerGeneratePreview() // we do it in the callback because new texture might be not loaded yet from blob
         })
       }
     })
@@ -142,7 +158,7 @@ export default async function initCreator(
     )
   })
 
-  const stopCreator = runCreator(
+  const { stopRAF, capturePreview } = runCreator(
     canvas,
     context,
     device,
@@ -201,7 +217,7 @@ export default async function initCreator(
     removeAsset: Logic.remove_asset,
     resetAssets,
     destroy: () => {
-      stopCreator()
+      stopRAF()
       Logic.destroy_state()
       context.unconfigure()
       device.destroy()

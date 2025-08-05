@@ -21,13 +21,13 @@ export function updateRenderPass(newRenderPass: GPURenderPassEncoder) {
 }
 
 export default function runCreator(
-  canvas: HTMLCanvasElement,
+  creatorCanvas: HTMLCanvasElement,
   context: GPUCanvasContext,
   device: GPUDevice,
   cleanupPrograms: VoidFunction,
   presentationFormat: GPUTextureFormat,
   onEmptyEvents: VoidFunction // call when there is no more events to process
-): VoidFunction {
+) {
   let pickPass: GPURenderPassEncoder
 
   const pickManager = new PickManager(device)
@@ -86,16 +86,27 @@ export default function runCreator(
   let rafId = 0
   const lastPickPointer: Point = { x: 0, y: 0 }
 
-  function draw(_now: DOMHighResTimeStamp) {
+  // when previewCanvas is present then onCapturePreview should be as well
+  function draw(
+    now: DOMHighResTimeStamp,
+    preview?: { canvas: HTMLCanvasElement; ctx: GPUCanvasContext; onCapture: VoidFunction }
+  ) {
     const encoder = device.createCommandEncoder()
-
-    const canvasDescriptor = getCanvasRenderDescriptor(context, device)
+    const canvasDescriptor = getCanvasRenderDescriptor(preview?.ctx || context, device)
     renderPass = encoder.beginRenderPass(canvasDescriptor)
-    const canvasMatrix = getCanvasMatrix(canvas)
+    const canvasMatrix = getCanvasMatrix(preview?.canvas || creatorCanvas)
     device.queue.writeBuffer(canvasMatrixBuffer, 0, canvasMatrix)
     // time = performance.now()
     render_draw()
     renderPass.end()
+
+    if (preview) {
+      const commandBuffer = encoder.finish()
+      device.queue.submit([commandBuffer])
+      cleanupPrograms()
+      preview.onCapture()
+      return
+    }
 
     if (pointer.afterPickEventsQueue.length === 0) {
       onEmptyEvents()
@@ -109,7 +120,7 @@ export default function runCreator(
     if (needsUpdatePick) {
       lastPickPointer.x = pointer.x
       lastPickPointer.y = pointer.y
-      const pickMatrix = pickManager.createMatrix(canvas, canvasMatrix)
+      const pickMatrix = pickManager.createMatrix(creatorCanvas, canvasMatrix)
       device.queue.writeBuffer(pickCanvasMatrixBuffer, 0, pickMatrix)
       const pick = pickManager.startPicking(encoder)
       pickPass = pick.pass
@@ -128,7 +139,21 @@ export default function runCreator(
 
   rafId = requestAnimationFrame(draw)
 
-  return () => {
+  function stopRAF() {
     cancelAnimationFrame(rafId)
+  }
+
+  function capturePreview(canvas: HTMLCanvasElement, ctx: GPUCanvasContext): Promise<void> {
+    stopRAF()
+    const promise = new Promise<void>((resolve) => {
+      draw(performance.now(), { canvas, ctx, onCapture: resolve })
+    })
+    rafId = requestAnimationFrame(draw)
+    return promise
+  }
+
+  return {
+    stopRAF,
+    capturePreview,
   }
 }

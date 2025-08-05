@@ -18,6 +18,7 @@ async function test() {
   const undoBtn = document.querySelector<HTMLSpanElement>('#undo-btn')!
   const redoBtn = document.querySelector<HTMLSpanElement>('#redo-btn')!
   const toolsSelect = document.querySelector<HTMLSelectElement>('#tools-select')!
+  const previewImg = document.querySelector<HTMLImageElement>('#preview')!
 
   window.assetsSnapshot = []
   function setAssetSnapshot(assets: SerializedOutputAsset[]) {
@@ -59,6 +60,9 @@ async function test() {
     },
     (inProgress) => {
       isProcessingEventsEl.textContent = inProgress ? 'true' : 'false'
+    },
+    (canvas) => {
+      previewImg.src = canvas.toDataURL('image/png')
     }
   )
 
