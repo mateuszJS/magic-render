@@ -22,8 +22,8 @@ fn getOppositeHandle(control_point: Point, handle: Point) Point {
     return opposite_point;
 }
 
-pub var cache_shape: *const fn (?u32, bounding_box.BoundingBox, DrawVertexOutput, f32, f32) u32 = undefined;
-pub var max_texture_size: f32 = 0.0;
+pub var cacheShape: *const fn (?u32, bounding_box.BoundingBox, DrawVertexOutput, f32, f32) u32 = undefined;
+pub var maxTextureSize: f32 = 0.0;
 
 pub const ShapeProps = struct {
     // f32 instead of u8 because Uniforms in wgsl doesn't support u8 anyway
@@ -60,7 +60,7 @@ pub const Shape = struct {
     // Arrays: Use &array to get a slice reference
     // Slices: Pass directly (they're already slices)
     // ArrayList: Use .items to get the underlying slice
-    pub fn new_from_points(id: u32, input_paths: []const []const [4]Point, props: ShapeProps, allocator: std.mem.Allocator) !Shape {
+    pub fn newFromPoints(id: u32, input_paths: []const []const [4]Point, props: ShapeProps, allocator: std.mem.Allocator) !Shape {
         var paths_list = std.ArrayList(Path).init(allocator);
 
         for (input_paths) |input_path| {
@@ -95,8 +95,8 @@ pub const Shape = struct {
     pub fn updateTextureSize(self: *Shape) bool {
         const width = self.points[0].distance(self.points[1]);
         const height = self.points[0].distance(self.points[3]);
-        const new_width = @min(Utils.get_next_power_of_two(@max(self.texture_width, width / shared.render_scale)), max_texture_size);
-        const new_height = @min(Utils.get_next_power_of_two(@max(self.texture_height, height / shared.render_scale)), max_texture_size);
+        const new_width = @min(Utils.getNextPowerOfTwo(@max(self.texture_width, width / shared.render_scale)), maxTextureSize);
+        const new_height = @min(Utils.getNextPowerOfTwo(@max(self.texture_height, height / shared.render_scale)), maxTextureSize);
 
         if (self.texture_width > new_width - EPSILON and self.texture_height > new_height - EPSILON) {
             return false; // No resize needed
@@ -111,7 +111,7 @@ pub const Shape = struct {
     pub fn drawTextureCache(self: *Shape, allocator: std.mem.Allocator, force: bool) !void {
         if (!self.invalid_cache and !force) return; // texture is up to date
 
-        const option_vertex_output = try self.get_draw_vertex_data(
+        const option_vertex_output = try self.getDrawVertexData(
             allocator,
             null,
             null,
@@ -138,7 +138,7 @@ pub const Shape = struct {
                 .max_y = right_top.y,
             };
 
-            self.texture_id = cache_shape(
+            self.texture_id = cacheShape(
                 self.texture_id,
                 cache_bounding_box,
                 vertex_output,
@@ -149,10 +149,10 @@ pub const Shape = struct {
         }
     }
 
-    pub fn get_skeleton_draw_vertex_data(self: Shape, allocator: std.mem.Allocator, preview_point: ?Point, is_handle_preview: bool) ![]triangles.DrawInstance {
+    pub fn getSkeletonDrawVertexData(self: Shape, allocator: std.mem.Allocator, preview_point: ?Point, is_handle_preview: bool) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         for (self.paths.items) |path| {
-            const path_skeleton = try path.get_skeleton_draw_vertex_data(allocator);
+            const path_skeleton = try path.getSkeletonDrawVertexData(allocator);
             try skeleton_buffer.appendSlice(path_skeleton);
         }
 
@@ -160,7 +160,7 @@ pub const Shape = struct {
             if (!is_handle_preview) {
                 const size = 20.0 * shared.render_scale;
                 var buffer: [2]triangles.DrawInstance = undefined;
-                squares.get_draw_vertex_data(
+                squares.getDrawVertexData(
                     buffer[0..2],
                     point.x - size / 2.0,
                     point.y - size / 2.0,
@@ -176,11 +176,11 @@ pub const Shape = struct {
         return skeleton_buffer.toOwnedSlice();
     }
 
-    pub fn get_draw_vertex_data(self: Shape, allocator: std.mem.Allocator, active_path_index: ?usize, option_preview_point: ?Point) !?DrawVertexOutput {
+    pub fn getDrawVertexData(self: Shape, allocator: std.mem.Allocator, active_path_index: ?usize, option_preview_point: ?Point) !?DrawVertexOutput {
         var curves_buffer = std.ArrayList(Point).init(allocator);
         for (self.paths.items, 0..) |path, i| {
             const preview_point = if (active_path_index == i) option_preview_point else null;
-            const option_curves = try path.get_draw_vertex_data(allocator, preview_point);
+            const option_curves = try path.getDrawVertexData(allocator, preview_point);
             if (option_curves) |curves| {
                 try curves_buffer.appendSlice(curves);
             }

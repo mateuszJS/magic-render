@@ -28,7 +28,7 @@ const DEFAULT_ICON = IconData{
 
 var icons: std.AutoHashMap(IconId, IconData) = undefined;
 
-pub fn init_icons(data: []const f32) void {
+pub fn initIcons(data: []const f32) void {
     icons = std.AutoHashMap(IconId, IconData).init(std.heap.page_allocator);
 
     var i: usize = 0;
@@ -48,7 +48,7 @@ pub fn init_icons(data: []const f32) void {
     }
 }
 
-pub fn deinit_icons() void {
+pub fn deinitIcons() void {
     icons.clearAndFree();
 }
 
@@ -57,7 +57,7 @@ pub const DrawInstance = extern struct {
     color: [4]u8,
 };
 
-pub fn get_draw_vertex_data(icon_id: IconId, x: f32, y: f32, width: f32, color: [4]u8) [2]DrawInstance {
+pub fn getDrawVertexData(icon_id: IconId, x: f32, y: f32, width: f32, color: [4]u8) [2]DrawInstance {
     const icon = icons.get(icon_id) orelse DEFAULT_ICON;
 
     const scale = width / icon.real_width;

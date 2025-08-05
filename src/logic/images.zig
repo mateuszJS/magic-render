@@ -2,7 +2,7 @@ const std = @import("std");
 const Types = @import("types.zig");
 const PointUV = Types.PointUV;
 
-const SHADER_TRIANGLE_INDICIES = [_]usize{
+const SHADER_TRIANGLE_INDICES = [_]usize{
     0, 1, 2,
     2, 3, 0,
 };
@@ -23,17 +23,17 @@ pub const Image = struct {
         };
     }
 
-    pub fn get_render_vertex_data(self: Image, buffer: *DrawVertex) void {
+    pub fn getRenderVertexData(self: Image, buffer: *DrawVertex) void {
         var i: usize = 0;
 
-        for (SHADER_TRIANGLE_INDICIES) |index| {
+        for (SHADER_TRIANGLE_INDICES) |index| {
             buffer[i] = self.points[index];
             i += 1;
         }
     }
 
-    pub fn get_pick_vertex_data(self: Image, buffer: *[6]PickVertex) void {
-        for (SHADER_TRIANGLE_INDICIES, 0..) |index, i| {
+    pub fn getPickVertexData(self: Image, buffer: *[6]PickVertex) void {
+        for (SHADER_TRIANGLE_INDICES, 0..) |index, i| {
             buffer[i] = .{
                 .point = self.points[index],
                 .id = self.id,
@@ -41,7 +41,7 @@ pub const Image = struct {
         }
     }
 
-    pub fn update_coords(self: *Image, new_points: [4]Types.PointUV) void {
+    pub fn updateCoords(self: *Image, new_points: [4]Types.PointUV) void {
         for (&self.points, 0..) |*item, i| {
             item.* = new_points[i];
         }

@@ -11,7 +11,7 @@ pub const Point = extern struct {
         };
     }
 
-    pub fn angle_to(self: Point, other: anytype) f32 {
+    pub fn angleTo(self: Point, other: anytype) f32 {
         const dx = other.x - self.x;
         const dy = other.y - self.y;
         return std.math.atan2(dy, dx);
@@ -46,7 +46,7 @@ pub const PointUV = extern struct {
         };
     }
 
-    pub fn angle_to(self: PointUV, other: PointUV) f32 {
+    pub fn angleTo(self: PointUV, other: PointUV) f32 {
         const dx = other.x - self.x;
         const dy = other.y - self.y;
         return std.math.atan2(dy, dx);
