@@ -86,7 +86,6 @@ export default function runCreator(
   let rafId = 0
   const lastPickPointer: Point = { x: 0, y: 0 }
 
-  // when previewCanvas is present then onCapturePreview should be as well
   function draw(
     now: DOMHighResTimeStamp,
     preview?: { canvas: HTMLCanvasElement; ctx: GPUCanvasContext; onCapture: VoidFunction }
@@ -143,14 +142,12 @@ export default function runCreator(
     cancelAnimationFrame(rafId)
   }
 
-  function capturePreview(canvas: HTMLCanvasElement, ctx: GPUCanvasContext): Promise<void> {
-    stopRAF()
-    const promise = new Promise<void>((resolve) => {
+  const capturePreview = (canvas: HTMLCanvasElement, ctx: GPUCanvasContext) =>
+    new Promise<void>((resolve) => {
+      stopRAF()
       draw(performance.now(), { canvas, ctx, onCapture: resolve })
+      rafId = requestAnimationFrame(draw)
     })
-    rafId = requestAnimationFrame(draw)
-    return promise
-  }
 
   return {
     stopRAF,
