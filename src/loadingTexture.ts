@@ -1,9 +1,11 @@
+import { THEME_COLORS, hslToRgba255 } from './colors'
+
 export default function getLoadingTexture(device: GPUDevice): GPUTexture {
   const textureWidth = 5
   const textureHeight = 7
-  const _ = [255, 0, 0, 255] // red
-  const y = [255, 255, 0, 255] // yellow
-  const b = [0, 0, 255, 255] // blue
+  const _ = hslToRgba255(THEME_COLORS.RED) // red
+  const y = hslToRgba255(THEME_COLORS.YELLOW) // yellow
+  const b = hslToRgba255(THEME_COLORS.BLUE) // blue
   // prettier-ignore
   const textureData = new Uint8Array([
     b, _, _, _, _,

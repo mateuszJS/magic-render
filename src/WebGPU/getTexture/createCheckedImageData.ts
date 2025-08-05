@@ -1,15 +1,17 @@
+import { THEME_COLORS, hslToHex } from '../../colors'
+
 const FAKE_MIPMAPS_COLORS = [
-  '#FF0000',
-  '#FF00C4',
-  '#C400FF',
-  '#1A00FF',
-  '#00A2FF',
-  '#00FFFF',
-  '#00FF9A',
-  '#24C624',
-  '#CDFF00',
-  '#FFF700',
-  '#FFBC00',
+  hslToHex(THEME_COLORS.RED),
+  hslToHex(THEME_COLORS.MAGENTA),
+  hslToHex(THEME_COLORS.PURPLE),
+  hslToHex(THEME_COLORS.INDIGO),
+  hslToHex(THEME_COLORS.CYAN_BLUE),
+  hslToHex(THEME_COLORS.CYAN),
+  hslToHex(THEME_COLORS.SPRING_GREEN),
+  hslToHex(THEME_COLORS.GREEN),
+  hslToHex(THEME_COLORS.LIME),
+  hslToHex(THEME_COLORS.YELLOW),
+  hslToHex(THEME_COLORS.ORANGE),
 ]
 
 const ctx = new OffscreenCanvas(0, 0).getContext('2d', { willReadFrequently: true })!
@@ -17,13 +19,13 @@ const ctx = new OffscreenCanvas(0, 0).getContext('2d', { willReadFrequently: tru
 export default function createCheckedImageData(size: number, index: number): ImageData {
   ctx.canvas.width = size
   ctx.canvas.height = size
-  ctx.fillStyle = index & 1 ? '#000' : '#fff'
+  ctx.fillStyle = index & 1 ? hslToHex(THEME_COLORS.BLACK) : hslToHex(THEME_COLORS.WHITE)
   ctx.fillRect(0, 0, size, size)
   ctx.fillStyle = FAKE_MIPMAPS_COLORS[index % FAKE_MIPMAPS_COLORS.length]
   ctx.fillRect(0, 0, size / 2, size / 2)
   ctx.fillRect(size / 2, size / 2, size / 2, size / 2)
 
-  ctx.fillStyle = index & 1 ? '#FFFFFF' : '#000000'
+  ctx.fillStyle = index & 1 ? hslToHex(THEME_COLORS.WHITE) : hslToHex(THEME_COLORS.BLACK)
   ctx.font = `${size * 0.3}px serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
