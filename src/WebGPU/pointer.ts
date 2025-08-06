@@ -58,7 +58,7 @@ export default function initMouseController(
     const update = () => {
       pointer.x = OUTSIDE_CANVAS
       pointer.y = OUTSIDE_CANVAS
-      Logic.on_pointer_leave()
+      Logic.onPointerLeave()
     }
     if (pointer.afterPickEventsQueue.length > 0) {
       pointer.afterPickEventsQueue.push({
@@ -83,7 +83,7 @@ export default function initMouseController(
 
     const move = () => {
       updatePointer(e)
-      Logic.on_pointer_move(...getZigAbsolutePointer())
+      Logic.onPointerMove(...getZigAbsolutePointer())
     }
     if (pointer.afterPickEventsQueue.length > 0) {
       pointer.afterPickEventsQueue.push({
@@ -112,7 +112,7 @@ export default function initMouseController(
     updatePointer(e)
     pointer.afterPickEventsQueue.push({
       requireNewPick: true,
-      cb: Logic.on_pointer_down.bind(null, ...getZigAbsolutePointer()),
+      cb: Logic.onPointerDown.bind(null, ...getZigAbsolutePointer()),
     })
   })
 
@@ -126,10 +126,10 @@ export default function initMouseController(
     if (pointer.afterPickEventsQueue.length > 0) {
       pointer.afterPickEventsQueue.push({
         requireNewPick: false,
-        cb: Logic.on_pointer_up,
+        cb: Logic.onPointerUp,
       })
     } else {
-      Logic.on_pointer_up()
+      Logic.onPointerUp()
     }
   })
 
@@ -190,7 +190,7 @@ export default function initMouseController(
         break
       case 'Escape':
         event.preventDefault()
-        Logic.commit_changes()
+        Logic.commitChanges()
         break
       case '=':
       case '+':

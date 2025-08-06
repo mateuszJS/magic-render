@@ -31,9 +31,12 @@ type ZigAssetInput = {
 }
 type ZigAssetOutput = {
   id: number
-  points: PointUV[]
+  box: PointUV[]
   texture_id: number
+  paths: Point[][]
+  props: ShapeProps
 }
+
 type ArrayPointerDataView = {
   '*': PointerDataView
 }
@@ -42,20 +45,20 @@ type PointerDataView = {
 }
 
 declare module '*.zig' {
-  export const init_state: (width: number, height: number, max_texture_size: number) => void
-  export const add_asset: (maybe_asset_id: number, points: PointUV[], texture_id: number) => void
-  export const remove_asset: () => void
-  export const reset_assets: (assets: ZigAssetInput[], with_snapshot: boolean) => void
+  export const initState: (width: number, height: number, max_texture_size: number) => void
+  export const addAsset: (maybe_asset_id: number, points: PointUV[], texture_id: number) => void
+  export const removeAsset: () => void
+  export const resetAssets: (assets: ZigAssetInput[], with_snapshot: boolean) => void
 
-  export const on_update_pick: (id: number) => void
-  export const on_pointer_down: (x: number, y: number) => void
-  export const on_pointer_up: () => void
-  export const on_pointer_move: (x: number, y: number) => void
-  export const on_pointer_leave: VoidFunction
-  export const commit_changes: VoidFunction
-  export const update_render_scale: (render_scale: number) => void
+  export const onUpdatePick: (id: number) => void
+  export const onPointerDown: (x: number, y: number) => void
+  export const onPointerUp: () => void
+  export const onPointerMove: (x: number, y: number) => void
+  export const onPointerLeave: VoidFunction
+  export const commitChanges: VoidFunction
+  export const updateRenderScale: (render_scale: number) => void
 
-  export const connect_web_gpu_programs: (programs: {
+  export const connectWebGpuPrograms: (programs: {
     draw_texture: (vertex_data: PointerDataView, texture_id: number) => void
     draw_triangle: (vertex_data: ArrayPointerDataView) => void
     draw_msdf: (vertex_data: ArrayPointerDataView, texture_id: number) => void
@@ -67,9 +70,9 @@ declare module '*.zig' {
       uniformData: PointerDataView
     ) => void
   }) => void
-  export const connect_on_asset_update_callback: (cb: (data: ZigAssetOutput[]) => void) => void
-  export const connect_on_asset_selection_callback: (cb: (data: number) => void) => void
-  export const connect_cache_callbacks: (
+  export const connectOnAssetUpdateCallback: (cb: (data: ZigAssetOutput[]) => void) => void
+  export const connectOnAssetSelectionCallback: (cb: (data: number) => void) => void
+  export const connectCacheCallbacks: (
     start_cache: (
       texture_id: number | null,
       box: BoundingBox,
@@ -79,14 +82,14 @@ declare module '*.zig' {
     end_cache: VoidFunction
   ) => void
 
-  export const render_draw: VoidFunction
-  export const render_pick: VoidFunction
-  export const destroy_state: VoidFunction
-  export const set_tool: (tool: number) => void
+  export const renderDraw: VoidFunction
+  export const renderPick: VoidFunction
+  export const destroyState: VoidFunction
+  export const setTool: (tool: number) => void
 
-  export const import_icons: (data: number[]) => void
+  export const importIcons: (data: number[]) => void
 
-  export const add_shape: (
+  export const addShape: (
     paths: Array<Array<[Point, Point, Point, Point]>>,
     props: ShapeProps
   ) => void

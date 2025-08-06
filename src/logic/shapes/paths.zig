@@ -237,6 +237,10 @@ pub const Path = struct {
         }
     }
 
+    pub fn serialize(self: Path) []const Point {
+        return self.points.items;
+    }
+
     pub fn deinit(self: *Path) void {
         self.points.deinit();
     }

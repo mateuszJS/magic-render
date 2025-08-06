@@ -1,4 +1,3 @@
-const Image = @import("images.zig").Image;
 const Point = @import("types.zig").Point;
 const Line = @import("line.zig");
 const PointUV = @import("types.zig").PointUV;
@@ -207,7 +206,7 @@ fn getPointsOfLine(points: [4]PointUV, t_line: TransformLine) struct { Point, Po
     }
 }
 
-pub const RENDER_TRIANGLE_INSTANCES = UI_VERTICIES_COUNT_BORDER * 2 * 2; // two triangle per line, each line has front and back color
+pub const RENDER_TRIANGLE_INSTANCES = UI_VERTICES_COUNT_BORDER * 2 * 2; // two triangle per line, each line has front and back color
 
 pub fn getDrawVertexData(
     triangle_buffer: *[RENDER_TRIANGLE_INSTANCES]Triangle.DrawInstance,
@@ -258,7 +257,7 @@ pub fn getDrawVertexData(
     }
 }
 
-pub const PICK_TRIANGLE_INSTANCES = UI_VERTICIES_COUNT_BORDER * 2;
+pub const PICK_TRIANGLE_INSTANCES = UI_VERTICES_COUNT_BORDER * 2;
 pub fn getPickVertexData(buffer: *[PICK_TRIANGLE_INSTANCES]Triangle.PickInstance, points: [4]PointUV) void {
     var i: usize = 0;
     for (resize_lines) |t_line| {

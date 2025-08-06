@@ -29,7 +29,7 @@ export default async function generatePreview(
   camera.y = (previewCanvas.height - projectHeight) / 2
   camera.zoom = 1
 
-  Logic.update_render_scale(scale)
+  Logic.updateRenderScale(scale)
 
   capturePreview(previewCanvas, previewContext).then(() => {
     onPreviewUpdate(previewCanvas)
@@ -38,6 +38,6 @@ export default async function generatePreview(
     camera.x = cameraCopy.x
     camera.y = cameraCopy.y
     camera.zoom = cameraCopy.zoom
-    Logic.update_render_scale(creatorCanvas.width / (creatorCanvas.clientWidth * camera.zoom))
+    Logic.updateRenderScale(creatorCanvas.width / (creatorCanvas.clientWidth * camera.zoom))
   })
 }

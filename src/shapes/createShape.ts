@@ -44,7 +44,7 @@ export default function createShapes(node: Node, svgHeight: number): void {
         }
 
         if (result) {
-          Logic.add_shape(result, serializedProps)
+          Logic.addShape(result, serializedProps)
         }
       }
       createShapes(child, svgHeight)

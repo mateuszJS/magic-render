@@ -11,7 +11,7 @@ import {
 } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
-import { render_draw, render_pick, connect_web_gpu_programs } from 'logic/index.zig'
+import * as Logic from 'logic/index.zig'
 import { pointer } from 'WebGPU/pointer'
 import * as Textures from 'textures'
 
@@ -35,7 +35,7 @@ export default function runCreator(
   // let total = 0
   // let samplesCount = 0
 
-  connect_web_gpu_programs({
+  Logic.connectWebGpuPrograms({
     draw_texture: (vertex_data, texture_id) => {
       drawTexture(renderPass, vertex_data.dataView, Textures.getTexture(texture_id))
     },
@@ -96,7 +96,7 @@ export default function runCreator(
     const canvasMatrix = getCanvasMatrix(preview?.canvas || creatorCanvas)
     device.queue.writeBuffer(canvasMatrixBuffer, 0, canvasMatrix)
     // time = performance.now()
-    render_draw()
+    Logic.renderDraw()
     renderPass.end()
 
     if (preview) {
@@ -123,7 +123,7 @@ export default function runCreator(
       device.queue.writeBuffer(pickCanvasMatrixBuffer, 0, pickMatrix)
       const pick = pickManager.startPicking(encoder)
       pickPass = pick.pass
-      render_pick()
+      Logic.renderPick()
       pick.end()
     }
 

@@ -8,7 +8,6 @@ const squares = @import("../squares.zig");
 const lines = @import("../line.zig");
 const Path = @import("paths.zig").Path;
 const shared = @import("../shared.zig");
-const images = @import("../images.zig");
 
 const EPSILON = std.math.floatEps(f32);
 
@@ -22,8 +21,12 @@ fn getOppositeHandle(control_point: Point, handle: Point) Point {
     return opposite_point;
 }
 
-pub var cacheShape: *const fn (?u32, bounding_box.BoundingBox, DrawVertexOutput, f32, f32) u32 = undefined;
+pub var cacheShape: *const fn (?u32, bounding_box.BoundingBox, VectorDrawVertex, f32, f32) u32 = undefined;
 pub var maxTextureSize: f32 = 0.0;
+const SHADER_TRIANGLE_INDICES = [_]usize{
+    0, 1, 2,
+    2, 3, 0,
+};
 
 pub const ShapeProps = struct {
     // f32 instead of u8 because Uniforms in wgsl doesn't support u8 anyway
@@ -35,9 +38,12 @@ pub const ShapeProps = struct {
 pub const Shape = struct {
     id: u32,
     paths: std.ArrayList(Path),
+    // points on path are in RELATIVE coordinates to box[4]PointUV
+    // this way we can just modify box, not individual points
+
     props: ShapeProps,
     // texture related
-    points: [4]PointUV = undefined,
+    box: [4]PointUV = undefined,
     texture_id: ?u32 = null,
     texture_width: f32 = 0.0,
     texture_height: f32 = 0.0,
@@ -78,6 +84,16 @@ pub const Shape = struct {
         return shape;
     }
 
+    pub fn newFromTexture(id: u32, points: [4]PointUV, texture_id: u32) Shape {
+        return Shape{
+            .id = id,
+            .box = points,
+            .texture_id = texture_id,
+            .paths = std.ArrayList(Path).init(std.heap.page_allocator),
+            .props = ShapeProps{},
+        };
+    }
+
     pub fn addPointStart(self: *Shape, allocator: std.mem.Allocator, point: Point, option_active_path_index: ?usize) !usize {
         if (option_active_path_index) |active_path_index| {
             var active_path = &self.paths.items[active_path_index];
@@ -93,8 +109,8 @@ pub const Shape = struct {
 
     // receives boolean indicating if texture size was updated or not
     pub fn updateTextureSize(self: *Shape) bool {
-        const width = self.points[0].distance(self.points[1]);
-        const height = self.points[0].distance(self.points[3]);
+        const width = self.box[0].distance(self.box[1]);
+        const height = self.box[0].distance(self.box[3]);
         const new_width = @min(Utils.getNextPowerOfTwo(@max(self.texture_width, width / shared.render_scale)), maxTextureSize);
         const new_height = @min(Utils.getNextPowerOfTwo(@max(self.texture_height, height / shared.render_scale)), maxTextureSize);
 
@@ -119,7 +135,7 @@ pub const Shape = struct {
         if (option_vertex_output) |vertex_output| {
             const left_bottom = vertex_output.bounding_box[0];
             const right_top = vertex_output.bounding_box[2];
-            self.points = [4]PointUV{
+            self.box = [4]PointUV{
                 .{ .x = left_bottom.x, .y = right_top.y, .u = 0.0, .v = 1.0 },
                 .{ .x = right_top.x, .y = right_top.y, .u = 1.0, .v = 1.0 },
                 .{ .x = right_top.x, .y = left_bottom.y, .u = 1.0, .v = 0.0 },
@@ -176,7 +192,12 @@ pub const Shape = struct {
         return skeleton_buffer.toOwnedSlice();
     }
 
-    pub fn getDrawVertexData(self: Shape, allocator: std.mem.Allocator, active_path_index: ?usize, option_preview_point: ?Point) !?DrawVertexOutput {
+    pub fn getDrawVertexData(
+        self: Shape,
+        allocator: std.mem.Allocator,
+        active_path_index: ?usize,
+        option_preview_point: ?Point,
+    ) !?VectorDrawVertex {
         var curves_buffer = std.ArrayList(Point).init(allocator);
         for (self.paths.items, 0..) |path, i| {
             const preview_point = if (active_path_index == i) option_preview_point else null;
@@ -202,7 +223,7 @@ pub const Shape = struct {
                 .{ .x = box.min_x, .y = box.min_y }, // bottom-left
             };
 
-            return DrawVertexOutput{
+            return VectorDrawVertex{
                 .curves = curves_buffer.items, // Transfer ownership directly
                 .bounding_box = box_vertex,
                 .uniform = Uniform{
@@ -214,32 +235,6 @@ pub const Shape = struct {
         } else {
             return null;
         }
-    }
-
-    pub fn getCacheTextureDrawVertexData(self: Shape) images.DrawVertex {
-        return images.DrawVertex{
-            // first triangle
-            self.points[0],
-            self.points[1],
-            self.points[2],
-            // second triangle
-            self.points[2],
-            self.points[3],
-            self.points[0],
-        };
-    }
-
-    pub fn getCacheTexturePickVertexData(self: Shape) [6]images.PickVertex {
-        return [_]images.PickVertex{
-            // first triangle
-            .{ .id = self.id, .point = self.points[0] },
-            .{ .id = self.id, .point = self.points[1] },
-            .{ .id = self.id, .point = self.points[2] },
-            // second triangle
-            .{ .id = self.id, .point = self.points[2] },
-            .{ .id = self.id, .point = self.points[3] },
-            .{ .id = self.id, .point = self.points[0] },
-        };
     }
 
     pub fn updateLastHandle(self: *Shape, active_path_index: usize, preview_point: Point) void {
@@ -261,6 +256,48 @@ pub const Shape = struct {
         self.invalid_cache = true;
     }
 
+    pub fn updateBox(self: *Shape, box: [4]PointUV) void {
+        self.box = box;
+    }
+
+    pub fn serialize(self: Shape) !Serialized {
+        var paths_list = std.ArrayList([]const Point).init(self.paths.allocator);
+        for (self.paths.items) |path| {
+            const serialized_path = path.serialize();
+            try paths_list.append(serialized_path);
+        }
+
+        return Serialized{
+            .id = self.id,
+            .paths = try paths_list.toOwnedSlice(),
+            .props = self.props,
+            .texture_id = self.texture_id orelse 0,
+            .box = self.box,
+        };
+    }
+
+    pub fn souldRenderTexture(self: Shape) bool {
+        return self.texture_id != null and self.texture_width > EPSILON and self.texture_height > EPSILON;
+    }
+
+    pub fn getTextureRenderVertexData(self: Shape, buffer: *TextureDrawVertex) void {
+        var i: usize = 0;
+
+        for (SHADER_TRIANGLE_INDICES) |index| {
+            buffer[i] = self.box[index];
+            i += 1;
+        }
+    }
+
+    pub fn getTexturePickVertexData(self: Shape, buffer: *[6]TexturePickVertex) void {
+        for (SHADER_TRIANGLE_INDICES, 0..) |index, i| {
+            buffer[i] = .{
+                .point = self.box[index],
+                .id = self.id,
+            };
+        }
+    }
+
     pub fn deinit(self: *Shape) void {
         for (self.paths.items) |path| {
             path.deinit();
@@ -269,15 +306,26 @@ pub const Shape = struct {
     }
 };
 
-pub const DrawVertexOutput = struct {
+pub const VectorDrawVertex = struct {
     curves: []const Point,
     bounding_box: [6]Point,
     uniform: Uniform,
 };
+
+pub const TextureDrawVertex = [6]PointUV;
+pub const TexturePickVertex = extern struct { point: PointUV, id: u32 };
 
 pub const Uniform = extern struct {
     stroke_width: f32,
     padding: [3]f32 = .{ 0.0, 0.0, 0.0 }, // Padding for alignment
     fill_color: [4]f32,
     stroke_color: [4]f32,
+};
+
+pub const Serialized = struct {
+    id: u32,
+    texture_id: u32,
+    paths: [][]const Point,
+    props: ShapeProps,
+    box: [4]PointUV,
 };
