@@ -30,13 +30,13 @@ function createCheckedMipmap(levels: Array<{ size: number; color: string }>) {
   return levels.map(({ size, color }, i) => {
     ctx.canvas.width = size
     ctx.canvas.height = size
-    ctx.fillStyle = i & 1 ? '#000' : '#fff'
+    ctx.fillStyle = i & 1 ? 'hsl(0, 0%, 0%)' : 'hsl(0, 0%, 100%)'
     ctx.fillRect(0, 0, size, size)
     ctx.fillStyle = color
     ctx.fillRect(0, 0, size / 2, size / 2)
     ctx.fillRect(size / 2, size / 2, size / 2, size / 2)
 
-    ctx.fillStyle = i & 1 ? '#FFFFFF' : '#000000'
+    ctx.fillStyle = i & 1 ? 'hsl(0, 0%, 100%)' : 'hsl(0, 0%, 0%)'
     ctx.font = `${size * 0.3}px serif`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'

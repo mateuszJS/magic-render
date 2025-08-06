@@ -15,7 +15,7 @@ function testSvgToSegments(): number[] {
   const ctx = testCanvas.getContext('2d')!
 
   segments.forEach(({ points: [start, cp1, cp2, end] }, i) => {
-    ctx.strokeStyle = `rgb(0, ${(i / segments.length) * 255}, 0)`
+    ctx.strokeStyle = `hsl(${Math.round((i / segments.length) * 120)}, 100%, 50%)`
     ctx.lineWidth = 10
     ctx.beginPath()
     ctx.moveTo(start.x, start.y)
