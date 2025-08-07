@@ -13,12 +13,12 @@ export default function createShapes(node: Node, svgHeight: number): void {
     if (typeof child !== 'string') {
       if ('properties' in child && typeof child.properties === 'object') {
         const props = child.properties
-        const serializedProps: ShapeProps = {}
+        const serializedProps: Partial<ShapeProps> = {}
         if (props.fill) {
           const rgba = parseColor(props.fill as string)
           serializedProps.fill_color = rgba
         }
-        let result: PathSegment[][] | undefined = undefined
+        let result: Point[][] | undefined = undefined
 
         switch (child.tagName) {
           case 'path':
@@ -44,7 +44,7 @@ export default function createShapes(node: Node, svgHeight: number): void {
         }
 
         if (result) {
-          Logic.addShape(result, serializedProps)
+          Logic.addShape(0, result, serializedProps, null)
         }
       }
       createShapes(child, svgHeight)

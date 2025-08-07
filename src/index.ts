@@ -12,12 +12,27 @@ import { startCache, endCache } from 'WebGPU/textureCache'
 import debounce from 'utils/debounce'
 import generatePreview from 'WebGPU/generatePreview'
 
-export type SerializedInputAsset = {
+export type SerializedInputImage = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   points?: PointUV[]
   url: string
   textureId?: number
 }
+
+export type SerializedInputShape = {
+  id?: number // not needed while loading project but useful for undo/redo to maintain selection
+  paths: Point[][]
+  props: ShapeProps
+  cache?: {
+    id: number
+    points: PointUV[]
+    width: number
+    height: number
+    url: string
+  } | null
+}
+
+export type SerializedInputAsset = SerializedInputImage | SerializedInputShape
 
 export type SerializedOutputImage = {
   id: number // not needed while loading project but useful for undo/redo to maintain selection
@@ -28,10 +43,15 @@ export type SerializedOutputImage = {
 
 export type SerializedOutputShape = {
   id: number // not needed while loading project but useful for undo/redo to maintain selection
-  points: PointUV[]
-  url: string
-  textureId: number
   paths: Point[][]
+  props: ShapeProps
+  cache: {
+    id: number
+    points: PointUV[]
+    width: number
+    height: number
+    url: string
+  } | null
 }
 
 export type SerializedOutputAsset = SerializedOutputImage | SerializedOutputShape
@@ -145,22 +165,32 @@ export default async function initCreator(
         }
       } else {
         const shape = asset.shape
+        const cache = asset.shape.cache
         return {
           id: shape.id,
-          textureId: shape.texture_id,
-          points: [...shape.points].map((point) => ({
-            x: point.x,
-            y: point.y,
-            u: point.u,
-            v: point.v,
-          })),
-          url: Textures.getUrl(shape.texture_id),
           paths: [...shape.paths].map((path) =>
             [...path].map((point) => ({
               x: point.x,
               y: point.y,
             }))
           ),
+          props: {
+            fill_color: [...shape.props.fill_color],
+            stroke_color: [...shape.props.stroke_color],
+            stroke_width: shape.props.stroke_width,
+          },
+          cache: cache && {
+            id: cache.id,
+            points: [...cache.points].map((point) => ({
+              x: point.x,
+              y: point.y,
+              u: point.u,
+              v: point.v,
+            })),
+            width: cache.width,
+            height: cache.height,
+            url: Textures.getUrl(cache.id),
+          },
         }
       }
     })
@@ -176,7 +206,7 @@ export default async function initCreator(
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = Textures.add(url, (width, height, isNew) => {
       const points = getDefaultPoints(width, height, projectWidth, projectHeight)
-      Logic.addAsset(0 /* no id yet, needs to be generated */, points, textureId)
+      Logic.addImage(0 /* no id yet, needs to be generated */, points, textureId)
 
       if (isNew) {
         uploadTexture(url, (newUrl) => {
@@ -219,11 +249,33 @@ export default async function initCreator(
       assets.map<Promise<ZigAssetInput>>(
         (asset) =>
           new Promise((resolve, reject) => {
+            if ('paths' in asset) {
+              // it's a shape
+              return resolve({
+                shape: {
+                  id: asset.id || 0,
+                  paths: asset.paths,
+                  props: asset.props,
+                  cache: asset.cache
+                    ? {
+                        id: asset.cache.id,
+                        points: asset.cache.points,
+                        width: asset.cache.width,
+                        height: asset.cache.height,
+                      }
+                    : null,
+                },
+              })
+            }
+
+            // it's an image
             if (asset.points) {
               return resolve({
-                points: asset.points, // here it makes sense
-                texture_id: asset.textureId || Textures.add(asset.url), // if we got points, so we have url on the server for sure
-                id: asset.id || 0,
+                img: {
+                  id: asset.id || 0,
+                  points: asset.points, // here it makes sense
+                  texture_id: asset.textureId || Textures.add(asset.url), // if we got points, so we have url on the server for sure
+                },
               })
             }
 
@@ -240,9 +292,11 @@ export default async function initCreator(
               }
 
               return resolve({
-                points: getDefaultPoints(width, height, projectWidth, projectHeight),
-                texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
-                id: 0,
+                img: {
+                  id: 0,
+                  points: getDefaultPoints(width, height, projectWidth, projectHeight),
+                  texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
+                },
               })
             })
           })

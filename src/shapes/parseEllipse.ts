@@ -1,17 +1,10 @@
-import { BezierCurve } from './types'
-
-interface Point {
-  x: number
-  y: number
-}
-
 export default function parseEllipse(
   cx: number,
   cy: number,
   rx: number,
   ry: number,
   svgHeight: number
-): BezierCurve[] {
+): Point[] {
   // Convert center y-coordinate to Cartesian space
   const centerY = svgHeight - cy
 
@@ -30,38 +23,32 @@ export default function parseEllipse(
   const bottomPoint: Point = { x: cx, y: centerY - ry }
 
   // Create four Bezier curves that form the ellipse
-  const curves: BezierCurve[] = [
+  // prettier-ignore
+  const curves: Point[] = [
     // First quadrant: right to top
-    [
+    
       rightPoint,
       { x: cx + rx, y: centerY + ky }, // control point 1
       { x: cx + kx, y: centerY + ry }, // control point 2
       topPoint,
-    ],
 
     // Second quadrant: top to left
-    [
       topPoint,
       { x: cx - kx, y: centerY + ry }, // control point 1
       { x: cx - rx, y: centerY + ky }, // control point 2
       leftPoint,
-    ],
 
     // Third quadrant: left to bottom
-    [
       leftPoint,
       { x: cx - rx, y: centerY - ky }, // control point 1
       { x: cx - kx, y: centerY - ry }, // control point 2
       bottomPoint,
-    ],
 
     // Fourth quadrant: bottom to right
-    [
       bottomPoint,
       { x: cx + kx, y: centerY - ry }, // control point 1
       { x: cx + rx, y: centerY - ky }, // control point 2
       rightPoint,
-    ],
   ]
 
   return curves

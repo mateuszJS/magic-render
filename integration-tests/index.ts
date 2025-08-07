@@ -1,9 +1,15 @@
 import initCreator, { SerializedOutputAsset } from '../src/index'
 import { camera } from '../src/WebGPU/pointer'
 
+export interface AssetBasics {
+  id: number
+  points: Point[]
+  url: string
+}
+
 declare global {
   interface Window {
-    assetsSnapshot: SerializedOutputAsset[]
+    assetsSnapshot: AssetBasics[]
   }
 }
 
@@ -24,15 +30,31 @@ async function test() {
   function setAssetSnapshot(assets: SerializedOutputAsset[]) {
     const scale = (canvas.width * camera.zoom) / canvas.clientWidth
 
-    window.assetsSnapshot = assets.map((asset) => ({
-      ...asset,
-      points: asset.points.map((point) => ({
-        ...point,
-        x: point.x * scale + camera.x,
-        y: point.y * scale + camera.y,
-      })),
-    }))
+    window.assetsSnapshot = assets.map<AssetBasics>((asset) => {
+      if ('paths' in asset) {
+        return {
+          id: asset.id,
+          url: asset.cache?.url || '',
+          points:
+            asset.cache === null
+              ? []
+              : asset.cache.points.map((point) => ({
+                  x: point.x * scale + camera.x,
+                  y: point.y * scale + camera.y,
+                })),
+        }
+      }
+      return {
+        id: asset.id,
+        url: '',
+        points: asset.points.map((point) => ({
+          x: point.x * scale + camera.x,
+          y: point.y * scale + camera.y,
+        })),
+      }
+    })
   }
+
   let currentHistoryIndex = 0
   let newTextures = 0
   const creator = await initCreator(

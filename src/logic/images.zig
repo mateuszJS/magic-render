@@ -42,8 +42,8 @@ pub const Image = struct {
     }
 
     pub fn updateCoords(self: *Image, new_points: [4]Types.PointUV) void {
-        for (&self.points, 0..) |*item, i| {
-            item.* = new_points[i];
+        for (&self.points, new_points) |*item, new_point| {
+            item.* = new_point;
         }
     }
 

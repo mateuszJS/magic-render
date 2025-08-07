@@ -17,32 +17,37 @@ interface BoundingBox {
   max_y: number
 }
 
-type ShapeProps = Partial<{
+type ShapeProps = {
   fill_color: [number, number, number, number]
   stroke_color: [number, number, number, number]
   stroke_width: number
-}>
-
-type ZigF32Array = { typedArray: Float32Array }
-type ZigAssetInput = {
-  id: number
-  points: PointUV[]
-  texture_id: number
 }
+
 type ImageAssetOutput = {
   id: number
   points: PointUV[]
   texture_id: number
 }
-type ShapeAssetOutput = {
+
+type ShapeCache = {
   id: number
   points: PointUV[]
+  width: number
+  height: number
+} | null
+
+type ShapeAssetOutput = {
+  id: number
   paths: Point[][]
-  texture_id: number
+  props: ShapeProps
+  cache: ShapeCache
 }
+
+type ZigAssetInput = { img: ImageAssetOutput } | { shape: ShapeAssetOutput }
 type ZigAssetOutput =
   | { img: ImageAssetOutput; shape: null }
   | { img: null; shape: ShapeAssetOutput }
+
 type ArrayPointerDataView = {
   '*': PointerDataView
 }
@@ -52,7 +57,13 @@ type PointerDataView = {
 
 declare module '*.zig' {
   export const initState: (width: number, height: number, max_texture_size: number) => void
-  export const addAsset: (maybe_asset_id: number, points: PointUV[], texture_id: number) => void
+  export const addImage: (maybe_asset_id: number, points: PointUV[], texture_id: number) => void
+  export const addShape: (
+    maybe_asset_id: number,
+    paths: Point[][],
+    props: Partial<ShapeProps>,
+    cache: ShapeCache
+  ) => void
   export const removeAsset: () => void
   export const resetAssets: (assets: ZigAssetInput[], with_snapshot: boolean) => void
 
@@ -94,9 +105,4 @@ declare module '*.zig' {
   export const setTool: (tool: number) => void
 
   export const importIcons: (data: number[]) => void
-
-  export const addShape: (
-    paths: Array<Array<[Point, Point, Point, Point]>>,
-    props: ShapeProps
-  ) => void
 }

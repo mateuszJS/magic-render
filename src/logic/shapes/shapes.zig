@@ -21,16 +21,19 @@ pub const ShapeProps = struct {
     stroke_width: f32 = 0.0, // Default stroke width
 };
 
+pub const TextureCache = struct {
+    id: u32, // we ave to obtain it from JS, so it's null initially
+    points: [4]PointUV,
+    width: f32,
+    height: f32,
+    valid: bool = false,
+};
+
 pub const Shape = struct {
     id: u32,
     paths: std.ArrayList(Path),
     props: ShapeProps,
-    // texture related
-    points: [4]PointUV = undefined,
-    texture_id: ?u32 = null,
-    texture_width: f32 = 0.0,
-    texture_height: f32 = 0.0,
-    invalid_cache: bool = false, // if true, we need to update the cache texture
+    cache: ?TextureCache = null,
 
     pub fn new(id: u32, allocator: std.mem.Allocator) !Shape {
         const shape = Shape{
@@ -49,7 +52,7 @@ pub const Shape = struct {
     // Arrays: Use &array to get a slice reference
     // Slices: Pass directly (they're already slices)
     // ArrayList: Use .items to get the underlying slice
-    pub fn newFromPoints(id: u32, input_paths: []const []const [4]Point, props: ShapeProps, allocator: std.mem.Allocator) !Shape {
+    pub fn newFromPoints(id: u32, input_paths: []const []const Point, props: ShapeProps, cache: ?TextureCache, allocator: std.mem.Allocator) !Shape {
         var paths_list = std.ArrayList(Path).init(allocator);
 
         for (input_paths) |input_path| {
@@ -61,7 +64,7 @@ pub const Shape = struct {
             .id = id,
             .paths = paths_list,
             .props = props,
-            .invalid_cache = true,
+            .cache = cache,
         };
 
         return shape;
@@ -71,7 +74,9 @@ pub const Shape = struct {
         if (option_active_path_index) |active_path_index| {
             var active_path = &self.paths.items[active_path_index];
             try active_path.addPoint(point);
-            self.invalid_cache = true;
+            if (self.cache) |*cache| {
+                cache.valid = false;
+            }
             return active_path_index;
         } else {
             const new_path = try Path.new(point, allocator);
@@ -81,43 +86,59 @@ pub const Shape = struct {
     }
 
     // receives boolean indicating if texture size was updated or not
-    pub fn updateTextureSize(self: *Shape) bool {
-        const width = self.points[0].distance(self.points[1]);
-        const height = self.points[0].distance(self.points[3]);
-        const new_width = @min(Utils.getNextPowerOfTwo(@max(self.texture_width, width / shared.render_scale)), maxTextureSize);
-        const new_height = @min(Utils.getNextPowerOfTwo(@max(self.texture_height, height / shared.render_scale)), maxTextureSize);
+    pub fn updateTextureSize(cache: *TextureCache) bool {
+        const width = cache.points[0].distance(cache.points[1]);
+        const height = cache.points[0].distance(cache.points[3]);
+        const new_width = @min(Utils.getNextPowerOfTwo(@max(cache.width, width / shared.render_scale)), maxTextureSize);
+        const new_height = @min(Utils.getNextPowerOfTwo(@max(cache.height, height / shared.render_scale)), maxTextureSize);
 
-        if (self.texture_width > new_width - EPSILON and self.texture_height > new_height - EPSILON) {
-            return false; // No resize needed
+        if (cache.width > new_width - EPSILON and cache.height > new_height - EPSILON) {
+            return false;
         }
 
-        self.texture_width = new_width;
-        self.texture_height = new_height;
-
+        cache.width = new_width;
+        cache.height = new_height;
         return true;
     }
 
     pub fn drawTextureCache(self: *Shape, allocator: std.mem.Allocator, force: bool) !void {
-        if (!self.invalid_cache and !force) return; // texture is up to date
+        var cache: TextureCache = undefined;
+        var texture_id: ?u32 = null;
+
+        // try to avoid undefined
+        if (self.cache) |_cache| {
+            if (_cache.valid and !force) return; // texture is up to date
+            cache = _cache;
+            texture_id = _cache.id;
+        } else {
+            cache = TextureCache{
+                .id = undefined,
+                .points = undefined,
+                .width = 0.0,
+                .height = 0.0,
+            };
+        }
 
         const option_vertex_output = try self.getDrawVertexData(
             allocator,
             null,
             null,
         );
+
         if (option_vertex_output) |vertex_output| {
             const left_bottom = vertex_output.bounding_box[0];
             const right_top = vertex_output.bounding_box[2];
-            self.points = [4]PointUV{
+            cache.points = [4]PointUV{
                 .{ .x = left_bottom.x, .y = right_top.y, .u = 0.0, .v = 1.0 },
                 .{ .x = right_top.x, .y = right_top.y, .u = 1.0, .v = 1.0 },
                 .{ .x = right_top.x, .y = left_bottom.y, .u = 1.0, .v = 0.0 },
                 .{ .x = left_bottom.x, .y = left_bottom.y, .u = 0.0, .v = 0.0 },
             };
 
-            if (self.texture_width < EPSILON) {
+            if (cache.width < EPSILON) {
+                std.debug.print("Init cache texture size\n", .{});
                 // we need to calculate bounding box first(we did this above) to set initial size
-                _ = self.updateTextureSize();
+                _ = Shape.updateTextureSize(&cache);
             }
 
             const cache_bounding_box = bounding_box.BoundingBox{
@@ -127,14 +148,16 @@ pub const Shape = struct {
                 .max_y = right_top.y,
             };
 
-            self.texture_id = cacheShape(
-                self.texture_id,
+            cache.id = cacheShape(
+                texture_id,
                 cache_bounding_box,
                 vertex_output,
-                self.texture_width,
-                self.texture_height,
+                cache.width,
+                cache.height,
             );
-            self.invalid_cache = false;
+
+            cache.valid = false;
+            self.cache = cache;
         }
     }
 
@@ -205,36 +228,38 @@ pub const Shape = struct {
         }
     }
 
-    pub fn getCacheTextureDrawVertexData(self: Shape) images.DrawVertex {
+    pub fn getCacheTextureDrawVertexData(cache: TextureCache) images.DrawVertex {
         return images.DrawVertex{
             // first triangle
-            self.points[0],
-            self.points[1],
-            self.points[2],
+            cache.points[0],
+            cache.points[1],
+            cache.points[2],
             // second triangle
-            self.points[2],
-            self.points[3],
-            self.points[0],
+            cache.points[2],
+            cache.points[3],
+            cache.points[0],
         };
     }
 
-    pub fn getCacheTexturePickVertexData(self: Shape) [6]images.PickVertex {
+    pub fn getCacheTexturePickVertexData(self: Shape, cache: TextureCache) [6]images.PickVertex {
         return [_]images.PickVertex{
             // first triangle
-            .{ .id = self.id, .point = self.points[0] },
-            .{ .id = self.id, .point = self.points[1] },
-            .{ .id = self.id, .point = self.points[2] },
+            .{ .id = self.id, .point = cache.points[0] },
+            .{ .id = self.id, .point = cache.points[1] },
+            .{ .id = self.id, .point = cache.points[2] },
             // second triangle
-            .{ .id = self.id, .point = self.points[2] },
-            .{ .id = self.id, .point = self.points[3] },
-            .{ .id = self.id, .point = self.points[0] },
+            .{ .id = self.id, .point = cache.points[2] },
+            .{ .id = self.id, .point = cache.points[3] },
+            .{ .id = self.id, .point = cache.points[0] },
         };
     }
 
     pub fn updateLastHandle(self: *Shape, active_path_index: usize, preview_point: Point) void {
         const active_path = &self.paths.items[active_path_index];
         active_path.updateLastHandle(preview_point);
-        self.invalid_cache = true;
+        if (self.cache) |*cache| {
+            cache.valid = false;
+        }
     }
 
     pub fn serialize(self: Shape) !Serialized {
@@ -248,8 +273,7 @@ pub const Shape = struct {
             .id = self.id,
             .paths = try paths_list.toOwnedSlice(),
             .props = self.props,
-            .texture_id = self.texture_id orelse 0,
-            .points = self.points,
+            .cache = self.cache,
         };
     }
 
@@ -276,8 +300,36 @@ pub const Uniform = extern struct {
 
 pub const Serialized = struct {
     id: u32,
-    texture_id: u32,
-    paths: [][]const Point,
+    paths: []const []const Point,
     props: ShapeProps,
-    points: [4]PointUV,
+    cache: ?TextureCache,
+
+    pub fn compare(self: Serialized, other: Serialized) bool {
+
+        // There is a problem with cache!!!!!
+        // What if out previous version claims the cache is smaller then it actually is!!!!???
+        // I don't like that cache is triggered in such a weird way right now, instead of during the render
+
+        // in JS, we should compare size vs texture size, if texture is to small then request zig to give Shape vertex and render to texture
+        // this way we can totally avoid whole zig texture logic!!!! So nothing to impact history!
+        // but how will we handle when a new texture need to be generated??
+        const all_match = self.id == other.id and
+            self.paths.len == other.paths.len and
+            std.meta.eql(self.props, other.props);
+
+        if (!all_match) {
+            return false;
+        }
+
+        for (self.paths, other.paths) |path_a, path_b| {
+            if (path_a.len != path_b.len) {
+                return false;
+            }
+            if (!std.meta.eql(path_a, path_b)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 };

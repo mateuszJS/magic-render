@@ -35,8 +35,8 @@ function reflectY(y: number, svgHeight: number): number {
   return svgHeight - y
 }
 
-function commandsToSegments(commands: PathCommand[], svgHeight: number): PathSegment[][] {
-  const allPaths: PathSegment[][] = []
+function commandsToSegments(commands: PathCommand[], svgHeight: number): Point[][] {
+  const allPaths: Point[][] = []
 
   let currentSegments: PathSegment[] = []
   let currentPoint: Point = { x: 0, y: reflectY(0, svgHeight) }
@@ -45,7 +45,7 @@ function commandsToSegments(commands: PathCommand[], svgHeight: number): PathSeg
 
   const finishCurrentPath = () => {
     if (currentSegments.length > 0) {
-      allPaths.push([...currentSegments])
+      allPaths.push(...currentSegments)
       currentSegments = []
     }
   }
@@ -236,7 +236,7 @@ function commandsToSegments(commands: PathCommand[], svgHeight: number): PathSeg
   return allPaths
 }
 
-export default function parsePathData(dAttribute: string, svgHeight: number): PathSegment[][] {
+export default function parsePathData(dAttribute: string, svgHeight: number): Point[][] {
   const commands = getDataPathCommands(dAttribute)
   const pathData = commandsToSegments(commands, svgHeight)
 

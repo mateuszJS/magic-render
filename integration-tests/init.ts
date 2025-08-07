@@ -2,18 +2,13 @@ import type { Page } from '@playwright/test'
 import { expect } from '@playwright/test'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { AssetBasics } from '.'
 
 const PAGE_WIDTH = 1000
 const PAGE_HEIGHT = 700
 let page: Page
 let pointerMove: (x: number, y: number) => Promise<void>
 let canvasBox: { x: number; y: number; width: number; height: number }
-
-interface SerializedAsset {
-  id: number
-  points: { u: number; v: number; x: number; y: number }[]
-  url: string
-}
 
 // SyntaxError: TypeScript enum is not supported in strip-only mode
 export const TransformHandle = {
@@ -63,7 +58,7 @@ export default async function init(receivedPage: Page) {
   }
 }
 
-async function getAssetsState(): Promise<SerializedAsset[]> {
+async function getAssetsState(): Promise<AssetBasics[]> {
   const isProcessingEventsEl = page.locator('#is-processing-events')
   await expect(isProcessingEventsEl).toHaveText('false')
 
@@ -81,16 +76,13 @@ async function uploadAsset(path = testImagePath) {
   return assets[assets.length - 1] // return the last uploaded asset
 }
 
-async function selectAsset({ points }: SerializedAsset) {
+async function selectAsset({ points }: AssetBasics) {
   await pointerMove((points[0].x + points[1].x) / 2, (points[0].y + points[3].y) / 2)
   await page.mouse.down()
   await page.mouse.up()
 }
 
-async function getTransformHandle(
-  { id }: SerializedAsset,
-  handleIdx: number /* float type index */
-) {
+async function getTransformHandle({ id }: AssetBasics, handleIdx: number /* float type index */) {
   const { points } = await getAssetsState().then(
     (assets) => assets.find((asset) => asset.id === id)!
   )
@@ -104,7 +96,7 @@ async function getTransformHandle(
   return handle
 }
 
-async function getRotationHandle({ id }: SerializedAsset) {
+async function getRotationHandle({ id }: AssetBasics) {
   const { points } = await getAssetsState().then(
     (assets) => assets.find((asset) => asset.id === id)!
   )
@@ -120,7 +112,7 @@ async function getRotationHandle({ id }: SerializedAsset) {
   return rotateUI
 }
 
-async function getMoveHandle({ id }: SerializedAsset) {
+async function getMoveHandle({ id }: AssetBasics) {
   const { points } = await getAssetsState().then(
     (assets) => assets.find((asset) => asset.id === id)!
   )
@@ -133,7 +125,7 @@ async function getMoveHandle({ id }: SerializedAsset) {
 
 // handles are counted clock-wise starting from top left corner
 async function resizeAsset(
-  asset: SerializedAsset,
+  asset: AssetBasics,
   offsetWidth: number,
   offsetHeight: number,
   handleIdx: number /* float type index */
@@ -169,7 +161,7 @@ async function resizeAsset(
   await page.mouse.up()
 }
 
-async function moveAsset(asset: SerializedAsset, realOffsetX: number, realOffsetY: number) {
+async function moveAsset(asset: AssetBasics, realOffsetX: number, realOffsetY: number) {
   const handle = await getMoveHandle(asset)
   await pointerMove(handle.x, handle.y)
   await page.mouse.down()
@@ -177,7 +169,7 @@ async function moveAsset(asset: SerializedAsset, realOffsetX: number, realOffset
   await page.mouse.up()
 }
 
-async function rotateAsset(asset: SerializedAsset, realOffsetX: number, realOffsetY: number) {
+async function rotateAsset(asset: AssetBasics, realOffsetX: number, realOffsetY: number) {
   const rotateUI = await getRotationHandle(asset)
 
   await pointerMove(rotateUI.x, rotateUI.y)
