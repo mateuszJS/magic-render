@@ -7,7 +7,6 @@ const squares = @import("../squares.zig");
 const lines = @import("../line.zig");
 const shared = @import("../shared.zig");
 
-const EPSILON = std.math.floatEps(f32);
 const POINT_SNAP_DISTANCE = 10.0; // Minimum distance to consider a new control point
 const STRAIGHT_LINE_THRESHOLD = 1e+10;
 const STRAIGHT_LINE_HANDLE = Point{
@@ -235,6 +234,25 @@ pub const Path = struct {
         } else {
             return null;
         }
+    }
+
+    pub fn updateLastHandle(self: *Path, preview_point: Point) void {
+        const points = self.points.items;
+        if (self.closed) {
+            points[points.len - 2] = getOppositeHandle(points[0], preview_point);
+            points[1] = preview_point;
+        } else {
+            if (points.len == 2) { // there is only starting control point(no reflection of handle needed)
+                points[points.len - 1] = preview_point;
+            } else {
+                const control_point = points[points.len - 1];
+                points[points.len - 2] = getOppositeHandle(control_point, preview_point);
+            }
+        }
+    }
+
+    pub fn serialize(self: Path) []const Point {
+        return self.points.items;
     }
 
     pub fn deinit(self: *Path) void {

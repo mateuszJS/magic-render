@@ -11,17 +11,6 @@ const shared = @import("../shared.zig");
 const images = @import("../images.zig");
 
 const EPSILON = std.math.floatEps(f32);
-
-fn getOppositeHandle(control_point: Point, handle: Point) Point {
-    const diff = control_point.diff(handle);
-    const opposite_point = Point{
-        .x = control_point.x + diff.x,
-        .y = control_point.y + diff.y,
-    };
-
-    return opposite_point;
-}
-
 pub var cacheShape: *const fn (?u32, bounding_box.BoundingBox, DrawVertexOutput, f32, f32) u32 = undefined;
 pub var maxTextureSize: f32 = 0.0;
 
@@ -243,22 +232,25 @@ pub const Shape = struct {
     }
 
     pub fn updateLastHandle(self: *Shape, active_path_index: usize, preview_point: Point) void {
-        const active_path = self.paths.items[active_path_index];
-        const points = active_path.points.items;
+        const active_path = &self.paths.items[active_path_index];
+        active_path.updateLastHandle(preview_point);
+        self.invalid_cache = true;
+    }
 
-        if (active_path.closed) {
-            points[points.len - 2] = getOppositeHandle(points[0], preview_point);
-            points[1] = preview_point;
-        } else {
-            if (points.len == 2) { // there is only starting control point(no reflection of handle needed)
-                points[points.len - 1] = preview_point;
-            } else {
-                const control_point = points[points.len - 1];
-                points[points.len - 2] = getOppositeHandle(control_point, preview_point);
-            }
+    pub fn serialize(self: Shape) !Serialized {
+        var paths_list = std.ArrayList([]const Point).init(self.paths.allocator);
+        for (self.paths.items) |path| {
+            const serialized_path = path.serialize();
+            try paths_list.append(serialized_path);
         }
 
-        self.invalid_cache = true;
+        return Serialized{
+            .id = self.id,
+            .paths = try paths_list.toOwnedSlice(),
+            .props = self.props,
+            .texture_id = self.texture_id orelse 0,
+            .points = self.points,
+        };
     }
 
     pub fn deinit(self: *Shape) void {
@@ -280,4 +272,12 @@ pub const Uniform = extern struct {
     padding: [3]f32 = .{ 0.0, 0.0, 0.0 }, // Padding for alignment
     fill_color: [4]f32,
     stroke_color: [4]f32,
+};
+
+pub const Serialized = struct {
+    id: u32,
+    texture_id: u32,
+    paths: [][]const Point,
+    props: ShapeProps,
+    points: [4]PointUV,
 };

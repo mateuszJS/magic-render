@@ -19,12 +19,22 @@ export type SerializedInputAsset = {
   textureId?: number
 }
 
-export type SerializedOutputAsset = {
+export type SerializedOutputImage = {
   id: number // not needed while loading project but useful for undo/redo to maintain selection
   points: PointUV[]
   url: string
   textureId: number
 }
+
+export type SerializedOutputShape = {
+  id: number // not needed while loading project but useful for undo/redo to maintain selection
+  points: PointUV[]
+  url: string
+  textureId: number
+  paths: Point[][]
+}
+
+export type SerializedOutputAsset = SerializedOutputImage | SerializedOutputShape
 
 export enum CreatorTool {
   None = 0,
@@ -63,7 +73,7 @@ export default async function initCreator(
   const projectWidth = canvas.clientWidth / 2
   const projectHeight = canvas.clientHeight / 2
 
-  Logic.init_state(projectWidth, projectHeight, device.limits.maxTextureDimension2D)
+  Logic.initState(projectWidth, projectHeight, device.limits.maxTextureDimension2D)
   // rotation doesnt work
   const context = canvas.getContext('webgpu')
   if (!context) throw Error('WebGPU from canvas needs to be always provided')
@@ -77,7 +87,7 @@ export default async function initCreator(
   })
 
   function updateRenderScale() {
-    Logic.update_render_scale(canvas.width / (canvas.clientWidth * camera.zoom))
+    Logic.updateRenderScale(canvas.width / (canvas.clientWidth * camera.zoom))
   }
 
   let wasInitialOffsetSet = false
@@ -97,7 +107,6 @@ export default async function initCreator(
     updateProcessing()
   })
 
-
   const triggerGeneratePreview = debounce(() => {
     generatePreview(
       device,
@@ -110,42 +119,64 @@ export default async function initCreator(
     )
   }, 1000 * 5)
 
-
   let lastAssetsSnapshot: ZigAssetOutput[] = []
-  Logic.connect_on_asset_update_callback((serializedData: ZigAssetOutput[]) => {
-    lastAssetsSnapshot = serializedData
+  Logic.connectOnAssetUpdateCallback((serializedData: ZigAssetOutput[]) => {
+    console.log([...serializedData])
+    lastAssetsSnapshot = [...serializedData]
     newAssetsSnapshot()
   })
 
   function newAssetsSnapshot() {
     // this function is not part of Logic.connect_on_asset_update_callback
     // only because once we update a texture url, we have to notify about the assets update
-    const serializedAssetsTextureUrl = [...lastAssetsSnapshot].map<SerializedOutputAsset>(
-      (asset) => ({
-        id: asset.id,
-        textureId: asset.texture_id,
-        points: [...asset.points].map((point) => ({
-          x: point.x,
-          y: point.y,
-          u: point.u,
-          v: point.v,
-        })),
-        url: Textures.getUrl(asset.texture_id),
-      })
-    )
+    const serializedAssetsTextureUrl = lastAssetsSnapshot.map<SerializedOutputAsset>((asset) => {
+      if (asset.img) {
+        const img = asset.img
+        return {
+          id: img.id,
+          textureId: img.texture_id,
+          points: [...img.points].map((point) => ({
+            x: point.x,
+            y: point.y,
+            u: point.u,
+            v: point.v,
+          })),
+          url: Textures.getUrl(img.texture_id),
+        }
+      } else {
+        const shape = asset.shape
+        return {
+          id: shape.id,
+          textureId: shape.texture_id,
+          points: [...shape.points].map((point) => ({
+            x: point.x,
+            y: point.y,
+            u: point.u,
+            v: point.v,
+          })),
+          url: Textures.getUrl(shape.texture_id),
+          paths: [...shape.paths].map((path) =>
+            [...path].map((point) => ({
+              x: point.x,
+              y: point.y,
+            }))
+          ),
+        }
+      }
+    })
     onAssetsUpdate(serializedAssetsTextureUrl)
   }
 
-  Logic.connect_on_asset_selection_callback(onAssetSelect)
+  Logic.connectOnAssetSelectionCallback(onAssetSelect)
 
-  Logic.connect_cache_callbacks((textureId, boundingBox, width, height) => {
+  Logic.connectCacheCallbacks((textureId, boundingBox, width, height) => {
     return startCache(device, presentationFormat, textureId, boundingBox, width, height)
   }, endCache)
 
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = Textures.add(url, (width, height, isNew) => {
       const points = getDefaultPoints(width, height, projectWidth, projectHeight)
-      Logic.add_asset(0 /* no id yet, needs to be generated */, points, textureId)
+      Logic.addAsset(0 /* no id yet, needs to be generated */, points, textureId)
 
       if (isNew) {
         uploadTexture(url, (newUrl) => {
@@ -158,7 +189,7 @@ export default async function initCreator(
   }
 
   Textures.add(IconsPng, (width, height) => {
-    Logic.import_icons(
+    Logic.importIcons(
       IconsJson.chars.flatMap((char) => [
         char.id,
         char.x / width,
@@ -222,19 +253,19 @@ export default async function initCreator(
       .filter((result) => result.status === 'fulfilled')
       .map((result) => result.value)
 
-    Logic.reset_assets(serializedAssets, withSnapshot)
+    Logic.resetAssets(serializedAssets, withSnapshot)
   }
 
   return {
     addImage,
-    removeAsset: Logic.remove_asset,
+    removeAsset: Logic.removeAsset,
     resetAssets,
     destroy: () => {
       stopRAF()
-      Logic.destroy_state()
+      Logic.destroyState()
       context.unconfigure()
       device.destroy()
     },
-    setTool: Logic.set_tool,
+    setTool: Logic.setTool,
   }
 }

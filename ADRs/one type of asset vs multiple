@@ -1,0 +1,15 @@
+One asset type:
+
+- less switch statements
+- unitfies a lot of behaviour, like matrix modifications(but it operates on points so it doesnt really matter)
+
+Two different asset types:
+
+- zigar allows it and handles it quite well
+- it ensures that we won't have one huge asset structure as some point, for example once we introduce animation, or special effect
+- we have to handle two different rendering fragment shader anyway, one with texture and one without
+
+Just because for now images looks like a simpler version of shapes, doesn't mean it iwll stay this wya for long.
+Also in the future there might be additional types, like Shader fill and other type of fillings
+
+Bottom line -> let's stay with two separated asets, images and shapes for now

@@ -27,12 +27,12 @@ pub fn connectWebGpuPrograms(programs: *const WebGpuPrograms) void {
     web_gpu_programs = programs; // orelse WebGpuPrograms{};
 }
 
-var on_asset_update_cb: ?*const fn ([]const images.Serialized) void = undefined;
-pub fn connectOnAssetUpdateCallback(cb: *const fn ([]const images.Serialized) void) void {
+var on_asset_update_cb: ?*const fn ([]const AssetSerialized) void = undefined;
+pub fn connectOnAssetUpdateCallback(cb: *const fn ([]const AssetSerialized) void) void {
     on_asset_update_cb = cb;
 }
 
-fn on_asset_update_noop(_: []const images.Serialized) void {}
+fn on_asset_update_noop(_: []const AssetSerialized) void {}
 
 var on_asset_select_cb: *const fn (u32) void = undefined;
 pub fn connectOnAssetSelectionCallback(cb: *const fn (u32) void) void {
@@ -74,6 +74,11 @@ const Tool = enum {
 const Asset = union(enum) {
     img: images.Image,
     shape: shapes.Shape,
+};
+
+const AssetSerialized = union(enum) {
+    img: images.Serialized,
+    shape: shapes.Serialized,
 };
 
 const State = struct {
@@ -161,18 +166,24 @@ pub fn onUpdatePick(id: u32) void {
     }
 }
 
-var last_assets_update: []const images.Serialized = &.{};
+var last_assets_update: []const AssetSerialized = &.{};
 fn checkAssetsUpdate(should_notify: bool) !void {
     const cb = on_asset_update_cb orelse return;
 
-    var new_assets_update = std.ArrayList(images.Serialized).init(std.heap.page_allocator);
+    var new_assets_update = std.ArrayList(AssetSerialized).init(std.heap.page_allocator);
     var iterator = state.assets.iterator();
     while (iterator.next()) |asset_entry| {
         switch (asset_entry.value_ptr.*) {
             .img => |img| {
-                try new_assets_update.append(img.serialize());
+                try new_assets_update.append(AssetSerialized{
+                    .img = img.serialize(),
+                });
             },
-            .shape => {},
+            .shape => |shape| {
+                try new_assets_update.append(AssetSerialized{
+                    .shape = try shape.serialize(),
+                });
+            },
         }
     }
 
@@ -627,7 +638,7 @@ pub fn resetAssets(new_assets: []const images.Serialized, with_snapshot: bool) !
     state.assets.clearAndFree();
 
     for (new_assets) |asset| {
-        try add_asset(asset.id, asset.points, asset.texture_id);
+        try addAsset(asset.id, asset.points, asset.texture_id);
     }
 
     if (!state.assets.contains(state.selected_asset_id)) {
@@ -674,9 +685,9 @@ pub fn addShape(paths: []const []const [4]types.Point, props: shapes.ShapeProps)
 
 test "reset_assets does not call the real update callback" {
     // Setup initial state
-    init_state(100, 100);
+    initState(100, 100);
     // Ensure state is cleaned up after the test
-    defer destroy_state();
+    defer destroyState();
 
     // Define a mock callback function locally, with its own static state.
     const MockCallback = struct {
@@ -693,8 +704,8 @@ test "reset_assets does not call the real update callback" {
     };
 
     // Connect our mock callback. This is the "real" callback for this test.
-    connect_on_asset_update_callback(MockCallback.assets_update);
-    connect_on_asset_selection_callback(MockCallback.assets_selection);
+    connectOnAssetUpdateCallback(MockCallback.assets_update);
+    connectOnAssetSelectionCallback(MockCallback.assets_selection);
 
     // Call the function we are testing
     const initial_assets = [_]images.Serialized{.{
@@ -707,8 +718,8 @@ test "reset_assets does not call the real update callback" {
         .texture_id = 1,
         .id = 123,
     }};
-    reset_assets(&initial_assets, false);
+    resetAssets(&initial_assets, false);
 
-    // for the duration of reset_assets, the update callback should NOT be called
+    // for the duration of resetAssets, the update callback should NOT be called
     try std.testing.expect(!MockCallback.was_called);
 }
