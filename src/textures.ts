@@ -79,21 +79,25 @@ export function add(
 }
 
 export function getTexture(textureId: number): GPUTexture {
-  return textures[textureId].texture ?? loadingTexture
+  return getOptionTexture(textureId) ?? loadingTexture
 }
 
-export function setTexture(texture: GPUTexture, optionalId: number | null) {
-  if (optionalId !== null) {
-    textures[optionalId].texture?.destroy()
+export function getOptionTexture(textureId: number): GPUTexture | undefined {
+  return textures[textureId].texture
+}
+
+export function createCacheTexture(): number {
+  const textureId = textures.length
+  textures.push({ url: 'cache' })
+  return textureId
+}
+
+export function setCacheTexture(id: number, texture: GPUTexture) {
+  if (textures[id].texture !== texture) {
+    textures[id].texture?.destroy()
   }
 
-  const id = optionalId ?? textures.length
-  textures[id] = {
-    url: 'cache',
-    texture,
-  }
-
-  return id
+  textures[id].texture = texture
 }
 
 export function getUrl(textureId: number): string {

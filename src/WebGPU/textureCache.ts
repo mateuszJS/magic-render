@@ -15,23 +15,34 @@ export function endCache() {
 export function startCache(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
-  currTextureId: number | null,
+  textureId: number,
   boundingBox: BoundingBox,
   outputWidth: number,
   outputHeight: number
-): number {
+): void {
   const width = boundingBox.max_x - boundingBox.min_x
   const height = boundingBox.max_y - boundingBox.min_y
 
-  const texture = device.createTexture({
-    label: 'texture cache',
-    format: presentationFormat,
-    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-    size: [outputWidth, outputHeight],
-  })
+  let texture = Textures.getOptionTexture(textureId)
+  const canReuseTexture =
+    texture &&
+    Math.abs(texture.width - outputWidth) <= Number.EPSILON &&
+    Math.abs(texture.height - outputHeight) <= Number.EPSILON
+
+  if (!canReuseTexture) {
+    texture = device.createTexture({
+      label: 'texture cache',
+      format: presentationFormat,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+      size: [outputWidth, outputHeight],
+    })
+  }
+
+  if (!texture) {
+    throw new Error('Failed to create texture for cache')
+  }
 
   const encoder = device.createCommandEncoder()
-
   const multisampleTexture = getMultisampleTexture(
     device,
     outputWidth,
@@ -69,5 +80,5 @@ export function startCache(
     device.queue.submit([commandBuffer])
   }
 
-  return Textures.setTexture(texture, currTextureId)
+  Textures.setCacheTexture(textureId, texture)
 }

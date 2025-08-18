@@ -6,8 +6,8 @@ const triangles = @import("../triangle.zig");
 const squares = @import("../squares.zig");
 const lines = @import("../line.zig");
 const shared = @import("../shared.zig");
+const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 
-const POINT_SNAP_DISTANCE = 10.0; // Minimum distance to consider a new control point
 const STRAIGHT_LINE_THRESHOLD = 1e+10;
 const STRAIGHT_LINE_HANDLE = Point{
     .x = 1e+11,
@@ -15,7 +15,7 @@ const STRAIGHT_LINE_HANDLE = Point{
 };
 
 fn getOppositeHandle(control_point: Point, handle: Point) Point {
-    if (handle.x > STRAIGHT_LINE_THRESHOLD) {
+    if (Path.isStraightLineHandle(handle)) {
         return STRAIGHT_LINE_HANDLE;
     }
     const diff = control_point.diff(handle);
@@ -30,6 +30,10 @@ fn getOppositeHandle(control_point: Point, handle: Point) Point {
 pub const Path = struct {
     points: std.ArrayList(Point),
     closed: bool, // Whether the shape is closed
+
+    pub fn isStraightLineHandle(point: Point) bool {
+        return point.x > STRAIGHT_LINE_THRESHOLD;
+    }
 
     pub fn new(point: Point, allocator: std.mem.Allocator) !Path {
         var point_list = std.ArrayList(Point).init(allocator);
@@ -47,7 +51,7 @@ pub const Path = struct {
     // Arrays: Use &array to get a slice reference
     // Slices: Pass directly (they're already slices)
     // ArrayList: Use .items to get the underlying slice
-    pub fn newFromPoints(path: []const Point, allocator: std.mem.Allocator) !Path {
+    pub fn newFromPoints(path: []const Point, same_point_threshold: f32, allocator: std.mem.Allocator) !Path {
         var point_list = std.ArrayList(Point).init(allocator);
         var closed = false;
 
@@ -56,10 +60,11 @@ pub const Path = struct {
 
             if (i == path.len - 1) {
                 const distance = path[0].distance(point);
-                if (distance < POINT_SNAP_DISTANCE) {
+                if (distance < same_point_threshold) {
                     // here is the problem, it should be overlap with exactly one point, then it might be caunted a closed
                     // althouhg the better word might be that a curve is open. More than one curve in a shape might be open!
                     closed = true;
+                    std.debug.print("Path.newFromPoints - set to closed\n", .{});
                 }
             }
         }
@@ -70,7 +75,7 @@ pub const Path = struct {
         };
     }
 
-    pub fn addPoint(self: *Path, point: Point) !void {
+    pub fn addPoint(self: *Path, point: Point, same_point_threshold: f32) !void {
         if (self.closed) {
             @panic("Attempting to add point to already closed path!");
         }
@@ -88,30 +93,35 @@ pub const Path = struct {
         const first_point = self.points.items[0];
         const distance = first_point.distance(point);
 
-        if (distance < POINT_SNAP_DISTANCE) {
+        if (distance < same_point_threshold) {
             self.closed = true;
+            std.debug.print("Path.addPoint - set to closed\n", .{});
             try self.points.append(first_point);
         } else {
             try self.points.append(point);
         }
     }
 
-    pub fn getSkeletonDrawVertexData(self: Path, allocator: std.mem.Allocator) ![]triangles.DrawInstance {
+    pub fn getSkeletonDrawVertexData(self: Path, matrix: Matrix3x3, allocator: std.mem.Allocator) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         const size = 20.0 * shared.render_scale;
 
-        for (self.points.items, 0..) |point, i| {
+        for (self.points.items, 0..) |relative_point, i| {
+            const point = matrix.transformPoint(relative_point);
+            // we don't care if it;s straight, because we filter out this case below
+
             const is_control_point = i % 4 == 0 or i % 4 == 3;
             if (!is_control_point) {
-                if (point.x > STRAIGHT_LINE_THRESHOLD) {
+                if (Path.isStraightLineHandle(point)) {
                     // This is a straight line handle, skip it
                     continue;
                 }
-                const connected_control_point = if (i % 4 == 1) i - 1 else (i + 1) % self.points.items.len;
+                const connected_control_point_index = if (i % 4 == 1) i - 1 else (i + 1) % self.points.items.len;
+                const connected_control_point = matrix.transformPoint(self.points.items[connected_control_point_index]);
                 var buffer: [2]triangles.DrawInstance = undefined;
                 lines.getDrawVertexData(
                     buffer[0..2],
-                    self.points.items[connected_control_point],
+                    connected_control_point,
                     point,
                     3.0 * shared.render_scale,
                     [_]u8{ 0, 0, 255, 255 },
@@ -134,7 +144,7 @@ pub const Path = struct {
         }
 
         const last_handle = self.points.items[self.points.items.len - 2];
-        if (!self.closed and self.points.items.len != 2 and last_handle.x < STRAIGHT_LINE_THRESHOLD) {
+        if (!self.closed and self.points.items.len != 2 and Path.isStraightLineHandle(last_handle)) {
             const last_cp = self.points.getLast();
             const forward_handle = getOppositeHandle(last_cp, last_handle);
             var line_buffer: [2]triangles.DrawInstance = undefined;
@@ -206,17 +216,16 @@ pub const Path = struct {
         }
         // Handle half straight lines to be treated as bezier curves
         for (curves, 0..) |point, i| {
-            const is_straight_line_handle = point.x > STRAIGHT_LINE_THRESHOLD;
-            if (is_straight_line_handle) {
+            if (Path.isStraightLineHandle(point)) {
                 if (i % 4 == 1) { // first handle
                     const second_handle = curves[i + 1];
-                    const is_full_straight_line = second_handle.x > STRAIGHT_LINE_THRESHOLD;
+                    const is_full_straight_line = Path.isStraightLineHandle(second_handle);
                     if (!is_full_straight_line) {
                         curves[i] = curves[i - 1]; // assign to closest control point
                     }
                 } else if (i % 4 == 2) { // second handle
                     const first_handle = curves[i - 1];
-                    const is_full_straight_line = first_handle.x > STRAIGHT_LINE_THRESHOLD;
+                    const is_full_straight_line = Path.isStraightLineHandle(first_handle);
                     if (!is_full_straight_line) {
                         curves[i] = curves[i + 1]; // assign to closest control point
                     }

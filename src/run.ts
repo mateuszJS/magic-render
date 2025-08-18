@@ -8,6 +8,7 @@ import {
   canvasMatrixBuffer,
   pickCanvasMatrixBuffer,
   drawShape,
+  computeSDF,
 } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
@@ -29,11 +30,19 @@ export default function runCreator(
   onEmptyEvents: VoidFunction // call when there is no more events to process
 ) {
   let pickPass: GPURenderPassEncoder
+  let computePass: GPUComputePassEncoder
 
   const pickManager = new PickManager(device)
   // let time = 0
   // let total = 0
   // let samplesCount = 0
+
+  const textureSDF = device.createTexture({
+    label: 'SDF texture',
+    size: [500, 500],
+    format: 'rgba32float',
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  })
 
   Logic.connectWebGpuPrograms({
     draw_texture: (vertex_data, texture_id) => {
@@ -54,10 +63,12 @@ export default function runCreator(
       }
       */
     },
-    draw_shape: (curves_data, bound_box_data, uniform_data) => {
+    compute_shape: (curves_data) => {
       const curvesDataView = curves_data['*'].dataView
-      const boundBoxDataView = bound_box_data['*'].dataView
-      drawShape(renderPass, curvesDataView, boundBoxDataView, uniform_data.dataView)
+
+      // const boundBoxDataView = bound_box_data['*'].dataView
+      computeSDF(computePass, curvesDataView, textureSDF)
+      // drawShape(renderPass, curvesDataView, boundBoxDataView, uniform_data.dataView)
 
       /*
       samplesCount++
@@ -66,6 +77,11 @@ export default function runCreator(
         console.log('Average draw time:', total / samplesCount)
       }
       */
+    },
+    draw_shape: (bound_box_data, uniform_data) => {
+      const boundBoxDataView = bound_box_data['*'].dataView
+
+      drawShape(renderPass, textureSDF, boundBoxDataView, uniform_data.dataView)
     },
     pick_texture: (vertex_data, texture_id) => {
       const dataView = vertex_data['*'].dataView
@@ -91,6 +107,11 @@ export default function runCreator(
     preview?: { canvas: HTMLCanvasElement; ctx: GPUCanvasContext; onCapture: VoidFunction }
   ) {
     const encoder = device.createCommandEncoder()
+
+    computePass = encoder.beginComputePass()
+    Logic.calculateShapesSDF()
+    computePass.end()
+
     const canvasDescriptor = getCanvasRenderDescriptor(preview?.ctx || context, device)
     renderPass = encoder.beginRenderPass(canvasDescriptor)
     const canvasMatrix = getCanvasMatrix(preview?.canvas || creatorCanvas)

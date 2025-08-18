@@ -23,12 +23,12 @@ export type SerializedInputShape = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   paths: Point[][]
   props: ShapeProps
+  bounds?: PointUV[]
   cache?: {
     id: number
-    points: PointUV[]
     width: number
     height: number
-    url: string
+    valid: boolean
   } | null
 }
 
@@ -45,13 +45,13 @@ export type SerializedOutputShape = {
   id: number // not needed while loading project but useful for undo/redo to maintain selection
   paths: Point[][]
   props: ShapeProps
+  bounds: PointUV[]
   cache: {
     id: number
-    points: PointUV[]
     width: number
     height: number
-    url: string
-  } | null
+    valid: boolean
+  }
 }
 
 export type SerializedOutputAsset = SerializedOutputImage | SerializedOutputShape
@@ -68,6 +68,8 @@ export interface CreatorAPI {
   destroy: VoidFunction
   setTool: (tool: CreatorTool) => void
 }
+
+const NO_ASSET_ID = 0 // used when we don't have asset id yet
 
 export default async function initCreator(
   canvas: HTMLCanvasElement,
@@ -139,9 +141,8 @@ export default async function initCreator(
     )
   }, 1000 * 5)
 
-  let lastAssetsSnapshot: ZigAssetOutput[] = []
-  Logic.connectOnAssetUpdateCallback((serializedData: ZigAssetOutput[]) => {
-    console.log([...serializedData])
+  let lastAssetsSnapshot: ZigAsset[] = []
+  Logic.connectOnAssetUpdateCallback((serializedData: ZigAsset[]) => {
     lastAssetsSnapshot = [...serializedData]
     newAssetsSnapshot()
   })
@@ -150,7 +151,7 @@ export default async function initCreator(
     // this function is not part of Logic.connect_on_asset_update_callback
     // only because once we update a texture url, we have to notify about the assets update
     const serializedAssetsTextureUrl = lastAssetsSnapshot.map<SerializedOutputAsset>((asset) => {
-      if (asset.img) {
+      if ('img' in asset && asset.img) {
         const img = asset.img
         return {
           id: img.id,
@@ -163,7 +164,7 @@ export default async function initCreator(
           })),
           url: Textures.getUrl(img.texture_id),
         }
-      } else {
+      } else if ('shape' in asset && asset.shape) {
         const shape = asset.shape
         const cache = asset.shape.cache
         return {
@@ -174,24 +175,26 @@ export default async function initCreator(
               y: point.y,
             }))
           ),
+          bounds: [...shape.bounds].map((point) => ({
+            x: point.x,
+            y: point.y,
+            u: point.u,
+            v: point.v,
+          })),
           props: {
             fill_color: [...shape.props.fill_color],
             stroke_color: [...shape.props.stroke_color],
             stroke_width: shape.props.stroke_width,
           },
-          cache: cache && {
+          cache: {
             id: cache.id,
-            points: [...cache.points].map((point) => ({
-              x: point.x,
-              y: point.y,
-              u: point.u,
-              v: point.v,
-            })),
             width: cache.width,
             height: cache.height,
-            url: Textures.getUrl(cache.id),
+            valid: cache.valid,
           },
         }
+      } else {
+        throw Error('Unknown asset type')
       }
     })
     onAssetsUpdate(serializedAssetsTextureUrl)
@@ -199,9 +202,11 @@ export default async function initCreator(
 
   Logic.connectOnAssetSelectionCallback(onAssetSelect)
 
-  Logic.connectCacheCallbacks((textureId, boundingBox, width, height) => {
-    return startCache(device, presentationFormat, textureId, boundingBox, width, height)
-  }, endCache)
+  Logic.connectCacheCallbacks(
+    Textures.createCacheTexture,
+    startCache.bind(null, device, presentationFormat),
+    endCache
+  )
 
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = Textures.add(url, (width, height, isNew) => {
@@ -246,33 +251,32 @@ export default async function initCreator(
 
   const resetAssets: CreatorAPI['resetAssets'] = async (assets, withSnapshot = false) => {
     const results = await Promise.allSettled(
-      assets.map<Promise<ZigAssetInput>>(
+      assets.map<Promise<ZigAsset>>(
         (asset) =>
           new Promise((resolve, reject) => {
             if ('paths' in asset) {
               // it's a shape
+              console.log('asset', asset)
               return resolve({
                 shape: {
-                  id: asset.id || 0,
+                  id: asset.id || NO_ASSET_ID,
                   paths: asset.paths,
                   props: asset.props,
-                  cache: asset.cache
-                    ? {
-                        id: asset.cache.id,
-                        points: asset.cache.points,
-                        width: asset.cache.width,
-                        height: asset.cache.height,
-                      }
-                    : null,
+                  bounds: asset.bounds || [],
+                  cache: {
+                    id: asset.cache?.id || 0,
+                    width: asset.cache?.width || 0,
+                    height: asset.cache?.height || 0,
+                    valid: asset.cache?.valid || false,
+                  },
                 },
               })
-            }
+            } // otherwise it's an image
 
-            // it's an image
             if (asset.points) {
               return resolve({
                 img: {
-                  id: asset.id || 0,
+                  id: asset.id || NO_ASSET_ID,
                   points: asset.points, // here it makes sense
                   texture_id: asset.textureId || Textures.add(asset.url), // if we got points, so we have url on the server for sure
                 },
@@ -293,7 +297,7 @@ export default async function initCreator(
 
               return resolve({
                 img: {
-                  id: 0,
+                  id: NO_ASSET_ID,
                   points: getDefaultPoints(width, height, projectWidth, projectHeight),
                   texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
                 },

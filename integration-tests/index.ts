@@ -34,11 +34,11 @@ async function test() {
       if ('paths' in asset) {
         return {
           id: asset.id,
-          url: asset.cache?.url || '',
+          url: 'cache',
           points:
             asset.cache === null
               ? []
-              : asset.cache.points.map((point) => ({
+              : asset.bounds.map((point) => ({
                   x: point.x * scale + camera.x,
                   y: point.y * scale + camera.y,
                 })),

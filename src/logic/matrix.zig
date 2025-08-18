@@ -68,7 +68,7 @@ pub const Matrix3x3 = struct {
         };
     }
 
-    pub fn inverse(self: Matrix3x3) ?Matrix3x3 {
+    pub fn inverse(self: Matrix3x3) Matrix3x3 {
         const m = self.values;
         const a = m[0];
         const b = m[1];
@@ -89,7 +89,8 @@ pub const Matrix3x3 = struct {
         const H = -(a * f - c * d);
         const I = a * e - b * d;
         const det = a * A + b * B + c * C;
-        if (@abs(det) < 1e-6) return null;
+        if (@abs(det) < 1e-6) return Matrix3x3.identity(); // Handle singular matrix case
+        // for example when scale is set to zero, we are unable to "invert" it to know previous value
         const inv_det = 1.0 / det;
         return Matrix3x3{
             .values = [_]f32{
@@ -134,6 +135,15 @@ pub const Matrix3x3 = struct {
         // For affine matrices, w is always 1, but for completeness:
         // const tw = m[6] * x + m[7] * y + m[8];
         return Point{ .x = tx, .y = ty };
+    }
+
+    pub fn getTransformBetween(from: Matrix3x3, to: Matrix3x3) ?Matrix3x3 {
+        // Returns a matrix that transforms points from 'from' coordinate system to 'to' coordinate system
+        // Formula: transform = to * from.inverse()
+        if (from.inverse()) |from_inv| {
+            return Matrix3x3.multiply(to, from_inv);
+        }
+        return null; // from matrix is not invertible
     }
 };
 
@@ -240,4 +250,32 @@ test "transformPoint" {
     const pt = m.transformPoint(Point{ .x = 2.0, .y = 3.0 });
     try std.testing.expect(@abs(pt.x - 12.0) < 1e-6);
     try std.testing.expect(@abs(pt.y - 8.0) < 1e-6);
+}
+
+// Test transformation between coordinate systems
+test "getTransformBetween" {
+    // Matrix1: scale by 2
+    const matrix1 = Matrix3x3.scaling(2.0, 2.0);
+    // Matrix2: translate by (10, 5)
+    const matrix2 = Matrix3x3.translation(10.0, 5.0);
+
+    // Get transform from matrix1 space to matrix2 space
+    const transform = Matrix3x3.getTransformBetween(matrix1, matrix2) orelse @panic("Transform failed");
+
+    // Test: a point in matrix1 space should transform correctly to matrix2 space
+    const point_in_matrix1_space = Point{ .x = 1.0, .y = 1.0 };
+
+    // What this point would be in world space via matrix1
+    const world_via_matrix1 = matrix1.transformPoint(point_in_matrix1_space);
+    // Should be (2.0, 2.0) due to scaling
+
+    // Transform directly from matrix1 space to matrix2 space
+    const point_in_matrix2_space = transform.transformPoint(point_in_matrix1_space);
+
+    // What this point should be when going through matrix2
+    const expected_world = matrix2.transformPoint(point_in_matrix2_space);
+
+    // Both should give the same world coordinates
+    try std.testing.expect(@abs(world_via_matrix1.x - expected_world.x) < 1e-5);
+    try std.testing.expect(@abs(world_via_matrix1.y - expected_world.y) < 1e-5);
 }

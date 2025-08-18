@@ -9,54 +9,85 @@ const lines = @import("../line.zig");
 const Path = @import("paths.zig").Path;
 const shared = @import("../shared.zig");
 const images = @import("../images.zig");
+const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 
+const POINT_SNAP_DISTANCE = 10.0; // Minimum distance to consider a new control point
 const EPSILON = std.math.floatEps(f32);
-pub var cacheShape: *const fn (?u32, bounding_box.BoundingBox, DrawVertexOutput, f32, f32) u32 = undefined;
+pub var update_texture_cache: *const fn (u32, bounding_box.BoundingBox, DrawVertexOutput, f32, f32) void = undefined;
 pub var maxTextureSize: f32 = 0.0;
 
 pub const ShapeProps = struct {
     // f32 instead of u8 because Uniforms in wgsl doesn't support u8 anyway
-    fill_color: [4]f32 = .{ 0.0, 0.0, 0.0, 1.0 }, // Default fill color (red)
+    fill_color: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 }, // Default fill color (red)
     stroke_color: [4]f32 = .{ 0.0, 0.0, 0.0, 1.0 }, // Default stroke color (green)
-    stroke_width: f32 = 0.0, // Default stroke width
+    stroke_width: f32 = 2.0, // Default stroke width
 };
 
 pub const TextureCache = struct {
-    id: u32, // we ave to obtain it from JS, so it's null initially
-    points: [4]PointUV,
-    width: f32,
-    height: f32,
-    valid: bool = false,
+    id: u32,
+    width: f32 = 0.0,
+    height: f32 = 0.0,
+    valid: bool = false, // false -> render bezier curves, not texture
+    // once we finish editing shape ,we can render curves to texture and update valid = true
 };
+
+const DEFAULT_BOUNDS = [4]PointUV{
+    .{ .x = 0.0, .y = 1.0, .u = 0.0, .v = 1.0 },
+    .{ .x = 1.0, .y = 1.0, .u = 1.0, .v = 1.0 },
+    .{ .x = 1.0, .y = 0.0, .u = 1.0, .v = 0.0 },
+    .{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 },
+};
+
+fn get_bounds_matrix(bounds: [4]PointUV) Matrix3x3 {
+    const angle = bounds[0].angleTo(bounds[1]);
+    const rotation = Matrix3x3.rotation(angle); // transfor matrix
+    const scale = Matrix3x3.scaling(
+        bounds[3].x - bounds[1].x,
+        bounds[3].y - bounds[1].y,
+    );
+    const translate = Matrix3x3.translation(
+        bounds[3].x,
+        bounds[3].y,
+    );
+
+    const matrix = Matrix3x3.multiply(
+        Matrix3x3.multiply(translate, scale),
+        rotation,
+    );
+
+    return matrix;
+}
 
 pub const Shape = struct {
     id: u32,
     paths: std.ArrayList(Path),
     props: ShapeProps,
-    cache: ?TextureCache = null,
-
-    pub fn new(id: u32, allocator: std.mem.Allocator) !Shape {
-        const shape = Shape{
-            .id = id,
-            .paths = std.ArrayList(Path).init(allocator),
-            .props = ShapeProps{
-                .fill_color = .{ 1.0, 1.0, 1.0, 1.0 }, // Red
-                .stroke_color = .{ 0.0, 0.0, 0.0, 1.0 }, // Green
-                .stroke_width = 2.0,
-            },
-        };
-
-        return shape;
-    }
+    bounds: [4]PointUV,
+    // last_bounds: [4]PointUV, // Used to detect changes in bounds
+    cache: TextureCache,
 
     // Arrays: Use &array to get a slice reference
     // Slices: Pass directly (they're already slices)
     // ArrayList: Use .items to get the underlying slice
-    pub fn newFromPoints(id: u32, input_paths: []const []const Point, props: ShapeProps, cache: ?TextureCache, allocator: std.mem.Allocator) !Shape {
+    pub fn new(id: u32, input_paths: []const []const Point, input_bounds: ?[4]PointUV, props: ShapeProps, cache: TextureCache, allocator: std.mem.Allocator) !Shape {
         var paths_list = std.ArrayList(Path).init(allocator);
+        const bounds = input_bounds orelse DEFAULT_BOUNDS;
+        const matrix = get_bounds_matrix(bounds);
 
         for (input_paths) |input_path| {
-            const path = try Path.newFromPoints(input_path, allocator);
+            // Create a mutable copy of the current path
+            const mutable_path = try allocator.dupe(Point, input_path);
+            defer allocator.free(mutable_path);
+
+            for (mutable_path) |*point| {
+                if (!Path.isStraightLineHandle(point.*)) {
+                    const relative_point = matrix.transformPoint(point.*);
+                    point.x = relative_point.x;
+                    point.y = relative_point.y;
+                }
+            }
+
+            const path = try Path.newFromPoints(mutable_path, POINT_SNAP_DISTANCE, allocator);
             try paths_list.append(path);
         }
 
@@ -65,59 +96,95 @@ pub const Shape = struct {
             .paths = paths_list,
             .props = props,
             .cache = cache,
+            .bounds = bounds,
         };
 
         return shape;
     }
 
-    pub fn addPointStart(self: *Shape, allocator: std.mem.Allocator, point: Point, option_active_path_index: ?usize) !usize {
+    fn getRelativePoint(self: *Shape, point: Point) Point {
+        const angle = self.bounds[0].angleTo(self.bounds[1]);
+        const distance = self.bounds[0].distance(Point{
+            .x = point.x - self.bounds[0].x,
+            .y = point.y - self.bounds[0].y,
+        });
+        const relative_point = Point{
+            .x = @sin(-angle) * distance,
+            .y = @cos(-angle) * distance,
+        };
+        return relative_point;
+    }
+
+    pub fn addPointStart(
+        self: *Shape,
+        allocator: std.mem.Allocator,
+        absolute_point: Point,
+        option_active_path_index: ?usize,
+    ) !usize {
+        self.cache.valid = false;
+        const matrix = get_bounds_matrix(self.bounds).inverse();
+        const point = matrix.transformPoint(absolute_point);
+        const close_path_threshold = matrix.transformPoint(Point{
+            .x = POINT_SNAP_DISTANCE,
+            .y = 0.0,
+        }).length();
+
         if (option_active_path_index) |active_path_index| {
             var active_path = &self.paths.items[active_path_index];
-            try active_path.addPoint(point);
-            if (self.cache) |*cache| {
-                cache.valid = false;
-            }
+            try active_path.addPoint(point, close_path_threshold);
             return active_path_index;
         } else {
+            std.debug.print("adding new path - YEAH\n", .{});
             const new_path = try Path.new(point, allocator);
             try self.paths.append(new_path);
             return self.paths.items.len - 1;
         }
     }
 
-    // receives boolean indicating if texture size was updated or not
-    pub fn updateTextureSize(cache: *TextureCache) bool {
-        const width = cache.points[0].distance(cache.points[1]);
-        const height = cache.points[0].distance(cache.points[3]);
+    pub fn updateLastHandle(self: *Shape, active_path_index: usize, preview_point: Point) void {
+        const matrix = get_bounds_matrix(self.bounds);
+        const point = matrix.inverse().transformPoint(preview_point);
+
+        const active_path = &self.paths.items[active_path_index];
+        active_path.updateLastHandle(point);
+        self.cache.valid = false;
+    }
+
+    // returns boolean indicating if texture size was updated or not
+    pub fn updateTextureSize(self: *Shape) bool {
+        const cache = &self.cache;
+
+        const width = self.bounds[0].distance(self.bounds[1]);
+        const height = self.bounds[0].distance(self.bounds[3]);
         const new_width = @min(Utils.getNextPowerOfTwo(@max(cache.width, width / shared.render_scale)), maxTextureSize);
         const new_height = @min(Utils.getNextPowerOfTwo(@max(cache.height, height / shared.render_scale)), maxTextureSize);
 
-        if (cache.width > new_width - EPSILON and cache.height > new_height - EPSILON) {
+        if (cache.width >= new_width - EPSILON and cache.height >= new_height - EPSILON) {
             return false;
         }
 
         cache.width = new_width;
         cache.height = new_height;
+
         return true;
     }
 
-    pub fn drawTextureCache(self: *Shape, allocator: std.mem.Allocator, force: bool) !void {
-        var cache: TextureCache = undefined;
-        var texture_id: ?u32 = null;
-
-        // try to avoid undefined
-        if (self.cache) |_cache| {
-            if (_cache.valid and !force) return; // texture is up to date
-            cache = _cache;
-            texture_id = _cache.id;
-        } else {
-            cache = TextureCache{
-                .id = undefined,
-                .points = undefined,
-                .width = 0.0,
-                .height = 0.0,
-            };
-        }
+    // instead of "force" we can integrate updateTextureSize here somehow I guess, or create a new method
+    pub fn drawTextureCache(self: *Shape, allocator: std.mem.Allocator) !void {
+        std.debug.print("Shape.drawTextureCache: cache valid: {}\n", .{self.cache.valid});
+        // // try to avoid undefined
+        // if (self.cache) |_cache| {
+        //     if (_cache.valid and !force) return; // texture is up to date
+        //     cache = _cache;
+        //     texture_id = _cache.id;
+        // } else {
+        //     cache = TextureCache{
+        //         .id = undefined,
+        //         .points = undefined,
+        //         .width = 0.0,
+        //         .height = 0.0,
+        //     };
+        // }
 
         const option_vertex_output = try self.getDrawVertexData(
             allocator,
@@ -128,17 +195,17 @@ pub const Shape = struct {
         if (option_vertex_output) |vertex_output| {
             const left_bottom = vertex_output.bounding_box[0];
             const right_top = vertex_output.bounding_box[2];
-            cache.points = [4]PointUV{
+            self.bounds = [4]PointUV{
                 .{ .x = left_bottom.x, .y = right_top.y, .u = 0.0, .v = 1.0 },
                 .{ .x = right_top.x, .y = right_top.y, .u = 1.0, .v = 1.0 },
                 .{ .x = right_top.x, .y = left_bottom.y, .u = 1.0, .v = 0.0 },
                 .{ .x = left_bottom.x, .y = left_bottom.y, .u = 0.0, .v = 0.0 },
             };
 
-            if (cache.width < EPSILON) {
+            if (self.cache.width <= EPSILON) {
                 std.debug.print("Init cache texture size\n", .{});
                 // we need to calculate bounding box first(we did this above) to set initial size
-                _ = Shape.updateTextureSize(&cache);
+                _ = self.updateTextureSize();
             }
 
             const cache_bounding_box = bounding_box.BoundingBox{
@@ -148,23 +215,29 @@ pub const Shape = struct {
                 .max_y = right_top.y,
             };
 
-            cache.id = cacheShape(
-                texture_id,
+            update_texture_cache(
+                self.cache.id,
                 cache_bounding_box,
                 vertex_output,
-                cache.width,
-                cache.height,
+                self.cache.width,
+                self.cache.height,
             );
 
-            cache.valid = false;
-            self.cache = cache;
+            self.cache.valid = true;
         }
     }
 
-    pub fn getSkeletonDrawVertexData(self: Shape, allocator: std.mem.Allocator, preview_point: ?Point, is_handle_preview: bool) ![]triangles.DrawInstance {
+    pub fn getSkeletonDrawVertexData(
+        self: Shape,
+        allocator: std.mem.Allocator,
+        preview_point: ?Point,
+        is_handle_preview: bool,
+    ) ![]triangles.DrawInstance {
+        const matrix = get_bounds_matrix(self.bounds);
+
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         for (self.paths.items) |path| {
-            const path_skeleton = try path.getSkeletonDrawVertexData(allocator);
+            const path_skeleton = try path.getSkeletonDrawVertexData(matrix, allocator);
             try skeleton_buffer.appendSlice(path_skeleton);
         }
 
@@ -189,12 +262,25 @@ pub const Shape = struct {
     }
 
     pub fn getDrawVertexData(self: Shape, allocator: std.mem.Allocator, active_path_index: ?usize, option_preview_point: ?Point) !?DrawVertexOutput {
+        const matrix = get_bounds_matrix(self.bounds);
         var curves_buffer = std.ArrayList(Point).init(allocator);
+
         for (self.paths.items, 0..) |path, i| {
-            const preview_point = if (active_path_index == i) option_preview_point else null;
-            const option_curves = try path.getDrawVertexData(allocator, preview_point);
-            if (option_curves) |curves| {
-                try curves_buffer.appendSlice(curves);
+            const preview_point = if (active_path_index == i)
+                if (option_preview_point) |point| matrix.transformPoint(point) else null
+            else
+                null;
+
+            const option_curve = try path.getDrawVertexData(allocator, preview_point);
+            if (option_curve) |curve| {
+                for (curve) |point| {
+                    if (Path.isStraightLineHandle(point)) {
+                        try curves_buffer.append(point);
+                    } else {
+                        try curves_buffer.append(matrix.transformPoint(point));
+                    }
+                }
+                // try curves_buffer.appendSlice(curve);
             }
         }
 
@@ -228,38 +314,30 @@ pub const Shape = struct {
         }
     }
 
-    pub fn getCacheTextureDrawVertexData(cache: TextureCache) images.DrawVertex {
+    pub fn getCacheTextureDrawVertexData(self: Shape) images.DrawVertex {
         return images.DrawVertex{
             // first triangle
-            cache.points[0],
-            cache.points[1],
-            cache.points[2],
+            self.bounds[0],
+            self.bounds[1],
+            self.bounds[2],
             // second triangle
-            cache.points[2],
-            cache.points[3],
-            cache.points[0],
+            self.bounds[2],
+            self.bounds[3],
+            self.bounds[0],
         };
     }
 
-    pub fn getCacheTexturePickVertexData(self: Shape, cache: TextureCache) [6]images.PickVertex {
+    pub fn getCacheTexturePickVertexData(self: Shape) [6]images.PickVertex {
         return [_]images.PickVertex{
             // first triangle
-            .{ .id = self.id, .point = cache.points[0] },
-            .{ .id = self.id, .point = cache.points[1] },
-            .{ .id = self.id, .point = cache.points[2] },
+            .{ .id = self.id, .point = self.bounds[0] },
+            .{ .id = self.id, .point = self.bounds[1] },
+            .{ .id = self.id, .point = self.bounds[2] },
             // second triangle
-            .{ .id = self.id, .point = cache.points[2] },
-            .{ .id = self.id, .point = cache.points[3] },
-            .{ .id = self.id, .point = cache.points[0] },
+            .{ .id = self.id, .point = self.bounds[2] },
+            .{ .id = self.id, .point = self.bounds[3] },
+            .{ .id = self.id, .point = self.bounds[0] },
         };
-    }
-
-    pub fn updateLastHandle(self: *Shape, active_path_index: usize, preview_point: Point) void {
-        const active_path = &self.paths.items[active_path_index];
-        active_path.updateLastHandle(preview_point);
-        if (self.cache) |*cache| {
-            cache.valid = false;
-        }
     }
 
     pub fn serialize(self: Shape) !Serialized {
@@ -273,6 +351,7 @@ pub const Shape = struct {
             .id = self.id,
             .paths = try paths_list.toOwnedSlice(),
             .props = self.props,
+            .bounds = self.bounds,
             .cache = self.cache,
         };
     }
@@ -302,6 +381,7 @@ pub const Serialized = struct {
     id: u32,
     paths: []const []const Point,
     props: ShapeProps,
+    bounds: [4]PointUV,
     cache: ?TextureCache,
 
     pub fn compare(self: Serialized, other: Serialized) bool {
@@ -316,6 +396,7 @@ pub const Serialized = struct {
         const all_match = self.id == other.id and
             self.paths.len == other.paths.len and
             std.meta.eql(self.props, other.props);
+        // and std.meta.eql(self.bounds, other.bounds);
 
         if (!all_match) {
             return false;

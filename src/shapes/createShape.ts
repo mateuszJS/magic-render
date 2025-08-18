@@ -5,6 +5,7 @@ import parseRect from './parseRect'
 import type { PathSegment } from './types'
 import parseColor from './parseColor'
 import parseEllipse from './parseEllipse'
+import * as Textures from 'textures'
 
 export default function createShapes(node: Node, svgHeight: number): void {
   if (!('children' in node)) return
@@ -44,7 +45,7 @@ export default function createShapes(node: Node, svgHeight: number): void {
         }
 
         if (result) {
-          Logic.addShape(0, result, serializedProps, null)
+          Logic.addShape(0, result, null, serializedProps, { id: Textures.createCacheTexture() })
         }
       }
       createShapes(child, svgHeight)

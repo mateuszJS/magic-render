@@ -41,12 +41,19 @@ pub fn isTransformUi(id: u32) bool {
     return id >= 1 and id <= 9;
 }
 
+// pub fn movePoints(points: []PointUV, offset_x: f32, offset_y: f32) void {
+//     for (points) |*point| {
+//         point.x += offset_x;
+//         point.y += offset_y;
+//     }
+// }
+
 pub fn transformPoints(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, raw_y: f32) void {
     const asset_angle_y = points[0].angleTo(points[3]) + std.math.pi / 2.0;
     // it's important we dont meausre horizontal one, because reflecting by X axis makes no change in horizontal angle
     // but should be 180 degree opposite
     const t_matrix = Matrix3x3.rotation(asset_angle_y); // transfor matrix
-    const invert_t_matrix = t_matrix.inverse().?;
+    const invert_t_matrix = t_matrix.inverse();
     const pointer = invert_t_matrix.transformPoint(Point{
         .x = raw_x,
         .y = raw_y,

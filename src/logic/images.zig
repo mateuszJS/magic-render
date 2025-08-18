@@ -41,12 +41,6 @@ pub const Image = struct {
         }
     }
 
-    pub fn updateCoords(self: *Image, new_points: [4]Types.PointUV) void {
-        for (&self.points, new_points) |*item, new_point| {
-            item.* = new_point;
-        }
-    }
-
     pub fn serialize(self: Image) Serialized {
         return Serialized{
             .points = self.points,

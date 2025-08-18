@@ -14,7 +14,8 @@ const shared = @import("./shared.zig");
 const WebGpuPrograms = struct {
     draw_texture: *const fn (images.DrawVertex, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
-    draw_shape: *const fn ([]const types.Point, []const types.Point, shapes.Uniform) void,
+    compute_shape: *const fn ([]const types.Point) void,
+    draw_shape: *const fn ([]const types.Point, shapes.Uniform) void,
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
     pick_triangle: *const fn ([]const Triangle.PickInstance) void,
@@ -37,21 +38,26 @@ pub fn connectOnAssetSelectionCallback(cb: *const fn (u32) void) void {
     on_asset_select_cb = cb;
 }
 
-var start_cache_callback: *const fn (?u32, bounding_box.BoundingBox, f32, f32) u32 = undefined;
+var create_cache_texture_callback: *const fn () u32 = undefined;
+var start_cache_callback: *const fn (u32, bounding_box.BoundingBox, f32, f32) void = undefined;
 var end_cache_callback: *const fn () void = undefined;
 
-pub fn connectCacheCallbacks(start_cache: *const fn (?u32, bounding_box.BoundingBox, f32, f32) u32, end_cache: *const fn () void) void {
+pub fn connectCacheCallbacks(
+    create_cache_texture: *const fn () u32,
+    start_cache: *const fn (u32, bounding_box.BoundingBox, f32, f32) void,
+    end_cache: *const fn () void,
+) void {
+    create_cache_texture_callback = create_cache_texture;
     start_cache_callback = start_cache;
     end_cache_callback = end_cache;
 
-    shapes.cacheShape = cache_shape_cb;
+    shapes.update_texture_cache = update_texture_cache;
 }
 
-fn cache_shape_cb(curr_texture_id: ?u32, box: bounding_box.BoundingBox, vertex_data: shapes.DrawVertexOutput, width: f32, height: f32) u32 {
-    const texture_id = start_cache_callback(curr_texture_id, box, width, height);
-    web_gpu_programs.draw_shape(vertex_data.curves, &vertex_data.bounding_box, vertex_data.uniform);
+fn update_texture_cache(texture_id: u32, box: bounding_box.BoundingBox, vertex_data: shapes.DrawVertexOutput, width: f32, height: f32) void {
+    start_cache_callback(texture_id, box, width, height);
+    web_gpu_programs.compute_shape(vertex_data.curves);
     end_cache_callback();
-    return texture_id;
 }
 
 pub const ASSET_ID_TRESHOLD: u32 = 1000;
@@ -126,9 +132,11 @@ pub fn updateRenderScale(scale: f32) !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                if (shape.cache) |*cache| {
-                    if (shapes.Shape.updateTextureSize(cache)) {
-                        try shape.drawTextureCache(allocator, true);
+                if (shape.cache.valid) {
+                    // if it's valid, then lets update, if it's invalid, then is gonna be updated anyway(with correct fresh data)
+                    if (shape.updateTextureSize()) {
+                        std.debug.print("texture size has changed, updating shape cache\n", .{});
+                        try shape.drawTextureCache(allocator);
                     }
                 }
             },
@@ -153,12 +161,19 @@ pub fn addImage(id_or_zero: u32, points: [4]types.PointUV, texture_id: u32) !voi
     try checkAssetsUpdate(true);
 }
 
-pub fn addShape(id_or_zero: u32, paths: []const []const types.Point, props: shapes.ShapeProps, cache: ?shapes.TextureCache) !void {
+pub fn addShape(
+    id_or_zero: u32,
+    paths: []const []const types.Point,
+    bounds: ?[4]types.PointUV,
+    props: shapes.ShapeProps,
+    cache: shapes.TextureCache,
+) !u32 {
     const id = if (id_or_zero == 0) generateId() else id_or_zero;
-    const shape = try shapes.Shape.newFromPoints(id, paths, props, cache, std.heap.page_allocator);
+    const shape = try shapes.Shape.new(id, paths, bounds, props, cache, std.heap.page_allocator);
     try state.assets.put(id, Asset{ .shape = shape });
 
     try checkAssetsUpdate(true);
+    return id;
 }
 
 pub fn removeAsset() !void {
@@ -251,7 +266,9 @@ fn getSelectedShape() ?*shapes.Shape {
 
 fn updateSelectedAsset(id: u32) !void {
     try commitChanges();
+    std.debug.print("updateSelectedAsset called with id: {}\n", .{id});
     state.selected_asset_id = id;
+    state.active_path_index = null;
     on_asset_select_cb(id);
 }
 
@@ -260,14 +277,15 @@ pub fn onPointerDown(_allocator: std.mem.Allocator, x: f32, y: f32) !void {
     if (state.tool == Tool.DrawShape) {
         const preview_point = types.Point{ .x = x, .y = y };
         state.preview_point = preview_point;
-
+        std.debug.print("state.active_path_index: {any}\n", .{state.active_path_index});
         if (state.selected_asset_id == NO_SELECTION) {
-            const id = generateId();
-            const shape = try shapes.Shape.new(
-                id,
-                std.heap.page_allocator,
+            const id = try addShape(
+                0,
+                &.{},
+                null,
+                shapes.ShapeProps{},
+                shapes.TextureCache{ .id = create_cache_texture_callback() },
             );
-            try state.assets.put(id, Asset{ .shape = shape });
             try updateSelectedAsset(id);
         }
 
@@ -277,7 +295,7 @@ pub fn onPointerDown(_allocator: std.mem.Allocator, x: f32, y: f32) !void {
                 preview_point,
                 state.active_path_index,
             );
-
+            std.debug.print("state.active_path_index: {any}\n", .{state.active_path_index});
             state.is_handle_preview = true;
             return;
         } else {
@@ -309,6 +327,7 @@ pub fn onPointerUp() !void {
         if (state.active_path_index) |active_path_index| {
             const shape = getSelectedShape() orelse @panic("Selected shape asset should be present when active_path_index is not null");
             if (shape.paths.items[active_path_index].closed) {
+                std.debug.print("SHAPE CLOSED, {d}\n", .{active_path_index});
                 state.active_path_index = null;
             }
             try checkAssetsUpdate(true);
@@ -333,33 +352,29 @@ pub fn onPointerMove(x: f32, y: f32) void {
         return;
     }
 
-    if (getSelectedImg()) |img| {
-        switch (state.action) {
-            .Move => {
-                const offset = types.Point{
-                    .x = x - state.last_pointer_coords.x,
-                    .y = y - state.last_pointer_coords.y,
-                };
-                state.last_pointer_coords = types.Point{ .x = x, .y = y };
+    const asset = state.assets.getPtr(state.selected_asset_id) orelse return;
+    const points = switch (asset.*) {
+        .img => |*img| &img.points,
+        .shape => |*shape| &shape.bounds,
+    };
 
-                var new_points: [4]types.PointUV = undefined;
-                for (img.points, 0..) |point, i| {
-                    new_points[i] = types.PointUV{
-                        .x = point.x + offset.x,
-                        .y = point.y + offset.y,
-                        .u = point.u,
-                        .v = point.v,
-                    };
-                }
+    switch (state.action) {
+        .Move => {
+            const offset = types.Point{
+                .x = x - state.last_pointer_coords.x,
+                .y = y - state.last_pointer_coords.y,
+            };
+            state.last_pointer_coords = types.Point{ .x = x, .y = y };
 
-                img.updateCoords(new_points);
-            },
-            .Transform => {
-                const points_ptr: *[4]types.PointUV = &img.points;
-                TransformUI.transformPoints(state.hovered_asset_id, points_ptr, x, y);
-            },
-            .None => {},
-        }
+            for (points) |*point| {
+                point.x += offset.x;
+                point.y += offset.y;
+            }
+        },
+        .Transform => {
+            TransformUI.transformPoints(state.hovered_asset_id, points, x, y);
+        },
+        .None => {},
     }
 }
 
@@ -370,11 +385,15 @@ pub fn onPointerLeave() !void {
 }
 
 fn updateShapeCache(shape: *shapes.Shape) !void {
+    if (shape.cache.valid) {
+        return; // no need to update
+    }
+
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    try shape.drawTextureCache(allocator, false);
+    try shape.drawTextureCache(allocator);
 }
 
 pub fn commitChanges() !void {
@@ -383,7 +402,7 @@ pub fn commitChanges() !void {
             try updateShapeCache(shape);
         }
     }
-    state.selected_asset_id = NO_SELECTION;
+    // state.selected_asset_id = NO_SELECTION;
 }
 
 // TODO: extract to another file and simplify(extract common code)
@@ -401,8 +420,8 @@ fn getBorder(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []M
                     option_points = img.points;
                 },
                 .shape => |shape| {
-                    if (shape.cache) |cache| {
-                        option_points = cache.points;
+                    if (shape.cache.valid) {
+                        option_points = shape.bounds;
                     }
                 },
             }
@@ -434,8 +453,8 @@ fn getBorder(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []M
                 option_points = img.points;
             },
             .shape => |shape| {
-                if (shape.cache) |cache| {
-                    option_points = cache.points;
+                if (shape.cache.valid) {
+                    option_points = shape.bounds;
                 }
             },
         }
@@ -520,6 +539,29 @@ fn drawProjectBoundary() void {
     web_gpu_programs.draw_triangle(&buffer);
 }
 
+pub fn calculateShapesSDF() !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var iterator = state.assets.iterator();
+    while (iterator.next()) |asset| {
+        switch (asset.value_ptr.*) {
+            .img => {},
+            .shape => |*shape| {
+                const option_vertex_data = try shape.getDrawVertexData(
+                    allocator,
+                    state.active_path_index,
+                    state.preview_point,
+                );
+                if (option_vertex_data) |vertex_data| {
+                    web_gpu_programs.compute_shape(vertex_data.curves);
+                }
+            },
+        }
+    }
+}
+
 const point_size: f32 = @floatFromInt(@sizeOf(types.Point)); // 8 bytes
 const triangle_size: f32 = @floatFromInt(@sizeOf(Triangle.DrawInstance)); // 64 bytes
 const asset_size: f32 = @floatFromInt(@sizeOf(images.DrawVertex)); // 96 bytes
@@ -558,9 +600,9 @@ pub fn renderDraw() !void {
                 web_gpu_programs.draw_texture(vertex_data, img.texture_id);
             },
             .shape => |shape| {
-                if (shape.cache) |cache| {
-                    const vertex_data = shapes.Shape.getCacheTextureDrawVertexData(cache);
-                    web_gpu_programs.draw_texture(vertex_data, cache.id);
+                if (shape.cache.valid) {
+                    const vertex_data = shape.getCacheTextureDrawVertexData();
+                    web_gpu_programs.draw_texture(vertex_data, shape.cache.id);
                 } else {
                     const option_vertex_data = try shape.getDrawVertexData(
                         allocator,
@@ -568,7 +610,7 @@ pub fn renderDraw() !void {
                         state.preview_point,
                     );
                     if (option_vertex_data) |vertex_data| {
-                        web_gpu_programs.draw_shape(vertex_data.curves, &vertex_data.bounding_box, vertex_data.uniform);
+                        web_gpu_programs.draw_shape(&vertex_data.bounding_box, vertex_data.uniform);
                     }
                 }
             },
@@ -589,11 +631,11 @@ pub fn renderDraw() !void {
 
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
-            const vertex_data = shape.getSkeletonDrawVertexData(
+            const vertex_data = try shape.getSkeletonDrawVertexData(
                 allocator,
                 state.preview_point,
                 state.is_handle_preview,
-            ) catch unreachable;
+            );
             web_gpu_programs.draw_triangle(vertex_data);
         }
     }
@@ -645,9 +687,9 @@ pub fn renderPick() void {
                 web_gpu_programs.pick_texture(&vertex_data, img.texture_id);
             },
             .shape => |shape| {
-                if (shape.cache) |cache| {
-                    const vertex_data = shape.getCacheTexturePickVertexData(cache);
-                    web_gpu_programs.pick_texture(&vertex_data, cache.id);
+                if (shape.cache.valid) {
+                    const vertex_data = shape.getCacheTexturePickVertexData();
+                    web_gpu_programs.pick_texture(&vertex_data, shape.cache.id);
                 }
             },
         }
@@ -660,8 +702,8 @@ pub fn renderPick() void {
                 option_points = img.points;
             },
             .shape => |shape| {
-                if (shape.cache) |cache| {
-                    option_points = cache.points;
+                if (shape.cache.valid) {
+                    option_points = shape.bounds;
                 }
             },
         }
@@ -689,7 +731,10 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
                 try addImage(img.id, img.points, img.texture_id);
             },
             .shape => |shape| {
-                try addShape(shape.id, shape.paths, shape.props, shape.cache);
+                const cache = shape.cache orelse shapes.TextureCache{
+                    .id = create_cache_texture_callback(),
+                };
+                _ = try addShape(shape.id, shape.paths, shape.bounds, shape.props, cache);
             },
         }
     }
