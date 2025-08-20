@@ -48,12 +48,12 @@ export default function getDrawShape(
       entryPoint: 'vs',
       buffers: [
         {
-          arrayStride: 2 * 4, // position (2) + color (4)
+          arrayStride: 4 * 4, // position (4)
           attributes: [
             {
               shaderLocation: 0,
               offset: 0,
-              format: 'float32x2', // position
+              format: 'float32x4', // position
             },
           ],
         },

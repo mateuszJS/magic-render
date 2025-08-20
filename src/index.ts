@@ -141,8 +141,8 @@ export default async function initCreator(
     )
   }, 1000 * 5)
 
-  let lastAssetsSnapshot: ZigAsset[] = []
-  Logic.connectOnAssetUpdateCallback((serializedData: ZigAsset[]) => {
+  let lastAssetsSnapshot: ZigAssetOutput[] = []
+  Logic.connectOnAssetUpdateCallback((serializedData: ZigAssetOutput[]) => {
     lastAssetsSnapshot = [...serializedData]
     newAssetsSnapshot()
   })
@@ -251,7 +251,7 @@ export default async function initCreator(
 
   const resetAssets: CreatorAPI['resetAssets'] = async (assets, withSnapshot = false) => {
     const results = await Promise.allSettled(
-      assets.map<Promise<ZigAsset>>(
+      assets.map<Promise<ZigAssetInput>>(
         (asset) =>
           new Promise((resolve, reject) => {
             if ('paths' in asset) {
@@ -262,7 +262,7 @@ export default async function initCreator(
                   id: asset.id || NO_ASSET_ID,
                   paths: asset.paths,
                   props: asset.props,
-                  bounds: asset.bounds || [],
+                  bounds: asset.bounds || null,
                   cache: {
                     id: asset.cache?.id || 0,
                     width: asset.cache?.width || 0,
@@ -277,14 +277,14 @@ export default async function initCreator(
               return resolve({
                 img: {
                   id: asset.id || NO_ASSET_ID,
-                  points: asset.points, // here it makes sense
+                  points: asset.points,
                   texture_id: asset.textureId || Textures.add(asset.url), // if we got points, so we have url on the server for sure
                 },
               })
             }
 
             const textureId = Textures.add(asset.url, (width, height, isNew) => {
-              // we wait to add image once points are known. Other option was to add image first
+              // we wait to add image once points are known. The other option was to add image first
               // with "default" points and then update it once texture is loaded.
               // However, that would cause issues with undo/redo since we would have history
               // snapshot with "default" points and then update it to the real points.
@@ -298,7 +298,7 @@ export default async function initCreator(
               return resolve({
                 img: {
                   id: NO_ASSET_ID,
-                  points: getDefaultPoints(width, height, projectWidth, projectHeight),
+                  points: getDefaultPoints(width, height, projectWidth, projectHeight), // TODO: do it in zig only liek for shaoes
                   texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
                 },
               })

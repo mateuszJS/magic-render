@@ -35,22 +35,24 @@ async function test() {
         return {
           id: asset.id,
           url: 'cache',
-          points:
-            asset.cache === null
-              ? []
-              : asset.bounds.map((point) => ({
-                  x: point.x * scale + camera.x,
-                  y: point.y * scale + camera.y,
-                })),
+          points: [],
+          // points:
+          //   asset.cache === null
+          //     ? []
+          //     : asset.bounds.map((point) => ({
+          //         x: point.x * scale + camera.x,
+          //         y: point.y * scale + camera.y,
+          //       })),
         }
       }
       return {
         id: asset.id,
         url: '',
-        points: asset.points.map((point) => ({
-          x: point.x * scale + camera.x,
-          y: point.y * scale + camera.y,
-        })),
+        points: [],
+        // points: asset.points.map((point) => ({
+        //   x: point.x * scale + camera.x,
+        //   y: point.y * scale + camera.y,
+        // })),
       }
     })
   }
@@ -123,12 +125,14 @@ async function test() {
 
     const PROJECT_SAMPLE = Array.from(files).map((file) => ({
       url: URL.createObjectURL(file),
-      points: [
-        { x: 100, y: 200, u: 0, v: 1 },
-        { x: 200, y: 200, u: 1, v: 1 },
-        { x: 200, y: 100, u: 1, v: 0 },
-        { x: 100, y: 100, u: 0, v: 0 },
+      // prettier-ignore
+      matrix: [
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, 1
       ],
+      width: 500,
+      height: 500,
     }))
 
     creator.resetAssets(PROJECT_SAMPLE, true)

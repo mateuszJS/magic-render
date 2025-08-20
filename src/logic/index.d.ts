@@ -44,8 +44,23 @@ type ShapeAssetOutput = {
   cache: ShapeCache // it's not exactly true since cache is always present when returning snapshots
   // but it's not useful in JS anyway, cache is only useful for Zig logic
 }
+type ImageAssetInput = {
+  id: number
+  points: PointUV[]
+  texture_id: number
+}
 
-type ZigAsset = { img: ImageAssetOutput } | { shape: ShapeAssetOutput }
+type ShapeAssetInput = {
+  id: number
+  paths: Point[][]
+  props: ShapeProps
+  bounds: PointUV[] | null
+  cache: ShapeCache // it's not exactly true since cache is always present when returning snapshots
+  // but it's not useful in JS anyway, cache is only useful for Zig logic
+}
+
+type ZigAssetOutput = { img: ImageAssetOutput } | { shape: ShapeAssetOutput }
+type ZigAssetInput = { img: ImageAssetInput } | { shape: ShapeAssetInput }
 
 type ArrayPointerDataView = {
   '*': PointerDataView
@@ -65,7 +80,7 @@ declare module '*.zig' {
     cache: Pick<ShapeCache, 'id'>
   ) => number /* id */
   export const removeAsset: () => void
-  export const resetAssets: (assets: ZigAsset[], with_snapshot: boolean) => void
+  export const resetAssets: (assets: ZigAssetInput[], with_snapshot: boolean) => void
 
   export const onUpdatePick: (id: number) => void
   export const onPointerDown: (x: number, y: number) => void
@@ -81,10 +96,10 @@ declare module '*.zig' {
     draw_msdf: (vertex_data: ArrayPointerDataView, texture_id: number) => void
     pick_texture: (vertex_data: ArrayPointerDataView, texture_id: number) => void
     pick_triangle: (vertex_data: ArrayPointerDataView) => void
-    compute_shape: (curves_data: ArrayPointerDataView) => void
+    compute_shape: (curves_data: ArrayPointerDataView, width: number, height: number) => void
     draw_shape: (bound_box_data: ArrayPointerDataView, uniformData: PointerDataView) => void
   }) => void
-  export const connectOnAssetUpdateCallback: (cb: (data: ZigAsset[]) => void) => void
+  export const connectOnAssetUpdateCallback: (cb: (data: ZigAssetOutput[]) => void) => void
   export const connectOnAssetSelectionCallback: (cb: (data: number) => void) => void
   export const connectCacheCallbacks: (
     create_cache_texture: () => number,

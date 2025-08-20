@@ -37,12 +37,7 @@ export default function runCreator(
   // let total = 0
   // let samplesCount = 0
 
-  const textureSDF = device.createTexture({
-    label: 'SDF texture',
-    size: [500, 500],
-    format: 'rgba32float',
-    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-  })
+  let textureSDF: GPUTexture
 
   Logic.connectWebGpuPrograms({
     draw_texture: (vertex_data, texture_id) => {
@@ -63,8 +58,15 @@ export default function runCreator(
       }
       */
     },
-    compute_shape: (curves_data) => {
+    compute_shape: (curves_data, width, height) => {
       const curvesDataView = curves_data['*'].dataView
+
+      textureSDF = device.createTexture({
+        label: 'SDF texture',
+        size: [width, height],
+        format: 'rgba32float',
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+      })
 
       // const boundBoxDataView = bound_box_data['*'].dataView
       computeSDF(computePass, curvesDataView, textureSDF)

@@ -107,17 +107,17 @@ pub const Path = struct {
         const size = 20.0 * shared.render_scale;
 
         for (self.points.items, 0..) |relative_point, i| {
-            const point = matrix.transformPoint(relative_point);
-            // we don't care if it;s straight, because we filter out this case below
+            if (Path.isStraightLineHandle(relative_point)) {
+                // This is a straight line handle, skip it
+                continue;
+            }
+
+            const point = matrix.get(relative_point);
 
             const is_control_point = i % 4 == 0 or i % 4 == 3;
             if (!is_control_point) {
-                if (Path.isStraightLineHandle(point)) {
-                    // This is a straight line handle, skip it
-                    continue;
-                }
                 const connected_control_point_index = if (i % 4 == 1) i - 1 else (i + 1) % self.points.items.len;
-                const connected_control_point = matrix.transformPoint(self.points.items[connected_control_point_index]);
+                const connected_control_point = matrix.get(self.points.items[connected_control_point_index]);
                 var buffer: [2]triangles.DrawInstance = undefined;
                 lines.getDrawVertexData(
                     buffer[0..2],

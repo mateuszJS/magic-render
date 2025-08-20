@@ -140,10 +140,10 @@ pub fn transformPoints(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     }
 
     if (ui_component_id != 9) {
-        const p0 = t_matrix.transformPoint(un_rotated_points[0]);
-        const p1 = t_matrix.transformPoint(un_rotated_points[1]);
-        const p2 = t_matrix.transformPoint(un_rotated_points[2]);
-        const p3 = t_matrix.transformPoint(un_rotated_points[3]);
+        const p0 = t_matrix.get(un_rotated_points[0]);
+        const p1 = t_matrix.get(un_rotated_points[1]);
+        const p2 = t_matrix.get(un_rotated_points[2]);
+        const p3 = t_matrix.get(un_rotated_points[3]);
 
         points[0].x = p0.x;
         points[0].y = p0.y;

@@ -1,9 +1,14 @@
 // Matrix3x3 implementation for 2D affine transforms
 const std = @import("std");
 const Point = @import("types.zig").Point;
+const PointUV = @import("types.zig").PointUV;
 
 pub const Matrix3x3 = struct {
     values: [9]f32,
+
+    pub fn from(values: [9]f32) Matrix3x3 {
+        return Matrix3x3{ .values = values };
+    }
 
     pub fn identity() Matrix3x3 {
         return Matrix3x3{
@@ -127,7 +132,7 @@ pub const Matrix3x3 = struct {
         return true;
     }
 
-    pub fn transformPoint(self: Matrix3x3, p: anytype) Point {
+    pub fn get(self: Matrix3x3, p: anytype) Point {
         // Applies the matrix to a 2D point (x, y) and returns the transformed point
         const m = self.values;
         const tx = m[0] * p.x + m[1] * p.y + m[2];
@@ -137,13 +142,27 @@ pub const Matrix3x3 = struct {
         return Point{ .x = tx, .y = ty };
     }
 
-    pub fn getTransformBetween(from: Matrix3x3, to: Matrix3x3) ?Matrix3x3 {
+    pub fn getUV(self: Matrix3x3, p: PointUV) PointUV {
+        // Applies the matrix to a 2D point (x, y) and returns the transformed point
+        const m = self.values;
+        const tx = m[0] * p.x + m[1] * p.y + m[2];
+        const ty = m[3] * p.x + m[4] * p.y + m[5];
+        // For affine matrices, w is always 1, but for completeness:
+        // const tw = m[6] * x + m[7] * y + m[8];
+        return PointUV{ .x = tx, .y = ty, .u = p.u, .v = p.v };
+    }
+
+    pub fn getRotationAngle(self: Matrix3x3) f32 {
+        // Extract rotation angle from the matrix
+        // For a 2D rotation matrix, the angle can be calculated using atan2
+        const m = self.values;
+        return std.math.atan2(m[3], m[0]); // atan2(sin, cos)
+    }
+
+    pub fn getTransformBetween(m: Matrix3x3, to: Matrix3x3) Matrix3x3 {
         // Returns a matrix that transforms points from 'from' coordinate system to 'to' coordinate system
         // Formula: transform = to * from.inverse()
-        if (from.inverse()) |from_inv| {
-            return Matrix3x3.multiply(to, from_inv);
-        }
-        return null; // from matrix is not invertible
+        return Matrix3x3.multiply(to, m.inverse());
     }
 };
 
@@ -245,9 +264,9 @@ test "inverse non-mutating" {
 }
 
 // Test point transformation
-test "transformPoint" {
+test "get" {
     const m = Matrix3x3.translation(10.0, 5.0);
-    const pt = m.transformPoint(Point{ .x = 2.0, .y = 3.0 });
+    const pt = m.get(Point{ .x = 2.0, .y = 3.0 });
     try std.testing.expect(@abs(pt.x - 12.0) < 1e-6);
     try std.testing.expect(@abs(pt.y - 8.0) < 1e-6);
 }
@@ -266,14 +285,14 @@ test "getTransformBetween" {
     const point_in_matrix1_space = Point{ .x = 1.0, .y = 1.0 };
 
     // What this point would be in world space via matrix1
-    const world_via_matrix1 = matrix1.transformPoint(point_in_matrix1_space);
+    const world_via_matrix1 = matrix1.get(point_in_matrix1_space);
     // Should be (2.0, 2.0) due to scaling
 
     // Transform directly from matrix1 space to matrix2 space
-    const point_in_matrix2_space = transform.transformPoint(point_in_matrix1_space);
+    const point_in_matrix2_space = transform.get(point_in_matrix1_space);
 
     // What this point should be when going through matrix2
-    const expected_world = matrix2.transformPoint(point_in_matrix2_space);
+    const expected_world = matrix2.get(point_in_matrix2_space);
 
     // Both should give the same world coordinates
     try std.testing.expect(@abs(world_via_matrix1.x - expected_world.x) < 1e-5);
