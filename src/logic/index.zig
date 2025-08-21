@@ -635,16 +635,16 @@ pub fn renderDraw() !void {
         }
     }
 
-    if (state.tool == Tool.DrawShape) {
-        if (getSelectedShape()) |shape| {
-            const vertex_data = try shape.getSkeletonDrawVertexData(
-                allocator,
-                state.preview_point,
-                state.is_handle_preview,
-            );
-            web_gpu_programs.draw_triangle(vertex_data);
-        }
+    // if (state.tool == Tool.DrawShape) {
+    if (getSelectedShape()) |shape| {
+        const vertex_data = try shape.getSkeletonDrawVertexData(
+            allocator,
+            state.preview_point,
+            state.is_handle_preview,
+        );
+        web_gpu_programs.draw_triangle(vertex_data);
     }
+    // }
 
     // testing:
 

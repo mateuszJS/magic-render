@@ -75,7 +75,7 @@ pub const Path = struct {
         };
     }
 
-    pub fn addPoint(self: *Path, point: Point, same_point_threshold: f32) !void {
+    pub fn addPoint(self: *Path, point: Point, same_point_threshold: Point) !void {
         if (self.closed) {
             @panic("Attempting to add point to already closed path!");
         }
@@ -91,11 +91,9 @@ pub const Path = struct {
         try self.points.append(STRAIGHT_LINE_HANDLE);
 
         const first_point = self.points.items[0];
-        const distance = first_point.distance(point);
 
-        if (distance < same_point_threshold) {
+        if (@abs(first_point.x - point.x) < same_point_threshold.x and @abs(first_point.y - point.y) < same_point_threshold.y) {
             self.closed = true;
-            std.debug.print("Path.addPoint - set to closed\n", .{});
             try self.points.append(first_point);
         } else {
             try self.points.append(point);
