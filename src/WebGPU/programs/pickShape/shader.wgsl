@@ -38,7 +38,7 @@ struct VertexOutput {
   // let value = textureSample(sdf, ourSampler, in.world_pos).r;
   let value = textureLoad(sdf, vec2u(in.uv)).r / 10.0;
   let x = u.fill_color.r;
-    if (value > 0.1) {
+    if (value < 0.1) {
     discard; // r32uint doesn't support blending so only skipping pixels lefts
   }
 
