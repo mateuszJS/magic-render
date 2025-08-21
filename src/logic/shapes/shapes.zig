@@ -39,8 +39,9 @@ const DEFAULT_BOUNDS = [4]PointUV{
 };
 
 fn get_bounds_matrix(bounds: [4]PointUV) Matrix3x3 {
-    // const angle = bounds[0].angleTo(bounds[1]);
-    // const rotation = Matrix3x3.rotation(angle); // transfor matrix
+    const angle = bounds[0].angleTo(bounds[1]);
+    const rotation = Matrix3x3.rotation(angle); // transfor matrix
+    _ = rotation; // autofix
 
     const scale = Matrix3x3.scaling(
         bounds[1].x - bounds[3].x,
@@ -50,9 +51,10 @@ fn get_bounds_matrix(bounds: [4]PointUV) Matrix3x3 {
         bounds[3].x,
         bounds[3].y,
     );
-    return Matrix3x3.multiply(translate, scale);
+    // return Matrix3x3.multiply(translate, scale);
     // std.debug.print("angle: {d}\n", .{angle});
     // std.debug.print("translate: {d}, {d}\n", .{ bounds[3].x, bounds[3].y });
+    return Matrix3x3.multiply(translate, scale);
 
     // const matrix = Matrix3x3.multiply(
     //     // translate,
@@ -150,16 +152,16 @@ pub const Shape = struct {
         // const norm_bounds = get_norm_bounds(self.bounds);
 
         self.outdated_sdf = true;
-        std.debug.print("============addPointStart=============\n", .{});
-        std.debug.print("bounds start: {d}, {d}\n", .{ self.bounds[3].x, self.bounds[3].y });
-        std.debug.print("bounds end: {d}, {d}\n", .{ self.bounds[1].x, self.bounds[1].y });
+        // std.debug.print("============addPointStart=============\n", .{});
+        // std.debug.print("bounds start: {d}, {d}\n", .{ self.bounds[3].x, self.bounds[3].y });
+        // std.debug.print("bounds end: {d}, {d}\n", .{ self.bounds[1].x, self.bounds[1].y });
         const matrix = get_bounds_matrix(self.bounds);
-        std.debug.print("matrix: {any}\n", .{matrix});
+        // std.debug.print("matrix: {any}\n", .{matrix});
         const invert_matrix = matrix.inverse();
-        std.debug.print("invert_matrix: {any}\n", .{invert_matrix});
-        std.debug.print("absolute point: {d}, {d}\n", .{ absolute_point.x, absolute_point.y });
+        // std.debug.print("invert_matrix: {any}\n", .{invert_matrix});
+        // std.debug.print("absolute point: {d}, {d}\n", .{ absolute_point.x, absolute_point.y });
         const point = invert_matrix.get(absolute_point);
-        std.debug.print("point: {d}, {d}\n", .{ point.x, point.y });
+        // std.debug.print("point: {d}, {d}\n", .{ point.x, point.y });
         const close_path_threshold = invert_matrix.get(Point{
             .x = POINT_SNAP_DISTANCE,
             .y = 0.0,
@@ -189,6 +191,7 @@ pub const Shape = struct {
     }
 
     fn update_bounds(self: *Shape, allocator: std.mem.Allocator) !void {
+        std.debug.print("============update_bounds=============\n", .{});
         const matrix = get_bounds_matrix(self.bounds);
         const invert_matrix = matrix.inverse();
         const points = try self.getAllPoints(allocator, 0, null);
@@ -233,49 +236,49 @@ pub const Shape = struct {
         };
     }
 
-    fn get_bounds_preview(self: *Shape, allocator: std.mem.Allocator, points: []Point) ![]Point {
-        const matrix = get_bounds_matrix(self.bounds);
-        const invert_matrix = matrix.inverse();
-        const old_box_end = invert_matrix.get(self.bounds[1]); // 0, 0
-        const old_box_start = invert_matrix.get(self.bounds[3]); // 0, 0
+    // fn get_bounds_preview(self: *Shape, allocator: std.mem.Allocator, points: []Point) ![]Point {
+    //     const matrix = get_bounds_matrix(self.bounds);
+    //     const invert_matrix = matrix.inverse();
+    //     const old_box_end = invert_matrix.get(self.bounds[1]); // 0, 0
+    //     const old_box_start = invert_matrix.get(self.bounds[3]); // 0, 0
 
-        const box = bounding_box.getBoundingBox(points, self.props.stroke_width / 2.0);
+    //     const box = bounding_box.getBoundingBox(points, self.props.stroke_width / 2.0);
 
-        const width = box.max_x - box.min_x; // 272
-        const height = box.max_y - box.min_y; // 269s
+    //     const width = box.max_x - box.min_x; // 272
+    //     const height = box.max_y - box.min_y; // 269s
 
-        if (width <= EPSILON or height <= EPSILON) {
-            return points; // No valid bounding box, return original points
-        }
+    //     if (width <= EPSILON or height <= EPSILON) {
+    //         return points; // No valid bounding box, return original points
+    //     }
 
-        var points_list = std.ArrayList(Point).init(allocator);
-        for (self.paths.items) |*path| {
-            for (path.points.items) |*p| {
-                if (Path.isStraightLineHandle(p.*)) {
-                    try points_list.append(p.*);
-                    continue; // we don't want to update straight line handlers
-                }
+    //     var points_list = std.ArrayList(Point).init(allocator);
+    //     for (self.paths.items) |*path| {
+    //         for (path.points.items) |*p| {
+    //             if (Path.isStraightLineHandle(p.*)) {
+    //                 try points_list.append(p.*);
+    //                 continue; // we don't want to update straight line handlers
+    //             }
 
-                const curr_p = Point{
-                    .x = old_box_start.x + p.x * (old_box_end.x - old_box_start.x),
-                    .y = old_box_start.y + p.y * (old_box_end.y - old_box_start.y),
-                };
-                p.x = (curr_p.x - box.min_x) / width;
-                p.y = (curr_p.y - box.min_y) / height;
+    //             const curr_p = Point{
+    //                 .x = old_box_start.x + p.x * (old_box_end.x - old_box_start.x),
+    //                 .y = old_box_start.y + p.y * (old_box_end.y - old_box_start.y),
+    //             };
+    //             p.x = (curr_p.x - box.min_x) / width;
+    //             p.y = (curr_p.y - box.min_y) / height;
 
-                try points_list.append(p.*);
-            }
-        }
+    //             try points_list.append(p.*);
+    //         }
+    //     }
 
-        self.bounds = [4]PointUV{
-            matrix.getUV(.{ .x = box.min_x, .y = box.max_y, .u = 0.0, .v = 1.0 }),
-            matrix.getUV(.{ .x = box.max_x, .y = box.max_y, .u = 1.0, .v = 1.0 }),
-            matrix.getUV(.{ .x = box.max_x, .y = box.min_y, .u = 1.0, .v = 0.0 }),
-            matrix.getUV(.{ .x = box.min_x, .y = box.min_y, .u = 0.0, .v = 0.0 }),
-        };
+    //     self.bounds = [4]PointUV{
+    //         matrix.getUV(.{ .x = box.min_x, .y = box.max_y, .u = 0.0, .v = 1.0 }),
+    //         matrix.getUV(.{ .x = box.max_x, .y = box.max_y, .u = 1.0, .v = 1.0 }),
+    //         matrix.getUV(.{ .x = box.max_x, .y = box.min_y, .u = 1.0, .v = 0.0 }),
+    //         matrix.getUV(.{ .x = box.min_x, .y = box.min_y, .u = 0.0, .v = 0.0 }),
+    //     };
 
-        return try points_list.toOwnedSlice();
-    }
+    //     return try points_list.toOwnedSlice();
+    // }
 
     pub fn updateLastHandle(self: *Shape, allocator: std.mem.Allocator, active_path_index: usize, preview_point: Point) !void {
         const matrix = get_bounds_matrix(self.bounds);
@@ -308,62 +311,62 @@ pub const Shape = struct {
     // }
 
     // instead of "force" we can integrate updateTextureSize here somehow I guess, or create a new method
-    pub fn drawTextureCache(self: *Shape, allocator: std.mem.Allocator) !void {
-        std.debug.print("Shape.drawTextureCache: cache valid: {}\n", .{self.cache.valid});
-        // // try to avoid undefined
-        // if (self.cache) |_cache| {
-        //     if (_cache.valid and !force) return; // texture is up to date
-        //     cache = _cache;
-        //     texture_id = _cache.id;
-        // } else {
-        //     cache = TextureCache{
-        //         .id = undefined,
-        //         .points = undefined,
-        //         .width = 0.0,
-        //         .height = 0.0,
-        //     };
-        // }
+    // pub fn drawTextureCache(self: *Shape, allocator: std.mem.Allocator) !void {
+    //     std.debug.print("Shape.drawTextureCache: cache valid: {}\n", .{self.cache.valid});
+    //     // // try to avoid undefined
+    //     // if (self.cache) |_cache| {
+    //     //     if (_cache.valid and !force) return; // texture is up to date
+    //     //     cache = _cache;
+    //     //     texture_id = _cache.id;
+    //     // } else {
+    //     //     cache = TextureCache{
+    //     //         .id = undefined,
+    //     //         .points = undefined,
+    //     //         .width = 0.0,
+    //     //         .height = 0.0,
+    //     //     };
+    //     // }
 
-        const option_vertex_output = try self.getDrawVertexData(
-            allocator,
-            null,
-            null,
-        );
+    //     const option_vertex_output = try self.getDrawVertexData(
+    //         allocator,
+    //         null,
+    //         null,
+    //     );
 
-        if (option_vertex_output) |vertex_output| {
-            const left_bottom = vertex_output.bounding_box[0];
-            const right_top = vertex_output.bounding_box[2];
-            // self.bounds = [4]PointUV{
-            //     .{ .x = left_bottom.x, .y = right_top.y, .u = 0.0, .v = 1.0 },
-            //     .{ .x = right_top.x, .y = right_top.y, .u = 1.0, .v = 1.0 },
-            //     .{ .x = right_top.x, .y = left_bottom.y, .u = 1.0, .v = 0.0 },
-            //     .{ .x = left_bottom.x, .y = left_bottom.y, .u = 0.0, .v = 0.0 },
-            // };
+    //     if (option_vertex_output) |vertex_output| {
+    //         const left_bottom = vertex_output.bounding_box[0];
+    //         const right_top = vertex_output.bounding_box[2];
+    //         // self.bounds = [4]PointUV{
+    //         //     .{ .x = left_bottom.x, .y = right_top.y, .u = 0.0, .v = 1.0 },
+    //         //     .{ .x = right_top.x, .y = right_top.y, .u = 1.0, .v = 1.0 },
+    //         //     .{ .x = right_top.x, .y = left_bottom.y, .u = 1.0, .v = 0.0 },
+    //         //     .{ .x = left_bottom.x, .y = left_bottom.y, .u = 0.0, .v = 0.0 },
+    //         // };
 
-            if (self.cache.width <= EPSILON) {
-                std.debug.print("Init cache texture size\n", .{});
-                // we need to calculate bounding box first(we did this above) to set initial size
-                // _ = self.updateTextureSize();
-            }
+    //         if (self.cache.width <= EPSILON) {
+    //             std.debug.print("Init cache texture size\n", .{});
+    //             // we need to calculate bounding box first(we did this above) to set initial size
+    //             // _ = self.updateTextureSize();
+    //         }
 
-            const cache_bounding_box = bounding_box.BoundingBox{
-                .min_x = left_bottom.x,
-                .min_y = left_bottom.y,
-                .max_x = right_top.x,
-                .max_y = right_top.y,
-            };
+    //         const cache_bounding_box = bounding_box.BoundingBox{
+    //             .min_x = left_bottom.x,
+    //             .min_y = left_bottom.y,
+    //             .max_x = right_top.x,
+    //             .max_y = right_top.y,
+    //         };
 
-            update_texture_cache(
-                self.cache.id,
-                cache_bounding_box,
-                vertex_output,
-                self.cache.width,
-                self.cache.height,
-            );
+    //         update_texture_cache(
+    //             self.cache.id,
+    //             cache_bounding_box,
+    //             vertex_output,
+    //             self.cache.width,
+    //             self.cache.height,
+    //         );
 
-            self.outdated_sdf = false;
-        }
-    }
+    //         self.outdated_sdf = false;
+    //     }
+    // }
 
     pub fn getSkeletonDrawVertexData(
         self: Shape,
@@ -431,19 +434,30 @@ pub const Shape = struct {
         // std.debug.print("first bounds: {d}, {d}\n", .{ self.bounds[0].x, self.bounds[0].y });
         // const matrix = get_bounds_matrix(self.bounds);
         const scale = Matrix3x3.scaling(
-            self.bounds[1].x - self.bounds[3].x,
-            self.bounds[1].y - self.bounds[3].y,
+            self.bounds[0].distance(self.bounds[1]),
+            self.bounds[0].distance(self.bounds[3]),
         );
+        // var scale = Matrix3x3.scaling(
+        //     self.bounds[1].x - self.bounds[3].x,
+        //     self.bounds[1].y - self.bounds[3].y,
+        // );
+        // scale.rotate(-self.bounds[0].angleTo(self.bounds[1]));
         // const unscaled_matrix = matrix.scale(
         //     1.0 / scale.x,
         //     1.0 / scale.y,
         // );
+        // std.debug.print("scale x: {d}, scale y: {d}\n", .{
+        //     self.bounds[0].distance(self.bounds[1]),
+        //     self.bounds[0].distance(self.bounds[3]),
+        // });
         // std.debug.print("BEFORE: first point: {d}, {d}\n", .{ points[0].x, points[0].y });
         for (points) |*point| {
             // Transform points to the bounding box space
-            point.x = scale.get(point).x;
-            point.y = scale.get(point).y;
+            const scaled = scale.get(point);
+            point.x = scaled.x;
+            point.y = scaled.y;
         }
+        // std.debug.print("points[3] x: {d}, y: {d}\n", .{ points[3].x, points[3].y });
         // std.debug.print("AFTER: first point: {d}, {d}\n", .{ points[0].x, points[0].y });
         // if (option_preview_point) |point| {
         //     const is_outside = point.x < self.bounds.min_x or point.x > self.bounds.max_x or point.y < self.bounds.min_y or point.y > self.bounds.max_y;

@@ -551,17 +551,10 @@ pub fn calculateShapesSDF() !void {
                 );
 
                 if (option_vertex_data) |vertex_data| {
-                    // var normalized_points = std.ArrayList(types.Point).init(allocator);
-                    // for (vertex_data.curves) |point| {
-                    //     try normalized_points.append(types.Point{
-                    //         .x = point.x - vertex_data.bounding_box[3].x,
-                    //         .y = point.y - vertex_data.bounding_box[3].y,
-                    //     });
-                    // }
                     web_gpu_programs.compute_shape(
                         vertex_data.curves,
-                        @max(1.0, @abs(shape.bounds[0].x - shape.bounds[2].x)),
-                        @max(1.0, shape.bounds[0].y - shape.bounds[2].y),
+                        @max(1.0, shape.bounds[0].distance(shape.bounds[1])),
+                        @max(1.0, shape.bounds[0].distance(shape.bounds[3])),
                     );
                 }
             },
