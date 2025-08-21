@@ -222,11 +222,7 @@ pub const Shape = struct {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         const matrix = get_matrix_from_bounds(self.bounds);
 
-        for (self.paths.items, 0..) |path, i| {
-            if (i == 0 and path.points.items.len > 2) {
-                // std.debug.print("points[2] x: {d}, y: {d}\n", .{ path.points.items[2].x, path.points.items[2].y });
-            }
-
+        for (self.paths.items) |path| {
             const path_skeleton = try path.getSkeletonDrawVertexData(matrix, allocator);
             try skeleton_buffer.appendSlice(path_skeleton);
         }
@@ -277,48 +273,23 @@ pub const Shape = struct {
     }
 
     pub fn getDrawVertexData(self: *Shape, allocator: std.mem.Allocator, active_path_index: ?usize, option_preview_point: ?Point) !?DrawVertexOutput {
-        const points = try self.getAllPoints(allocator, active_path_index, option_preview_point);
-
-        // const points = try self.update_bounds(allocator, before_points);
-        // std.debug.print("first bounds: {d}, {d}\n", .{ self.bounds[0].x, self.bounds[0].y });
-        // const matrix = get_bounds_matrix(self.bounds);
+        const points = try self.getAllPoints(
+            allocator,
+            active_path_index,
+            option_preview_point,
+        );
         const scale = Matrix3x3.scaling(
             self.bounds[0].distance(self.bounds[1]),
             self.bounds[0].distance(self.bounds[3]),
         );
-        // var scale = Matrix3x3.scaling(
-        //     self.bounds[1].x - self.bounds[3].x,
-        //     self.bounds[1].y - self.bounds[3].y,
-        // );
-        // scale.rotate(-self.bounds[0].angleTo(self.bounds[1]));
-        // const unscaled_matrix = matrix.scale(
-        //     1.0 / scale.x,
-        //     1.0 / scale.y,
-        // );
-        // std.debug.print("scale x: {d}, scale y: {d}\n", .{
-        //     self.bounds[0].distance(self.bounds[1]),
-        //     self.bounds[0].distance(self.bounds[3]),
-        // });
-        // std.debug.print("BEFORE: first point: {d}, {d}\n", .{ points[0].x, points[0].y });
+
         for (points) |*point| {
-            // Transform points to the bounding box space
             const scaled = scale.get(point);
             point.x = scaled.x;
             point.y = scaled.y;
         }
-        // std.debug.print("points[3] x: {d}, y: {d}\n", .{ points[3].x, points[3].y });
-        // std.debug.print("AFTER: first point: {d}, {d}\n", .{ points[0].x, points[0].y });
-        // if (option_preview_point) |point| {
-        //     const is_outside = point.x < self.bounds.min_x or point.x > self.bounds.max_x or point.y < self.bounds.min_y or point.y > self.bounds.max_y;
-        //     if (is_outside) {
-        //         self.bounds = bounding_box.getBoundingBox(points, self.props.stroke_width / 2.0);
-        //     }
-        // }
-        // self.bounds = get_bounds_matrix(self.bounds)
 
         if (points.len > 0) {
-            // Shape.prepare_half_straight_lines(curves);
-            // std.debug.print("self.bounds first point: {d}, {d}\n", .{ self.bounds[3].x, self.bounds[3].y });
             const box_vertex = [6]PointUV{
                 // First triangle
                 scale.getUV(PointUV{ .x = 0.0, .y = 1.0, .u = 0.0, .v = 1.0 }),

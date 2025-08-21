@@ -100,7 +100,11 @@ pub const Path = struct {
         }
     }
 
-    pub fn getSkeletonDrawVertexData(self: Path, matrix: Matrix3x3, allocator: std.mem.Allocator) ![]triangles.DrawInstance {
+    pub fn getSkeletonDrawVertexData(
+        self: Path,
+        matrix: Matrix3x3,
+        allocator: std.mem.Allocator,
+    ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         const size = 20.0 * shared.render_scale;
 
@@ -141,9 +145,10 @@ pub const Path = struct {
             try skeleton_buffer.appendSlice(&buffer);
         }
 
-        const last_handle = self.points.items[self.points.items.len - 2];
-        if (!self.closed and self.points.items.len != 2 and Path.isStraightLineHandle(last_handle)) {
-            const last_cp = self.points.getLast();
+        const last_handle_norm = self.points.items[self.points.items.len - 2];
+        if (!self.closed and self.points.items.len != 2 and !Path.isStraightLineHandle(last_handle_norm)) {
+            const last_handle = matrix.get(last_handle_norm);
+            const last_cp = matrix.get(self.points.getLast());
             const forward_handle = getOppositeHandle(last_cp, last_handle);
             var line_buffer: [2]triangles.DrawInstance = undefined;
             lines.getDrawVertexData(
