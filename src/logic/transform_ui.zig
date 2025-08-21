@@ -54,16 +54,16 @@ pub fn transformPoints(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     // but should be 180 degree opposite
     const t_matrix = Matrix3x3.rotation(asset_angle_y); // transfor matrix
     const invert_t_matrix = t_matrix.inverse();
-    const pointer = invert_t_matrix.transformPoint(Point{
+    const pointer = invert_t_matrix.get(Point{
         .x = raw_x,
         .y = raw_y,
     });
 
     var un_rotated_points = [4]Point{
-        invert_t_matrix.transformPoint(points[0]),
-        invert_t_matrix.transformPoint(points[1]),
-        invert_t_matrix.transformPoint(points[2]),
-        invert_t_matrix.transformPoint(points[3]),
+        invert_t_matrix.get(points[0]),
+        invert_t_matrix.get(points[1]),
+        invert_t_matrix.get(points[2]),
+        invert_t_matrix.get(points[3]),
     };
 
     switch (ui_component_id) {

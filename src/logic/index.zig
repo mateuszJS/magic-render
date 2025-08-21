@@ -365,30 +365,28 @@ pub fn onPointerMove(x: f32, y: f32) !void {
     }
 
     const asset = state.assets.getPtr(state.selected_asset_id) orelse return;
-    switch (asset.*) {
-        .img => |*img| {
-            _ = img; // autofix
-            // switch (state.action) {
-            //     .Move => {
-            //         const offset = types.Point{
-            //             .x = x - state.last_pointer_coords.x,
-            //             .y = y - state.last_pointer_coords.y,
-            //         };
-            //         state.last_pointer_coords = types.Point{ .x = x, .y = y };
+    const bounds = switch (asset.*) {
+        .img => |*img| &img.points,
+        .shape => |*shape| &shape.bounds,
+    };
 
-            //         for (&img.points) |*point| {
-            //             point.x += offset.x;
-            //             point.y += offset.y;
-            //         }
-            //     },
-            //     .Transform => {
-            //         TransformUI.transformPoints(state.hovered_asset_id, &img.points, x, y);
-            //     },
-            //     .None => {},
-            // }
+    switch (state.action) {
+        .Move => {
+            const offset = types.Point{
+                .x = x - state.last_pointer_coords.x,
+                .y = y - state.last_pointer_coords.y,
+            };
+            state.last_pointer_coords = types.Point{ .x = x, .y = y };
+
+            for (bounds) |*point| {
+                point.x += offset.x;
+                point.y += offset.y;
+            }
         },
-        .shape => {},
-        // .shape => |*shape| &shape.bounds,
+        .Transform => {
+            TransformUI.transformPoints(state.hovered_asset_id, bounds, x, y);
+        },
+        .None => {},
     }
 }
 
