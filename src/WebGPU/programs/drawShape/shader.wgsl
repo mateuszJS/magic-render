@@ -7,13 +7,6 @@ struct Uniforms {
   stroke_color: vec4f,
 };
 
-struct CubicBezier {
-  p0: vec2f,
-  p1: vec2f,
-  p2: vec2f,
-  p3: vec2f,
-};
-
 struct Vertex {
   @location(0) position: vec4f,
 };
@@ -38,5 +31,7 @@ struct VSOutput {
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
   // let value = textureSample(sdf, ourSampler, vsOut.world_pos).r;
   let value = textureLoad(sdf, vec2u(vsOut.uv)).r / 10.0;
-  return vec4f(value, u.fill_color.r, 0.0, 1.0);
+  let x = u.fill_color.r;
+  return vec4f(value, 0.0, 0.0, 1.0);
+  // return vec4f(value, u.fill_color.r, 0.0, 1.0);
 }

@@ -9,6 +9,7 @@ import getPickTexture from './pickTexture/getProgram'
 import getPickTriangle from './pickTriangle/getProgram'
 import getDrawMSDF from './drawMSDF/getProgram'
 import getDrawShape from './drawShape/getProgram'
+import getPickShape from './pickShape/getProgram'
 import getComputeSDF from './computeSDF/getProgram'
 
 export let drawTriangle: ReturnType<typeof getDrawTriangle>
@@ -22,6 +23,7 @@ export let pickTexture: ReturnType<typeof getPickTexture>
 export let pickTriangle: ReturnType<typeof getPickTriangle>
 export let drawMSDF: ReturnType<typeof getDrawMSDF>
 export let drawShape: ReturnType<typeof getDrawShape>
+export let pickShape: ReturnType<typeof getPickShape>
 export let computeSDF: ReturnType<typeof getComputeSDF>
 
 export let canvasMatrixBuffer: GPUBuffer
@@ -53,6 +55,7 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
   pickTriangle = getPickTriangle(device, pickCanvasMatrixBuffer)
   drawMSDF = getDrawMSDF(device, presentationFormat, canvasMatrixBuffer)
   drawShape = getDrawShape(device, presentationFormat, canvasMatrixBuffer, buffersToDestroy)
+  pickShape = getPickShape(device, pickCanvasMatrixBuffer, buffersToDestroy)
   computeSDF = getComputeSDF(device, buffersToDestroy)
 
   return function cleanup() {

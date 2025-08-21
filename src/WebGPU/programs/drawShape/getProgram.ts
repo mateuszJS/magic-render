@@ -11,11 +11,6 @@ export default function getDrawShape(
     code: shaderCode,
   })
 
-  const sampler = device.createSampler({
-    minFilter: 'linear',
-    magFilter: 'linear',
-  })
-
   const uniformBufferSize =
     (1 /*stroke width*/ + 4 /*stroke color*/ + 4 /*fill color*/ + /*padding*/ 3) * 4
 
@@ -112,7 +107,6 @@ export default function getDrawShape(
       layout: pipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: uniformBuffer } },
-        // { binding: 1, resource: sampler },
         { binding: 1, resource: sdfTexture.createView() },
         { binding: 2, resource: { buffer: canvasMatrixBuffer } },
       ],

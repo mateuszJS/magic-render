@@ -90,7 +90,7 @@ pub const Shape = struct {
             try paths_list.append(path);
         }
 
-        var shape = Shape{
+        const shape = Shape{
             .id = id,
             .paths = paths_list,
             .props = props,
@@ -99,19 +99,19 @@ pub const Shape = struct {
             .bounds = bounds orelse DEFAULT_BOUNDS, // will be updated later
         };
 
-        const from_svg_file = bounds == null and input_paths.len > 0;
-        if (from_svg_file) {
-            const box = bounding_box.getBoundingBox(
-                try shape.getAllPoints(allocator, 0, null),
-                props.stroke_width / 2.0,
-            );
-            shape.bounds = [4]PointUV{
-                .{ .x = box.min_x, .y = box.max_y, .u = 0.0, .v = 1.0 },
-                .{ .x = box.max_x, .y = box.max_y, .u = 1.0, .v = 1.0 },
-                .{ .x = box.max_x, .y = box.min_y, .u = 1.0, .v = 0.0 },
-                .{ .x = box.min_x, .y = box.min_y, .u = 0.0, .v = 0.0 },
-            };
-        }
+        // const from_svg_file = bounds == null and input_paths.len > 0;
+        // if (from_svg_file) {
+        //     const box = bounding_box.getBoundingBox(
+        //         try shape.getAllPoints(allocator, 0, null),
+        //         props.stroke_width / 2.0,
+        //     );
+        //     shape.bounds = [4]PointUV{
+        //         .{ .x = box.min_x, .y = box.max_y, .u = 0.0, .v = 1.0 },
+        //         .{ .x = box.max_x, .y = box.max_y, .u = 1.0, .v = 1.0 },
+        //         .{ .x = box.max_x, .y = box.min_y, .u = 1.0, .v = 0.0 },
+        //         .{ .x = box.min_x, .y = box.min_y, .u = 0.0, .v = 0.0 },
+        //     };
+        // }
 
         return shape;
     }
@@ -182,59 +182,91 @@ pub const Shape = struct {
             break :blk self.paths.items.len - 1;
         };
 
-        const points = try self.getAllPoints(allocator, null, null);
-        self.update_bounds(points);
+        // const points = try self.getAllPoints(allocator, null, null);
+        try self.update_bounds(allocator);
 
         return updated_active_path_index;
     }
 
-    fn update_bounds(self: *Shape, points: []Point) void {
+    fn update_bounds(self: *Shape, allocator: std.mem.Allocator) !void {
+        const matrix = get_bounds_matrix(self.bounds);
+        const invert_matrix = matrix.inverse();
+        const points = try self.getAllPoints(allocator, 0, null);
+        const box = bounding_box.getBoundingBox(points, self.props.stroke_width / 2.0);
+
+        const old_box_end = invert_matrix.get(self.bounds[1]); // 0, 0
+        const old_box_start = invert_matrix.get(self.bounds[3]); // 0, 0
+        const curr_width = old_box_end.x - old_box_start.x; // 272
+        const curr_height = old_box_end.y - old_box_start.y; // 269s
+
+        const new_width = box.max_x - box.min_x; // 272
+        const new_height = box.max_y - box.min_y; // 269s
+
+        if (new_width <= EPSILON or new_height <= EPSILON) {
+            return; // No valid bounding box
+        }
+
+        var points_list = std.ArrayList(Point).init(allocator);
+        for (self.paths.items) |*path| {
+            for (path.points.items) |*p| {
+                if (Path.isStraightLineHandle(p.*)) {
+                    try points_list.append(p.*);
+                    continue; // we don't want to update straight line handlers
+                }
+
+                const curr_p = Point{
+                    .x = old_box_start.x + p.x * curr_width,
+                    .y = old_box_start.y + p.y * curr_height,
+                };
+                p.x = (curr_p.x - box.min_x) / new_width;
+                p.y = (curr_p.y - box.min_y) / new_height;
+
+                try points_list.append(p.*);
+            }
+        }
+
+        self.bounds = [4]PointUV{
+            matrix.getUV(.{ .x = box.min_x, .y = box.max_y, .u = 0.0, .v = 1.0 }),
+            matrix.getUV(.{ .x = box.max_x, .y = box.max_y, .u = 1.0, .v = 1.0 }),
+            matrix.getUV(.{ .x = box.max_x, .y = box.min_y, .u = 1.0, .v = 0.0 }),
+            matrix.getUV(.{ .x = box.min_x, .y = box.min_y, .u = 0.0, .v = 0.0 }),
+        };
+    }
+
+    fn get_bounds_preview(self: *Shape, allocator: std.mem.Allocator, points: []Point) ![]Point {
         const matrix = get_bounds_matrix(self.bounds);
         const invert_matrix = matrix.inverse();
         const old_box_end = invert_matrix.get(self.bounds[1]); // 0, 0
         const old_box_start = invert_matrix.get(self.bounds[3]); // 0, 0
 
-        // for (points) |point| {
-        //     if (Path.isStraightLineHandle(point)) {
-        //         std.debug.print("straight line handle\n", .{});
-        //         continue; // we don't want to update straight line handlers
-        //     }
-        //     std.debug.print("stored point: {d}, {d}\n", .{ point.x, point.y });
-        // }
         const box = bounding_box.getBoundingBox(points, self.props.stroke_width / 2.0);
-        std.debug.print("box min: {d}, {d}\n", .{ box.min_x, box.min_y });
-        std.debug.print("box max: {d}, {d}\n", .{ box.max_x, box.max_y });
 
-        // const matrixed_origin = matrix.get(Point{
-        //     .x = box.min_x,
-        //     .y = box.min_y,
-        // });
-        // const origins_diff = Point{
-        //     .x = matrix.values[2] - matrixed_origin.x,
-        //     .y = matrix.values[5] - matrixed_origin.y,
-        // };
         const width = box.max_x - box.min_x; // 272
-        const height = box.max_y - box.min_y; // 269
-        std.debug.print("old_box_start: {d}, {d}\n", .{ old_box_start.x, old_box_start.y });
-        std.debug.print("old_box_end: {d}, {d}\n", .{ old_box_end.x, old_box_end.y });
+        const height = box.max_y - box.min_y; // 269s
 
+        if (width <= EPSILON or height <= EPSILON) {
+            return points; // No valid bounding box, return original points
+        }
+
+        var points_list = std.ArrayList(Point).init(allocator);
         for (self.paths.items) |*path| {
             for (path.points.items) |*p| {
                 if (Path.isStraightLineHandle(p.*)) {
+                    try points_list.append(p.*);
                     continue; // we don't want to update straight line handlers
                 }
-                std.debug.print("before point: {d}, {d}\n", .{ p.x, p.y });
-                // 271, 268
+
                 const curr_p = Point{
                     .x = old_box_start.x + p.x * (old_box_end.x - old_box_start.x),
                     .y = old_box_start.y + p.y * (old_box_end.y - old_box_start.y),
                 };
                 p.x = (curr_p.x - box.min_x) / width;
                 p.y = (curr_p.y - box.min_y) / height;
-                std.debug.print("after point: {d}, {d}\n", .{ p.x, p.y });
+
+                try points_list.append(p.*);
             }
         }
-        std.debug.print("matrix: {any}\n", .{matrix});
+
         self.bounds = [4]PointUV{
             matrix.getUV(.{ .x = box.min_x, .y = box.max_y, .u = 0.0, .v = 1.0 }),
             matrix.getUV(.{ .x = box.max_x, .y = box.max_y, .u = 1.0, .v = 1.0 }),
@@ -242,30 +274,7 @@ pub const Shape = struct {
             matrix.getUV(.{ .x = box.min_x, .y = box.min_y, .u = 0.0, .v = 0.0 }),
         };
 
-        std.debug.print("--------------------------------------\n", .{});
-        std.debug.print("boudns start: {d}, {d}\n", .{ self.bounds[3].x, self.bounds[3].y });
-        std.debug.print("boudns end: {d}, {d}\n", .{ self.bounds[1].x, self.bounds[1].y });
-        const new_matrix = get_bounds_matrix(self.bounds);
-        std.debug.print("new_matrix: {any}\n", .{new_matrix});
-        for (self.paths.items) |*path| {
-            for (path.points.items) |*p| {
-                if (Path.isStraightLineHandle(p.*)) {
-                    continue; // we don't want to update straight line handlers
-                }
-                std.debug.print("before point: {d}, {d}\n", .{ p.x, p.y });
-                const after = new_matrix.get(p);
-                std.debug.print("after point: {d}, {d}\n", .{ after.x, after.y });
-            }
-        }
-
-        // self.bounds = [4]PointUV{
-        //     matrix.getUV(.{ .x = origins_diff.x, .y = origins_diff.y + height, .u = 0.0, .v = 1.0 }),
-        //     matrix.getUV(.{ .x = origins_diff.x + width, .y = origins_diff.y + height, .u = 1.0, .v = 1.0 }),
-        //     matrix.getUV(.{ .x = origins_diff.x + width, .y = origins_diff.y, .u = 1.0, .v = 0.0 }),
-        //     matrix.getUV(.{ .x = origins_diff.x, .y = origins_diff.y, .u = 0.0, .v = 0.0 }),
-        // };
-
-        std.debug.print("self.bounds first point: {d}, {d}\n", .{ self.bounds[3].x, self.bounds[3].y });
+        return try points_list.toOwnedSlice();
     }
 
     pub fn updateLastHandle(self: *Shape, allocator: std.mem.Allocator, active_path_index: usize, preview_point: Point) !void {
@@ -276,10 +285,7 @@ pub const Shape = struct {
         active_path.updateLastHandle(point);
 
         self.outdated_sdf = true;
-        if (active_path.points.items.len > 2) {
-            const points = try self.getAllPoints(allocator, null, null);
-            self.update_bounds(points);
-        }
+        try self.update_bounds(allocator);
     }
 
     // returns boolean indicating if texture size was updated or not
@@ -420,7 +426,8 @@ pub const Shape = struct {
 
     pub fn getDrawVertexData(self: *Shape, allocator: std.mem.Allocator, active_path_index: ?usize, option_preview_point: ?Point) !?DrawVertexOutput {
         const points = try self.getAllPoints(allocator, active_path_index, option_preview_point);
-        // self.update_bounds(points);
+
+        // const points = try self.update_bounds(allocator, before_points);
         // std.debug.print("first bounds: {d}, {d}\n", .{ self.bounds[0].x, self.bounds[0].y });
         // const matrix = get_bounds_matrix(self.bounds);
         const scale = Matrix3x3.scaling(
@@ -487,18 +494,27 @@ pub const Shape = struct {
         };
     }
 
-    // pub fn getCacheTexturePickVertexData(self: Shape) [6]images.PickVertex {
-    //     return [_]images.PickVertex{
-    //         // first triangle
-    //         .{ .id = self.id, .point = .{ .x = self.bounds.min_x, .y = self.bounds.min_y, .u = 0.0, .v = 0.0 } },
-    //         .{ .id = self.id, .point = .{ .x = self.bounds.min_x, .y = self.bounds.max_y, .u = 0.0, .v = 1.0 } },
-    //         .{ .id = self.id, .point = .{ .x = self.bounds.max_x, .y = self.bounds.max_y, .u = 1.0, .v = 1.0 } },
-    //         // second triangle
-    //         .{ .id = self.id, .point = .{ .x = self.bounds.max_x, .y = self.bounds.min_y, .u = 1.0, .v = 0.0 } },
-    //         .{ .id = self.id, .point = .{ .x = self.bounds.max_x, .y = self.bounds.min_y, .u = 1.0, .v = 0.0 } },
-    //         .{ .id = self.id, .point = .{ .x = self.bounds.min_x, .y = self.bounds.min_y, .u = 0.0, .v = 0.0 } },
-    //     };
-    // }
+    pub fn getCacheTexturePickVertexData(self: Shape) PickVertexOutput {
+        const bounds = [_]images.PickVertex{
+            // first triangle
+            .{ .id = self.id, .point = self.bounds[0] },
+            .{ .id = self.id, .point = self.bounds[1] },
+            .{ .id = self.id, .point = self.bounds[2] },
+            // second triangle
+            .{ .id = self.id, .point = self.bounds[2] },
+            .{ .id = self.id, .point = self.bounds[3] },
+            .{ .id = self.id, .point = self.bounds[0] },
+        };
+
+        return PickVertexOutput{
+            .bounds = bounds,
+            .uniforms = Uniform{
+                .stroke_width = self.props.stroke_width,
+                .fill_color = self.props.fill_color,
+                .stroke_color = self.props.stroke_color,
+            },
+        };
+    }
 
     pub fn serialize(self: Shape) !Serialized {
         var paths_list = std.ArrayList([]const Point).init(self.paths.allocator);
@@ -536,6 +552,8 @@ pub const Uniform = extern struct {
     fill_color: [4]f32,
     stroke_color: [4]f32,
 };
+
+const PickVertexOutput = struct { bounds: [6]images.PickVertex, uniforms: Uniform };
 
 pub const Serialized = struct {
     id: u32,

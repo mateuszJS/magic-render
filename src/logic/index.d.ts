@@ -98,6 +98,7 @@ declare module '*.zig' {
     pick_triangle: (vertex_data: ArrayPointerDataView) => void
     compute_shape: (curves_data: ArrayPointerDataView, width: number, height: number) => void
     draw_shape: (bound_box_data: ArrayPointerDataView, uniformData: PointerDataView) => void
+    pick_shape: (bound_box_data: ArrayPointerDataView, uniformData: PointerDataView) => void
   }) => void
   export const connectOnAssetUpdateCallback: (cb: (data: ZigAssetOutput[]) => void) => void
   export const connectOnAssetSelectionCallback: (cb: (data: number) => void) => void

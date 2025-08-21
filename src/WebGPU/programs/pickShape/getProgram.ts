@@ -1,20 +1,22 @@
 import shaderCode from './shader.wgsl'
 
-const STRIDE = (4 /*position*/ + 1) /*id*/ * 4
-
-export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
+export default function getDrawShape(
+  device: GPUDevice,
+  matrixBuffer: GPUBuffer,
+  buffersToDestroy: GPUBuffer[]
+) {
   const module = device.createShaderModule({
-    label: 'pick texture module',
+    label: 'pickShape shader',
     code: shaderCode,
   })
 
-  const sampler = device.createSampler({
-    minFilter: 'linear',
-    magFilter: 'linear',
-  })
+  const STRIDE = (4 /*position */ + 1) /*id*/ * 4
+
+  const uniformBufferSize =
+    (1 /*stroke width*/ + 4 /*stroke color*/ + 4 /*fill color*/ + /*padding*/ 3) * 4
 
   const pipeline = device.createRenderPipeline({
-    label: 'pick texture pipeline',
+    label: 'drawShape pipeline',
     layout: 'auto',
     vertex: {
       module,
@@ -23,7 +25,7 @@ export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
         {
           arrayStride: STRIDE,
           attributes: [
-            { shaderLocation: 0, offset: 0, format: 'float32x4' }, // destination(xy) and source (zw) positions
+            { shaderLocation: 0, offset: 0, format: 'float32x4' },
             { shaderLocation: 1, offset: 16, format: 'uint32' }, // id
           ],
         },
@@ -34,22 +36,27 @@ export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
       entryPoint: 'fs',
       targets: [
         {
-          // format: debugPresentationFormat,
           format: 'r32uint',
         },
       ],
     },
   })
 
-  // Cache bind groups per texture to avoid recreating them
-  const bindGroupCache = new WeakMap<GPUTexture, GPUBindGroup>()
-
-  return function pickTexture(
+  return function pickShape(
     pass: GPURenderPassEncoder,
     vertexData: DataView,
-    texture: GPUTexture
+    uniformDataView: DataView,
+    sdfTexture: GPUTexture
   ) {
     const numVertices = vertexData.byteLength / STRIDE
+
+    const uniformBuffer = device.createBuffer({
+      label: 'drawShape uniforms',
+      size: uniformBufferSize,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    })
+    device.queue.writeBuffer(uniformBuffer, 0, uniformDataView)
+    buffersToDestroy.push(uniformBuffer)
 
     const vertexBuffer = device.createBuffer({
       label: 'pick texture - vertex buffer',
@@ -59,18 +66,14 @@ export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
 
     // Get or create bind group for this texture
-    let bindGroup = bindGroupCache.get(texture)
-    if (!bindGroup) {
-      bindGroup = device.createBindGroup({
-        layout: pipeline.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: matrixBuffer } },
-          { binding: 1, resource: sampler },
-          { binding: 2, resource: texture.createView() },
-        ],
-      })
-      bindGroupCache.set(texture, bindGroup)
-    }
+    const bindGroup = device.createBindGroup({
+      layout: pipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: matrixBuffer } },
+        { binding: 1, resource: { buffer: uniformBuffer } },
+        { binding: 2, resource: sdfTexture.createView() },
+      ],
+    })
 
     pass.setPipeline(pipeline)
     pass.setVertexBuffer(0, vertexBuffer)

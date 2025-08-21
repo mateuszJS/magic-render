@@ -9,6 +9,7 @@ import {
   pickCanvasMatrixBuffer,
   drawShape,
   computeSDF,
+  pickShape,
 } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
@@ -60,7 +61,6 @@ export default function runCreator(
     },
     compute_shape: (curves_data, width, height) => {
       const curvesDataView = curves_data['*'].dataView
-
       textureSDF = device.createTexture({
         label: 'SDF texture',
         size: [width, height],
@@ -94,6 +94,9 @@ export default function runCreator(
       //   console.log('texture id', uints[i + 4])
       // }
       pickTexture(pickPass, dataView, Textures.getTexture(texture_id))
+    },
+    pick_shape: (bound_box_data, uniform_data) => {
+      pickShape(pickPass, bound_box_data['*'].dataView, uniform_data.dataView, textureSDF)
     },
     pick_triangle: (vertex_data) => {
       const dataView = vertex_data['*'].dataView

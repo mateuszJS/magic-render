@@ -19,6 +19,7 @@ const WebGpuPrograms = struct {
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
     pick_triangle: *const fn ([]const Triangle.PickInstance) void,
+    pick_shape: *const fn ([]const images.PickVertex, shapes.Uniform) void,
 };
 var web_gpu_programs: *const WebGpuPrograms = undefined;
 
@@ -398,15 +399,16 @@ pub fn onPointerLeave() !void {
 }
 
 fn updateShapeCache(shape: *shapes.Shape) !void {
-    if (shape.cache.valid) {
-        return; // no need to update
-    }
+    _ = shape; // autofix
+    // if (shape.cache.valid) {
+    //     return; // no need to update
+    // }
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
+    // var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    // defer arena.deinit();
+    // const allocator = arena.allocator();
 
-    try shape.drawTextureCache(allocator);
+    // try shape.drawTextureCache(allocator);
 }
 
 pub fn commitChanges() !void {
@@ -613,6 +615,7 @@ pub fn renderDraw() !void {
                     state.preview_point,
                 );
                 if (option_vertex_data) |vertex_data| {
+                    // std.debug.print("shape bounds: {any}\n", .{shape.bounds});
                     const box_vertex = [6]types.PointUV{
                         // First triangle
                         shape.bounds[0],
@@ -699,11 +702,8 @@ pub fn renderPick() void {
                 web_gpu_programs.pick_texture(&vertex_data, img.texture_id);
             },
             .shape => |shape| {
-                _ = shape; // autofix
-                // if (shape.cache.valid) {
-                //     const vertex_data = shape.getCacheTexturePickVertexData();
-                //     web_gpu_programs.pick_texture(&vertex_data, shape.cache.id);
-                // }
+                const vertex_data = shape.getCacheTexturePickVertexData();
+                web_gpu_programs.pick_shape(&vertex_data.bounds, vertex_data.uniforms);
             },
         }
     }
