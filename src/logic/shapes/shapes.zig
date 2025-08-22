@@ -31,6 +31,11 @@ pub const TextureCache = struct {
     // once we finish editing shape ,we can render curves to texture and update valid = true
 };
 
+pub const Preview = struct {
+    index: usize,
+    point: Point,
+};
+
 const DEFAULT_BOUNDS = [4]PointUV{
     .{ .x = 0.0, .y = 1.0, .u = 0.0, .v = 1.0 },
     .{ .x = 1.0, .y = 1.0, .u = 1.0, .v = 1.0 },
@@ -87,7 +92,7 @@ pub const Shape = struct {
             try paths_list.append(path);
         }
 
-        const shape = Shape{
+        var shape = Shape{
             .id = id,
             .paths = paths_list,
             .props = props,
@@ -96,19 +101,19 @@ pub const Shape = struct {
             .bounds = bounds orelse DEFAULT_BOUNDS, // will be updated later
         };
 
-        // const from_svg_file = bounds == null and input_paths.len > 0;
-        // if (from_svg_file) {
-        //     const box = bounding_box.getBoundingBox(
-        //         try shape.getAllPoints(allocator, 0, null),
-        //         props.stroke_width / 2.0,
-        //     );
-        //     shape.bounds = [4]PointUV{
-        //         .{ .x = box.min_x, .y = box.max_y, .u = 0.0, .v = 1.0 },
-        //         .{ .x = box.max_x, .y = box.max_y, .u = 1.0, .v = 1.0 },
-        //         .{ .x = box.max_x, .y = box.min_y, .u = 1.0, .v = 0.0 },
-        //         .{ .x = box.min_x, .y = box.min_y, .u = 0.0, .v = 0.0 },
-        //     };
-        // }
+        const from_svg_file = bounds == null and input_paths.len > 0;
+        if (from_svg_file) {
+            try shape.update_bounds(allocator, null);
+            // const box = bounding_box.getBoundingBox(
+            //     try shape.getAllPoints(allocator, 0, null)
+            // );
+            // shape.bounds = [4]PointUV{
+            //     .{ .x = box.min_x, .y = box.max_y, .u = 0.0, .v = 1.0 },
+            //     .{ .x = box.max_x, .y = box.max_y, .u = 1.0, .v = 1.0 },
+            //     .{ .x = box.max_x, .y = box.min_y, .u = 1.0, .v = 0.0 },
+            //     .{ .x = box.min_x, .y = box.min_y, .u = 0.0, .v = 0.0 },
+            // };
+        }
 
         return shape;
     }
@@ -152,15 +157,15 @@ pub const Shape = struct {
             break :blk self.paths.items.len - 1;
         };
 
-        try self.update_bounds(allocator);
+        try self.update_bounds(allocator, null);
 
         return updated_active_path_index;
     }
 
-    fn update_bounds(self: *Shape, allocator: std.mem.Allocator) !void {
+    fn update_bounds(self: *Shape, allocator: std.mem.Allocator, preview: ?Preview) !void {
         const matrix = get_matrix_from_bounds(self.bounds);
         const invert_matrix = matrix.inverse();
-        const points = try self.getAllPoints(allocator, 0, null);
+        const points = try self.getAllPoints(allocator, preview);
         const box = bounding_box.getBoundingBox(points);
 
         const old_box_end = invert_matrix.get(self.bounds[1]); // 0, 0
@@ -175,11 +180,11 @@ pub const Shape = struct {
             return; // No valid bounding box
         }
 
-        var points_list = std.ArrayList(Point).init(allocator);
+        // var points_list = std.ArrayList(Point).init(allocator);
         for (self.paths.items) |*path| {
             for (path.points.items) |*p| {
                 if (Path.isStraightLineHandle(p.*)) {
-                    try points_list.append(p.*);
+                    // try points_list.append(p.*);
                     continue; // we don't want to update straight line handlers
                 }
 
@@ -190,7 +195,7 @@ pub const Shape = struct {
                 p.x = (curr_p.x - box.min_x) / new_width;
                 p.y = (curr_p.y - box.min_y) / new_height;
 
-                try points_list.append(p.*);
+                // try points_list.append(p.*);
             }
         }
 
@@ -202,15 +207,15 @@ pub const Shape = struct {
         };
     }
 
-    pub fn updateLastHandle(self: *Shape, allocator: std.mem.Allocator, active_path_index: usize, preview_point: Point) !void {
+    pub fn updateLastHandle(self: *Shape, allocator: std.mem.Allocator, preview: Preview) !void {
         const matrix = get_matrix_from_bounds(self.bounds);
-        const point = matrix.inverse().get(preview_point);
+        const point = matrix.inverse().get(preview.point);
 
-        const active_path = &self.paths.items[active_path_index];
+        const active_path = &self.paths.items[preview.index];
         active_path.updateLastHandle(point);
 
         self.outdated_sdf = true;
-        try self.update_bounds(allocator);
+        try self.update_bounds(allocator, null);
     }
 
     pub fn getSkeletonDrawVertexData(
@@ -250,17 +255,16 @@ pub const Shape = struct {
     fn getAllPoints(
         self: Shape,
         allocator: std.mem.Allocator,
-        active_path_index: ?usize,
-        option_preview_point: ?Point,
+        option_preview: ?Preview,
     ) ![]Point {
         var points = std.ArrayList(Point).init(allocator);
         for (self.paths.items, 0..) |path, i| {
             var preview_point: ?Point = null;
 
-            if (active_path_index == i) {
-                if (option_preview_point) |point| {
+            if (option_preview) |preview| {
+                if (preview.index == i) {
                     const inverted_matrix = get_matrix_from_bounds(self.bounds).inverse();
-                    preview_point = inverted_matrix.get(point);
+                    preview_point = inverted_matrix.get(preview.point);
                 }
             }
 
@@ -272,11 +276,14 @@ pub const Shape = struct {
         return points.toOwnedSlice();
     }
 
-    pub fn getDrawVertexData(self: *Shape, allocator: std.mem.Allocator, active_path_index: ?usize, option_preview_point: ?Point) !?DrawVertexOutput {
+    pub fn getDrawVertexData(self: *Shape, allocator: std.mem.Allocator, option_preview: ?Preview) !?DrawVertexOutput {
+        if (option_preview != null) {
+            try self.update_bounds(allocator, option_preview);
+        }
+
         const points = try self.getAllPoints(
             allocator,
-            active_path_index,
-            option_preview_point,
+            option_preview,
         );
         const scale = Matrix3x3.scaling(
             self.bounds[0].distance(self.bounds[1]),

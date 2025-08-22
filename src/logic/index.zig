@@ -356,7 +356,10 @@ pub fn onPointerMove(x: f32, y: f32) !void {
                     defer arena.deinit();
                     const allocator = arena.allocator();
 
-                    try shape.updateLastHandle(allocator, active_path_index, preview_point);
+                    try shape.updateLastHandle(
+                        allocator,
+                        shapes.Preview{ .index = active_path_index, .point = preview_point },
+                    );
                 }
             }
         }
@@ -547,18 +550,26 @@ pub fn calculateShapesSDF() !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
+                var preview: ?shapes.Preview = null;
+                if (state.active_path_index) |active_path_index| {
+                    if (state.preview_point) |preview_point| {
+                        preview = shapes.Preview{ .index = active_path_index, .point = preview_point };
+                    }
+                }
+
                 const option_vertex_data = try shape.getDrawVertexData(
                     allocator,
-                    state.active_path_index,
-                    state.preview_point,
+                    preview,
                 );
 
                 if (option_vertex_data) |vertex_data| {
                     const bounds = shape.getBoundsWithPadding();
                     web_gpu_programs.compute_shape(
                         vertex_data.curves,
-                        @max(1.0, bounds[0].distance(bounds[1])),
-                        @max(1.0, bounds[0].distance(bounds[3])),
+                        bounds[0].distance(bounds[1]),
+                        bounds[0].distance(bounds[3]),
+                        // @max(1.0, bounds[0].distance(bounds[1])),
+                        // @max(1.0, bounds[0].distance(bounds[3])),
                     );
                 }
             },
@@ -604,10 +615,16 @@ pub fn renderDraw() !void {
                 web_gpu_programs.draw_texture(vertex_data, img.texture_id);
             },
             .shape => |*shape| {
+                var preview: ?shapes.Preview = null;
+                if (state.active_path_index) |active_path_index| {
+                    if (state.preview_point) |preview_point| {
+                        preview = shapes.Preview{ .index = active_path_index, .point = preview_point };
+                    }
+                }
+
                 const option_vertex_data = try shape.getDrawVertexData(
                     allocator,
-                    state.active_path_index,
-                    state.preview_point,
+                    preview,
                 );
                 const bounds = shape.getBoundsWithPadding();
                 if (option_vertex_data) |vertex_data| {
