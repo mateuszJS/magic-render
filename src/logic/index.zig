@@ -52,11 +52,10 @@ pub fn connectCacheCallbacks(
     start_cache_callback = start_cache;
     end_cache_callback = end_cache;
 
-    shapes.update_texture_cache = update_texture_cache;
+    // shapes.update_texture_cache = update_texture_cache;
 }
 
-fn update_texture_cache(texture_id: u32, box: bounding_box.BoundingBox, vertex_data: shapes.DrawVertexOutput, width: f32, height: f32) void {
-    _ = vertex_data; // autofix
+fn update_texture_cache(texture_id: u32, box: bounding_box.BoundingBox, width: f32, height: f32) void {
     start_cache_callback(texture_id, box, width, height);
     // web_gpu_programs.compute_shape(vertex_data.curves);
     end_cache_callback();
@@ -113,12 +112,12 @@ var state = State{
     .last_pointer_coords = types.Point{ .x = 0.0, .y = 0.0 },
 };
 
-pub fn initState(allocator: std.mem.Allocator, width: f32, height: f32, texture_max_size: f32) void {
-    _ = allocator; // autofix
+pub fn initState(width: f32, height: f32, texture_max_size: f32) void {
+    _ = texture_max_size; // autofix
     state.width = width;
     state.height = height;
     state.assets = std.AutoArrayHashMap(u32, Asset).init(std.heap.page_allocator);
-    shapes.maxTextureSize = texture_max_size;
+    // shapes.maxTextureSize = texture_max_size;
 }
 
 pub fn updateRenderScale(scale: f32) !void {
@@ -709,8 +708,9 @@ pub fn renderPick() void {
                 web_gpu_programs.pick_texture(&vertex_data, img.texture_id);
             },
             .shape => |shape| {
-                const vertex_data = shape.getCacheTexturePickVertexData();
-                web_gpu_programs.pick_shape(&vertex_data.bounds, vertex_data.uniforms);
+                const bounds = shape.getCacheTexturePickVertexData();
+                const uniform = shape.getUniform();
+                web_gpu_programs.pick_shape(&bounds, uniform);
             },
         }
     }

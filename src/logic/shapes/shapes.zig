@@ -13,8 +13,6 @@ const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 
 const POINT_SNAP_DISTANCE = 10.0; // Minimum distance to consider a new control point
 const EPSILON = std.math.floatEps(f32);
-pub var update_texture_cache: *const fn (u32, bounding_box.BoundingBox, DrawVertexOutput, f32, f32) void = undefined;
-pub var maxTextureSize: f32 = 0.0;
 
 pub const ShapeProps = struct {
     // f32 instead of u8 because Uniforms in wgsl doesn't support u8 anyway
@@ -165,17 +163,17 @@ pub const Shape = struct {
         const points = try self.getAllPoints(allocator, preview);
         const box = bounding_box.getBoundingBox(points);
 
-        const old_box_end = invert_matrix.get(self.bounds[1]); // 0, 0
-        const old_box_start = invert_matrix.get(self.bounds[3]); // 0, 0
-        const curr_width = old_box_end.x - old_box_start.x; // 272
-        const curr_height = old_box_end.y - old_box_start.y; // 269s
+        const new_width = box.max_x - box.min_x;
+        const new_height = box.max_y - box.min_y;
 
-        const new_width = box.max_x - box.min_x; // 272
-        const new_height = box.max_y - box.min_y; // 269s
-
-        if (new_width <= EPSILON or new_height <= EPSILON) {
+        if (Utils.cmpF32(new_width, 0) or Utils.cmpF32(new_height, 0)) {
             return; // No valid bounding box
         }
+
+        const old_box_end = invert_matrix.get(self.bounds[1]);
+        const old_box_start = invert_matrix.get(self.bounds[3]);
+        const curr_width = old_box_end.x - old_box_start.x;
+        const curr_height = old_box_end.y - old_box_start.y;
 
         // var points_list = std.ArrayList(Point).init(allocator);
         for (self.paths.items) |*path| {
@@ -329,39 +327,17 @@ pub const Shape = struct {
         return buffer;
     }
 
-    pub fn getCacheTextureDrawVertexData(self: Shape) images.DrawVertex {
-        return images.DrawVertex{
+    pub fn getCacheTexturePickVertexData(self: Shape) [6]images.PickVertex {
+        const bounds = self.getBoundsWithPadding();
+        return [_]images.PickVertex{
             // first triangle
-            self.bounds[0],
-            self.bounds[1],
-            self.bounds[2],
+            .{ .id = self.id, .point = bounds[0] },
+            .{ .id = self.id, .point = bounds[1] },
+            .{ .id = self.id, .point = bounds[2] },
             // second triangle
-            self.bounds[2],
-            self.bounds[3],
-            self.bounds[0],
-        };
-    }
-
-    pub fn getCacheTexturePickVertexData(self: Shape) PickVertexOutput {
-        const padding_bounds = self.getBoundsWithPadding();
-        const bounds = [_]images.PickVertex{
-            // first triangle
-            .{ .id = self.id, .point = padding_bounds[0] },
-            .{ .id = self.id, .point = padding_bounds[1] },
-            .{ .id = self.id, .point = padding_bounds[2] },
-            // second triangle
-            .{ .id = self.id, .point = padding_bounds[2] },
-            .{ .id = self.id, .point = padding_bounds[3] },
-            .{ .id = self.id, .point = padding_bounds[0] },
-        };
-
-        return PickVertexOutput{
-            .bounds = bounds,
-            .uniforms = Uniform{
-                .stroke_width = self.props.stroke_width,
-                .fill_color = self.props.fill_color,
-                .stroke_color = self.props.stroke_color,
-            },
+            .{ .id = self.id, .point = bounds[2] },
+            .{ .id = self.id, .point = bounds[3] },
+            .{ .id = self.id, .point = bounds[0] },
         };
     }
 
@@ -387,12 +363,6 @@ pub const Shape = struct {
         }
         self.paths.deinit();
     }
-};
-
-pub const DrawVertexOutput = struct {
-    curves: []const Point,
-    bounding_box: [6]PointUV,
-    uniform: Uniform,
 };
 
 pub const Uniform = extern struct {

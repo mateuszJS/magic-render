@@ -15,6 +15,7 @@ pub fn getNextPowerOfTwo(value: f32) f32 {
     return @exp2(@ceil(@log2(value)));
 }
 
-pub fn compareFloats(a: f32, b: f32) bool {
-    return @abs(a - b) < math.floatEps(f32);
+const EPSILON = math.floatEps(f32);
+pub fn cmpF32(a: f32, b: f32) bool {
+    return @abs(a - b) < EPSILON;
 }

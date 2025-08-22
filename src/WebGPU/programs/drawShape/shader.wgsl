@@ -36,7 +36,7 @@ struct VSOutput {
 
   
   color = select(vec4f(1, 0, 0, 1), vec4f(0, 0, 1, 1), u32(sdf / 20.0) % 2 == 0);
-  color *= sdf / 200.0;
+  // color *= sdf / 200.0;
 
   return color * is_filled;
   // return vec4f(value, u.fill_color.r, 0.0, 1.0);
