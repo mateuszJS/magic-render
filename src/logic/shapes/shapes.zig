@@ -91,7 +91,6 @@ pub const Shape = struct {
             );
             try paths_list.append(path);
         }
-
         var shape = Shape{
             .id = id,
             .paths = paths_list,
@@ -104,15 +103,6 @@ pub const Shape = struct {
         const from_svg_file = bounds == null and input_paths.len > 0;
         if (from_svg_file) {
             try shape.update_bounds(allocator, null);
-            // const box = bounding_box.getBoundingBox(
-            //     try shape.getAllPoints(allocator, 0, null)
-            // );
-            // shape.bounds = [4]PointUV{
-            //     .{ .x = box.min_x, .y = box.max_y, .u = 0.0, .v = 1.0 },
-            //     .{ .x = box.max_x, .y = box.max_y, .u = 1.0, .v = 1.0 },
-            //     .{ .x = box.max_x, .y = box.min_y, .u = 1.0, .v = 0.0 },
-            //     .{ .x = box.min_x, .y = box.min_y, .u = 0.0, .v = 0.0 },
-            // };
         }
 
         return shape;
@@ -334,11 +324,21 @@ pub const Shape = struct {
 
             const angle_next = b.angleTo(b_next);
             const angle_prev = b.angleTo(b_prev);
-
+            // std.debug.print("Point {d}: ({d}, {d}), angle_next: {d}, angle_prev: {d}\n", .{ i, b.x, b.y, angle_next, angle_prev });
             buffer[i] = b;
             buffer[i].x -= @cos(angle_next) * padding + @cos(angle_prev) * padding;
             buffer[i].y -= @sin(angle_next) * padding + @sin(angle_prev) * padding;
+            // std.debug.print("AFTER Point ({d}, {d})\n", .{ buffer[i].x, buffer[i].y });
         }
+        // height was 0, and we mesaure height by distance between bounds[0] and bounds[3]
+        // Point 0: (138, 365), angle_next: -0.000004209321, angle_prev: 0
+        // AFTER Point (118, 365.00003)
+        // Point 1: (145.25, 364.99997), angle_next: 1.5707964, angle_prev: 3.1415884
+        // AFTER Point (155.25, 354.99994)
+        // Point 2: (145.25, 365), angle_next: 3.1415927, angle_prev: -1.5707964
+        // AFTER Point (155.25, 375)
+        // Point 3: (138, 365), angle_next: 0, angle_prev: 0
+        // AFTER Point (118, 365)
 
         return buffer;
     }

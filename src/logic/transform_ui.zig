@@ -140,6 +140,17 @@ pub fn transformPoints(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     }
 
     if (ui_component_id != 9) {
+        // make sure bounds is not smaller tan 1x1(it removed tons of edge cases)
+        if (@abs(un_rotated_points[0].x - un_rotated_points[1].x) < 1.0) {
+            un_rotated_points[1].x = un_rotated_points[0].x + 1.0;
+            un_rotated_points[2].x = un_rotated_points[3].x + 1.0;
+        }
+        if (@abs(un_rotated_points[0].y - un_rotated_points[3].y) < 1.0) {
+            un_rotated_points[3].y = un_rotated_points[0].y + 1.0;
+            un_rotated_points[2].y = un_rotated_points[1].y + 1.0;
+        }
+
+        // rotate bounds back to correct position
         const p0 = t_matrix.get(un_rotated_points[0]);
         const p1 = t_matrix.get(un_rotated_points[1]);
         const p2 = t_matrix.get(un_rotated_points[2]);

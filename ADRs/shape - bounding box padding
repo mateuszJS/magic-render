@@ -2,3 +2,10 @@ Padding cannot be a part of bounding box, because then it's gonna be grown with 
 No constant option will be easy to implement then.
 
 Additionaly it siplifies point normalazing, because points should be normalzied between bounding box - padding area.
+
+IMPORTANT:
+to calculate paddign we use angles from current bounding point to neighbour points.
+Because of that the box cannot have 0 widht or 0 height because neighbour angles has to be apart 90 degree.
+
+That's why bounds have to be at least 1x1, never less.
+Additionaly it helps with matrix, scale of 0 is not reversable! Currently we andle it gracefully by returning identity matrix, but it should not happen in the first place for bounds.
