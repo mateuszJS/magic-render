@@ -14,27 +14,6 @@ export default function getDrawShape(
   const uniformBufferSize =
     (1 /*stroke width*/ + 4 /*stroke color*/ + 4 /*fill color*/ + /*padding*/ 3) * 4
 
-  // const bindGroupLayout = device.createBindGroupLayout({
-  //   label: 'drawShape bind group layout',
-  //   entries: [
-  //     {
-  //       binding: 0,
-  //       visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-  //       buffer: { type: 'uniform' },
-  //     },
-  //     {
-  //       binding: 1,
-  //       visibility: GPUShaderStage.FRAGMENT,
-  //       buffer: { type: 'read-only-storage' },
-  //     },
-  //     {
-  //       binding: 2,
-  //       visibility: GPUShaderStage.VERTEX,
-  //       buffer: { type: 'uniform' },
-  //     },
-  //   ],
-  // })
-
   const pipeline = device.createRenderPipeline({
     label: 'drawShape pipeline',
     layout: 'auto',

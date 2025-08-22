@@ -18,9 +18,9 @@ pub var maxTextureSize: f32 = 0.0;
 
 pub const ShapeProps = struct {
     // f32 instead of u8 because Uniforms in wgsl doesn't support u8 anyway
-    fill_color: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 }, // Default fill color (red)
-    stroke_color: [4]f32 = .{ 0.0, 0.0, 0.0, 1.0 }, // Default stroke color (green)
-    stroke_width: f32 = 0.0, // Default stroke width
+    fill_color: [4]f32 = .{ 1.0, 0.0, 0.0, 1.0 }, // Default fill color (red)
+    stroke_color: [4]f32 = .{ 0.9, 0.9, 0.0, 1.0 }, // Default stroke color (green)
+    stroke_width: f32 = 20.0, // Default stroke width
 };
 
 pub const TextureCache = struct {
@@ -126,7 +126,7 @@ pub const Shape = struct {
                 .{ .x = absolute_point.x + 1.0, .y = absolute_point.y, .u = 1.0, .v = 0.0 },
                 .{ .x = absolute_point.x, .y = absolute_point.y, .u = 0.0, .v = 0.0 },
             };
-            // std.debug.print("bounds: {d}, {d}\n", .{ self.bounds[3].x, self.bounds[3].y });
+
             const new_path = try Path.new(.{ .x = 0.0, .y = 0.0 }, allocator);
             try self.paths.append(new_path);
             return 0;
@@ -161,7 +161,7 @@ pub const Shape = struct {
         const matrix = get_matrix_from_bounds(self.bounds);
         const invert_matrix = matrix.inverse();
         const points = try self.getAllPoints(allocator, 0, null);
-        const box = bounding_box.getBoundingBox(points, self.props.stroke_width / 2.0);
+        const box = bounding_box.getBoundingBox(points);
 
         const old_box_end = invert_matrix.get(self.bounds[1]); // 0, 0
         const old_box_start = invert_matrix.get(self.bounds[3]); // 0, 0
@@ -283,10 +283,11 @@ pub const Shape = struct {
             self.bounds[0].distance(self.bounds[3]),
         );
 
+        const padding = self.props.stroke_width / 2.0;
         for (points) |*point| {
             const scaled = scale.get(point);
-            point.x = scaled.x;
-            point.y = scaled.y;
+            point.x = padding + scaled.x;
+            point.y = padding + scaled.y;
         }
 
         if (points.len > 0) {
@@ -315,6 +316,26 @@ pub const Shape = struct {
         }
     }
 
+    pub fn getBoundsWithPadding(self: Shape) [4]PointUV {
+        var buffer: [4]PointUV = undefined;
+        const len = self.bounds.len;
+        const padding = self.props.stroke_width / 2.0;
+
+        for (self.bounds, 0..) |b, i| {
+            const b_next = self.bounds[(i + 1) % len];
+            const b_prev = self.bounds[@min((i -% 1), (len - 1)) % len];
+
+            const angle_next = b.angleTo(b_next);
+            const angle_prev = b.angleTo(b_prev);
+
+            buffer[i] = b;
+            buffer[i].x -= @cos(angle_next) * padding + @cos(angle_prev) * padding;
+            buffer[i].y -= @sin(angle_next) * padding + @sin(angle_prev) * padding;
+        }
+
+        return buffer;
+    }
+
     pub fn getCacheTextureDrawVertexData(self: Shape) images.DrawVertex {
         return images.DrawVertex{
             // first triangle
@@ -329,15 +350,16 @@ pub const Shape = struct {
     }
 
     pub fn getCacheTexturePickVertexData(self: Shape) PickVertexOutput {
+        const padding_bounds = self.getBoundsWithPadding();
         const bounds = [_]images.PickVertex{
             // first triangle
-            .{ .id = self.id, .point = self.bounds[0] },
-            .{ .id = self.id, .point = self.bounds[1] },
-            .{ .id = self.id, .point = self.bounds[2] },
+            .{ .id = self.id, .point = padding_bounds[0] },
+            .{ .id = self.id, .point = padding_bounds[1] },
+            .{ .id = self.id, .point = padding_bounds[2] },
             // second triangle
-            .{ .id = self.id, .point = self.bounds[2] },
-            .{ .id = self.id, .point = self.bounds[3] },
-            .{ .id = self.id, .point = self.bounds[0] },
+            .{ .id = self.id, .point = padding_bounds[2] },
+            .{ .id = self.id, .point = padding_bounds[3] },
+            .{ .id = self.id, .point = padding_bounds[0] },
         };
 
         return PickVertexOutput{

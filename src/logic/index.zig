@@ -414,8 +414,11 @@ pub fn commitChanges() !void {
         if (getSelectedShape()) |shape| {
             try updateShapeCache(shape);
         }
+
+        state.preview_point = null;
+        state.active_path_index = null;
+        state.is_handle_preview = false;
     }
-    // state.selected_asset_id = NO_SELECTION;
 }
 // TODO: extract to another file and simplify(extract common code)
 // https://github.com/users/mateuszJS/projects/1/views/1?pane=issue&itemId=123400787&issue=mateuszJS%7Cmagic-render%7C122
@@ -551,10 +554,11 @@ pub fn calculateShapesSDF() !void {
                 );
 
                 if (option_vertex_data) |vertex_data| {
+                    const bounds = shape.getBoundsWithPadding();
                     web_gpu_programs.compute_shape(
                         vertex_data.curves,
-                        @max(1.0, shape.bounds[0].distance(shape.bounds[1])),
-                        @max(1.0, shape.bounds[0].distance(shape.bounds[3])),
+                        @max(1.0, bounds[0].distance(bounds[1])),
+                        @max(1.0, bounds[0].distance(bounds[3])),
                     );
                 }
             },
@@ -605,17 +609,17 @@ pub fn renderDraw() !void {
                     state.active_path_index,
                     state.preview_point,
                 );
+                const bounds = shape.getBoundsWithPadding();
                 if (option_vertex_data) |vertex_data| {
-                    // std.debug.print("shape bounds: {any}\n", .{shape.bounds});
                     const box_vertex = [6]types.PointUV{
                         // First triangle
-                        shape.bounds[0],
-                        shape.bounds[1],
-                        shape.bounds[2],
+                        bounds[0],
+                        bounds[1],
+                        bounds[2],
                         // Second triangle
-                        shape.bounds[2],
-                        shape.bounds[3],
-                        shape.bounds[0],
+                        bounds[2],
+                        bounds[3],
+                        bounds[0],
                     };
                     web_gpu_programs.draw_shape(&box_vertex, vertex_data.uniform);
                 }

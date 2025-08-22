@@ -113,7 +113,7 @@ fn evaluateCubicBezierComponent(t: f32, p0: f32, p1: f32, p2: f32, p3: f32) f32 
 /// Assumes curves array contains groups of 4 points (p0, p1, p2, p3) for each cubic Bézier
 /// Returns an allocated slice of 6 points representing two triangles for the bounding rectangle
 /// Caller owns the returned memory and must free it
-pub fn getBoundingBox(curves: []const Point, padding: f32) BoundingBox {
+pub fn getBoundingBox(curves: []const Point) BoundingBox {
     // std.debug.print("curves len: {d}\n", .{curves.len});
     if (curves.len == 0) {
         return BoundingBox{};
@@ -152,11 +152,6 @@ pub fn getBoundingBox(curves: []const Point, padding: f32) BoundingBox {
         box.max_x = @max(box.max_x, bounds.max_x);
         box.max_y = @max(box.max_y, bounds.max_y);
     }
-
-    box.min_x -= padding;
-    box.min_y -= padding;
-    box.max_x += padding;
-    box.max_y += padding;
 
     return box;
 }

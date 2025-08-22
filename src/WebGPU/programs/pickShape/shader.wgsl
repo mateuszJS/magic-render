@@ -14,7 +14,7 @@ struct Uniforms {
 
 @group(0) @binding(0) var<uniform> camera_projection: mat4x4f;
 @group(0) @binding(1) var<uniform> u: Uniforms;
-@group(0) @binding(2) var sdf: texture_storage_2d<rgba32float, read>;
+@group(0) @binding(2) var texture: texture_storage_2d<rgba32float, read>;
 
 struct VertexOutput {
   @builtin(position) position: vec4f,
@@ -28,17 +28,15 @@ struct VertexOutput {
   out.position = camera_projection * vec4f(vert.position.xy, 0.0, 1.0);
   out.id = vert.id;
 
-  let size = textureDimensions(sdf);
+  let size = textureDimensions(texture);
   out.uv = vert.position.zw * vec2f(size);
 
   return out;
 }
 
 @fragment fn fs(in: VertexOutput) -> @location(0) u32 {
-  // let value = textureSample(sdf, ourSampler, in.world_pos).r;
-  let value = textureLoad(sdf, vec2u(in.uv)).r / 10.0;
-  let x = u.fill_color.r;
-    if (value < 0.1) {
+  let sdf = textureLoad(texture, vec2u(in.uv)).r;
+  if (sdf < -u.stroke_width * 0.5) {
     discard; // r32uint doesn't support blending so only skipping pixels lefts
   }
 

@@ -1,0 +1,4 @@
+Padding cannot be a part of bounding box, because then it's gonna be grown with scaling always.
+No constant option will be easy to implement then.
+
+Additionaly it siplifies point normalazing, because points should be normalzied between bounding box - padding area.
