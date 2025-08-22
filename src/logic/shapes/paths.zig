@@ -29,7 +29,7 @@ fn getOppositeHandle(control_point: Point, handle: Point) Point {
 
 pub const Path = struct {
     points: std.ArrayList(Point),
-    closed: bool, // Whether the shape is closed
+    closed: bool,
 
     pub fn isStraightLineHandle(point: Point) bool {
         return point.x > STRAIGHT_LINE_THRESHOLD;
@@ -51,20 +51,16 @@ pub const Path = struct {
     // Arrays: Use &array to get a slice reference
     // Slices: Pass directly (they're already slices)
     // ArrayList: Use .items to get the underlying slice
-    pub fn newFromPoints(path: []const Point, same_point_threshold: f32, allocator: std.mem.Allocator) !Path {
+    pub fn newFromPoints(path: []const Point, same_point_threshold: Point, allocator: std.mem.Allocator) !Path {
         var point_list = std.ArrayList(Point).init(allocator);
         var closed = false;
 
         for (path, 0..) |point, i| {
             try point_list.append(point);
 
-            if (i == path.len - 1) {
-                const distance = path[0].distance(point);
-                if (distance < same_point_threshold) {
-                    // here is the problem, it should be overlap with exactly one point, then it might be caunted a closed
-                    // althouhg the better word might be that a curve is open. More than one curve in a shape might be open!
+            if (i > 0 and i == path.len - 1) {
+                if (@abs(path[0].x - point.x) < same_point_threshold.x and @abs(path[0].y - point.y) < same_point_threshold.y) {
                     closed = true;
-                    std.debug.print("Path.newFromPoints - set to closed\n", .{});
                 }
             }
         }

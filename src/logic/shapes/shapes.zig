@@ -76,17 +76,24 @@ pub const Shape = struct {
     pub fn new(
         id: u32,
         input_paths: []const []const Point,
-        bounds: ?[4]PointUV,
+        input_bounds: ?[4]PointUV,
         props: ShapeProps,
         cache: TextureCache,
         allocator: std.mem.Allocator,
     ) !Shape {
         var paths_list = std.ArrayList(Path).init(allocator);
 
+        const bounds = input_bounds orelse DEFAULT_BOUNDS;
+        const invert_matrix = get_matrix_from_bounds(bounds).inverse();
+        const close_path_threshold = Point{
+            .x = POINT_SNAP_DISTANCE * @abs(invert_matrix.values[0]),
+            .y = POINT_SNAP_DISTANCE * @abs(invert_matrix.values[4]),
+        };
+
         for (input_paths) |input_path| {
             const path = try Path.newFromPoints(
                 input_path,
-                POINT_SNAP_DISTANCE,
+                close_path_threshold,
                 allocator,
             );
             try paths_list.append(path);
@@ -97,10 +104,10 @@ pub const Shape = struct {
             .props = props,
             .cache = cache,
             .outdated_sdf = false,
-            .bounds = bounds orelse DEFAULT_BOUNDS, // will be updated later
+            .bounds = bounds,
         };
 
-        const from_svg_file = bounds == null and input_paths.len > 0;
+        const from_svg_file = input_bounds == null and input_paths.len > 0;
         if (from_svg_file) {
             try shape.update_bounds(allocator, null);
         }
@@ -133,9 +140,9 @@ pub const Shape = struct {
         const point = invert_matrix.get(absolute_point);
 
         const close_path_threshold = Point{
-            .x = POINT_SNAP_DISTANCE * invert_matrix.values[0],
-            .y = POINT_SNAP_DISTANCE * invert_matrix.values[4],
-        };
+            .x = POINT_SNAP_DISTANCE * @abs(invert_matrix.values[0]),
+            .y = POINT_SNAP_DISTANCE * @abs(invert_matrix.values[4]),
+        }; // TODO: are we sure this gonna work? What if scale is negative?
 
         const updated_active_path_index = if (option_active_path_index) |active_path_index| blk: {
             var active_path = &self.paths.items[active_path_index];
@@ -266,7 +273,15 @@ pub const Shape = struct {
         return points.toOwnedSlice();
     }
 
-    pub fn getDrawVertexData(self: *Shape, allocator: std.mem.Allocator, option_preview: ?Preview) !?DrawVertexOutput {
+    pub fn getUniform(self: Shape) Uniform {
+        return Uniform{
+            .stroke_width = self.props.stroke_width,
+            .fill_color = self.props.fill_color,
+            .stroke_color = self.props.stroke_color,
+        };
+    }
+
+    pub fn getDrawVertexData(self: *Shape, allocator: std.mem.Allocator, option_preview: ?Preview) !?[]Point {
         if (option_preview != null) {
             try self.update_bounds(allocator, option_preview);
         }
@@ -287,30 +302,11 @@ pub const Shape = struct {
             point.y = padding + scaled.y;
         }
 
-        if (points.len > 0) {
-            const box_vertex = [6]PointUV{
-                // First triangle
-                scale.getUV(PointUV{ .x = 0.0, .y = 1.0, .u = 0.0, .v = 1.0 }),
-                scale.getUV(PointUV{ .x = 1.0, .y = 1.0, .u = 1.0, .v = 1.0 }),
-                scale.getUV(PointUV{ .x = 1.0, .y = 0.0, .u = 1.0, .v = 0.0 }),
-                // Second triangle
-                scale.getUV(PointUV{ .x = 1.0, .y = 0.0, .u = 1.0, .v = 0.0 }),
-                scale.getUV(PointUV{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 }),
-                scale.getUV(PointUV{ .x = 0.0, .y = 1.0, .u = 0.0, .v = 1.0 }),
-            };
-
-            return DrawVertexOutput{
-                .curves = points, // Transfer ownership directly
-                .bounding_box = box_vertex,
-                .uniform = Uniform{
-                    .stroke_width = self.props.stroke_width,
-                    .fill_color = self.props.fill_color,
-                    .stroke_color = self.props.stroke_color,
-                },
-            };
-        } else {
+        if (points.len == 0) {
             return null;
         }
+
+        return points;
     }
 
     pub fn getBoundsWithPadding(self: Shape) [4]PointUV {
@@ -324,21 +320,11 @@ pub const Shape = struct {
 
             const angle_next = b.angleTo(b_next);
             const angle_prev = b.angleTo(b_prev);
-            // std.debug.print("Point {d}: ({d}, {d}), angle_next: {d}, angle_prev: {d}\n", .{ i, b.x, b.y, angle_next, angle_prev });
+
             buffer[i] = b;
             buffer[i].x -= @cos(angle_next) * padding + @cos(angle_prev) * padding;
             buffer[i].y -= @sin(angle_next) * padding + @sin(angle_prev) * padding;
-            // std.debug.print("AFTER Point ({d}, {d})\n", .{ buffer[i].x, buffer[i].y });
         }
-        // height was 0, and we mesaure height by distance between bounds[0] and bounds[3]
-        // Point 0: (138, 365), angle_next: -0.000004209321, angle_prev: 0
-        // AFTER Point (118, 365.00003)
-        // Point 1: (145.25, 364.99997), angle_next: 1.5707964, angle_prev: 3.1415884
-        // AFTER Point (155.25, 354.99994)
-        // Point 2: (145.25, 365), angle_next: 3.1415927, angle_prev: -1.5707964
-        // AFTER Point (155.25, 375)
-        // Point 3: (138, 365), angle_next: 0, angle_prev: 0
-        // AFTER Point (118, 365)
 
         return buffer;
     }

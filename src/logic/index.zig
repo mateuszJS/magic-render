@@ -557,15 +557,15 @@ pub fn calculateShapesSDF() !void {
                     }
                 }
 
-                const option_vertex_data = try shape.getDrawVertexData(
+                const option_points = try shape.getDrawVertexData(
                     allocator,
                     preview,
                 );
 
-                if (option_vertex_data) |vertex_data| {
+                if (option_points) |points| {
                     const bounds = shape.getBoundsWithPadding();
                     web_gpu_programs.compute_shape(
-                        vertex_data.curves,
+                        points,
                         bounds[0].distance(bounds[1]),
                         bounds[0].distance(bounds[3]),
                         // @max(1.0, bounds[0].distance(bounds[1])),
@@ -622,24 +622,19 @@ pub fn renderDraw() !void {
                     }
                 }
 
-                const option_vertex_data = try shape.getDrawVertexData(
-                    allocator,
-                    preview,
-                );
+                const uniform = shape.getUniform();
                 const bounds = shape.getBoundsWithPadding();
-                if (option_vertex_data) |vertex_data| {
-                    const box_vertex = [6]types.PointUV{
-                        // First triangle
-                        bounds[0],
-                        bounds[1],
-                        bounds[2],
-                        // Second triangle
-                        bounds[2],
-                        bounds[3],
-                        bounds[0],
-                    };
-                    web_gpu_programs.draw_shape(&box_vertex, vertex_data.uniform);
-                }
+                const box_vertex = [6]types.PointUV{
+                    // First triangle
+                    bounds[0],
+                    bounds[1],
+                    bounds[2],
+                    // Second triangle
+                    bounds[2],
+                    bounds[3],
+                    bounds[0],
+                };
+                web_gpu_programs.draw_shape(&box_vertex, uniform);
             },
         }
     }
