@@ -39,7 +39,7 @@ export default function runCreator(
   // let samplesCount = 0
   Logic.connectWebGpuPrograms({
     draw_texture: (vertex_data, texture_id) => {
-      drawTexture(renderPass, vertex_data.dataView, Textures.getTexture(texture_id))
+      drawTexture(renderPass, vertex_data.dataView, Textures.getTextureSafe(texture_id))
     },
     draw_msdf: (vertex_data, texture_id) => {
       const dataView = vertex_data['*'].dataView
@@ -59,9 +59,7 @@ export default function runCreator(
     compute_shape: (curves_data, width, height, textureId) => {
       const curvesDataView = curves_data['*'].dataView
       Textures.updateSDF(textureId, width, height)
-      const texture = Textures.getOptionTexture(textureId)
-      if (!texture) throw Error('Texture not found')
-      computeSDF(computePass, curvesDataView, texture)
+      computeSDF(computePass, curvesDataView, Textures.getTexture(textureId))
       // drawShape(renderPass, curvesDataView, boundBoxDataView, uniform_data.dataView)
 
       /*
@@ -74,9 +72,7 @@ export default function runCreator(
     },
     draw_shape: (bound_box_data, uniform_data, textureId) => {
       const boundBoxDataView = bound_box_data['*'].dataView
-      const texture = Textures.getOptionTexture(textureId)
-      if (!texture) throw Error('Texture not found')
-      drawShape(renderPass, texture, boundBoxDataView, uniform_data.dataView)
+      drawShape(renderPass, Textures.getTexture(textureId), boundBoxDataView, uniform_data.dataView)
     },
     pick_texture: (vertex_data, texture_id) => {
       const dataView = vertex_data['*'].dataView
@@ -86,12 +82,15 @@ export default function runCreator(
       // for (let i = 0; i < uints.length; i += 5) {
       //   console.log('texture id', uints[i + 4])
       // }
-      pickTexture(pickPass, dataView, Textures.getTexture(texture_id))
+      pickTexture(pickPass, dataView, Textures.getTextureSafe(texture_id))
     },
     pick_shape: (bound_box_data, uniform_data, textureId) => {
-      const texture = Textures.getOptionTexture(textureId)
-      if (!texture) throw Error('Texture not found')
-      pickShape(pickPass, bound_box_data['*'].dataView, uniform_data.dataView, texture)
+      pickShape(
+        pickPass,
+        bound_box_data['*'].dataView,
+        uniform_data.dataView,
+        Textures.getTexture(textureId)
+      )
     },
     pick_triangle: (vertex_data) => {
       const dataView = vertex_data['*'].dataView
