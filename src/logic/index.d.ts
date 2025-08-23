@@ -96,12 +96,12 @@ declare module '*.zig' {
     draw_shape: (
       bound_box_data: ArrayPointerDataView,
       uniformData: PointerDataView,
-      textureId: number
+      texture_id: number
     ) => void
     pick_shape: (
       bound_box_data: ArrayPointerDataView,
       uniformData: PointerDataView,
-      textureId: number
+      texture_id: number
     ) => void
   }) => void
   export const connectOnAssetUpdateCallback: (cb: (data: ZigAssetOutput[]) => void) => void
@@ -109,7 +109,7 @@ declare module '*.zig' {
   export const connectCreateSdfTexture: (cb: () => number) => void
   export const connectCacheCallbacks: (
     create_cache_texture: () => number,
-    start_cache: (texture_id: number, box: BoundingBox, width: number, height: number) => void,
+    start_cache: (texture_dd: number, box: BoundingBox, width: number, height: number) => void,
     end_cache: VoidFunction
   ) => void
 
