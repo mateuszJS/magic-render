@@ -15,11 +15,13 @@ const POINT_SNAP_DISTANCE = 10.0; // Minimum distance to consider a new control 
 const EPSILON = std.math.floatEps(f32);
 
 var active_path_index: ?usize = null;
-pub var is_handle_preview: bool = false;
+var is_handle_preview: bool = false;
+var preview_point: ?Point = null;
 
 pub fn resetState() void {
     active_path_index = null;
     is_handle_preview = false;
+    preview_point = null;
 }
 
 pub fn onReleasePointer() void {
@@ -150,10 +152,26 @@ pub const Shape = struct {
         try self.update_bounds(allocator, null);
     }
 
-    fn update_bounds(self: *Shape, allocator: std.mem.Allocator, option_previw_point: ?Point) !void {
+    pub fn updatePointPreview(self: *Shape, x: f32, y: f32) !void {
+        const p = Point{ .x = x, .y = y };
+        if (is_handle_preview) {
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer arena.deinit();
+            const allocator = arena.allocator();
+
+            try self.updateLastHandle(
+                allocator,
+                p,
+            );
+        } else {
+            preview_point = p;
+        }
+    }
+
+    fn update_bounds(self: *Shape, allocator: std.mem.Allocator, option_preview_point: ?Point) !void {
         const points = try self.getAllPoints(
             allocator,
-            option_previw_point,
+            option_preview_point,
             active_path_index,
         );
         const box = bounding_box.getBoundingBox(points);
@@ -184,10 +202,10 @@ pub const Shape = struct {
         };
     }
 
-    pub fn updateLastHandle(self: *Shape, allocator: std.mem.Allocator, preview_point: Point) !void {
+    fn updateLastHandle(self: *Shape, allocator: std.mem.Allocator, absolute_point: Point) !void {
         if (active_path_index) |i| {
             const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
-            const point = matrix.inverse().get(preview_point);
+            const point = matrix.inverse().get(absolute_point);
 
             const active_path = &self.paths.items[i];
             active_path.updateLastHandle(point);
@@ -200,7 +218,6 @@ pub const Shape = struct {
     pub fn getSkeletonDrawVertexData(
         self: Shape,
         allocator: std.mem.Allocator,
-        preview_point: ?Point,
     ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
@@ -238,18 +255,18 @@ pub const Shape = struct {
     ) ![]Point {
         var points = std.ArrayList(Point).init(allocator);
         for (self.paths.items, 0..) |path, i| {
-            var preview_point: ?Point = null;
+            var preview_p: ?Point = null;
 
             if (option_preview_point) |p| {
                 if (option_preview_index) |idx| {
                     if (idx == i) {
                         const inverted_matrix = Matrix3x3.getMatrixFromRectangle(self.bounds).inverse();
-                        preview_point = inverted_matrix.get(p);
+                        preview_p = inverted_matrix.get(p);
                     }
                 }
             }
 
-            if (try path.getDrawVertexData(allocator, preview_point)) |closed_path| {
+            if (try path.getDrawVertexData(allocator, preview_p)) |closed_path| {
                 points.appendSlice(closed_path) catch unreachable;
             }
         }
@@ -265,14 +282,14 @@ pub const Shape = struct {
         };
     }
 
-    pub fn getDrawVertexData(self: *Shape, allocator: std.mem.Allocator, option_preview_point: ?Point) !?[]Point {
-        if (active_path_index != null and option_preview_point != null) {
-            try self.update_bounds(allocator, option_preview_point);
+    pub fn getDrawVertexData(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
+        if (active_path_index != null and preview_point != null) {
+            try self.update_bounds(allocator, preview_point);
         }
 
         const points = try self.getAllPoints(
             allocator,
-            option_preview_point,
+            preview_point,
             active_path_index,
         );
 

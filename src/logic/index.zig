@@ -95,8 +95,6 @@ const State = struct {
     action: ActionType,
     tool: Tool,
     last_pointer_coords: types.Point,
-
-    preview_point: ?types.Point = null,
 };
 
 var state = State{
@@ -282,8 +280,6 @@ fn updateSelectedAsset(id: u32) !void {
 pub fn onPointerDown(_allocator: std.mem.Allocator, x: f32, y: f32) !void {
     _ = _allocator; // autofix
     if (state.tool == Tool.DrawShape) {
-        const preview_point = types.Point{ .x = x, .y = y };
-        state.preview_point = preview_point;
         if (state.selected_asset_id == NO_SELECTION) {
             const id = try addShape(
                 0,
@@ -298,7 +294,7 @@ pub fn onPointerDown(_allocator: std.mem.Allocator, x: f32, y: f32) !void {
         if (getSelectedShape()) |shape| {
             try shape.addPointStart(
                 std.heap.page_allocator,
-                preview_point,
+                types.Point{ .x = x, .y = y },
             );
             return;
         } else {
@@ -335,22 +331,8 @@ pub fn onPointerUp() !void {
 pub fn onPointerMove(x: f32, y: f32) !void {
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
-            const preview_point = types.Point{ .x = x, .y = y };
-
-            if (shapes.is_handle_preview) {
-                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-                defer arena.deinit();
-                const allocator = arena.allocator();
-
-                try shape.updateLastHandle(
-                    allocator,
-                    preview_point,
-                );
-            } else {
-                state.preview_point = preview_point;
-            }
+            try shape.updatePointPreview(x, y);
         }
-
         return;
     }
 
@@ -405,7 +387,6 @@ pub fn commitChanges() !void {
             try updateShapeCache(shape);
         }
 
-        state.preview_point = null;
         shapes.resetState();
     }
 }
@@ -536,15 +517,7 @@ pub fn calculateShapesSDF() !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                var preview_point: ?types.Point = null;
-                if (state.preview_point) |p| {
-                    preview_point = p;
-                }
-
-                const option_points = try shape.getDrawVertexData(
-                    allocator,
-                    preview_point,
-                );
+                const option_points = try shape.getDrawVertexData(allocator);
 
                 if (option_points) |points| {
                     const bounds = shape.getBoundsWithPadding();
@@ -608,7 +581,6 @@ pub fn renderDraw() !void {
         if (getSelectedShape()) |shape| {
             const vertex_data = try shape.getSkeletonDrawVertexData(
                 allocator,
-                state.preview_point,
             );
             web_gpu_programs.draw_triangle(vertex_data);
         }
@@ -683,7 +655,6 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
     const real_callback_pointer = on_asset_update_cb;
     on_asset_update_cb = null;
 
-    state.preview_point = null;
     shapes.resetState();
 
     state.assets.clearAndFree();
