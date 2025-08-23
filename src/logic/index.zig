@@ -14,12 +14,12 @@ const shared = @import("./shared.zig");
 const WebGpuPrograms = struct {
     draw_texture: *const fn (images.DrawVertex, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
-    compute_shape: *const fn ([]const types.Point, f32, f32) void,
-    draw_shape: *const fn ([]const types.PointUV, shapes.Uniform) void,
+    compute_shape: *const fn ([]const types.Point, f32, f32, u32) void,
+    draw_shape: *const fn ([]const types.PointUV, shapes.Uniform, u32) void,
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
     pick_triangle: *const fn ([]const Triangle.PickInstance) void,
-    pick_shape: *const fn ([]const images.PickVertex, shapes.Uniform) void,
+    pick_shape: *const fn ([]const images.PickVertex, shapes.Uniform, u32) void,
 };
 var web_gpu_programs: *const WebGpuPrograms = undefined;
 
@@ -37,6 +37,11 @@ pub fn connectOnAssetUpdateCallback(cb: *const fn ([]const AssetSerialized) void
 var on_asset_select_cb: *const fn (u32) void = undefined;
 pub fn connectOnAssetSelectionCallback(cb: *const fn (u32) void) void {
     on_asset_select_cb = cb;
+}
+
+var create_sdf_texture: *const fn () u32 = undefined;
+pub fn connectCreateSdfTexture(cb: *const fn () u32) void {
+    create_sdf_texture = cb;
 }
 
 var create_cache_texture_callback: *const fn () u32 = undefined;
@@ -130,13 +135,14 @@ pub fn updateRenderScale(scale: f32) !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                if (shape.cache.valid) {
-                    // if it's valid, then lets update, if it's invalid, then is gonna be updated anyway(with correct fresh data)
-                    // if (shape.updateTextureSize()) {
-                    //     std.debug.print("texture size has changed, updating shape cache\n", .{});
-                    //     try shape.drawTextureCache(allocator);
-                    // }
-                }
+                _ = shape; // autofix
+                // if (shape.cache.valid) {
+                // if it's valid, then lets update, if it's invalid, then is gonna be updated anyway(with correct fresh data)
+                // if (shape.updateTextureSize()) {
+                //     std.debug.print("texture size has changed, updating shape cache\n", .{});
+                //     try shape.drawTextureCache(allocator);
+                // }
+                // }
             },
         }
     }
@@ -164,7 +170,7 @@ pub fn addShape(
     paths: []const []const types.Point,
     bounds: ?[4]types.PointUV,
     props: shapes.ShapeProps,
-    cache: shapes.TextureCache,
+    texture_id: u32,
 ) !u32 {
     const id = if (id_or_zero == 0) generateId() else id_or_zero;
     const shape = try shapes.Shape.new(
@@ -172,7 +178,7 @@ pub fn addShape(
         paths,
         bounds,
         props,
-        cache,
+        texture_id,
         std.heap.page_allocator,
     );
     try state.assets.put(id, Asset{ .shape = shape });
@@ -286,7 +292,7 @@ pub fn onPointerDown(_allocator: std.mem.Allocator, x: f32, y: f32) !void {
                 &.{},
                 null,
                 shapes.ShapeProps{},
-                shapes.TextureCache{ .id = create_cache_texture_callback() },
+                create_sdf_texture(),
             );
             try updateSelectedAsset(id);
         }
@@ -517,7 +523,7 @@ pub fn calculateShapesSDF() !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                const option_points = try shape.getDrawVertexData(allocator);
+                const option_points = try shape.getDrawVertexData(allocator, shape.id == state.selected_asset_id);
 
                 if (option_points) |points| {
                     const bounds = shape.getBoundsWithPadding();
@@ -525,6 +531,7 @@ pub fn calculateShapesSDF() !void {
                         points,
                         bounds[0].distance(bounds[1]),
                         bounds[0].distance(bounds[3]),
+                        shape.texture_id,
                     );
                 }
             },
@@ -548,7 +555,7 @@ pub fn renderDraw() !void {
                 web_gpu_programs.draw_texture(vertex_data, img.texture_id);
             },
             .shape => |*shape| {
-                web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getUniform());
+                web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getUniform(), shape.texture_id);
             },
         }
     }
@@ -569,9 +576,10 @@ pub fn renderDraw() !void {
         if (getSelectedShape()) |shape| {
             const vertex_data = try shape.getSkeletonDrawVertexData(
                 allocator,
+                shape.id == state.selected_asset_id,
             );
             web_gpu_programs.draw_triangle(vertex_data);
-            web_gpu_programs.draw_shape(&shape.getDrawBounds(), shapes.getSkeletonUniform());
+            web_gpu_programs.draw_shape(&shape.getDrawBounds(), shapes.getSkeletonUniform(), shape.texture_id);
         }
     }
 
@@ -622,7 +630,7 @@ pub fn renderPick() void {
                 web_gpu_programs.pick_texture(&vertex_data, img.texture_id);
             },
             .shape => |shape| {
-                web_gpu_programs.pick_shape(&shape.getPickBounds(), shape.getUniform());
+                web_gpu_programs.pick_shape(&shape.getPickBounds(), shape.getUniform(), shape.texture_id);
             },
         }
     }
@@ -652,10 +660,7 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
                 try addImage(img.id, img.points, img.texture_id);
             },
             .shape => |shape| {
-                const cache = shape.cache orelse shapes.TextureCache{
-                    .id = create_cache_texture_callback(),
-                };
-                _ = try addShape(shape.id, shape.paths, shape.bounds, shape.props, cache);
+                _ = try addShape(shape.id, shape.paths, shape.bounds, shape.props, shape.texture_id);
             },
         }
     }
@@ -734,34 +739,4 @@ test "reset_assets does not call the real update callback" {
 
     // for the duration of resetAssets, the update callback should NOT be called
     try std.testing.expect(!MockCallback.was_called);
-}
-
-fn test_compare() void {
-    const pointsA = [_]types.PointUV{
-        types.PointUV{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 },
-        types.PointUV{ .x = 1.0, .y = 0.0, .u = 1.0, .v = 0.0 },
-        types.PointUV{ .x = 1.0, .y = 1.0, .u = 1.0, .v = 1.0 },
-        types.PointUV{ .x = 0.0, .y = 1.0, .u = 0.0, .v = 1.0 },
-    };
-    const pointsB = [_]types.PointUV{
-        types.PointUV{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 },
-        types.PointUV{ .x = 1.0, .y = 0.0, .u = 1.0, .v = 0.0 },
-        types.PointUV{ .x = 1.0, .y = 1.0, .u = 1.0, .v = 1.0 },
-        types.PointUV{ .x = 0.0, .y = 1.0, .u = 0.0, .v = 1.0 },
-    };
-    std.debug.print("points: {any}\n", .{std.meta.eql(pointsA, pointsB)});
-
-    const cacheA = shapes.TextureCache{
-        .id = 1,
-        .points = pointsA,
-        .width = 100.0,
-        .height = 100.0,
-    };
-    const cacheB = shapes.TextureCache{
-        .id = 1,
-        .points = pointsB,
-        .width = 100.0,
-        .height = 100.0,
-    };
-    std.debug.print("caches: {any}\n", .{std.meta.eql(cacheA, cacheB)});
 }

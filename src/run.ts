@@ -37,14 +37,6 @@ export default function runCreator(
   // let time = 0
   // let total = 0
   // let samplesCount = 0
-
-  let textureSDF: GPUTexture = device.createTexture({
-    label: 'SDF texture',
-    size: [1, 1],
-    format: 'rgba32float',
-    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-  })
-
   Logic.connectWebGpuPrograms({
     draw_texture: (vertex_data, texture_id) => {
       drawTexture(renderPass, vertex_data.dataView, Textures.getTexture(texture_id))
@@ -64,17 +56,12 @@ export default function runCreator(
       }
       */
     },
-    compute_shape: (curves_data, width, height) => {
+    compute_shape: (curves_data, width, height, textureId) => {
       const curvesDataView = curves_data['*'].dataView
-      textureSDF = device.createTexture({
-        label: 'SDF texture',
-        size: [width, height],
-        format: 'rgba32float',
-        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-      })
-
-      // const boundBoxDataView = bound_box_data['*'].dataView
-      computeSDF(computePass, curvesDataView, textureSDF)
+      Textures.updateSDF(textureId, width, height)
+      const texture = Textures.getOptionTexture(textureId)
+      if (!texture) throw Error('Texture not found')
+      computeSDF(computePass, curvesDataView, texture)
       // drawShape(renderPass, curvesDataView, boundBoxDataView, uniform_data.dataView)
 
       /*
@@ -85,10 +72,11 @@ export default function runCreator(
       }
       */
     },
-    draw_shape: (bound_box_data, uniform_data) => {
+    draw_shape: (bound_box_data, uniform_data, textureId) => {
       const boundBoxDataView = bound_box_data['*'].dataView
-
-      drawShape(renderPass, textureSDF, boundBoxDataView, uniform_data.dataView)
+      const texture = Textures.getOptionTexture(textureId)
+      if (!texture) throw Error('Texture not found')
+      drawShape(renderPass, texture, boundBoxDataView, uniform_data.dataView)
     },
     pick_texture: (vertex_data, texture_id) => {
       const dataView = vertex_data['*'].dataView
@@ -100,8 +88,10 @@ export default function runCreator(
       // }
       pickTexture(pickPass, dataView, Textures.getTexture(texture_id))
     },
-    pick_shape: (bound_box_data, uniform_data) => {
-      pickShape(pickPass, bound_box_data['*'].dataView, uniform_data.dataView, textureSDF)
+    pick_shape: (bound_box_data, uniform_data, textureId) => {
+      const texture = Textures.getOptionTexture(textureId)
+      if (!texture) throw Error('Texture not found')
+      pickShape(pickPass, bound_box_data['*'].dataView, uniform_data.dataView, texture)
     },
     pick_triangle: (vertex_data) => {
       const dataView = vertex_data['*'].dataView

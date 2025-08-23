@@ -23,13 +23,8 @@ export type SerializedInputShape = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   paths: Point[][]
   props: ShapeProps
+  texture_id?: number
   bounds?: PointUV[]
-  cache?: {
-    id: number
-    width: number
-    height: number
-    valid: boolean
-  } | null
 }
 
 export type SerializedInputAsset = SerializedInputImage | SerializedInputShape
@@ -46,12 +41,7 @@ export type SerializedOutputShape = {
   paths: Point[][]
   props: ShapeProps
   bounds: PointUV[]
-  cache: {
-    id: number
-    width: number
-    height: number
-    valid: boolean
-  }
+  texture_id: number
 }
 
 export type SerializedOutputAsset = SerializedOutputImage | SerializedOutputShape
@@ -166,7 +156,6 @@ export default async function initCreator(
         }
       } else if ('shape' in asset && asset.shape) {
         const shape = asset.shape
-        const cache = asset.shape.cache
         return {
           id: shape.id,
           paths: [...shape.paths].map((path) =>
@@ -186,12 +175,7 @@ export default async function initCreator(
             stroke_color: [...shape.props.stroke_color],
             stroke_width: shape.props.stroke_width,
           },
-          cache: {
-            id: cache.id,
-            width: cache.width,
-            height: cache.height,
-            valid: cache.valid,
-          },
+          texture_id: shape.texture_id,
         }
       } else {
         throw Error('Unknown asset type')
@@ -207,6 +191,8 @@ export default async function initCreator(
     startCache.bind(null, device, presentationFormat),
     endCache
   )
+
+  Logic.connectCreateSdfTexture(Textures.createSDF)
 
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = Textures.add(url, (width, height, isNew) => {
@@ -256,19 +242,13 @@ export default async function initCreator(
           new Promise((resolve, reject) => {
             if ('paths' in asset) {
               // it's a shape
-              console.log('asset', asset)
               return resolve({
                 shape: {
                   id: asset.id || NO_ASSET_ID,
                   paths: asset.paths,
                   props: asset.props,
                   bounds: asset.bounds || null,
-                  cache: {
-                    id: asset.cache?.id || 0,
-                    width: asset.cache?.width || 0,
-                    height: asset.cache?.height || 0,
-                    valid: asset.cache?.valid || false,
-                  },
+                  texture_id: asset.texture_id || Textures.createSDF(),
                 },
               })
             } // otherwise it's an image

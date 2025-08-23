@@ -23,13 +23,6 @@ type ShapeProps = {
   stroke_width: number
 }
 
-type ShapeCache = {
-  id: number
-  width: number
-  height: number
-  valid: boolean
-}
-
 type ImageAssetOutput = {
   id: number
   points: PointUV[]
@@ -41,8 +34,7 @@ type ShapeAssetOutput = {
   paths: Point[][]
   props: ShapeProps
   bounds: PointUV[]
-  cache: ShapeCache // it's not exactly true since cache is always present when returning snapshots
-  // but it's not useful in JS anyway, cache is only useful for Zig logic
+  texture_id: number
 }
 type ImageAssetInput = {
   id: number
@@ -55,8 +47,7 @@ type ShapeAssetInput = {
   paths: Point[][]
   props: ShapeProps
   bounds: PointUV[] | null
-  cache: ShapeCache // it's not exactly true since cache is always present when returning snapshots
-  // but it's not useful in JS anyway, cache is only useful for Zig logic
+  texture_id: number
 }
 
 type ZigAssetOutput = { img: ImageAssetOutput } | { shape: ShapeAssetOutput }
@@ -77,7 +68,7 @@ declare module '*.zig' {
     paths: Point[][],
     bounds: PointUV[] | null,
     props: Partial<ShapeProps>,
-    cache: Pick<ShapeCache, 'id'>
+    texture_id: number
   ) => number /* id */
   export const removeAsset: () => void
   export const resetAssets: (assets: ZigAssetInput[], with_snapshot: boolean) => void
@@ -96,12 +87,26 @@ declare module '*.zig' {
     draw_msdf: (vertex_data: ArrayPointerDataView, texture_id: number) => void
     pick_texture: (vertex_data: ArrayPointerDataView, texture_id: number) => void
     pick_triangle: (vertex_data: ArrayPointerDataView) => void
-    compute_shape: (curves_data: ArrayPointerDataView, width: number, height: number) => void
-    draw_shape: (bound_box_data: ArrayPointerDataView, uniformData: PointerDataView) => void
-    pick_shape: (bound_box_data: ArrayPointerDataView, uniformData: PointerDataView) => void
+    compute_shape: (
+      curves_data: ArrayPointerDataView,
+      width: number,
+      height: number,
+      texture_id: number
+    ) => void
+    draw_shape: (
+      bound_box_data: ArrayPointerDataView,
+      uniformData: PointerDataView,
+      textureId: number
+    ) => void
+    pick_shape: (
+      bound_box_data: ArrayPointerDataView,
+      uniformData: PointerDataView,
+      textureId: number
+    ) => void
   }) => void
   export const connectOnAssetUpdateCallback: (cb: (data: ZigAssetOutput[]) => void) => void
   export const connectOnAssetSelectionCallback: (cb: (data: number) => void) => void
+  export const connectCreateSdfTexture: (cb: () => number) => void
   export const connectCacheCallbacks: (
     create_cache_texture: () => number,
     start_cache: (texture_id: number, box: BoundingBox, width: number, height: number) => void,

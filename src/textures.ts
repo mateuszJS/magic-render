@@ -92,6 +92,33 @@ export function createCacheTexture(): number {
   return textureId
 }
 
+export function createSDF(): number {
+  const textureId = textures.length
+  const label = `SDF texture ${textureId}`
+  const texture: GPUTexture = device.createTexture({
+    label,
+    size: [1, 1],
+    format: 'rgba32float',
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  })
+
+  textures.push({ url: label, texture })
+  return textureId
+}
+
+export function updateSDF(textureId: number, width: number, height: number): void {
+  const label = `SDF texture ${textureId}`
+  const texture: GPUTexture = device.createTexture({
+    label,
+    size: [width, height],
+    format: 'rgba32float',
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  })
+
+  textures[textureId].texture?.destroy()
+  textures[textureId].texture = texture
+}
+
 export function setCacheTexture(id: number, texture: GPUTexture) {
   if (textures[id].texture !== texture) {
     textures[id].texture?.destroy()

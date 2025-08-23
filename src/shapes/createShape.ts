@@ -2,7 +2,6 @@ import { Node } from 'svg-parser'
 import * as Logic from 'logic/index.zig'
 import parsePathData from './parsePathData'
 import parseRect from './parseRect'
-import type { PathSegment } from './types'
 import parseColor from './parseColor'
 import parseEllipse from './parseEllipse'
 import * as Textures from 'textures'
@@ -45,7 +44,7 @@ export default function createShapes(node: Node, svgHeight: number): void {
         }
 
         if (result) {
-          Logic.addShape(0, result, null, serializedProps, { id: Textures.createCacheTexture() })
+          Logic.addShape(0, result, null, serializedProps, Textures.createSDF())
         }
       }
       createShapes(child, svgHeight)

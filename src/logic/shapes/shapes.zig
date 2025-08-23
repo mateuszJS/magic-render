@@ -11,7 +11,6 @@ const shared = @import("../shared.zig");
 const images = @import("../images.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 
-const POINT_SNAP_DISTANCE = 10.0; // Minimum distance to consider a new control point
 const EPSILON = std.math.floatEps(f32);
 
 var active_path_index: ?usize = null;
@@ -35,14 +34,6 @@ pub const ShapeProps = struct {
     stroke_width: f32 = 20.0, // Default stroke width
 };
 
-pub const TextureCache = struct {
-    id: u32,
-    width: f32 = 0.0,
-    height: f32 = 0.0,
-    valid: bool = false, // false -> render bezier curves, not texture
-    // once we finish editing shape ,we can render curves to texture and update valid = true
-};
-
 pub const Preview = struct {
     index: usize,
     point: Point,
@@ -63,35 +54,39 @@ pub fn getSkeletonUniform() Uniform {
     };
 }
 
+fn getSnapThreshold(bounds: [4]PointUV) Point {
+    const invert_matrix = Matrix3x3.getMatrixFromRectangle(bounds).inverse();
+    const close_path_threshold = Point{
+        .x = 10.0 * @abs(invert_matrix.values[0]),
+        .y = 10.0 * @abs(invert_matrix.values[4]),
+    };
+    return close_path_threshold;
+}
+
 pub const Shape = struct {
     id: u32,
     paths: std.ArrayList(Path),
     props: ShapeProps,
     bounds: [4]PointUV,
     outdated_sdf: bool, // if true, we need to recalculate SDF
-    cache: TextureCache,
+    texture_id: u32,
 
     pub fn new(
         id: u32,
         input_paths: []const []const Point,
         input_bounds: ?[4]PointUV,
         props: ShapeProps,
-        cache: TextureCache,
+        texture_id: u32,
         allocator: std.mem.Allocator,
     ) !Shape {
         var paths_list = std.ArrayList(Path).init(allocator);
 
         const bounds = input_bounds orelse DEFAULT_BOUNDS;
-        const invert_matrix = Matrix3x3.getMatrixFromRectangle(bounds).inverse();
-        const close_path_threshold = Point{
-            .x = POINT_SNAP_DISTANCE * @abs(invert_matrix.values[0]),
-            .y = POINT_SNAP_DISTANCE * @abs(invert_matrix.values[4]),
-        };
 
         for (input_paths) |input_path| {
             const path = try Path.newFromPoints(
                 input_path,
-                close_path_threshold,
+                getSnapThreshold(bounds),
                 allocator,
             );
             try paths_list.append(path);
@@ -100,7 +95,7 @@ pub const Shape = struct {
             .id = id,
             .paths = paths_list,
             .props = props,
-            .cache = cache,
+            .texture_id = texture_id,
             .outdated_sdf = false,
             .bounds = bounds,
         };
@@ -139,15 +134,10 @@ pub const Shape = struct {
         const invert_matrix = Matrix3x3.getMatrixFromRectangle(self.bounds).inverse();
         const point = invert_matrix.get(absolute_point);
 
-        const close_path_threshold = Point{
-            .x = POINT_SNAP_DISTANCE * @abs(invert_matrix.values[0]),
-            .y = POINT_SNAP_DISTANCE * @abs(invert_matrix.values[4]),
-        }; // TODO: are we sure this gonna work? What if scale is negative?
-
         if (active_path_index) |i| {
             var active_path = &self.paths.items[i];
             if (!active_path.closed) {
-                try active_path.addPoint(point, close_path_threshold);
+                try active_path.addPoint(point, getSnapThreshold(self.bounds));
                 try self.update_bounds(allocator, null);
                 return;
             }
@@ -226,6 +216,7 @@ pub const Shape = struct {
     pub fn getSkeletonDrawVertexData(
         self: Shape,
         allocator: std.mem.Allocator,
+        is_active: bool,
     ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
@@ -235,10 +226,12 @@ pub const Shape = struct {
             try skeleton_buffer.appendSlice(path_skeleton);
         }
 
-        if (preview_point) |point| {
-            if (!is_handle_preview) {
-                const buffer = Path.getVertexSkeletonPoint(true, point);
-                try skeleton_buffer.appendSlice(&buffer);
+        if (is_active) {
+            if (preview_point) |point| {
+                if (!is_handle_preview) {
+                    const buffer = Path.getVertexSkeletonPoint(true, point);
+                    try skeleton_buffer.appendSlice(&buffer);
+                }
             }
         }
 
@@ -280,14 +273,13 @@ pub const Shape = struct {
         };
     }
 
-    pub fn getDrawVertexData(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
-        if (active_path_index != null and preview_point != null) {
+    pub fn getDrawVertexData(self: *Shape, allocator: std.mem.Allocator, is_active: bool) !?[]Point {
+        if (is_active and active_path_index != null and preview_point != null) {
             try self.update_bounds(allocator, preview_point);
         }
-
         const points = try self.getAllPoints(
             allocator,
-            preview_point,
+            if (is_active) preview_point else null,
             active_path_index,
         );
 
@@ -368,7 +360,7 @@ pub const Shape = struct {
             .paths = try paths_list.toOwnedSlice(),
             .props = self.props,
             .bounds = self.bounds,
-            .cache = self.cache,
+            .texture_id = self.texture_id,
         };
     }
 
@@ -394,8 +386,9 @@ pub const Serialized = struct {
     paths: []const []const Point,
     props: ShapeProps,
     bounds: [4]PointUV,
-    cache: ?TextureCache,
+    texture_id: u32,
 
+    // this function returns a lot of false positives because we compare floating point numbers
     pub fn compare(self: Serialized, other: Serialized) bool {
 
         // There is a problem with cache!!!!!
@@ -407,8 +400,8 @@ pub const Serialized = struct {
         // but how will we handle when a new texture need to be generated??
         const all_match = self.id == other.id and
             self.paths.len == other.paths.len and
-            std.meta.eql(self.props, other.props); // and
-        // std.meta.eql(self.bounds, other.bounds);
+            std.meta.eql(self.props, other.props) and
+            std.meta.eql(self.bounds, other.bounds);
 
         if (!all_match) {
             return false;
