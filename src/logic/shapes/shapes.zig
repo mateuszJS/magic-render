@@ -15,9 +15,15 @@ const POINT_SNAP_DISTANCE = 10.0; // Minimum distance to consider a new control 
 const EPSILON = std.math.floatEps(f32);
 
 var active_path_index: ?usize = null;
+pub var is_handle_preview: bool = false;
 
 pub fn resetState() void {
     active_path_index = null;
+    is_handle_preview = false;
+}
+
+pub fn onReleasePointer() void {
+    is_handle_preview = false;
 }
 
 pub const ShapeProps = struct {
@@ -102,6 +108,8 @@ pub const Shape = struct {
         allocator: std.mem.Allocator,
         absolute_point: Point,
     ) !void {
+        is_handle_preview = true;
+
         if (self.paths.items.len == 0) {
             self.bounds = [4]PointUV{
                 .{ .x = absolute_point.x, .y = absolute_point.y + 1.0, .u = 0.0, .v = 1.0 },
@@ -193,7 +201,6 @@ pub const Shape = struct {
         self: Shape,
         allocator: std.mem.Allocator,
         preview_point: ?Point,
-        is_handle_preview: bool,
     ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);

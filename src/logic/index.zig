@@ -97,7 +97,6 @@ const State = struct {
     last_pointer_coords: types.Point,
 
     preview_point: ?types.Point = null,
-    is_handle_preview: bool = false,
 };
 
 var state = State{
@@ -301,7 +300,6 @@ pub fn onPointerDown(_allocator: std.mem.Allocator, x: f32, y: f32) !void {
                 std.heap.page_allocator,
                 preview_point,
             );
-            state.is_handle_preview = true;
             return;
         } else {
             @panic("Selected shape asset should be present at this point");
@@ -330,7 +328,7 @@ pub fn onPointerUp() !void {
         }
     } else if (state.tool == Tool.DrawShape) {
         try checkAssetsUpdate(true);
-        state.is_handle_preview = false;
+        shapes.onReleasePointer();
     }
 }
 
@@ -338,9 +336,8 @@ pub fn onPointerMove(x: f32, y: f32) !void {
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
             const preview_point = types.Point{ .x = x, .y = y };
-            state.preview_point = preview_point;
 
-            if (state.is_handle_preview) {
+            if (shapes.is_handle_preview) {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
                 const allocator = arena.allocator();
@@ -349,6 +346,8 @@ pub fn onPointerMove(x: f32, y: f32) !void {
                     allocator,
                     preview_point,
                 );
+            } else {
+                state.preview_point = preview_point;
             }
         }
 
@@ -408,7 +407,6 @@ pub fn commitChanges() !void {
 
         state.preview_point = null;
         shapes.resetState();
-        state.is_handle_preview = false;
     }
 }
 // TODO: extract to another file and simplify(extract common code)
@@ -611,7 +609,6 @@ pub fn renderDraw() !void {
             const vertex_data = try shape.getSkeletonDrawVertexData(
                 allocator,
                 state.preview_point,
-                state.is_handle_preview,
             );
             web_gpu_programs.draw_triangle(vertex_data);
         }
@@ -688,7 +685,6 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
 
     state.preview_point = null;
     shapes.resetState();
-    state.is_handle_preview = false;
 
     state.assets.clearAndFree();
 
