@@ -19,8 +19,8 @@ struct CubicBezier {
 
   textureStore(tex, id.xy, vec4f(
     shape_info.signed_distance,
-    0.5,
-    0.5,
+    shape_info.t,
+    shape_info.angle,
     1.0
   ));
 }
@@ -276,13 +276,17 @@ fn distance_point_to_line(point: vec2f, line_start: vec2f, line_end: vec2f) -> f
 
 struct ShapeInfo {
   signed_distance: f32,
+  t: f32,
+  angle: f32
 }
 
 // Main shape evaluation function using SDF approach with ray casting
 fn evaluate_shape(point: vec2f) -> ShapeInfo {
-  var min_distance = 1e10;
   var total_crossings: i32 = 0;
-  
+  var closest_curve_idx = 0u;
+  var closest_t = 0.0;
+  var min_distance: f32 = 1e+10;
+
   // For each curve, find closest point and count ray crossings
   let num_curves = arrayLength(&curves) / 4;
   for (var i = 0u; i < num_curves; i++) {
@@ -296,13 +300,17 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
     // Check if this is a straight line (handle points have x >= STRAIGHT_LINE_THRESHOLD)
     let is_straight_line = curve.p1.x > STRAIGHT_LINE_THRESHOLD && curve.p2.x > STRAIGHT_LINE_THRESHOLD;
 
-    var distance: f32 = 1e+10;
 
     if (is_straight_line) {
       // Handle as straight line from p0 to p3
       // if (u.stroke_width >= EPSILON) {
-        distance = distance_to_line_segment(point, curve.p0, curve.p3);
+        let distance = distance_to_line_segment(point, curve.p0, curve.p3);
       // }
+      if (distance < min_distance) {
+        closest_curve_idx = i;
+        closest_t = project_point_to_line_segment(point, curve.p0, curve.p3);
+        min_distance = distance;
+      }
       
       // Simple ray casting for line segment
       if (ray_crosses_segment(point, curve.p0, curve.p3)) {
@@ -319,17 +327,31 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
       // Handle as normal cubic Bézier curve
 
       // if (u.stroke_width >= EPSILON) {
-        let closest_t = closest_point_on_bezier(point, curve);
-        let closest_point = bezier_point(curve, closest_t);
-        distance = length(point - closest_point);
+        let t = closest_point_on_bezier(point, curve);
+        let closest_point = bezier_point(curve, t);
+        let distance = length(point - closest_point);
+        if (distance < min_distance) {
+          closest_curve_idx = i;
+          closest_t = t;
+          min_distance = distance;
+        }
       // }
       
       // Ray casting for curve
       total_crossings += ray_cast_curve_crossing(point, curve);
     }
     
-    min_distance = min(min_distance, distance);
+    // min_distance = min(min_distance, distance);
   }
+
+  let curve = CubicBezier(
+    curves[closest_curve_idx * 4 + 0],
+    curves[closest_curve_idx * 4 + 1],
+    curves[closest_curve_idx * 4 + 2],
+    curves[closest_curve_idx * 4 + 3]
+  );
+  let closest_point = bezier_point(curve, closest_t);
+  let angle = atan2(point.y - closest_point.y, point.x - closest_point.x);
   
   // Determine if point is inside using odd-even rule (ray casting)
   // Count total crossings and check if odd
@@ -344,5 +366,5 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
   // Anti-aliased stroke (based on distance to curve boundary)
   // let stroke_half_width = u.stroke_width * 0.5;
   // let stroke_alpha = smoothstep(stroke_half_width + pixel_gradient, stroke_half_width - pixel_gradient, abs(signed_dist));
-  return ShapeInfo(signed_dist);
+  return ShapeInfo(signed_dist, f32(closest_curve_idx) + closest_t, angle);
 }
