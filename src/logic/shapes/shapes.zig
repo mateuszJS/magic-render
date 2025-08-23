@@ -55,6 +55,14 @@ const DEFAULT_BOUNDS = [4]PointUV{
     .{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 },
 };
 
+pub fn getSkeletonUniform() Uniform {
+    return Uniform{
+        .stroke_width = 2.0 * shared.render_scale,
+        .fill_color = .{ 0.0, 0.0, 0.0, 0.0 },
+        .stroke_color = .{ 0.0, 0.0, 1.0, 1.0 },
+    };
+}
+
 pub const Shape = struct {
     id: u32,
     paths: std.ArrayList(Path),
@@ -332,18 +340,30 @@ pub const Shape = struct {
         return buffer;
     }
 
-    pub fn getCacheTexturePickVertexData(self: Shape) [6]images.PickVertex {
+    pub fn getDrawBounds(self: Shape) [6]PointUV {
         const bounds = self.getBoundsWithPadding();
-        return [_]images.PickVertex{
+        return [_]PointUV{
             // first triangle
-            .{ .id = self.id, .point = bounds[0] },
-            .{ .id = self.id, .point = bounds[1] },
-            .{ .id = self.id, .point = bounds[2] },
+            bounds[0],
+            bounds[1],
+            bounds[2],
             // second triangle
-            .{ .id = self.id, .point = bounds[2] },
-            .{ .id = self.id, .point = bounds[3] },
-            .{ .id = self.id, .point = bounds[0] },
+            bounds[2],
+            bounds[3],
+            bounds[0],
         };
+    }
+
+    pub fn getPickBounds(self: Shape) [6]images.PickVertex {
+        const bounds = self.getDrawBounds();
+        var buffer: [6]images.PickVertex = undefined;
+        for (bounds, 0..) |b, i| {
+            buffer[i] = .{
+                .point = b,
+                .id = self.id,
+            };
+        }
+        return buffer;
     }
 
     pub fn serialize(self: Shape) !Serialized {

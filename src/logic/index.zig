@@ -548,19 +548,7 @@ pub fn renderDraw() !void {
                 web_gpu_programs.draw_texture(vertex_data, img.texture_id);
             },
             .shape => |*shape| {
-                const uniform = shape.getUniform();
-                const bounds = shape.getBoundsWithPadding();
-                const box_vertex = [6]types.PointUV{
-                    // First triangle
-                    bounds[0],
-                    bounds[1],
-                    bounds[2],
-                    // Second triangle
-                    bounds[2],
-                    bounds[3],
-                    bounds[0],
-                };
-                web_gpu_programs.draw_shape(&box_vertex, uniform);
+                web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getUniform());
             },
         }
     }
@@ -583,6 +571,7 @@ pub fn renderDraw() !void {
                 allocator,
             );
             web_gpu_programs.draw_triangle(vertex_data);
+            web_gpu_programs.draw_shape(&shape.getDrawBounds(), shapes.getSkeletonUniform());
         }
     }
 
@@ -633,9 +622,7 @@ pub fn renderPick() void {
                 web_gpu_programs.pick_texture(&vertex_data, img.texture_id);
             },
             .shape => |shape| {
-                const bounds = shape.getCacheTexturePickVertexData();
-                const uniform = shape.getUniform();
-                web_gpu_programs.pick_shape(&bounds, uniform);
+                web_gpu_programs.pick_shape(&shape.getPickBounds(), shape.getUniform());
             },
         }
     }

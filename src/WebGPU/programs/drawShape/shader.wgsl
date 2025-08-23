@@ -35,8 +35,7 @@ struct VSOutput {
   var color = select(u.stroke_color, u.fill_color, sdf > u.stroke_width * 0.5);
 
   
-  color = select(vec4f(0.5, 0, 0, 1), vec4f(0, 0, 0.5, 1), u32(sdf / 20.0) % 2 == 0);
-  // color *= sdf / 200.0;
+  // color = select(vec4f(0.5, 0, 0, 1), vec4f(0, 0, 0.5, 1), u32(sdf / 20.0) % 2 == 0);
 
   return color * is_filled;
   // return vec4f(value, u.fill_color.r, 0.0, 1.0);
