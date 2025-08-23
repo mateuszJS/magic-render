@@ -13,11 +13,11 @@ pub fn getDefaultMatrix(
     const padding_x = (project_width - scaled_width) * 0.5;
     const padding_y = (project_height - scaled_height) * 0.5;
 
-    // Create transformation matrix: translate to position, then scale
-    const translation = Matrix3x3.translation(padding_x, padding_y);
-    const scaling = Matrix3x3.scaling(scaled_width / tex_width, scaled_height / tex_height);
-
-    return Matrix3x3.multiply(translation, scaling);
+    return Matrix3x3.from([_]f32{
+        scaled_width / tex_width, 0.0,                        padding_x,
+        0.0,                      scaled_height / tex_height, padding_y,
+        0.0,                      0.0,                        1.0,
+    });
 }
 
 /// Returns visually pleasant size of texture, to make sure it doesn't overflow canvas but also is not too small to manipulate
