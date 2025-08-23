@@ -30,6 +30,7 @@ export function startCache(
     Math.abs(texture.height - outputHeight) <= Number.EPSILON
 
   if (!canReuseTexture) {
+    texture?.destroy()
     texture = device.createTexture({
       label: 'texture cache',
       format: presentationFormat,
