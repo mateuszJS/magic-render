@@ -96,7 +96,6 @@ const State = struct {
     tool: Tool,
     last_pointer_coords: types.Point,
 
-    active_path_index: ?usize = null,
     preview_point: ?types.Point = null,
     is_handle_preview: bool = false,
 };
@@ -275,9 +274,9 @@ fn getSelectedShape() ?*shapes.Shape {
 
 fn updateSelectedAsset(id: u32) !void {
     try commitChanges();
-    std.debug.print("updateSelectedAsset called with id: {}\n", .{id});
+
     state.selected_asset_id = id;
-    state.active_path_index = null;
+    shapes.resetState();
     on_asset_select_cb(id);
 }
 
@@ -298,10 +297,9 @@ pub fn onPointerDown(_allocator: std.mem.Allocator, x: f32, y: f32) !void {
         }
 
         if (getSelectedShape()) |shape| {
-            state.active_path_index = try shape.addPointStart(
+            try shape.addPointStart(
                 std.heap.page_allocator,
                 preview_point,
-                state.active_path_index,
             );
             state.is_handle_preview = true;
             return;
@@ -331,14 +329,7 @@ pub fn onPointerUp() !void {
             try checkAssetsUpdate(true);
         }
     } else if (state.tool == Tool.DrawShape) {
-        if (state.active_path_index) |active_path_index| {
-            const shape = getSelectedShape() orelse @panic("Selected shape asset should be present when active_path_index is not null");
-            if (shape.paths.items[active_path_index].closed) {
-                std.debug.print("SHAPE CLOSED, {d}\n", .{active_path_index});
-                state.active_path_index = null;
-            }
-            try checkAssetsUpdate(true);
-        }
+        try checkAssetsUpdate(true);
         state.is_handle_preview = false;
     }
 }
@@ -349,17 +340,15 @@ pub fn onPointerMove(x: f32, y: f32) !void {
             const preview_point = types.Point{ .x = x, .y = y };
             state.preview_point = preview_point;
 
-            if (state.active_path_index) |active_path_index| {
-                if (state.is_handle_preview) {
-                    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-                    defer arena.deinit();
-                    const allocator = arena.allocator();
+            if (state.is_handle_preview) {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
+                const allocator = arena.allocator();
 
-                    try shape.updateLastHandle(
-                        allocator,
-                        shapes.Preview{ .index = active_path_index, .point = preview_point },
-                    );
-                }
+                try shape.updateLastHandle(
+                    allocator,
+                    preview_point,
+                );
             }
         }
 
@@ -418,7 +407,7 @@ pub fn commitChanges() !void {
         }
 
         state.preview_point = null;
-        state.active_path_index = null;
+        shapes.resetState();
         state.is_handle_preview = false;
     }
 }
@@ -549,16 +538,14 @@ pub fn calculateShapesSDF() !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                var preview: ?shapes.Preview = null;
-                if (state.active_path_index) |active_path_index| {
-                    if (state.preview_point) |preview_point| {
-                        preview = shapes.Preview{ .index = active_path_index, .point = preview_point };
-                    }
+                var preview_point: ?types.Point = null;
+                if (state.preview_point) |p| {
+                    preview_point = p;
                 }
 
                 const option_points = try shape.getDrawVertexData(
                     allocator,
-                    preview,
+                    preview_point,
                 );
 
                 if (option_points) |points| {
@@ -590,13 +577,6 @@ pub fn renderDraw() !void {
                 web_gpu_programs.draw_texture(vertex_data, img.texture_id);
             },
             .shape => |*shape| {
-                var preview: ?shapes.Preview = null;
-                if (state.active_path_index) |active_path_index| {
-                    if (state.preview_point) |preview_point| {
-                        preview = shapes.Preview{ .index = active_path_index, .point = preview_point };
-                    }
-                }
-
                 const uniform = shape.getUniform();
                 const bounds = shape.getBoundsWithPadding();
                 const box_vertex = [6]types.PointUV{
@@ -707,7 +687,7 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
     on_asset_update_cb = null;
 
     state.preview_point = null;
-    state.active_path_index = null;
+    shapes.resetState();
     state.is_handle_preview = false;
 
     state.assets.clearAndFree();

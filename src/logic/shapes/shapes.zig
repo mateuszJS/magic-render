@@ -14,6 +14,12 @@ const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const POINT_SNAP_DISTANCE = 10.0; // Minimum distance to consider a new control point
 const EPSILON = std.math.floatEps(f32);
 
+var active_path_index: ?usize = null;
+
+pub fn resetState() void {
+    active_path_index = null;
+}
+
 pub const ShapeProps = struct {
     // f32 instead of u8 because Uniforms in wgsl doesn't support u8 anyway
     fill_color: [4]f32 = .{ 1.0, 0.0, 0.0, 1.0 }, // Default fill color (red)
@@ -95,8 +101,7 @@ pub const Shape = struct {
         self: *Shape,
         allocator: std.mem.Allocator,
         absolute_point: Point,
-        option_active_path_index: ?usize,
-    ) !usize {
+    ) !void {
         if (self.paths.items.len == 0) {
             self.bounds = [4]PointUV{
                 .{ .x = absolute_point.x, .y = absolute_point.y + 1.0, .u = 0.0, .v = 1.0 },
@@ -107,7 +112,8 @@ pub const Shape = struct {
 
             const new_path = try Path.new(.{ .x = 0.0, .y = 0.0 }, allocator);
             try self.paths.append(new_path);
-            return 0;
+            active_path_index = 0;
+            return;
         }
 
         self.outdated_sdf = true;
@@ -120,23 +126,28 @@ pub const Shape = struct {
             .y = POINT_SNAP_DISTANCE * @abs(invert_matrix.values[4]),
         }; // TODO: are we sure this gonna work? What if scale is negative?
 
-        const updated_active_path_index = if (option_active_path_index) |active_path_index| blk: {
-            var active_path = &self.paths.items[active_path_index];
-            try active_path.addPoint(point, close_path_threshold);
-            break :blk active_path_index;
-        } else blk: {
-            const new_path = try Path.new(point, allocator);
-            try self.paths.append(new_path);
-            break :blk self.paths.items.len - 1;
-        };
+        if (active_path_index) |i| {
+            var active_path = &self.paths.items[i];
+            if (!active_path.closed) {
+                try active_path.addPoint(point, close_path_threshold);
+                try self.update_bounds(allocator, null);
+                return;
+            }
+        }
 
+        // start a new path
+        const new_path = try Path.new(point, allocator);
+        try self.paths.append(new_path);
+        active_path_index = self.paths.items.len - 1;
         try self.update_bounds(allocator, null);
-
-        return updated_active_path_index;
     }
 
-    fn update_bounds(self: *Shape, allocator: std.mem.Allocator, preview: ?Preview) !void {
-        const points = try self.getAllPoints(allocator, preview);
+    fn update_bounds(self: *Shape, allocator: std.mem.Allocator, option_previw_point: ?Point) !void {
+        const points = try self.getAllPoints(
+            allocator,
+            option_previw_point,
+            active_path_index,
+        );
         const box = bounding_box.getBoundingBox(points);
 
         const new_width = box.max_x - box.min_x;
@@ -165,15 +176,17 @@ pub const Shape = struct {
         };
     }
 
-    pub fn updateLastHandle(self: *Shape, allocator: std.mem.Allocator, preview: Preview) !void {
-        const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
-        const point = matrix.inverse().get(preview.point);
+    pub fn updateLastHandle(self: *Shape, allocator: std.mem.Allocator, preview_point: Point) !void {
+        if (active_path_index) |i| {
+            const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
+            const point = matrix.inverse().get(preview_point);
 
-        const active_path = &self.paths.items[preview.index];
-        active_path.updateLastHandle(point);
+            const active_path = &self.paths.items[i];
+            active_path.updateLastHandle(point);
 
-        self.outdated_sdf = true;
-        try self.update_bounds(allocator, null);
+            self.outdated_sdf = true;
+            try self.update_bounds(allocator, null);
+        }
     }
 
     pub fn getSkeletonDrawVertexData(
@@ -213,16 +226,19 @@ pub const Shape = struct {
     fn getAllPoints(
         self: Shape,
         allocator: std.mem.Allocator,
-        option_preview: ?Preview,
+        option_preview_point: ?Point,
+        option_preview_index: ?usize,
     ) ![]Point {
         var points = std.ArrayList(Point).init(allocator);
         for (self.paths.items, 0..) |path, i| {
             var preview_point: ?Point = null;
 
-            if (option_preview) |preview| {
-                if (preview.index == i) {
-                    const inverted_matrix = Matrix3x3.getMatrixFromRectangle(self.bounds).inverse();
-                    preview_point = inverted_matrix.get(preview.point);
+            if (option_preview_point) |p| {
+                if (option_preview_index) |idx| {
+                    if (idx == i) {
+                        const inverted_matrix = Matrix3x3.getMatrixFromRectangle(self.bounds).inverse();
+                        preview_point = inverted_matrix.get(p);
+                    }
                 }
             }
 
@@ -242,14 +258,15 @@ pub const Shape = struct {
         };
     }
 
-    pub fn getDrawVertexData(self: *Shape, allocator: std.mem.Allocator, option_preview: ?Preview) !?[]Point {
-        if (option_preview != null) {
-            try self.update_bounds(allocator, option_preview);
+    pub fn getDrawVertexData(self: *Shape, allocator: std.mem.Allocator, option_preview_point: ?Point) !?[]Point {
+        if (active_path_index != null and option_preview_point != null) {
+            try self.update_bounds(allocator, option_preview_point);
         }
 
         const points = try self.getAllPoints(
             allocator,
-            option_preview,
+            option_preview_point,
+            active_path_index,
         );
 
         if (points.len == 0) {
