@@ -237,17 +237,7 @@ pub const Shape = struct {
 
         if (preview_point) |point| {
             if (!is_handle_preview) {
-                const size = 20.0 * shared.render_scale;
-                var buffer: [2]triangles.DrawInstance = undefined;
-                squares.getDrawVertexData(
-                    buffer[0..2],
-                    point.x - size / 2.0,
-                    point.y - size / 2.0,
-                    size,
-                    size,
-                    0.0,
-                    [_]u8{ 0, 0, 255, 255 },
-                );
+                const buffer = Path.getVertexSkeletonPoint(true, point);
                 try skeleton_buffer.appendSlice(&buffer);
             }
         }

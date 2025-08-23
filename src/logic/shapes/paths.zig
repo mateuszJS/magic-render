@@ -8,6 +8,7 @@ const lines = @import("../line.zig");
 const shared = @import("../shared.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 
+const SKELETON_POINT_SIZE = 10.0;
 const STRAIGHT_LINE_THRESHOLD = 1e+10;
 const STRAIGHT_LINE_HANDLE = Point{
     .x = 1e+11,
@@ -96,14 +97,41 @@ pub const Path = struct {
         }
     }
 
+    pub fn getVertexSkeletonPoint(is_control_point: bool, point: Point) [2]triangles.DrawInstance {
+        var buffer: [2]triangles.DrawInstance = undefined;
+
+        if (is_control_point) {
+            const size = SKELETON_POINT_SIZE * shared.render_scale;
+            squares.getDrawVertexData(
+                buffer[0..2],
+                point.x - size / 2.0,
+                point.y - size / 2.0,
+                size,
+                size,
+                0.0,
+                [_]u8{ 0, 0, 255, 255 },
+            );
+        } else {
+            const size = SKELETON_POINT_SIZE * shared.render_scale;
+            squares.getDrawVertexData(
+                buffer[0..2],
+                point.x - size / 2.0,
+                point.y - size / 2.0,
+                size,
+                size,
+                SKELETON_POINT_SIZE / 2.0,
+                [_]u8{ 0, 0, 255, 255 },
+            );
+        }
+        return buffer;
+    }
+
     pub fn getSkeletonDrawVertexData(
         self: Path,
         matrix: Matrix3x3,
         allocator: std.mem.Allocator,
     ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
-        const size = 20.0 * shared.render_scale;
-
         for (self.points.items, 0..) |relative_point, i| {
             if (Path.isStraightLineHandle(relative_point)) {
                 // This is a straight line handle, skip it
@@ -128,16 +156,7 @@ pub const Path = struct {
                 try skeleton_buffer.appendSlice(&buffer);
             }
 
-            var buffer: [2]triangles.DrawInstance = undefined;
-            squares.getDrawVertexData(
-                buffer[0..2],
-                point.x - size / 2.0,
-                point.y - size / 2.0,
-                size,
-                size,
-                0.0,
-                [_]u8{ 0, 0, 255, 255 },
-            );
+            const buffer = Path.getVertexSkeletonPoint(is_control_point, point);
             try skeleton_buffer.appendSlice(&buffer);
         }
 
@@ -157,16 +176,7 @@ pub const Path = struct {
             );
             try skeleton_buffer.appendSlice(&line_buffer);
 
-            var square_buffer: [2]triangles.DrawInstance = undefined;
-            squares.getDrawVertexData(
-                square_buffer[0..2],
-                forward_handle.x - size / 2.0,
-                forward_handle.y - size / 2.0,
-                size,
-                size,
-                0.0,
-                [_]u8{ 0, 0, 255, 255 },
-            );
+            const square_buffer = Path.getVertexSkeletonPoint(false, forward_handle);
             try skeleton_buffer.appendSlice(&square_buffer);
         }
 
