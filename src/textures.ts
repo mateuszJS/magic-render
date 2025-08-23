@@ -79,6 +79,12 @@ export function add(
 }
 
 export function getTexture(textureId: number): GPUTexture {
+  const texture = getOptionTexture(textureId)
+  if (!texture) throw Error('Texture not found with id: ' + textureId)
+  return texture
+}
+
+export function getTextureSafe(textureId: number): GPUTexture {
   return getOptionTexture(textureId) ?? loadingTexture
 }
 
