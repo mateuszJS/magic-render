@@ -567,8 +567,6 @@ pub fn calculateShapesSDF() !void {
                         points,
                         bounds[0].distance(bounds[1]),
                         bounds[0].distance(bounds[3]),
-                        // @max(1.0, bounds[0].distance(bounds[1])),
-                        // @max(1.0, bounds[0].distance(bounds[3])),
                     );
                 }
             },
@@ -576,29 +574,7 @@ pub fn calculateShapesSDF() !void {
     }
 }
 
-const point_size: f32 = @floatFromInt(@sizeOf(types.Point)); // 8 bytes
-const triangle_size: f32 = @floatFromInt(@sizeOf(Triangle.DrawInstance)); // 64 bytes
-const asset_size: f32 = @floatFromInt(@sizeOf(images.DrawVertex)); // 96 bytes
-
 pub fn renderDraw() !void {
-    // Add some padding for allocator overhead (usually ~16-32 bytes per allocation)
-    // const allocator_overhead = 64;
-
-    // const estimated_memory =
-    //     triangle_size * 2.0 + // project background
-    //     triangle_size * 4.0 + // project border
-    //     asset_size * @as(f32, @floatFromInt(state.assets.count())) + // assets
-    //     point_size * 100.0 + allocator_overhead; // shapes
-
-    // const safety_margin = 1.2; // 20% extra
-
-    // // Are you building for WebAssembly? In this case, std.heap.wasm_allocator is likely the right
-    // // choice for your main allocator as it uses WebAssembly's memory instructions.
-
-    // const total_size = @as(usize, @intFromFloat(estimated_memory * safety_margin));
-
-    // var buffer: [total_size]u8 = undefined;
-    // var fba = std.heap.FixedBufferAllocator.init(&buffer);
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -650,16 +626,16 @@ pub fn renderDraw() !void {
         }
     }
 
-    // if (state.tool == Tool.DrawShape) {
-    if (getSelectedShape()) |shape| {
-        const vertex_data = try shape.getSkeletonDrawVertexData(
-            allocator,
-            state.preview_point,
-            state.is_handle_preview,
-        );
-        web_gpu_programs.draw_triangle(vertex_data);
+    if (state.tool == Tool.DrawShape) {
+        if (getSelectedShape()) |shape| {
+            const vertex_data = try shape.getSkeletonDrawVertexData(
+                allocator,
+                state.preview_point,
+                state.is_handle_preview,
+            );
+            web_gpu_programs.draw_triangle(vertex_data);
+        }
     }
-    // }
 
     // testing:
 

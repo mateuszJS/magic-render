@@ -38,7 +38,12 @@ export default function runCreator(
   // let total = 0
   // let samplesCount = 0
 
-  let textureSDF: GPUTexture
+  let textureSDF: GPUTexture = device.createTexture({
+    label: 'SDF texture',
+    size: [1, 1],
+    format: 'rgba32float',
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  })
 
   Logic.connectWebGpuPrograms({
     draw_texture: (vertex_data, texture_id) => {

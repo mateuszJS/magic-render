@@ -164,6 +164,50 @@ pub const Matrix3x3 = struct {
         // Formula: transform = to * from.inverse()
         return Matrix3x3.multiply(to, m.inverse());
     }
+
+    // This function calculates a 3x3 transformation matrix that maps a unit square
+    // to a given rectangle (or any parallelogram).
+    //
+    // Unit Square (neutral state):
+    // (0,1) tl ------ tr (1,1)
+    //   |              |
+    //   |              |
+    // (0,0) bl ------ br (1,0)
+    //
+    // The input points for the target rectangle must be in the following order:
+    // rect_points[0]: top-left corner
+    // rect_points[1]: top-right corner
+    // rect_points[2]: bottom-right corner
+    // rect_points[3]: bottom-left corner
+    // It's standard CSS order of corners.
+    pub fn getMatrixFromRectangle(rect_points: [4]PointUV) Matrix3x3 {
+        const p_tl = rect_points[0];
+        const p_br = rect_points[2];
+        const p_bl = rect_points[3];
+
+        // The transformation matrix maps the unit square's basis vectors (1,0) and (0,1)
+        // to the sides of the target rectangle, and maps the origin (0,0) to the
+        // bottom-left corner of the target rectangle.
+
+        // Vector for the transformed x-axis (from bottom-left to bottom-right)
+        const x_axis_vec = Point{ .x = p_br.x - p_bl.x, .y = p_br.y - p_bl.y };
+
+        // Vector for the transformed y-axis (from bottom-left to top-left)
+        const y_axis_vec = Point{ .x = p_tl.x - p_bl.x, .y = p_tl.y - p_bl.y };
+
+        // The origin of the transformed coordinate system is the bottom-left corner.
+        const origin = p_bl;
+
+        // Construct the 3x3 affine transformation matrix:
+        // [ x_axis_vec.x  y_axis_vec.x  origin.x ]
+        // [ x_axis_vec.y  y_axis_vec.y  origin.y ]
+        // [      0             0           1      ]
+        return Matrix3x3.from([_]f32{
+            x_axis_vec.x, y_axis_vec.x, origin.x,
+            x_axis_vec.y, y_axis_vec.y, origin.y,
+            0.0,          0.0,          1.0,
+        });
+    }
 };
 
 // --- Tests ---

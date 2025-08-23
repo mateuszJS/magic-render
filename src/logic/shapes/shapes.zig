@@ -41,28 +41,6 @@ const DEFAULT_BOUNDS = [4]PointUV{
     .{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 },
 };
 
-fn get_matrix_from_bounds(bounds: [4]PointUV) Matrix3x3 {
-    const angle = bounds[0].angleTo(bounds[1]);
-
-    const width = bounds[0].distance(bounds[1]);
-    const height = bounds[0].distance(bounds[3]);
-
-    const center = bounds[3].mid(bounds[1]);
-    var matrix = Matrix3x3.translation(center.x, center.y);
-
-    matrix.rotate(angle);
-    matrix.translate(
-        -width / 2,
-        -height / 2,
-    );
-    matrix.scale(
-        width,
-        height,
-    );
-
-    return matrix;
-}
-
 pub const Shape = struct {
     id: u32,
     paths: std.ArrayList(Path),
@@ -82,7 +60,7 @@ pub const Shape = struct {
         var paths_list = std.ArrayList(Path).init(allocator);
 
         const bounds = input_bounds orelse DEFAULT_BOUNDS;
-        const invert_matrix = get_matrix_from_bounds(bounds).inverse();
+        const invert_matrix = Matrix3x3.getMatrixFromRectangle(bounds).inverse();
         const close_path_threshold = Point{
             .x = POINT_SNAP_DISTANCE * @abs(invert_matrix.values[0]),
             .y = POINT_SNAP_DISTANCE * @abs(invert_matrix.values[4]),
@@ -134,7 +112,7 @@ pub const Shape = struct {
 
         self.outdated_sdf = true;
 
-        const invert_matrix = get_matrix_from_bounds(self.bounds).inverse();
+        const invert_matrix = Matrix3x3.getMatrixFromRectangle(self.bounds).inverse();
         const point = invert_matrix.get(absolute_point);
 
         const close_path_threshold = Point{
@@ -158,8 +136,6 @@ pub const Shape = struct {
     }
 
     fn update_bounds(self: *Shape, allocator: std.mem.Allocator, preview: ?Preview) !void {
-        const matrix = get_matrix_from_bounds(self.bounds);
-        const invert_matrix = matrix.inverse();
         const points = try self.getAllPoints(allocator, preview);
         const box = bounding_box.getBoundingBox(points);
 
@@ -170,30 +146,17 @@ pub const Shape = struct {
             return; // No valid bounding box
         }
 
-        const old_box_end = invert_matrix.get(self.bounds[1]);
-        const old_box_start = invert_matrix.get(self.bounds[3]);
-        const curr_width = old_box_end.x - old_box_start.x;
-        const curr_height = old_box_end.y - old_box_start.y;
-
-        // var points_list = std.ArrayList(Point).init(allocator);
+        // Normalize points to [0,1] range
         for (self.paths.items) |*path| {
             for (path.points.items) |*p| {
-                if (Path.isStraightLineHandle(p.*)) {
-                    // try points_list.append(p.*);
-                    continue; // we don't want to update straight line handlers
-                }
+                if (Path.isStraightLineHandle(p.*)) continue;
 
-                const curr_p = Point{
-                    .x = old_box_start.x + p.x * curr_width,
-                    .y = old_box_start.y + p.y * curr_height,
-                };
-                p.x = (curr_p.x - box.min_x) / new_width;
-                p.y = (curr_p.y - box.min_y) / new_height;
-
-                // try points_list.append(p.*);
+                p.x = (p.x - box.min_x) / new_width;
+                p.y = (p.y - box.min_y) / new_height;
             }
         }
 
+        const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
         self.bounds = [4]PointUV{
             matrix.getUV(.{ .x = box.min_x, .y = box.max_y, .u = 0.0, .v = 1.0 }),
             matrix.getUV(.{ .x = box.max_x, .y = box.max_y, .u = 1.0, .v = 1.0 }),
@@ -203,7 +166,7 @@ pub const Shape = struct {
     }
 
     pub fn updateLastHandle(self: *Shape, allocator: std.mem.Allocator, preview: Preview) !void {
-        const matrix = get_matrix_from_bounds(self.bounds);
+        const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
         const point = matrix.inverse().get(preview.point);
 
         const active_path = &self.paths.items[preview.index];
@@ -220,7 +183,7 @@ pub const Shape = struct {
         is_handle_preview: bool,
     ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
-        const matrix = get_matrix_from_bounds(self.bounds);
+        const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
 
         for (self.paths.items) |path| {
             const path_skeleton = try path.getSkeletonDrawVertexData(matrix, allocator);
@@ -258,7 +221,7 @@ pub const Shape = struct {
 
             if (option_preview) |preview| {
                 if (preview.index == i) {
-                    const inverted_matrix = get_matrix_from_bounds(self.bounds).inverse();
+                    const inverted_matrix = Matrix3x3.getMatrixFromRectangle(self.bounds).inverse();
                     preview_point = inverted_matrix.get(preview.point);
                 }
             }
@@ -288,6 +251,11 @@ pub const Shape = struct {
             allocator,
             option_preview,
         );
+
+        if (points.len == 0) {
+            return null;
+        }
+
         const scale = Matrix3x3.scaling(
             self.bounds[0].distance(self.bounds[1]),
             self.bounds[0].distance(self.bounds[3]),
@@ -300,17 +268,13 @@ pub const Shape = struct {
             point.y = padding + scaled.y;
         }
 
-        if (points.len == 0) {
-            return null;
-        }
-
         return points;
     }
 
     pub fn getBoundsWithPadding(self: Shape) [4]PointUV {
+        const padding = self.props.stroke_width / 2.0;
         var buffer: [4]PointUV = undefined;
         const len = self.bounds.len;
-        const padding = self.props.stroke_width / 2.0;
 
         for (self.bounds, 0..) |b, i| {
             const b_next = self.bounds[(i + 1) % len];
