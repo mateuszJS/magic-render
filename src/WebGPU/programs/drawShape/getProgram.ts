@@ -14,43 +14,20 @@ export default function getDrawShape(
   const uniformBufferSize =
     (1 /*stroke width*/ + 4 /*stroke color*/ + 4 /*fill color*/ + /*padding*/ 3) * 4
 
-  const bindGroupLayout = device.createBindGroupLayout({
-    label: 'drawShape bind group layout',
-    entries: [
-      {
-        binding: 0,
-        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-        buffer: { type: 'uniform' },
-      },
-      {
-        binding: 1,
-        visibility: GPUShaderStage.FRAGMENT,
-        buffer: { type: 'read-only-storage' },
-      },
-      {
-        binding: 2,
-        visibility: GPUShaderStage.VERTEX,
-        buffer: { type: 'uniform' },
-      },
-    ],
-  })
-
-  const renderPipeline = device.createRenderPipeline({
+  const pipeline = device.createRenderPipeline({
     label: 'drawShape pipeline',
-    layout: device.createPipelineLayout({
-      bindGroupLayouts: [bindGroupLayout],
-    }),
+    layout: 'auto',
     vertex: {
       module: shaderModule,
       entryPoint: 'vs',
       buffers: [
         {
-          arrayStride: 2 * 4, // position (2) + color (4)
+          arrayStride: 4 * 4, // position (4)
           attributes: [
             {
               shaderLocation: 0,
               offset: 0,
-              format: 'float32x2', // position
+              format: 'float32x4', // position
             },
           ],
         },
@@ -82,7 +59,7 @@ export default function getDrawShape(
 
   return function drawShape(
     passEncoder: GPURenderPassEncoder,
-    curvesDataView: DataView,
+    sdfTexture: GPUTexture,
     boundingBoxDataView: DataView,
     uniformDataView: DataView
   ) {
@@ -94,14 +71,6 @@ export default function getDrawShape(
     device.queue.writeBuffer(boundBoxBuffer, 0, boundingBoxDataView)
     buffersToDestroy.push(boundBoxBuffer)
 
-    const curvesBuffer = device.createBuffer({
-      label: 'drawShape curves buffer',
-      size: curvesDataView.byteLength,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    })
-    device.queue.writeBuffer(curvesBuffer, 0, curvesDataView)
-    buffersToDestroy.push(curvesBuffer)
-
     const uniformBuffer = device.createBuffer({
       label: 'drawShape uniforms',
       size: uniformBufferSize,
@@ -110,14 +79,14 @@ export default function getDrawShape(
     device.queue.writeBuffer(uniformBuffer, 0, uniformDataView)
     buffersToDestroy.push(uniformBuffer)
 
-    passEncoder.setPipeline(renderPipeline)
+    passEncoder.setPipeline(pipeline)
 
     const bindGroup = device.createBindGroup({
       label: 'drawShape bind group',
-      layout: bindGroupLayout,
+      layout: pipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: uniformBuffer } },
-        { binding: 1, resource: { buffer: curvesBuffer } },
+        { binding: 1, resource: sdfTexture.createView() },
         { binding: 2, resource: { buffer: canvasMatrixBuffer } },
       ],
     })

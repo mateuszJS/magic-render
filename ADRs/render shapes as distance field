@@ -1,0 +1,26 @@
+In the future we might very likely need distance fields ANYWAY
+to increase the range of zoom for example
+or constant-stroke-width that doesn't scale with updated scale of the shape!
+(width is inpedendent from bounds/matrix).
+
+Benefits:
+
+- quick changes like strokes, color, effects
+- better quality for higher zoom
+- simpler logic with cache textures, only existing in JS basically(except when bigger padding is needed)
+- if we modify color of many objects at once, then this solution will be way faster. Modyfing points always happens for one/two paths at once, no more
+- Split the process of obtainign data from curves from applying an effect
+
+Downsides:
+
+- when bound box(or to be more precise padding) will increase we will have a problem, and then it's not only JS thing to rerender texture, we have to ask for it form zig
+- Drawing while editing points might be slower(firstly draw to texture, then texture to canvas)
+- Quality _MIGHT_ be worst, like we have with our rotate icon
+
+What we would need from a distance field texture:
+
+- signed distance
+- angle where the closest point is
+- t parameter - or actually we might need t like distance!
+
+Having cache text

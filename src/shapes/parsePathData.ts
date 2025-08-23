@@ -6,6 +6,11 @@ interface PathCommand {
   args: number[]
 }
 
+export interface ShapeData {
+  segments: PathSegment[]
+  closed: boolean
+}
+
 function getDataPathCommands(pathData: string): PathCommand[] {
   // Remove whitespace and split by command letters
   const commands: PathCommand[] = []
@@ -35,18 +40,23 @@ function reflectY(y: number, svgHeight: number): number {
   return svgHeight - y
 }
 
-function commandsToSegments(commands: PathCommand[], svgHeight: number): PathSegment[][] {
-  const allPaths: PathSegment[][] = []
+function commandsToSegments(commands: PathCommand[], svgHeight: number): ShapeData[] {
+  const allShapes: ShapeData[] = []
 
   let currentSegments: PathSegment[] = []
   let currentPoint: Point = { x: 0, y: reflectY(0, svgHeight) }
   let pathStart: Point = { x: 0, y: reflectY(0, svgHeight) }
   let lastControlPoint: Point | null = null
+  let currentShapeClosed = false
 
   const finishCurrentPath = () => {
     if (currentSegments.length > 0) {
-      allPaths.push([...currentSegments])
+      allShapes.push({
+        segments: [...currentSegments],
+        closed: currentShapeClosed,
+      })
       currentSegments = []
+      currentShapeClosed = false
     }
   }
 
@@ -217,8 +227,9 @@ function commandsToSegments(commands: PathCommand[], svgHeight: number): PathSeg
         }
         currentPoint = pathStart
         lastControlPoint = null
+        currentShapeClosed = true
 
-        // Finish the current path (this creates a new array)
+        // Finish the current path (this creates a new shape)
         finishCurrentPath()
         break
       }
@@ -233,10 +244,10 @@ function commandsToSegments(commands: PathCommand[], svgHeight: number): PathSeg
   // Finish any remaining path
   finishCurrentPath()
 
-  return allPaths
+  return allShapes
 }
 
-export default function parsePathData(dAttribute: string, svgHeight: number): PathSegment[][] {
+export default function parsePathData(dAttribute: string, svgHeight: number): ShapeData[] {
   const commands = getDataPathCommands(dAttribute)
   const pathData = commandsToSegments(commands, svgHeight)
 

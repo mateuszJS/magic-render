@@ -8,10 +8,12 @@ import {
   canvasMatrixBuffer,
   pickCanvasMatrixBuffer,
   drawShape,
+  computeSDF,
+  pickShape,
 } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
-import { render_draw, render_pick, connect_web_gpu_programs } from 'logic/index.zig'
+import * as Logic from 'logic/index.zig'
 import { pointer } from 'WebGPU/pointer'
 import * as Textures from 'textures'
 
@@ -29,15 +31,15 @@ export default function runCreator(
   onEmptyEvents: VoidFunction // call when there is no more events to process
 ) {
   let pickPass: GPURenderPassEncoder
+  let computePass: GPUComputePassEncoder
 
   const pickManager = new PickManager(device)
   // let time = 0
   // let total = 0
   // let samplesCount = 0
-
-  connect_web_gpu_programs({
+  Logic.connectWebGpuPrograms({
     draw_texture: (vertex_data, texture_id) => {
-      drawTexture(renderPass, vertex_data.dataView, Textures.getTexture(texture_id))
+      drawTexture(renderPass, vertex_data.dataView, Textures.getTextureSafe(texture_id))
     },
     draw_msdf: (vertex_data, texture_id) => {
       const dataView = vertex_data['*'].dataView
@@ -54,10 +56,11 @@ export default function runCreator(
       }
       */
     },
-    draw_shape: (curves_data, bound_box_data, uniform_data) => {
+    compute_shape: (curves_data, width, height, textureId) => {
       const curvesDataView = curves_data['*'].dataView
-      const boundBoxDataView = bound_box_data['*'].dataView
-      drawShape(renderPass, curvesDataView, boundBoxDataView, uniform_data.dataView)
+      Textures.updateSDF(textureId, width, height)
+      computeSDF(computePass, curvesDataView, Textures.getTexture(textureId))
+      // drawShape(renderPass, curvesDataView, boundBoxDataView, uniform_data.dataView)
 
       /*
       samplesCount++
@@ -67,6 +70,10 @@ export default function runCreator(
       }
       */
     },
+    draw_shape: (bound_box_data, uniform_data, textureId) => {
+      const boundBoxDataView = bound_box_data['*'].dataView
+      drawShape(renderPass, Textures.getTexture(textureId), boundBoxDataView, uniform_data.dataView)
+    },
     pick_texture: (vertex_data, texture_id) => {
       const dataView = vertex_data['*'].dataView
       // const uints = new Uint32Array(
@@ -75,7 +82,15 @@ export default function runCreator(
       // for (let i = 0; i < uints.length; i += 5) {
       //   console.log('texture id', uints[i + 4])
       // }
-      pickTexture(pickPass, dataView, Textures.getTexture(texture_id))
+      pickTexture(pickPass, dataView, Textures.getTextureSafe(texture_id))
+    },
+    pick_shape: (bound_box_data, uniform_data, textureId) => {
+      pickShape(
+        pickPass,
+        bound_box_data['*'].dataView,
+        uniform_data.dataView,
+        Textures.getTexture(textureId)
+      )
     },
     pick_triangle: (vertex_data) => {
       const dataView = vertex_data['*'].dataView
@@ -91,12 +106,17 @@ export default function runCreator(
     preview?: { canvas: HTMLCanvasElement; ctx: GPUCanvasContext; onCapture: VoidFunction }
   ) {
     const encoder = device.createCommandEncoder()
+
+    computePass = encoder.beginComputePass()
+    Logic.calculateShapesSDF()
+    computePass.end()
+
     const canvasDescriptor = getCanvasRenderDescriptor(preview?.ctx || context, device)
     renderPass = encoder.beginRenderPass(canvasDescriptor)
     const canvasMatrix = getCanvasMatrix(preview?.canvas || creatorCanvas)
     device.queue.writeBuffer(canvasMatrixBuffer, 0, canvasMatrix)
     // time = performance.now()
-    render_draw()
+    Logic.renderDraw()
     renderPass.end()
 
     if (preview) {
@@ -123,7 +143,7 @@ export default function runCreator(
       device.queue.writeBuffer(pickCanvasMatrixBuffer, 0, pickMatrix)
       const pick = pickManager.startPicking(encoder)
       pickPass = pick.pass
-      render_pick()
+      Logic.renderPick()
       pick.end()
     }
 

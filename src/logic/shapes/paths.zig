@@ -6,9 +6,9 @@ const triangles = @import("../triangle.zig");
 const squares = @import("../squares.zig");
 const lines = @import("../line.zig");
 const shared = @import("../shared.zig");
+const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 
-const EPSILON = std.math.floatEps(f32);
-const POINT_SNAP_DISTANCE = 10.0; // Minimum distance to consider a new control point
+const SKELETON_POINT_SIZE = 10.0;
 const STRAIGHT_LINE_THRESHOLD = 1e+10;
 const STRAIGHT_LINE_HANDLE = Point{
     .x = 1e+11,
@@ -16,7 +16,7 @@ const STRAIGHT_LINE_HANDLE = Point{
 };
 
 fn getOppositeHandle(control_point: Point, handle: Point) Point {
-    if (handle.x > STRAIGHT_LINE_THRESHOLD) {
+    if (Path.isStraightLineHandle(handle)) {
         return STRAIGHT_LINE_HANDLE;
     }
     const diff = control_point.diff(handle);
@@ -30,7 +30,11 @@ fn getOppositeHandle(control_point: Point, handle: Point) Point {
 
 pub const Path = struct {
     points: std.ArrayList(Point),
-    closed: bool, // Whether the shape is closed
+    closed: bool,
+
+    pub fn isStraightLineHandle(point: Point) bool {
+        return point.x > STRAIGHT_LINE_THRESHOLD;
+    }
 
     pub fn new(point: Point, allocator: std.mem.Allocator) !Path {
         var point_list = std.ArrayList(Point).init(allocator);
@@ -48,18 +52,15 @@ pub const Path = struct {
     // Arrays: Use &array to get a slice reference
     // Slices: Pass directly (they're already slices)
     // ArrayList: Use .items to get the underlying slice
-    pub fn newFromPoints(path: []const [4]Point, allocator: std.mem.Allocator) !Path {
+    pub fn newFromPoints(path: []const Point, same_point_threshold: Point, allocator: std.mem.Allocator) !Path {
         var point_list = std.ArrayList(Point).init(allocator);
         var closed = false;
 
-        for (path, 0..) |curve, i| {
-            try point_list.appendSlice(&curve);
+        for (path, 0..) |point, i| {
+            try point_list.append(point);
 
-            if (i == path.len - 1) {
-                const distance = path[0][0].distance(curve[3]);
-                if (distance < POINT_SNAP_DISTANCE) {
-                    // here is the problem, it should be overlap with exactly one point, then it might be caunted a closed
-                    // althouhg the better word might be that a curve is open. More than one curve in a shape might be open!
+            if (i > 0 and i == path.len - 1) {
+                if (@abs(path[0].x - point.x) < same_point_threshold.x and @abs(path[0].y - point.y) < same_point_threshold.y) {
                     closed = true;
                 }
             }
@@ -71,7 +72,7 @@ pub const Path = struct {
         };
     }
 
-    pub fn addPoint(self: *Path, point: Point) !void {
+    pub fn addPoint(self: *Path, point: Point, same_point_threshold: Point) !void {
         if (self.closed) {
             @panic("Attempting to add point to already closed path!");
         }
@@ -87,9 +88,8 @@ pub const Path = struct {
         try self.points.append(STRAIGHT_LINE_HANDLE);
 
         const first_point = self.points.items[0];
-        const distance = first_point.distance(point);
 
-        if (distance < POINT_SNAP_DISTANCE) {
+        if (@abs(first_point.x - point.x) < same_point_threshold.x and @abs(first_point.y - point.y) < same_point_threshold.y) {
             self.closed = true;
             try self.points.append(first_point);
         } else {
@@ -97,31 +97,11 @@ pub const Path = struct {
         }
     }
 
-    pub fn getSkeletonDrawVertexData(self: Path, allocator: std.mem.Allocator) ![]triangles.DrawInstance {
-        var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
-        const size = 20.0 * shared.render_scale;
+    pub fn getVertexSkeletonPoint(is_control_point: bool, point: Point) [2]triangles.DrawInstance {
+        var buffer: [2]triangles.DrawInstance = undefined;
 
-        for (self.points.items, 0..) |point, i| {
-            const is_control_point = i % 4 == 0 or i % 4 == 3;
-            if (!is_control_point) {
-                if (point.x > STRAIGHT_LINE_THRESHOLD) {
-                    // This is a straight line handle, skip it
-                    continue;
-                }
-                const connected_control_point = if (i % 4 == 1) i - 1 else (i + 1) % self.points.items.len;
-                var buffer: [2]triangles.DrawInstance = undefined;
-                lines.getDrawVertexData(
-                    buffer[0..2],
-                    self.points.items[connected_control_point],
-                    point,
-                    3.0 * shared.render_scale,
-                    [_]u8{ 0, 0, 255, 255 },
-                    0.0,
-                );
-                try skeleton_buffer.appendSlice(&buffer);
-            }
-
-            var buffer: [2]triangles.DrawInstance = undefined;
+        if (is_control_point) {
+            const size = SKELETON_POINT_SIZE * shared.render_scale;
             squares.getDrawVertexData(
                 buffer[0..2],
                 point.x - size / 2.0,
@@ -131,12 +111,59 @@ pub const Path = struct {
                 0.0,
                 [_]u8{ 0, 0, 255, 255 },
             );
+        } else {
+            const size = SKELETON_POINT_SIZE * shared.render_scale;
+            squares.getDrawVertexData(
+                buffer[0..2],
+                point.x - size / 2.0,
+                point.y - size / 2.0,
+                size,
+                size,
+                SKELETON_POINT_SIZE / 2.0,
+                [_]u8{ 0, 0, 255, 255 },
+            );
+        }
+        return buffer;
+    }
+
+    pub fn getSkeletonDrawVertexData(
+        self: Path,
+        matrix: Matrix3x3,
+        allocator: std.mem.Allocator,
+    ) ![]triangles.DrawInstance {
+        var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
+        for (self.points.items, 0..) |relative_point, i| {
+            if (Path.isStraightLineHandle(relative_point)) {
+                // This is a straight line handle, skip it
+                continue;
+            }
+
+            const point = matrix.get(relative_point);
+
+            const is_control_point = i % 4 == 0 or i % 4 == 3;
+            if (!is_control_point) {
+                const connected_control_point_index = if (i % 4 == 1) i - 1 else (i + 1) % self.points.items.len;
+                const connected_control_point = matrix.get(self.points.items[connected_control_point_index]);
+                var buffer: [2]triangles.DrawInstance = undefined;
+                lines.getDrawVertexData(
+                    buffer[0..2],
+                    connected_control_point,
+                    point,
+                    3.0 * shared.render_scale,
+                    [_]u8{ 0, 0, 255, 255 },
+                    0.0,
+                );
+                try skeleton_buffer.appendSlice(&buffer);
+            }
+
+            const buffer = Path.getVertexSkeletonPoint(is_control_point, point);
             try skeleton_buffer.appendSlice(&buffer);
         }
 
-        const last_handle = self.points.items[self.points.items.len - 2];
-        if (!self.closed and self.points.items.len != 2 and last_handle.x < STRAIGHT_LINE_THRESHOLD) {
-            const last_cp = self.points.getLast();
+        const last_handle_norm = self.points.items[self.points.items.len - 2];
+        if (!self.closed and self.points.items.len != 2 and !Path.isStraightLineHandle(last_handle_norm)) {
+            const last_handle = matrix.get(last_handle_norm);
+            const last_cp = matrix.get(self.points.getLast());
             const forward_handle = getOppositeHandle(last_cp, last_handle);
             var line_buffer: [2]triangles.DrawInstance = undefined;
             lines.getDrawVertexData(
@@ -149,16 +176,7 @@ pub const Path = struct {
             );
             try skeleton_buffer.appendSlice(&line_buffer);
 
-            var square_buffer: [2]triangles.DrawInstance = undefined;
-            squares.getDrawVertexData(
-                square_buffer[0..2],
-                forward_handle.x - size / 2.0,
-                forward_handle.y - size / 2.0,
-                size,
-                size,
-                0.0,
-                [_]u8{ 0, 0, 255, 255 },
-            );
+            const square_buffer = Path.getVertexSkeletonPoint(false, forward_handle);
             try skeleton_buffer.appendSlice(&square_buffer);
         }
 
@@ -207,17 +225,16 @@ pub const Path = struct {
         }
         // Handle half straight lines to be treated as bezier curves
         for (curves, 0..) |point, i| {
-            const is_straight_line_handle = point.x > STRAIGHT_LINE_THRESHOLD;
-            if (is_straight_line_handle) {
+            if (Path.isStraightLineHandle(point)) {
                 if (i % 4 == 1) { // first handle
                     const second_handle = curves[i + 1];
-                    const is_full_straight_line = second_handle.x > STRAIGHT_LINE_THRESHOLD;
+                    const is_full_straight_line = Path.isStraightLineHandle(second_handle);
                     if (!is_full_straight_line) {
                         curves[i] = curves[i - 1]; // assign to closest control point
                     }
                 } else if (i % 4 == 2) { // second handle
                     const first_handle = curves[i - 1];
-                    const is_full_straight_line = first_handle.x > STRAIGHT_LINE_THRESHOLD;
+                    const is_full_straight_line = Path.isStraightLineHandle(first_handle);
                     if (!is_full_straight_line) {
                         curves[i] = curves[i + 1]; // assign to closest control point
                     }
@@ -235,6 +252,25 @@ pub const Path = struct {
         } else {
             return null;
         }
+    }
+
+    pub fn updateLastHandle(self: *Path, preview_point: Point) void {
+        const points = self.points.items;
+        if (self.closed) {
+            points[points.len - 2] = getOppositeHandle(points[0], preview_point);
+            points[1] = preview_point;
+        } else {
+            if (points.len == 2) { // there is only starting control point(no reflection of handle needed)
+                points[points.len - 1] = preview_point;
+            } else {
+                const control_point = points[points.len - 1];
+                points[points.len - 2] = getOppositeHandle(control_point, preview_point);
+            }
+        }
+    }
+
+    pub fn serialize(self: Path) []const Point {
+        return self.points.items;
     }
 
     pub fn deinit(self: *Path) void {

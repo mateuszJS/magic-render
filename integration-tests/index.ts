@@ -1,9 +1,15 @@
 import initCreator, { SerializedOutputAsset } from '../src/index'
 import { camera } from '../src/WebGPU/pointer'
 
+export interface AssetBasics {
+  id: number
+  points: Point[]
+  url: string
+}
+
 declare global {
   interface Window {
-    assetsSnapshot: SerializedOutputAsset[]
+    assetsSnapshot: AssetBasics[]
   }
 }
 
@@ -24,15 +30,33 @@ async function test() {
   function setAssetSnapshot(assets: SerializedOutputAsset[]) {
     const scale = (canvas.width * camera.zoom) / canvas.clientWidth
 
-    window.assetsSnapshot = assets.map((asset) => ({
-      ...asset,
-      points: asset.points.map((point) => ({
-        ...point,
-        x: point.x * scale + camera.x,
-        y: point.y * scale + camera.y,
-      })),
-    }))
+    window.assetsSnapshot = assets.map<AssetBasics>((asset) => {
+      if ('paths' in asset) {
+        return {
+          id: asset.id,
+          url: 'cache',
+          points: [],
+          // points:
+          //   asset.cache === null
+          //     ? []
+          //     : asset.bounds.map((point) => ({
+          //         x: point.x * scale + camera.x,
+          //         y: point.y * scale + camera.y,
+          //       })),
+        }
+      }
+      return {
+        id: asset.id,
+        url: '',
+        points: [],
+        // points: asset.points.map((point) => ({
+        //   x: point.x * scale + camera.x,
+        //   y: point.y * scale + camera.y,
+        // })),
+      }
+    })
   }
+
   let currentHistoryIndex = 0
   let newTextures = 0
   const creator = await initCreator(
@@ -101,12 +125,14 @@ async function test() {
 
     const PROJECT_SAMPLE = Array.from(files).map((file) => ({
       url: URL.createObjectURL(file),
-      points: [
-        { x: 100, y: 200, u: 0, v: 1 },
-        { x: 200, y: 200, u: 1, v: 1 },
-        { x: 200, y: 100, u: 1, v: 0 },
-        { x: 100, y: 100, u: 0, v: 0 },
+      // prettier-ignore
+      matrix: [
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, 1
       ],
+      width: 500,
+      height: 500,
     }))
 
     creator.resetAssets(PROJECT_SAMPLE, true)

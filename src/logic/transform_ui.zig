@@ -46,17 +46,17 @@ pub fn transformPoints(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     // it's important we dont meausre horizontal one, because reflecting by X axis makes no change in horizontal angle
     // but should be 180 degree opposite
     const t_matrix = Matrix3x3.rotation(asset_angle_y); // transfor matrix
-    const invert_t_matrix = t_matrix.inverse().?;
-    const pointer = invert_t_matrix.transformPoint(Point{
+    const invert_t_matrix = t_matrix.inverse();
+    const pointer = invert_t_matrix.get(Point{
         .x = raw_x,
         .y = raw_y,
     });
 
     var un_rotated_points = [4]Point{
-        invert_t_matrix.transformPoint(points[0]),
-        invert_t_matrix.transformPoint(points[1]),
-        invert_t_matrix.transformPoint(points[2]),
-        invert_t_matrix.transformPoint(points[3]),
+        invert_t_matrix.get(points[0]),
+        invert_t_matrix.get(points[1]),
+        invert_t_matrix.get(points[2]),
+        invert_t_matrix.get(points[3]),
     };
 
     switch (ui_component_id) {
@@ -133,10 +133,21 @@ pub fn transformPoints(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     }
 
     if (ui_component_id != 9) {
-        const p0 = t_matrix.transformPoint(un_rotated_points[0]);
-        const p1 = t_matrix.transformPoint(un_rotated_points[1]);
-        const p2 = t_matrix.transformPoint(un_rotated_points[2]);
-        const p3 = t_matrix.transformPoint(un_rotated_points[3]);
+        // make sure bounds is not smaller tan 1x1(it removed tons of edge cases)
+        if (@abs(un_rotated_points[0].x - un_rotated_points[1].x) < 1.0) {
+            un_rotated_points[1].x = un_rotated_points[0].x + 1.0;
+            un_rotated_points[2].x = un_rotated_points[3].x + 1.0;
+        }
+        if (@abs(un_rotated_points[0].y - un_rotated_points[3].y) < 1.0) {
+            un_rotated_points[3].y = un_rotated_points[0].y + 1.0;
+            un_rotated_points[2].y = un_rotated_points[1].y + 1.0;
+        }
+
+        // rotate bounds back to correct position
+        const p0 = t_matrix.get(un_rotated_points[0]);
+        const p1 = t_matrix.get(un_rotated_points[1]);
+        const p2 = t_matrix.get(un_rotated_points[2]);
+        const p3 = t_matrix.get(un_rotated_points[3]);
 
         points[0].x = p0.x;
         points[0].y = p0.y;
@@ -207,7 +218,7 @@ fn getPointsOfLine(points: [4]PointUV, t_line: TransformLine) struct { Point, Po
     }
 }
 
-pub const RENDER_TRIANGLE_INSTANCES = UI_VERTICIES_COUNT_BORDER * 2 * 2; // two triangle per line, each line has front and back color
+pub const RENDER_TRIANGLE_INSTANCES = UI_VERTICES_COUNT_BORDER * 2 * 2; // two triangle per line, each line has front and back color
 
 pub fn getDrawVertexData(
     triangle_buffer: *[RENDER_TRIANGLE_INSTANCES]Triangle.DrawInstance,
@@ -258,7 +269,7 @@ pub fn getDrawVertexData(
     }
 }
 
-pub const PICK_TRIANGLE_INSTANCES = UI_VERTICIES_COUNT_BORDER * 2;
+pub const PICK_TRIANGLE_INSTANCES = UI_VERTICES_COUNT_BORDER * 2;
 pub fn getPickVertexData(buffer: *[PICK_TRIANGLE_INSTANCES]Triangle.PickInstance, points: [4]PointUV) void {
     var i: usize = 0;
     for (resize_lines) |t_line| {

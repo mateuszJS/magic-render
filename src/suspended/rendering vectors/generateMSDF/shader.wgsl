@@ -61,7 +61,7 @@ const NO_EDGE_INDEX = 0xffffffffu; // represents NULL
 
 
 fn floatIsEqual(a: f32, b: f32) -> bool {
-  return abs(a - b) < EPSILON;
+  return abs(a - b) <= EPSILON;
 }
 
 // https://github.com/Chlumsky/msdfgen/blob/master/core/edge-segments.cpp#L132
@@ -87,7 +87,7 @@ fn normalize_custom(v: vec2f, allow_zero: bool) -> vec2f {
     let len: f32 = length(v); // Calculate the length
 
     // Check if the length is effectively non-zero
-    if (len > EPSILON) {
+    if (len >= EPSILON) {
         return v / len; // Normalize if length is sufficient
     }
 

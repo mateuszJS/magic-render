@@ -1,12 +1,13 @@
 const Point = @import("../types.zig").Point;
 const std = @import("std");
+const Path = @import("paths.zig").Path;
 
 /// Represents a 2D bounding box with minimum and maximum coordinates
 pub const BoundingBox = struct {
-    min_x: f32,
-    min_y: f32,
-    max_x: f32,
-    max_y: f32,
+    min_x: f32 = 0.0,
+    min_y: f32 = 0.0,
+    max_x: f32 = 0.0,
+    max_y: f32 = 0.0,
 };
 
 /// Calculate real bounding box for a cubic Bézier curve by finding extrema
@@ -112,7 +113,11 @@ fn evaluateCubicBezierComponent(t: f32, p0: f32, p1: f32, p2: f32, p3: f32) f32 
 /// Assumes curves array contains groups of 4 points (p0, p1, p2, p3) for each cubic Bézier
 /// Returns an allocated slice of 6 points representing two triangles for the bounding rectangle
 /// Caller owns the returned memory and must free it
-pub fn getBoundingBox(curves: []const Point, padding: f32) BoundingBox {
+pub fn getBoundingBox(curves: []const Point) BoundingBox {
+    // std.debug.print("curves len: {d}\n", .{curves.len});
+    if (curves.len == 0) {
+        return BoundingBox{};
+    }
     var box = BoundingBox{
         .min_x = std.math.inf(f32),
         .min_y = std.math.inf(f32),
@@ -125,9 +130,19 @@ pub fn getBoundingBox(curves: []const Point, padding: f32) BoundingBox {
     var i: usize = 0;
     while (i < num_cubic_curves) : (i += 1) {
         const p0 = curves[i * 4 + 0];
-        const p1 = curves[i * 4 + 1];
-        const p2 = curves[i * 4 + 2];
+        var p1 = curves[i * 4 + 1];
+        var p2 = curves[i * 4 + 2];
         const p3 = curves[i * 4 + 3];
+
+        // Do we need this? How did it worked before????? Wit treating stright handles as any point
+        if (Path.isStraightLineHandle(p1)) {
+            // If p1 is a straight line handle, we skip it
+            p1 = p0; // Use p0 as the first point
+        }
+        if (Path.isStraightLineHandle(p2)) {
+            // If p2 is a straight line handle, we skip it
+            p2 = p3; // Use p3 as the last point
+        }
 
         // Calculate real bounding box for this cubic Bézier curve
         const bounds = calculateCubicBezierRealBounds(p0, p1, p2, p3);
@@ -137,11 +152,6 @@ pub fn getBoundingBox(curves: []const Point, padding: f32) BoundingBox {
         box.max_x = @max(box.max_x, bounds.max_x);
         box.max_y = @max(box.max_y, bounds.max_y);
     }
-
-    box.min_x -= padding;
-    box.min_y -= padding;
-    box.max_x += padding;
-    box.max_y += padding;
 
     return box;
 }

@@ -1,6 +1,6 @@
 import mat4 from 'utils/mat4'
 import { pointer } from './pointer'
-import { on_update_pick } from '../logic/index.zig'
+import * as Logic from '../logic/index.zig'
 
 const NUM_PIXELS = 1
 
@@ -106,7 +106,7 @@ export default class PickManager {
     try {
       await this.pickBuffer.mapAsync(GPUMapMode.READ, 0, 4 * NUM_PIXELS)
       const [id] = new Uint32Array(this.pickBuffer.getMappedRange(0, 4 * NUM_PIXELS))
-      on_update_pick(id)
+      Logic.onUpdatePick(id)
 
       let i = 0
       while (i < pointer.afterPickEventsQueue.length) {

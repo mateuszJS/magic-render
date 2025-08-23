@@ -79,21 +79,58 @@ export function add(
 }
 
 export function getTexture(textureId: number): GPUTexture {
-  return textures[textureId].texture ?? loadingTexture
+  const texture = getOptionTexture(textureId)
+  if (!texture) throw Error('Texture not found with id: ' + textureId)
+  return texture
 }
 
-export function setTexture(texture: GPUTexture, optionalId: number | null) {
-  if (optionalId !== null) {
-    textures[optionalId].texture?.destroy()
+export function getTextureSafe(textureId: number): GPUTexture {
+  return getOptionTexture(textureId) ?? loadingTexture
+}
+
+export function getOptionTexture(textureId: number): GPUTexture | undefined {
+  return textures[textureId].texture
+}
+
+export function createCacheTexture(): number {
+  const textureId = textures.length
+  textures.push({ url: 'cache' })
+  return textureId
+}
+
+export function createSDF(): number {
+  const textureId = textures.length
+  const label = `SDF texture ${textureId}`
+  const texture: GPUTexture = device.createTexture({
+    label,
+    size: [1, 1],
+    format: 'rgba32float',
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  })
+
+  textures.push({ url: label, texture })
+  return textureId
+}
+
+export function updateSDF(textureId: number, width: number, height: number): void {
+  const label = `SDF texture ${textureId}`
+  const texture: GPUTexture = device.createTexture({
+    label,
+    size: [width, height],
+    format: 'rgba32float',
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  })
+
+  textures[textureId].texture?.destroy()
+  textures[textureId].texture = texture
+}
+
+export function setCacheTexture(id: number, texture: GPUTexture) {
+  if (textures[id].texture !== texture) {
+    textures[id].texture?.destroy()
   }
 
-  const id = optionalId ?? textures.length
-  textures[id] = {
-    url: 'cache',
-    texture,
-  }
-
-  return id
+  textures[id].texture = texture
 }
 
 export function getUrl(textureId: number): string {
