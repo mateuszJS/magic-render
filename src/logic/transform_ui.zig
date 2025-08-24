@@ -41,86 +41,89 @@ pub fn isTransformUi(id: u32) bool {
     return id >= 1 and id <= 9;
 }
 
-pub fn transformPoints(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, raw_y: f32) void {
-    const asset_angle_y = points[0].angleTo(points[3]) + std.math.pi / 2.0;
-    // it's important we dont meausre horizontal one, because reflecting by X axis makes no change in horizontal angle
+pub fn transformPoints(ui_component_id: u32, bounds: *[4]PointUV, raw_x: f32, raw_y: f32) void {
+    const asset_angle_y = bounds[0].angleTo(bounds[3]) + std.math.pi / 2.0;
+    // it's important we don't measure horizontal one, because reflecting by X axis makes no change in horizontal angle
     // but should be 180 degree opposite
-    const asset_center = points[0].mid(points[2]);
+    const asset_center = bounds[0].mid(bounds[2]);
     var matrix = Matrix3x3.rotation(-asset_angle_y); // transfor matrix
-    matrix.translate(-asset_center.x, -asset_center.y);
+    matrix.translate(-asset_center.x, -asset_center.y); // useufl for angle and mirrored scaling(with shift/alt)
 
     const pointer = matrix.get(Point{
         .x = raw_x,
         .y = raw_y,
     });
 
-    var un_rotated_points = [4]Point{
-        matrix.get(points[0]),
-        matrix.get(points[1]),
-        matrix.get(points[2]),
-        matrix.get(points[3]),
+    var points = [4]Point{
+        matrix.get(bounds[0]),
+        matrix.get(bounds[1]),
+        matrix.get(bounds[2]),
+        matrix.get(bounds[3]),
     };
 
     switch (ui_component_id) {
         1 => {
             // Top left corner
-            un_rotated_points[0].x = pointer.x;
-            un_rotated_points[0].y = pointer.y;
-            un_rotated_points[1].y = pointer.y;
-            un_rotated_points[3].x = pointer.x;
+            points[0].x = pointer.x;
+            points[0].y = pointer.y;
+            points[1].y = pointer.y;
+            points[3].x = pointer.x;
         },
         2 => {
             // Top right corner
-            un_rotated_points[1].x = pointer.x;
-            un_rotated_points[1].y = pointer.y;
-            un_rotated_points[0].y = pointer.y;
-            un_rotated_points[2].x = pointer.x;
+            points[1].x = pointer.x;
+            points[1].y = pointer.y;
+            points[0].y = pointer.y;
+            points[2].x = pointer.x;
         },
         3 => {
             // bottom right corner
-            un_rotated_points[2].x = pointer.x;
-            un_rotated_points[2].y = pointer.y;
-            un_rotated_points[3].y = pointer.y;
-            un_rotated_points[1].x = pointer.x;
+            points[2].x = pointer.x;
+            points[2].y = pointer.y;
+            points[3].y = pointer.y;
+            points[1].x = pointer.x;
         },
         4 => {
             // bottom left corner
-            un_rotated_points[3].x = pointer.x;
-            un_rotated_points[3].y = pointer.y;
-            un_rotated_points[2].y = pointer.y;
-            un_rotated_points[0].x = pointer.x;
+            points[3].x = pointer.x;
+            points[3].y = pointer.y;
+            points[2].y = pointer.y;
+            points[0].x = pointer.x;
         },
         5 => {
             // top
-            un_rotated_points[0].y = pointer.y;
-            un_rotated_points[1].y = pointer.y;
+            points[0].y = pointer.y;
+            points[1].y = pointer.y;
         },
 
         6 => {
             // right
-            un_rotated_points[1].x = pointer.x;
-            un_rotated_points[2].x = pointer.x;
+            points[1].x = pointer.x;
+            points[2].x = pointer.x;
         },
 
         7 => {
             // bottom
-            un_rotated_points[2].y = pointer.y;
-            un_rotated_points[3].y = pointer.y;
+            points[2].y = pointer.y;
+            points[3].y = pointer.y;
         },
 
         8 => {
             // left
-            un_rotated_points[0].x = pointer.x;
-            un_rotated_points[3].x = pointer.x;
+            points[0].x = pointer.x;
+            points[3].x = pointer.x;
         },
         9 => {
             // rotation
             const asset_new_angle = std.math.atan2(
-                -pointer.y,
-                -pointer.x,
-            ) - std.math.pi / 2.0;
+                pointer.y,
+                pointer.x,
+            ) + std.math.pi / 2.0;
             const new_rotation = Matrix3x3.rotation(asset_new_angle);
-            for (&un_rotated_points) |*p| {
+
+            // Would be nice if all transformation work this way or preparing matrix
+            // and just apply matrix to all points
+            for (&points) |*p| {
                 const new_point = new_rotation.get(p);
                 p.x = new_point.x;
                 p.y = new_point.y;
@@ -129,32 +132,23 @@ pub fn transformPoints(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
         else => unreachable,
     }
 
-    if (ui_component_id != 9) {
-        // make sure bounds is not smaller tan 1x1(it removed tons of edge cases)
-        if (@abs(un_rotated_points[0].x - un_rotated_points[1].x) < 1.0) {
-            un_rotated_points[1].x = un_rotated_points[0].x + 1.0;
-            un_rotated_points[2].x = un_rotated_points[3].x + 1.0;
-        }
-        if (@abs(un_rotated_points[0].y - un_rotated_points[3].y) < 1.0) {
-            un_rotated_points[3].y = un_rotated_points[0].y + 1.0;
-            un_rotated_points[2].y = un_rotated_points[1].y + 1.0;
-        }
+    // make sure bounds is not smaller tan 1x1(it removed tons of edge cases)
+    if (points[0].distance(points[1]) < 1.0) {
+        points[1].x = points[0].x + 1.0;
+        points[2].x = points[3].x + 1.0;
     }
-    // rotate bounds back to correct position
-    const i_matrix = matrix.inverse();
-    const p0 = i_matrix.get(un_rotated_points[0]);
-    const p1 = i_matrix.get(un_rotated_points[1]);
-    const p2 = i_matrix.get(un_rotated_points[2]);
-    const p3 = i_matrix.get(un_rotated_points[3]);
+    if (points[0].distance(points[3]) < 1.0) {
+        points[3].y = points[0].y + 1.0;
+        points[2].y = points[1].y + 1.0;
+    }
 
-    points[0].x = p0.x;
-    points[0].y = p0.y;
-    points[1].x = p1.x;
-    points[1].y = p1.y;
-    points[2].x = p2.x;
-    points[2].y = p2.y;
-    points[3].x = p3.x;
-    points[3].y = p3.y;
+    // transform bounds back to correct position
+    const i_matrix = matrix.inverse();
+    for (bounds, points) |*b, p| {
+        const t_p = i_matrix.get(p);
+        b.x = t_p.x;
+        b.y = t_p.y;
+    }
 }
 
 fn getPointsOfLine(points: [4]PointUV, t_line: TransformLine) struct { Point, Point } {
