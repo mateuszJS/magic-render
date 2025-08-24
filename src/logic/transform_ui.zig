@@ -113,20 +113,20 @@ pub fn transformPoints(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
         },
         9 => {
             // rotation
-            const asset_center = points[0].mid(points[2]);
+            const asset_center = un_rotated_points[0].mid(un_rotated_points[2]);
             const asset_new_angle = std.math.atan2(
-                asset_center.y - raw_y,
-                asset_center.x - raw_x,
+                asset_center.y - pointer.y,
+                asset_center.x - pointer.x,
             ) - std.math.pi / 2.0;
 
-            for (points) |*point| {
-                const current_angle = std.math.atan2(point.y - asset_center.y, point.x - asset_center.x);
-                const default_angle = current_angle - asset_angle_y; // angle without any user rotation introduced
-                const length = std.math.hypot(point.x - asset_center.x, point.y - asset_center.y);
-                const new_angle = default_angle + asset_new_angle;
+            var new_matrix = Matrix3x3.translation(asset_center.x, asset_center.y);
+            new_matrix.rotate(asset_new_angle);
+            new_matrix.translate(-asset_center.x, -asset_center.y);
 
-                point.x = asset_center.x + length * @cos(new_angle);
-                point.y = asset_center.y + length * @sin(new_angle);
+            for (&un_rotated_points) |*p| {
+                const new_point = new_matrix.get(p);
+                p.x = new_point.x;
+                p.y = new_point.y;
             }
         },
         else => unreachable,
@@ -142,22 +142,21 @@ pub fn transformPoints(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
             un_rotated_points[3].y = un_rotated_points[0].y + 1.0;
             un_rotated_points[2].y = un_rotated_points[1].y + 1.0;
         }
-
-        // rotate bounds back to correct position
-        const p0 = t_matrix.get(un_rotated_points[0]);
-        const p1 = t_matrix.get(un_rotated_points[1]);
-        const p2 = t_matrix.get(un_rotated_points[2]);
-        const p3 = t_matrix.get(un_rotated_points[3]);
-
-        points[0].x = p0.x;
-        points[0].y = p0.y;
-        points[1].x = p1.x;
-        points[1].y = p1.y;
-        points[2].x = p2.x;
-        points[2].y = p2.y;
-        points[3].x = p3.x;
-        points[3].y = p3.y;
     }
+    // rotate bounds back to correct position
+    const p0 = t_matrix.get(un_rotated_points[0]);
+    const p1 = t_matrix.get(un_rotated_points[1]);
+    const p2 = t_matrix.get(un_rotated_points[2]);
+    const p3 = t_matrix.get(un_rotated_points[3]);
+
+    points[0].x = p0.x;
+    points[0].y = p0.y;
+    points[1].x = p1.x;
+    points[1].y = p1.y;
+    points[2].x = p2.x;
+    points[2].y = p2.y;
+    points[3].x = p3.x;
+    points[3].y = p3.y;
 }
 
 fn getPointsOfLine(points: [4]PointUV, t_line: TransformLine) struct { Point, Point } {
