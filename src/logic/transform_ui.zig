@@ -45,18 +45,20 @@ pub fn transformPoints(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
     const asset_angle_y = points[0].angleTo(points[3]) + std.math.pi / 2.0;
     // it's important we dont meausre horizontal one, because reflecting by X axis makes no change in horizontal angle
     // but should be 180 degree opposite
-    const t_matrix = Matrix3x3.rotation(asset_angle_y); // transfor matrix
-    const invert_t_matrix = t_matrix.inverse();
-    const pointer = invert_t_matrix.get(Point{
+    const asset_center = points[0].mid(points[2]);
+    var matrix = Matrix3x3.rotation(-asset_angle_y); // transfor matrix
+    matrix.translate(-asset_center.x, -asset_center.y);
+
+    const pointer = matrix.get(Point{
         .x = raw_x,
         .y = raw_y,
     });
 
     var un_rotated_points = [4]Point{
-        invert_t_matrix.get(points[0]),
-        invert_t_matrix.get(points[1]),
-        invert_t_matrix.get(points[2]),
-        invert_t_matrix.get(points[3]),
+        matrix.get(points[0]),
+        matrix.get(points[1]),
+        matrix.get(points[2]),
+        matrix.get(points[3]),
     };
 
     switch (ui_component_id) {
@@ -113,18 +115,13 @@ pub fn transformPoints(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
         },
         9 => {
             // rotation
-            const asset_center = un_rotated_points[0].mid(un_rotated_points[2]);
             const asset_new_angle = std.math.atan2(
-                asset_center.y - pointer.y,
-                asset_center.x - pointer.x,
+                -pointer.y,
+                -pointer.x,
             ) - std.math.pi / 2.0;
-
-            var new_matrix = Matrix3x3.translation(asset_center.x, asset_center.y);
-            new_matrix.rotate(asset_new_angle);
-            new_matrix.translate(-asset_center.x, -asset_center.y);
-
+            const new_rotation = Matrix3x3.rotation(asset_new_angle);
             for (&un_rotated_points) |*p| {
-                const new_point = new_matrix.get(p);
+                const new_point = new_rotation.get(p);
                 p.x = new_point.x;
                 p.y = new_point.y;
             }
@@ -144,10 +141,11 @@ pub fn transformPoints(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, ra
         }
     }
     // rotate bounds back to correct position
-    const p0 = t_matrix.get(un_rotated_points[0]);
-    const p1 = t_matrix.get(un_rotated_points[1]);
-    const p2 = t_matrix.get(un_rotated_points[2]);
-    const p3 = t_matrix.get(un_rotated_points[3]);
+    const i_matrix = matrix.inverse();
+    const p0 = i_matrix.get(un_rotated_points[0]);
+    const p1 = i_matrix.get(un_rotated_points[1]);
+    const p2 = i_matrix.get(un_rotated_points[2]);
+    const p3 = i_matrix.get(un_rotated_points[3]);
 
     points[0].x = p0.x;
     points[0].y = p0.y;
