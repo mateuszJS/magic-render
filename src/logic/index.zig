@@ -362,7 +362,11 @@ pub fn onPointerMove(x: f32, y: f32) !void {
             }
         },
         .Transform => {
-            TransformUI.transformPoints(state.hovered_asset_id, bounds, x, y);
+            TransformUI.transformPoints(
+                state.hovered_asset_id,
+                bounds,
+                types.Point{ .x = x, .y = y },
+            );
         },
         .None => {},
     }
