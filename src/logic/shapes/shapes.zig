@@ -10,6 +10,7 @@ const Path = @import("paths.zig").Path;
 const shared = @import("../shared.zig");
 const images = @import("../images.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
+const DEFAULT_BOUNDS = @import("../consts.zig").DEFAULT_BOUNDS;
 
 const EPSILON = std.math.floatEps(f32);
 
@@ -37,13 +38,6 @@ pub const ShapeProps = struct {
 pub const Preview = struct {
     index: usize,
     point: Point,
-};
-
-const DEFAULT_BOUNDS = [4]PointUV{
-    .{ .x = 0.0, .y = 1.0, .u = 0.0, .v = 1.0 },
-    .{ .x = 1.0, .y = 1.0, .u = 1.0, .v = 1.0 },
-    .{ .x = 1.0, .y = 0.0, .u = 1.0, .v = 0.0 },
-    .{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 },
 };
 
 pub fn getSkeletonUniform() Uniform {

@@ -208,6 +208,33 @@ pub const Matrix3x3 = struct {
             0.0,          0.0,          1.0,
         });
     }
+
+    // scales the matrix around a pivot point (px, py
+    pub fn pivotScale(self: *Matrix3x3, sx: f32, sy: f32, px: f32, py: f32) void {
+        self.* = Matrix3x3.multiply(self.*, Matrix3x3.from([_]f32{
+            sx, 0,  px * (1 - sx),
+            0,  sy, py * (1 - sy),
+            0,  0,  1,
+        }));
+    }
+
+    // this function rotated by the angle which is not uniform in x and y axis
+    // so for example x or y is scaled, so angle should be also adjusted
+    pub fn rotateScaled(self: *Matrix3x3, angle_rad: f32, aspect: f32) void {
+        const c = std.math.cos(angle_rad);
+        const s = std.math.sin(angle_rad);
+        self.* = Matrix3x3.multiply(self.*, Matrix3x3.from([_]f32{
+            c,          -s / aspect, 0.0,
+            s * aspect, c,           0.0,
+            0.0,        0.0,         1.0,
+        }));
+    }
+
+    // Returns true if the transformation causes a reflection (i.e., the coordinate system is flipped).
+    pub fn isMirrored(self: Matrix3x3) bool {
+        const det = self.values[0] * self.values[4] - self.values[1] * self.values[3];
+        return det < 0;
+    }
 };
 
 // --- Tests ---

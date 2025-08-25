@@ -7,6 +7,7 @@ const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 const Msdf = @import("msdf.zig");
 const Triangle = @import("triangle.zig");
 const shared = @import("shared.zig");
+const DEFAULT_BOUNDS = @import("consts.zig").DEFAULT_BOUNDS;
 
 const white = [4]u8{ 255, 255, 255, 255 };
 const black = [4]u8{ 0, 0, 0, 255 };
@@ -41,122 +42,61 @@ pub fn isTransformUi(id: u32) bool {
     return id >= 1 and id <= 9;
 }
 
-pub fn transformPoints(ui_component_id: u32, points: *[4]PointUV, raw_x: f32, raw_y: f32) void {
-    const asset_angle_y = points[0].angleTo(points[3]) + std.math.pi / 2.0;
-    // it's important we dont meausre horizontal one, because reflecting by X axis makes no change in horizontal angle
-    // but should be 180 degree opposite
-    const t_matrix = Matrix3x3.rotation(asset_angle_y); // transfor matrix
-    const invert_t_matrix = t_matrix.inverse();
-    const pointer = invert_t_matrix.get(Point{
-        .x = raw_x,
-        .y = raw_y,
-    });
-
-    var un_rotated_points = [4]Point{
-        invert_t_matrix.get(points[0]),
-        invert_t_matrix.get(points[1]),
-        invert_t_matrix.get(points[2]),
-        invert_t_matrix.get(points[3]),
-    };
+pub fn transformPoints(ui_component_id: u32, bounds: *[4]PointUV, raw_pointer: Point) void {
+    var matrix = Matrix3x3.getMatrixFromRectangle(bounds.*);
+    const pointer = matrix.inverse().get(raw_pointer);
 
     switch (ui_component_id) {
-        1 => {
-            // Top left corner
-            un_rotated_points[0].x = pointer.x;
-            un_rotated_points[0].y = pointer.y;
-            un_rotated_points[1].y = pointer.y;
-            un_rotated_points[3].x = pointer.x;
-        },
-        2 => {
-            // Top right corner
-            un_rotated_points[1].x = pointer.x;
-            un_rotated_points[1].y = pointer.y;
-            un_rotated_points[0].y = pointer.y;
-            un_rotated_points[2].x = pointer.x;
-        },
-        3 => {
-            // bottom right corner
-            un_rotated_points[2].x = pointer.x;
-            un_rotated_points[2].y = pointer.y;
-            un_rotated_points[3].y = pointer.y;
-            un_rotated_points[1].x = pointer.x;
-        },
-        4 => {
-            // bottom left corner
-            un_rotated_points[3].x = pointer.x;
-            un_rotated_points[3].y = pointer.y;
-            un_rotated_points[2].y = pointer.y;
-            un_rotated_points[0].x = pointer.x;
-        },
-        5 => {
-            // top
-            un_rotated_points[0].y = pointer.y;
-            un_rotated_points[1].y = pointer.y;
-        },
-
-        6 => {
-            // right
-            un_rotated_points[1].x = pointer.x;
-            un_rotated_points[2].x = pointer.x;
-        },
-
-        7 => {
-            // bottom
-            un_rotated_points[2].y = pointer.y;
-            un_rotated_points[3].y = pointer.y;
-        },
-
-        8 => {
-            // left
-            un_rotated_points[0].x = pointer.x;
-            un_rotated_points[3].x = pointer.x;
-        },
+        1 => matrix.pivotScale(1 - pointer.x, pointer.y, 1, 0), // Top left corner
+        2 => matrix.pivotScale(pointer.x, pointer.y, 0, 0), // Top right corner
+        3 => matrix.pivotScale(pointer.x, 1 - pointer.y, 0, 1), // bottom right corner
+        4 => matrix.pivotScale(1 - pointer.x, 1 - pointer.y, 1, 1), // bottom left corner
+        5 => matrix.pivotScale(1, pointer.y, 0, 0), // top
+        6 => matrix.pivotScale(pointer.x, 1, 0, 0), // right
+        7 => matrix.pivotScale(1, 1 - pointer.y, 0, 1), // bottom
+        8 => matrix.pivotScale(1 - pointer.x, 1, 1, 0), // left
         9 => {
             // rotation
-            const asset_center = points[0].mid(points[2]);
-            const asset_new_angle = std.math.atan2(
-                asset_center.y - raw_y,
-                asset_center.x - raw_x,
-            ) - std.math.pi / 2.0;
+            const center = bounds[0].mid(bounds[2]);
+            const asset_angle_y = bounds[0].angleTo(bounds[3]);
+            var asset_new_angle = center.angleTo(raw_pointer) - asset_angle_y;
 
-            for (points) |*point| {
-                const current_angle = std.math.atan2(point.y - asset_center.y, point.x - asset_center.x);
-                const default_angle = current_angle - asset_angle_y; // angle without any user rotation introduced
-                const length = std.math.hypot(point.x - asset_center.x, point.y - asset_center.y);
-                const new_angle = default_angle + asset_new_angle;
-
-                point.x = asset_center.x + length * @cos(new_angle);
-                point.y = asset_center.y + length * @sin(new_angle);
+            if (matrix.isMirrored()) {
+                asset_new_angle *= -1;
             }
+
+            matrix.translate(0.5, 0.5);
+            const aspect = bounds[0].distance(bounds[1]) / bounds[0].distance(bounds[3]);
+            matrix.rotateScaled(asset_new_angle, aspect);
+            matrix.translate(-0.5, -0.5);
         },
         else => unreachable,
     }
 
-    if (ui_component_id != 9) {
-        // make sure bounds is not smaller tan 1x1(it removed tons of edge cases)
-        if (@abs(un_rotated_points[0].x - un_rotated_points[1].x) < 1.0) {
-            un_rotated_points[1].x = un_rotated_points[0].x + 1.0;
-            un_rotated_points[2].x = un_rotated_points[3].x + 1.0;
-        }
-        if (@abs(un_rotated_points[0].y - un_rotated_points[3].y) < 1.0) {
-            un_rotated_points[3].y = un_rotated_points[0].y + 1.0;
-            un_rotated_points[2].y = un_rotated_points[1].y + 1.0;
-        }
+    // angles has to be captured before transformation
+    // just in case we will flatten one of the dimensions, then all the angles will point in one of two directions
+    // and will NOT produce 1x1 bounds, but more like 1x0 or 0x1
+    const angle_x = bounds[0].angleTo(bounds[1]);
+    const angle_y = bounds[0].angleTo(bounds[3]);
 
-        // rotate bounds back to correct position
-        const p0 = t_matrix.get(un_rotated_points[0]);
-        const p1 = t_matrix.get(un_rotated_points[1]);
-        const p2 = t_matrix.get(un_rotated_points[2]);
-        const p3 = t_matrix.get(un_rotated_points[3]);
+    for (bounds, DEFAULT_BOUNDS) |*b, p| {
+        const t_p = matrix.get(p);
+        b.x = t_p.x;
+        b.y = t_p.y;
+    }
 
-        points[0].x = p0.x;
-        points[0].y = p0.y;
-        points[1].x = p1.x;
-        points[1].y = p1.y;
-        points[2].x = p2.x;
-        points[2].y = p2.y;
-        points[3].x = p3.x;
-        points[3].y = p3.y;
+    if (bounds[0].distance(bounds[1]) < 1.0) {
+        bounds[1].x = bounds[0].x + @cos(angle_x);
+        bounds[1].y = bounds[0].y + @sin(angle_x);
+        bounds[2].x = bounds[3].x + @cos(angle_x);
+        bounds[2].y = bounds[3].y + @sin(angle_x);
+    }
+
+    if (bounds[0].distance(bounds[3]) < 1.0) {
+        bounds[3].x = bounds[0].x + @cos(angle_y);
+        bounds[3].y = bounds[0].y + @sin(angle_y);
+        bounds[2].x = bounds[1].x + @cos(angle_y);
+        bounds[2].y = bounds[1].y + @sin(angle_y);
     }
 }
 
