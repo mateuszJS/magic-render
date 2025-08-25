@@ -7,6 +7,7 @@ const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 const Msdf = @import("msdf.zig");
 const Triangle = @import("triangle.zig");
 const shared = @import("shared.zig");
+const DEFAULT_BOUNDS = @import("consts.zig").DEFAULT_BOUNDS;
 
 const white = [4]u8{ 255, 255, 255, 255 };
 const black = [4]u8{ 0, 0, 0, 255 };
@@ -45,13 +46,6 @@ pub fn transformPoints(ui_component_id: u32, bounds: *[4]PointUV, raw_pointer: P
     var matrix = Matrix3x3.getMatrixFromRectangle(bounds.*);
     const pointer = matrix.inverse().get(raw_pointer);
 
-    const DEFAULT_RECT: [4]PointUV = [_]PointUV{
-        .{ .x = 0.0, .y = 1.0, .u = 0.0, .v = 1.0 },
-        .{ .x = 1.0, .y = 1.0, .u = 1.0, .v = 1.0 },
-        .{ .x = 1.0, .y = 0.0, .u = 1.0, .v = 0.0 },
-        .{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 },
-    };
-
     switch (ui_component_id) {
         1 => matrix.pivotScale(1 - pointer.x, pointer.y, 1, 0), // Top left corner
         2 => matrix.pivotScale(pointer.x, pointer.y, 0, 0), // Top right corner
@@ -85,7 +79,7 @@ pub fn transformPoints(ui_component_id: u32, bounds: *[4]PointUV, raw_pointer: P
     const angle_x = bounds[0].angleTo(bounds[1]);
     const angle_y = bounds[0].angleTo(bounds[3]);
 
-    for (bounds, DEFAULT_RECT) |*b, p| {
+    for (bounds, DEFAULT_BOUNDS) |*b, p| {
         const t_p = matrix.get(p);
         b.x = t_p.x;
         b.y = t_p.y;
