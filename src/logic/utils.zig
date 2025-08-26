@@ -16,6 +16,6 @@ pub fn getNextPowerOfTwo(value: f32) f32 {
 }
 
 const EPSILON = math.floatEps(f32);
-pub fn cmpF32(a: f32, b: f32) bool {
+pub fn equalF32(a: f32, b: f32) bool {
     return @abs(a - b) < EPSILON;
 }

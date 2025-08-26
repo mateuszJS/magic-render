@@ -1,31 +1,40 @@
 import shaderCode from './shader.wgsl'
 
-export default function getComputeSDF(device: GPUDevice, buffersToDestroy: GPUBuffer[]) {
+export default function getComputeShape(device: GPUDevice, buffersToDestroy: GPUBuffer[]) {
   const shaderModule = device.createShaderModule({
-    label: 'compute SDF shader',
+    label: 'computeShape shader',
     code: shaderCode,
   })
 
   const pipeline = device.createComputePipeline({
-    label: 'compute SDF pipeline',
+    label: 'computeShape pipeline',
     layout: 'auto',
     compute: {
       module: shaderModule,
     },
   })
 
-  return function drawShape(
+  return function computeShape(
     passEncoder: GPUComputePassEncoder,
     curvesDataView: DataView,
+    distanceScaleFactor: number,
     texture: GPUTexture
   ) {
     const curvesBuffer = device.createBuffer({
-      label: 'drawShape curves buffer',
+      label: 'computeShape curves buffer',
       size: curvesDataView.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(curvesBuffer, 0, curvesDataView)
     buffersToDestroy.push(curvesBuffer)
+
+    const uniformBuffer = device.createBuffer({
+      label: 'computeShape uniform buffer',
+      size: 4 /*scale*/ + 12 /*padding*/,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    })
+    device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([distanceScaleFactor]))
+    buffersToDestroy.push(uniformBuffer)
 
     passEncoder.setPipeline(pipeline)
 
@@ -34,6 +43,7 @@ export default function getComputeSDF(device: GPUDevice, buffersToDestroy: GPUBu
       entries: [
         { binding: 0, resource: texture.createView() },
         { binding: 1, resource: { buffer: curvesBuffer } },
+        { binding: 2, resource: { buffer: uniformBuffer } },
       ],
     })
 

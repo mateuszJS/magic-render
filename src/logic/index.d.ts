@@ -61,7 +61,12 @@ type PointerDataView = {
 }
 
 declare module '*.zig' {
-  export const initState: (width: number, height: number, max_texture_size: number) => void
+  export const initState: (
+    width: number,
+    height: number,
+    max_texture_size: number,
+    max_buffer_size: number
+  ) => void
   export const addImage: (maybe_asset_id: number, points: PointUV[], texture_id: number) => void
   export const addShape: (
     maybe_asset_id: number,
@@ -91,6 +96,7 @@ declare module '*.zig' {
       curves_data: ArrayPointerDataView,
       width: number,
       height: number,
+      distance_scale: number,
       texture_id: number
     ) => void
     draw_shape: (
@@ -109,7 +115,7 @@ declare module '*.zig' {
   export const connectCreateSdfTexture: (cb: () => number) => void
   export const connectCacheCallbacks: (
     create_cache_texture: () => number,
-    start_cache: (texture_dd: number, box: BoundingBox, width: number, height: number) => void,
+    start_cache: (texture_id: number, box: BoundingBox, width: number, height: number) => void,
     end_cache: VoidFunction
   ) => void
 

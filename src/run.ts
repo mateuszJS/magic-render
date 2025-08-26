@@ -8,7 +8,7 @@ import {
   canvasMatrixBuffer,
   pickCanvasMatrixBuffer,
   drawShape,
-  computeSDF,
+  computeShape,
   pickShape,
 } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
@@ -56,19 +56,10 @@ export default function runCreator(
       }
       */
     },
-    compute_shape: (curves_data, width, height, textureId) => {
+    compute_shape: (curves_data, width, height, distanceScaleFactor, textureId) => {
       const curvesDataView = curves_data['*'].dataView
       Textures.updateSDF(textureId, width, height)
-      computeSDF(computePass, curvesDataView, Textures.getTexture(textureId))
-      // drawShape(renderPass, curvesDataView, boundBoxDataView, uniform_data.dataView)
-
-      /*
-      samplesCount++
-      total += performance.now() - time
-      if (samplesCount % 100 === 0) {
-        console.log('Average draw time:', total / samplesCount)
-      }
-      */
+      computeShape(computePass, curvesDataView, distanceScaleFactor, Textures.getTexture(textureId))
     },
     draw_shape: (bound_box_data, uniform_data, textureId) => {
       const boundBoxDataView = bound_box_data['*'].dataView
@@ -76,12 +67,6 @@ export default function runCreator(
     },
     pick_texture: (vertex_data, texture_id) => {
       const dataView = vertex_data['*'].dataView
-      // const uints = new Uint32Array(
-      //   dataView.buffer.slice(dataView.byteOffset, dataView.byteOffset + dataView.byteLength)
-      // )
-      // for (let i = 0; i < uints.length; i += 5) {
-      //   console.log('texture id', uints[i + 4])
-      // }
       pickTexture(pickPass, dataView, Textures.getTextureSafe(texture_id))
     },
     pick_shape: (bound_box_data, uniform_data, textureId) => {

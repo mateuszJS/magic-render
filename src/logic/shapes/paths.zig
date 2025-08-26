@@ -119,7 +119,7 @@ pub const Path = struct {
                 point.y - size / 2.0,
                 size,
                 size,
-                SKELETON_POINT_SIZE / 2.0,
+                size / 2.0,
                 [_]u8{ 0, 0, 255, 255 },
             );
         }

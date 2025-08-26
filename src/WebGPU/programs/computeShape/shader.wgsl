@@ -8,8 +8,13 @@ struct CubicBezier {
   p3: vec2f,
 };
 
+struct Uniforms {
+  distance_scale: f32,
+};
+
 @group(0) @binding(0) var tex: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(1) var<storage, read> curves: array<vec2f>;
+@group(0) @binding(2) var<uniform> u: Uniforms;
 
 @compute @workgroup_size(1) fn cs(
   @builtin(global_invocation_id) id : vec3u
@@ -18,7 +23,7 @@ struct CubicBezier {
   let shape_info = evaluate_shape(pos);
 
   textureStore(tex, id.xy, vec4f(
-    shape_info.signed_distance,
+    shape_info.signed_distance * u.distance_scale,
     shape_info.t,
     shape_info.angle,
     1.0

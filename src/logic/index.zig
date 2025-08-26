@@ -1,20 +1,22 @@
 const std = @import("std");
-const types = @import("./types.zig");
-const images = @import("./images.zig");
+const types = @import("types.zig");
+const images = @import("images.zig");
 const Line = @import("line.zig");
 const Triangle = @import("triangle.zig");
-const TransformUI = @import("./transform_ui.zig");
+const TransformUI = @import("transform_ui.zig");
 const zigar = @import("zigar");
-const Msdf = @import("./msdf.zig");
+const Msdf = @import("msdf.zig");
 const shapes = @import("./shapes/shapes.zig");
 const squares = @import("squares.zig");
 const bounding_box = @import("shapes/bounding_box.zig");
-const shared = @import("./shared.zig");
+const shared = @import("shared.zig");
+const get_sdf_texture_size = @import("get_sdf_texture_size.zig").get_sdf_texture_size;
+const Utils = @import("utils.zig");
 
 const WebGpuPrograms = struct {
     draw_texture: *const fn (images.DrawVertex, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
-    compute_shape: *const fn ([]const types.Point, f32, f32, u32) void,
+    compute_shape: *const fn ([]const types.Point, u32, u32, f32, u32) void,
     draw_shape: *const fn ([]const types.PointUV, shapes.Uniform, u32) void,
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
@@ -113,8 +115,9 @@ var state = State{
     .last_pointer_coords = types.Point{ .x = 0.0, .y = 0.0 },
 };
 
-pub fn initState(width: f32, height: f32, texture_max_size: f32) void {
-    _ = texture_max_size; // autofix
+pub fn initState(width: f32, height: f32, texture_max_size: f32, max_buffer_size: f32) void {
+    shared.texture_max_size = texture_max_size;
+    shared.max_buffer_size = max_buffer_size;
     state.width = width;
     state.height = height;
     state.assets = std.AutoArrayHashMap(u32, Asset).init(std.heap.page_allocator);
@@ -125,24 +128,16 @@ pub fn updateRenderScale(scale: f32) !void {
     shared.render_scale = scale;
 
     var iterator = state.assets.iterator();
-
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-    _ = allocator; // autofix
-
     while (iterator.next()) |asset| {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                _ = shape; // autofix
-                // if (shape.cache.valid) {
-                // if it's valid, then lets update, if it's invalid, then is gonna be updated anyway(with correct fresh data)
-                // if (shape.updateTextureSize()) {
-                //     std.debug.print("texture size has changed, updating shape cache\n", .{});
-                //     try shape.drawTextureCache(allocator);
-                // }
-                // }
+                const bounds = shape.getBoundsWithPadding(1 / shared.render_scale);
+                const new_size = get_sdf_texture_size(bounds);
+
+                if (new_size.w > shape.sdf_size.w or new_size.h > shape.sdf_size.h) {
+                    shape.outdated_sdf = true;
+                }
             },
         }
     }
@@ -279,7 +274,6 @@ fn updateSelectedAsset(id: u32) !void {
     try commitChanges();
 
     state.selected_asset_id = id;
-    shapes.resetState();
     on_asset_select_cb(id);
 }
 
@@ -330,14 +324,16 @@ pub fn onPointerUp() !void {
         }
     } else if (state.tool == Tool.DrawShape) {
         try checkAssetsUpdate(true);
-        shapes.onReleasePointer();
+        if (getSelectedShape()) |shape| {
+            shape.onReleasePointer();
+        }
     }
 }
 
 pub fn onPointerMove(x: f32, y: f32) !void {
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
-            try shape.updatePointPreview(x, y);
+            try shape.updatePointPreview(types.Point{ .x = x, .y = y });
         }
         return;
     }
@@ -394,7 +390,7 @@ fn updateShapeCache(shape: *shapes.Shape) !void {
 pub fn commitChanges() !void {
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
-            try updateShapeCache(shape);
+            shape.update_preview_point(null);
         }
 
         shapes.resetState();
@@ -527,14 +523,26 @@ pub fn calculateShapesSDF() !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                const option_points = try shape.getDrawVertexData(allocator, shape.id == state.selected_asset_id);
-
+                if (!shape.outdated_sdf) {
+                    continue;
+                }
+                const option_points = try shape.getNewSdfPoint(allocator);
                 if (option_points) |points| {
-                    const bounds = shape.getBoundsWithPadding();
+                    const bounds = shape.getBoundsWithPadding(1 / shared.render_scale);
+                    const init_width = bounds[0].distance(bounds[1]);
+                    shape.sdf_size = get_sdf_texture_size(bounds);
+                    const scale = @as(f32, @floatFromInt(shape.sdf_size.w)) / init_width;
+
+                    for (points) |*point| {
+                        point.x *= scale;
+                        point.y *= scale;
+                    }
+
                     web_gpu_programs.compute_shape(
                         points,
-                        bounds[0].distance(bounds[1]),
-                        bounds[0].distance(bounds[3]),
+                        shape.sdf_size.w,
+                        shape.sdf_size.h,
+                        1 / scale,
                         shape.texture_id,
                     );
                 }
@@ -578,10 +586,7 @@ pub fn renderDraw() !void {
 
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
-            const vertex_data = try shape.getSkeletonDrawVertexData(
-                allocator,
-                shape.id == state.selected_asset_id,
-            );
+            const vertex_data = try shape.getSkeletonDrawVertexData(allocator);
             web_gpu_programs.draw_triangle(vertex_data);
             web_gpu_programs.draw_shape(&shape.getDrawBounds(), shapes.getSkeletonUniform(), shape.texture_id);
         }
