@@ -14,7 +14,7 @@ export default function getComputeShape(device: GPUDevice, buffersToDestroy: GPU
     },
   })
 
-  return function computeSDF(
+  return function computeShape(
     passEncoder: GPUComputePassEncoder,
     curvesDataView: DataView,
     distanceScaleFactor: number,
@@ -30,7 +30,7 @@ export default function getComputeShape(device: GPUDevice, buffersToDestroy: GPU
 
     const uniformBuffer = device.createBuffer({
       label: 'computeShape uniform buffer',
-      size: 4,
+      size: 4 /*scale*/ + 12 /*padding*/,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([distanceScaleFactor]))

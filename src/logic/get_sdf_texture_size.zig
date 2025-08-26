@@ -25,5 +25,6 @@ pub fn get_sdf_texture_size(bounds: [4]PointUV) TextureSize {
         width *= ratio;
         height *= ratio;
     }
+
     return TextureSize{ .w = @intFromFloat(width), .h = @intFromFloat(height) };
 }
