@@ -85,7 +85,12 @@ export default async function initCreator(
   const projectWidth = canvas.clientWidth / 2
   const projectHeight = canvas.clientHeight / 2
 
-  Logic.initState(projectWidth, projectHeight, device.limits.maxTextureDimension2D)
+  Logic.initState(
+    projectWidth,
+    projectHeight,
+    device.limits.maxTextureDimension2D,
+    device.limits.maxBufferSize
+  )
   // rotation doesnt work
   const context = canvas.getContext('webgpu')
   if (!context) throw Error('WebGPU from canvas needs to be always provided')

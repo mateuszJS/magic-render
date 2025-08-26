@@ -1,6 +1,7 @@
 const Utils = @import("../utils.zig");
 const Point = @import("../types.zig").Point;
 const PointUV = @import("../types.zig").PointUV;
+const TextureSize = @import("../types.zig").TextureSize;
 const std = @import("std");
 const bounding_box = @import("bounding_box.zig");
 const triangles = @import("../triangle.zig");
@@ -14,17 +15,13 @@ const DEFAULT_BOUNDS = @import("../consts.zig").DEFAULT_BOUNDS;
 
 const EPSILON = std.math.floatEps(f32);
 
+// this state is not included in the shape struct only because there is no need, methods which uses these variables
+// are called only when shape is selected, so only one active shape/path uses them
 var active_path_index: ?usize = null;
 var is_handle_preview: bool = false;
-var preview_point: ?Point = null;
 
 pub fn resetState() void {
     active_path_index = null;
-    is_handle_preview = false;
-    preview_point = null;
-}
-
-pub fn onReleasePointer() void {
     is_handle_preview = false;
 }
 
@@ -42,7 +39,7 @@ pub const Preview = struct {
 
 pub fn getSkeletonUniform() Uniform {
     return Uniform{
-        .stroke_width = 2.0 * shared.render_scale,
+        .stroke_width = 2.0,
         .fill_color = .{ 0.0, 0.0, 0.0, 0.0 },
         .stroke_color = .{ 0.0, 0.0, 1.0, 1.0 },
     };
@@ -64,6 +61,10 @@ pub const Shape = struct {
     bounds: [4]PointUV,
     outdated_sdf: bool, // if true, we need to recalculate SDF
     texture_id: u32,
+    preview_point: ?Point = null,
+
+    sdf_size: TextureSize = .{ .w = 0, .h = 0 }, // stores the last size of computed sdf
+    // useful only while updating scale to avoid unnecessary regenerations if size hasn't grown
 
     pub fn new(
         id: u32,
@@ -85,19 +86,14 @@ pub const Shape = struct {
             );
             try paths_list.append(path);
         }
-        var shape = Shape{
+        const shape = Shape{
             .id = id,
             .paths = paths_list,
             .props = props,
             .texture_id = texture_id,
-            .outdated_sdf = false,
+            .outdated_sdf = true,
             .bounds = bounds,
         };
-
-        const from_svg_file = input_bounds == null and input_paths.len > 0;
-        if (from_svg_file) {
-            try shape.update_bounds(allocator, null);
-        }
 
         return shape;
     }
@@ -110,12 +106,11 @@ pub const Shape = struct {
         is_handle_preview = true;
 
         if (self.paths.items.len == 0) {
-            self.bounds = [4]PointUV{
-                .{ .x = absolute_point.x, .y = absolute_point.y + 1.0, .u = 0.0, .v = 1.0 },
-                .{ .x = absolute_point.x + 1.0, .y = absolute_point.y + 1.0, .u = 1.0, .v = 1.0 },
-                .{ .x = absolute_point.x + 1.0, .y = absolute_point.y, .u = 1.0, .v = 0.0 },
-                .{ .x = absolute_point.x, .y = absolute_point.y, .u = 0.0, .v = 0.0 },
-            };
+            for (&self.bounds, DEFAULT_BOUNDS) |*b, default| {
+                b.* = default;
+                b.x += absolute_point.x;
+                b.y += absolute_point.y;
+            }
 
             const new_path = try Path.new(.{ .x = 0.0, .y = 0.0 }, allocator);
             try self.paths.append(new_path);
@@ -130,33 +125,38 @@ pub const Shape = struct {
 
         if (active_path_index) |i| {
             var active_path = &self.paths.items[i];
-            if (!active_path.closed) {
-                try active_path.addPoint(point, getSnapThreshold(self.bounds));
-                try self.update_bounds(allocator, null);
-                return;
-            }
+            try active_path.addPoint(point, getSnapThreshold(self.bounds));
+        } else {
+            // start a new path
+            const new_path = try Path.new(point, allocator);
+            try self.paths.append(new_path);
+            active_path_index = self.paths.items.len - 1;
         }
-
-        // start a new path
-        const new_path = try Path.new(point, allocator);
-        try self.paths.append(new_path);
-        active_path_index = self.paths.items.len - 1;
-        try self.update_bounds(allocator, null);
     }
 
-    pub fn updatePointPreview(self: *Shape, x: f32, y: f32) !void {
-        const p = Point{ .x = x, .y = y };
+    pub fn updatePointPreview(self: *Shape, p: Point) !void {
         if (is_handle_preview) {
-            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-            defer arena.deinit();
-            const allocator = arena.allocator();
-
-            try self.updateLastHandle(
-                allocator,
-                p,
-            );
+            try self.updateLastHandle(p);
+            self.outdated_sdf = true;
         } else {
-            preview_point = p;
+            self.update_preview_point(p);
+        }
+    }
+
+    // the point of this method is to limit sets of outdated_sdf to true
+    pub fn update_preview_point(self: *Shape, p: ?Point) void {
+        if (active_path_index == null) {
+            return;
+        }
+
+        const curr_preview = self.preview_point orelse Point{ .x = std.math.inf(f32), .y = 0 };
+        const new_preview = p orelse Point{ .x = std.math.inf(f32), .y = 0 };
+
+        const is_diff = !Utils.equalF32(curr_preview.x, new_preview.x) or !Utils.equalF32(curr_preview.y, new_preview.y);
+
+        if (is_diff) {
+            self.preview_point = p;
+            self.outdated_sdf = true;
         }
     }
 
@@ -171,7 +171,7 @@ pub const Shape = struct {
         const new_width = box.max_x - box.min_x;
         const new_height = box.max_y - box.min_y;
 
-        if (Utils.cmpF32(new_width, 0) or Utils.cmpF32(new_height, 0)) {
+        if (Utils.equalF32(new_width, 0) or Utils.equalF32(new_height, 0)) {
             return; // No valid bounding box
         }
 
@@ -194,7 +194,7 @@ pub const Shape = struct {
         };
     }
 
-    fn updateLastHandle(self: *Shape, allocator: std.mem.Allocator, absolute_point: Point) !void {
+    fn updateLastHandle(self: *Shape, absolute_point: Point) !void {
         if (active_path_index) |i| {
             const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
             const point = matrix.inverse().get(absolute_point);
@@ -203,14 +203,23 @@ pub const Shape = struct {
             active_path.updateLastHandle(point);
 
             self.outdated_sdf = true;
-            try self.update_bounds(allocator, null);
         }
+    }
+
+    pub fn onReleasePointer(self: Shape) void {
+        if (active_path_index) |i| {
+            const active_path = self.paths.items[i];
+            if (active_path.closed) {
+                active_path_index = null;
+            }
+        }
+
+        is_handle_preview = false;
     }
 
     pub fn getSkeletonDrawVertexData(
         self: Shape,
         allocator: std.mem.Allocator,
-        is_active: bool,
     ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
@@ -220,12 +229,10 @@ pub const Shape = struct {
             try skeleton_buffer.appendSlice(path_skeleton);
         }
 
-        if (is_active) {
-            if (preview_point) |point| {
-                if (!is_handle_preview) {
-                    const buffer = Path.getVertexSkeletonPoint(true, point);
-                    try skeleton_buffer.appendSlice(&buffer);
-                }
+        if (self.preview_point) |point| {
+            if (!is_handle_preview) {
+                const buffer = Path.getVertexSkeletonPoint(true, point);
+                try skeleton_buffer.appendSlice(&buffer);
             }
         }
 
@@ -261,19 +268,21 @@ pub const Shape = struct {
 
     pub fn getUniform(self: Shape) Uniform {
         return Uniform{
-            .stroke_width = self.props.stroke_width,
+            .stroke_width = self.props.stroke_width / shared.render_scale,
             .fill_color = self.props.fill_color,
             .stroke_color = self.props.stroke_color,
         };
     }
 
-    pub fn getDrawVertexData(self: *Shape, allocator: std.mem.Allocator, is_active: bool) !?[]Point {
-        if (is_active and active_path_index != null and preview_point != null) {
-            try self.update_bounds(allocator, preview_point);
+    // function has side effect, marks texture as generated
+    pub fn getNewSdfPoint(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
+        if (self.outdated_sdf) {
+            try self.update_bounds(allocator, self.preview_point);
         }
+
         const points = try self.getAllPoints(
             allocator,
-            if (is_active) preview_point else null,
+            self.preview_point,
             active_path_index,
         );
 
@@ -282,22 +291,24 @@ pub const Shape = struct {
         }
 
         const scale = Matrix3x3.scaling(
-            self.bounds[0].distance(self.bounds[1]),
-            self.bounds[0].distance(self.bounds[3]),
+            self.bounds[0].distance(self.bounds[1]) / shared.render_scale,
+            self.bounds[0].distance(self.bounds[3]) / shared.render_scale,
         );
 
-        const padding = self.props.stroke_width / 2.0;
+        const padding = (self.props.stroke_width / 2.0) / shared.render_scale;
         for (points) |*point| {
             const scaled = scale.get(point);
             point.x = padding + scaled.x;
             point.y = padding + scaled.y;
         }
 
+        self.outdated_sdf = false;
+
         return points;
     }
 
-    pub fn getBoundsWithPadding(self: Shape) [4]PointUV {
-        const padding = self.props.stroke_width / 2.0;
+    pub fn getBoundsWithPadding(self: Shape, scale: f32) [4]PointUV {
+        const padding = (self.props.stroke_width / 2.0);
         var buffer: [4]PointUV = undefined;
         const len = self.bounds.len;
 
@@ -311,13 +322,15 @@ pub const Shape = struct {
             buffer[i] = b;
             buffer[i].x -= @cos(angle_next) * padding + @cos(angle_prev) * padding;
             buffer[i].y -= @sin(angle_next) * padding + @sin(angle_prev) * padding;
+            buffer[i].x *= scale;
+            buffer[i].y *= scale;
         }
 
         return buffer;
     }
 
     pub fn getDrawBounds(self: Shape) [6]PointUV {
-        const bounds = self.getBoundsWithPadding();
+        const bounds = self.getBoundsWithPadding(1);
         return [_]PointUV{
             // first triangle
             bounds[0],
