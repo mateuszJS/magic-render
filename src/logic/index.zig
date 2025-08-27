@@ -12,6 +12,8 @@ const bounding_box = @import("shapes/bounding_box.zig");
 const shared = @import("shared.zig");
 const get_sdf_texture_size = @import("get_sdf_texture_size.zig").get_sdf_texture_size;
 const Utils = @import("utils.zig");
+const PackedPickId = @import("shapes/packed_pick_id.zig");
+const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 
 const WebGpuPrograms = struct {
     draw_texture: *const fn (images.DrawVertex, u32) void,
@@ -68,7 +70,8 @@ fn update_texture_cache(texture_id: u32, box: bounding_box.BoundingBox, width: f
     end_cache_callback();
 }
 
-pub const ASSET_ID_TRESHOLD: u32 = 1000;
+pub const ASSET_ID_MIN: u32 = 1000;
+pub const ASSET_ID_MAX: u32 = 10000; // to distinguish between sape/path/point selection and asset selection
 const NO_SELECTION = 0;
 const MIN_NEW_CONTROL_POINT_DISTANCE = 10.0; // Minimum distance to consider a new control point
 
@@ -81,6 +84,7 @@ const ActionType = enum {
 const Tool = enum {
     None,
     DrawShape,
+    EditShape,
 };
 
 const Asset = union(enum) {
@@ -143,7 +147,7 @@ pub fn updateRenderScale(scale: f32) !void {
     }
 }
 
-var next_asset_id: u32 = ASSET_ID_TRESHOLD;
+var next_asset_id: u32 = ASSET_ID_MIN;
 fn generateId() u32 {
     const id = next_asset_id;
     next_asset_id +%= 1;
@@ -273,7 +277,13 @@ fn getSelectedShape() ?*shapes.Shape {
 fn updateSelectedAsset(id: u32) !void {
     try commitChanges();
 
-    state.selected_asset_id = id;
+    if (id > ASSET_ID_MAX) {
+        const point_id = PackedPickId.decode(id);
+        shapes.selected_point_id = point_id;
+        state.selected_asset_id = point_id.shape;
+    } else {
+        state.selected_asset_id = id;
+    }
     on_asset_select_cb(id);
 }
 
@@ -304,11 +314,23 @@ pub fn onPointerDown(_allocator: std.mem.Allocator, x: f32, y: f32) !void {
         return;
     }
 
+    if (state.tool == Tool.EditShape) {
+        // sould not be accessible on mobile, that's why selection happens with pointer down
+        if (state.hovered_asset_id != NO_SELECTION) {
+            try updateSelectedAsset(state.hovered_asset_id);
+        }
+        // if (shapes.selected_point_id != null) {
+        //     state.action = .Move;
+        //     state.last_pointer_coords = types.Point{ .x = x, .y = y };
+        //     return;
+        // }
+    }
+
     if (state.selected_asset_id == NO_SELECTION) {
         // No active asset, do nothing
     } else if (TransformUI.isTransformUi(state.hovered_asset_id)) {
         state.action = .Transform;
-    } else if (state.selected_asset_id >= ASSET_ID_TRESHOLD and state.selected_asset_id == state.hovered_asset_id) {
+    } else if (state.selected_asset_id >= ASSET_ID_MIN and state.selected_asset_id == state.hovered_asset_id) {
         state.action = .Move;
         state.last_pointer_coords = types.Point{ .x = x, .y = y };
     }
@@ -327,6 +349,9 @@ pub fn onPointerUp() !void {
         if (getSelectedShape()) |shape| {
             shape.onReleasePointer();
         }
+    } else if (state.tool == Tool.EditShape) {
+        shapes.selected_point_id = null;
+        // try updateSelectedAsset(NO_SELECTION);
     }
 }
 
@@ -334,6 +359,18 @@ pub fn onPointerMove(x: f32, y: f32) !void {
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
             try shape.updatePointPreview(types.Point{ .x = x, .y = y });
+        }
+        return;
+    }
+
+    if (state.tool == Tool.EditShape) {
+        if (shapes.selected_point_id) |selected_point_id| {
+            if (getSelectedShape()) |shape| {
+                const matrix = Matrix3x3.getMatrixFromRectangle(shape.bounds);
+                const absolute_point = types.Point{ .x = x, .y = y };
+                const point = matrix.inverse().get(absolute_point);
+                shape.paths.items[selected_point_id.path].points.items[selected_point_id.point] = point;
+            }
         }
         return;
     }
@@ -584,9 +621,14 @@ pub fn renderDraw() !void {
         }
     }
 
-    if (state.tool == Tool.DrawShape) {
+    if (state.tool == Tool.DrawShape or state.tool == Tool.EditShape) {
+        const hover_point_id = PackedPickId.decode(state.hovered_asset_id);
+        const select_point_id = shapes.selected_point_id;
+        _ = select_point_id; // autofix
+
         if (getSelectedShape()) |shape| {
-            const vertex_data = try shape.getSkeletonDrawVertexData(allocator);
+            const hover_id = if (shape.id == hover_point_id.shape) hover_point_id else null;
+            const vertex_data = try shape.getSkeletonDrawVertexData(allocator, hover_id);
             web_gpu_programs.draw_triangle(vertex_data);
             web_gpu_programs.draw_shape(&shape.getDrawBounds(), shapes.getSkeletonUniform(), shape.texture_id);
         }
@@ -624,11 +666,11 @@ pub fn renderDraw() !void {
     // web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
 }
 
-pub fn renderPick() void {
+pub fn renderPick() !void {
     if (state.tool == Tool.DrawShape) {
-        // TODO: draw selected shape path control points only
         return;
     }
+
     var iterator = state.assets.iterator();
     while (iterator.next()) |asset| {
         switch (asset.value_ptr.*) {
@@ -644,14 +686,27 @@ pub fn renderPick() void {
         }
     }
 
-    if (state.assets.get(state.selected_asset_id)) |asset| {
-        const points = switch (asset) {
-            .img => |img| img.points,
-            .shape => |shape| shape.bounds,
-        };
-        var vertex_buffer: [TransformUI.PICK_TRIANGLE_INSTANCES]Triangle.PickInstance = undefined;
-        TransformUI.getPickVertexData(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES], points);
-        web_gpu_programs.pick_triangle(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES]);
+    if (state.tool == Tool.EditShape) {
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
+
+        if (getSelectedShape()) |shape| {
+            const vertex_data = try shape.getSkeletonPickVertexData(allocator);
+            web_gpu_programs.pick_triangle(vertex_data);
+        }
+    }
+
+    if (state.tool == Tool.None) {
+        if (state.assets.get(state.selected_asset_id)) |asset| {
+            const points = switch (asset) {
+                .img => |img| img.points,
+                .shape => |shape| shape.bounds,
+            };
+            var vertex_buffer: [TransformUI.PICK_TRIANGLE_INSTANCES]Triangle.PickInstance = undefined;
+            TransformUI.getPickVertexData(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES], points);
+            web_gpu_programs.pick_triangle(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES]);
+        }
     }
 }
 
@@ -689,7 +744,7 @@ pub fn destroyState() void {
     last_assets_update = &.{};
     Msdf.deinitIcons();
     state.selected_asset_id = 0;
-    next_asset_id = ASSET_ID_TRESHOLD;
+    next_asset_id = ASSET_ID_MIN;
     web_gpu_programs = undefined;
     on_asset_update_cb = undefined;
     // state itself is not destoyed as it will be reinitalized before usage

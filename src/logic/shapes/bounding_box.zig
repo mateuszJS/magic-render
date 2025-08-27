@@ -1,6 +1,6 @@
 const Point = @import("../types.zig").Point;
 const std = @import("std");
-const Path = @import("paths.zig").Path;
+const PathUtils = @import("path_utils.zig");
 
 /// Represents a 2D bounding box with minimum and maximum coordinates
 pub const BoundingBox = struct {
@@ -135,11 +135,11 @@ pub fn getBoundingBox(curves: []const Point) BoundingBox {
         const p3 = curves[i * 4 + 3];
 
         // Do we need this? How did it worked before????? Wit treating stright handles as any point
-        if (Path.isStraightLineHandle(p1)) {
+        if (PathUtils.isStraightLineHandle(p1)) {
             // If p1 is a straight line handle, we skip it
             p1 = p0; // Use p0 as the first point
         }
-        if (Path.isStraightLineHandle(p2)) {
+        if (PathUtils.isStraightLineHandle(p2)) {
             // If p2 is a straight line handle, we skip it
             p2 = p3; // Use p3 as the last point
         }

@@ -12,6 +12,8 @@ const shared = @import("../shared.zig");
 const images = @import("../images.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const DEFAULT_BOUNDS = @import("../consts.zig").DEFAULT_BOUNDS;
+const PackedPickId = @import("packed_pick_id.zig");
+const PathUtils = @import("path_utils.zig");
 
 const EPSILON = std.math.floatEps(f32);
 
@@ -19,10 +21,12 @@ const EPSILON = std.math.floatEps(f32);
 // are called only when shape is selected, so only one active shape/path uses them
 var active_path_index: ?usize = null;
 var is_handle_preview: bool = false;
+pub var selected_point_id: ?PackedPickId.PointId = null;
 
 pub fn resetState() void {
     active_path_index = null;
     is_handle_preview = false;
+    selected_point_id = null;
 }
 
 pub const ShapeProps = struct {
@@ -178,7 +182,7 @@ pub const Shape = struct {
         // Normalize points to [0,1] range
         for (self.paths.items) |*path| {
             for (path.points.items) |*p| {
-                if (Path.isStraightLineHandle(p.*)) continue;
+                if (PathUtils.isStraightLineHandle(p.*)) continue;
 
                 p.x = (p.x - box.min_x) / new_width;
                 p.y = (p.y - box.min_y) / new_height;
@@ -220,20 +224,37 @@ pub const Shape = struct {
     pub fn getSkeletonDrawVertexData(
         self: Shape,
         allocator: std.mem.Allocator,
+        input_hover_id: ?PackedPickId.PointId,
     ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
 
-        for (self.paths.items) |path| {
-            const path_skeleton = try path.getSkeletonDrawVertexData(matrix, allocator);
+        for (self.paths.items, 0..) |path, i| {
+            const hover_id = if (input_hover_id) |h| if (h.path == i) h else null else null;
+            const path_skeleton = try path.getSkeletonDrawVertexData(matrix, allocator, hover_id);
             try skeleton_buffer.appendSlice(path_skeleton);
         }
 
         if (self.preview_point) |point| {
             if (!is_handle_preview) {
-                const buffer = Path.getVertexSkeletonPoint(true, point);
+                const buffer = Path.getVertexDrawSkeletonPoint(true, point, false);
                 try skeleton_buffer.appendSlice(&buffer);
             }
+        }
+
+        return skeleton_buffer.toOwnedSlice();
+    }
+
+    pub fn getSkeletonPickVertexData(
+        self: Shape,
+        allocator: std.mem.Allocator,
+    ) ![]triangles.PickInstance {
+        var skeleton_buffer = std.ArrayList(triangles.PickInstance).init(allocator);
+        const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
+
+        for (self.paths.items, 0..) |path, i| {
+            const path_skeleton = try path.getSkeletonPickVertexData(matrix, allocator, self.id, @as(u32, i));
+            try skeleton_buffer.appendSlice(path_skeleton);
         }
 
         return skeleton_buffer.toOwnedSlice();
@@ -258,10 +279,10 @@ pub const Shape = struct {
                 }
             }
 
-            if (try path.getDrawVertexData(allocator, preview_p)) |closed_path| {
-                points.appendSlice(closed_path) catch unreachable;
-            }
+            try path.getClosedPathPoints(&points, preview_p);
         }
+
+        PathUtils.prepareHalfStraightLines(points.items);
 
         return points.toOwnedSlice();
     }

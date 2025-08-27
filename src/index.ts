@@ -49,6 +49,7 @@ export type SerializedOutputAsset = SerializedOutputImage | SerializedOutputShap
 export enum CreatorTool {
   None = 0,
   DrawShape = 1,
+  EditShape = 2,
 }
 
 export interface CreatorAPI {
