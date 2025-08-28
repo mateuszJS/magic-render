@@ -33,22 +33,18 @@ export default function parseEllipse(
       topPoint,
 
     // Second quadrant: top to left
-      topPoint,
       { x: cx - kx, y: centerY + ry }, // control point 1
       { x: cx - rx, y: centerY + ky }, // control point 2
       leftPoint,
 
     // Third quadrant: left to bottom
-      leftPoint,
       { x: cx - rx, y: centerY - ky }, // control point 1
       { x: cx - kx, y: centerY - ry }, // control point 2
       bottomPoint,
 
     // Fourth quadrant: bottom to right
-      bottomPoint,
       { x: cx + kx, y: centerY - ry }, // control point 1
       { x: cx + rx, y: centerY - ky }, // control point 2
-      rightPoint,
   ]
 
   return curves

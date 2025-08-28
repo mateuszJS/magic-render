@@ -83,12 +83,9 @@ pub const Shape = struct {
     ) !Shape {
         var paths_list = std.ArrayList(Path).init(allocator);
 
-        const bounds = input_bounds orelse DEFAULT_BOUNDS;
-
         for (input_paths) |input_path| {
             const path = try Path.newFromPoints(
                 input_path,
-                getSnapThreshold(bounds),
                 allocator,
             );
             try paths_list.append(path);
@@ -99,7 +96,7 @@ pub const Shape = struct {
             .props = props,
             .texture_id = texture_id,
             .outdated_sdf = true,
-            .bounds = bounds,
+            .bounds = input_bounds orelse DEFAULT_BOUNDS,
         };
 
         return shape;
@@ -184,8 +181,9 @@ pub const Shape = struct {
             option_preview_point,
             active_path_index,
         );
-        const box = bounding_box.getBoundingBox(points);
 
+        const box = bounding_box.getBoundingBox(points);
+        std.debug.print("bounding box: ({}, {}) - ({}, {})\n", .{ box.min_x, box.min_y, box.max_x, box.max_y });
         const new_width = box.max_x - box.min_x;
         const new_height = box.max_y - box.min_y;
 

@@ -14,13 +14,13 @@ export default function parseRect(width: number, height: number, svgHeight: numb
     topLeft, STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE, topRight,
 
     // Right edge: top to bottom
-    topRight, STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE, bottomRight,
+    STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE, bottomRight,
 
     // Bottom edge: right to left
-    bottomRight, STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE, bottomLeft,
+    STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE, bottomLeft,
 
     // Left edge: bottom to top
-    bottomLeft, STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE, topLeft,
+    STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE,
   ]
 
   return lines

@@ -1,5 +1,4 @@
 import { STRAIGHT_LINE_HANDLE } from './const'
-import { Line, BezierCurve, PathSegment } from './types'
 
 interface PathCommand {
   command: string
@@ -7,7 +6,7 @@ interface PathCommand {
 }
 
 export interface ShapeData {
-  segments: PathSegment[]
+  points: Point[]
   closed: boolean
 }
 
@@ -40,22 +39,22 @@ function reflectY(y: number, svgHeight: number): number {
   return svgHeight - y
 }
 
-function commandsToSegments(commands: PathCommand[], svgHeight: number): ShapeData[] {
+function commandsToPoints(commands: PathCommand[], svgHeight: number): ShapeData[] {
   const allShapes: ShapeData[] = []
 
-  let currentSegments: PathSegment[] = []
+  let currentPoints: Point[] = []
   let currentPoint: Point = { x: 0, y: reflectY(0, svgHeight) }
   let pathStart: Point = { x: 0, y: reflectY(0, svgHeight) }
-  let lastControlPoint: Point | null = null
+  let lastHandle: Point | null = null
   let currentShapeClosed = false
 
   const finishCurrentPath = () => {
-    if (currentSegments.length > 0) {
+    if (currentPoints.length > 0) {
       allShapes.push({
-        segments: [...currentSegments],
+        points: [...currentPoints],
         closed: currentShapeClosed,
       })
-      currentSegments = []
+      currentPoints = []
       currentShapeClosed = false
     }
   }
@@ -63,100 +62,62 @@ function commandsToSegments(commands: PathCommand[], svgHeight: number): ShapeDa
   for (const { command, args } of commands) {
     switch (command.toLowerCase()) {
       case 'm': {
-        // MoveTo - start a new sub-path if we have existing segments
-        if (currentSegments.length > 0) {
-          finishCurrentPath()
-        }
+        // MoveTo - start a new sub-path
+        finishCurrentPath()
 
         const isRelative = command === 'm'
         for (let i = 0; i < args.length; i += 2) {
-          if (i === 0) {
-            // First move is absolute for both M and m
-            currentPoint = {
-              x: isRelative ? currentPoint.x + args[i] : args[i],
-              y: isRelative ? currentPoint.y - args[i + 1] : reflectY(args[i + 1], svgHeight),
-            }
-            pathStart = { ...currentPoint }
-          } else {
-            // Subsequent moves are treated as LineTo
-            const newPoint = {
-              x: args[i] + (isRelative ? currentPoint.x : 0),
-              y: isRelative ? currentPoint.y - args[i + 1] : reflectY(args[i + 1], svgHeight),
-            }
-            const lineSegment: Line = [
-              currentPoint,
-              STRAIGHT_LINE_HANDLE,
-              STRAIGHT_LINE_HANDLE,
-              newPoint,
-            ]
-            currentSegments.push(lineSegment)
-            currentPoint = newPoint
-          }
-        }
-        lastControlPoint = null
-        break
-      }
-
-      case 'l': {
-        // LineTo
-        const isRelative = command === 'l'
-        for (let i = 0; i < args.length; i += 2) {
-          const newPoint: Point = {
-            x: args[i] + (isRelative ? currentPoint.x : 0),
+          const newPoint = {
+            x: isRelative ? currentPoint.x + args[i] : args[i],
             y: isRelative ? currentPoint.y - args[i + 1] : reflectY(args[i + 1], svgHeight),
           }
-          const lineSegment: Line = [
-            currentPoint,
-            STRAIGHT_LINE_HANDLE,
-            STRAIGHT_LINE_HANDLE,
-            newPoint,
-          ]
-          currentSegments.push(lineSegment)
-          currentPoint = newPoint
-        }
-        lastControlPoint = null
-        break
-      }
-
-      case 'h': {
-        // Horizontal LineTo
-        const isRelative = command === 'h'
-        for (const x of args) {
-          const newPoint: Point = {
-            x: x + (isRelative ? currentPoint.x : 0),
-            y: currentPoint.y, // y stays the same for horizontal lines
+          if (i === 0) {
+            // First move is the start of a new path
+            currentPoints.push(newPoint)
+            pathStart = { ...newPoint }
+          } else {
+            // Subsequent moves are treated as LineTo
+            currentPoints.push(STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE, newPoint)
           }
-          const lineSegment: Line = [
-            currentPoint,
-            STRAIGHT_LINE_HANDLE,
-            STRAIGHT_LINE_HANDLE,
-            newPoint,
-          ]
-          currentSegments.push(lineSegment)
           currentPoint = newPoint
         }
-        lastControlPoint = null
+        lastHandle = null
         break
       }
 
+      case 'l':
+      case 'h':
       case 'v': {
-        // Vertical LineTo
-        const isRelative = command === 'v'
-        for (const y of args) {
-          const newPoint: Point = {
-            x: currentPoint.x, // x stays the same for vertical lines
-            y: isRelative ? currentPoint.y - y : reflectY(y, svgHeight),
+        const isRelative = command !== command.toUpperCase()
+        const isHorizontal = command.toLowerCase() === 'h'
+        const isVertical = command.toLowerCase() === 'v'
+
+        let argIndex = 0
+        while (argIndex < args.length) {
+          let newX = currentPoint.x
+          let newY = currentPoint.y
+
+          if (isHorizontal) {
+            newX = args[argIndex] + (isRelative ? currentPoint.x : 0)
+            argIndex += 1
+          } else if (isVertical) {
+            newY = isRelative
+              ? currentPoint.y - args[argIndex]
+              : reflectY(args[argIndex], svgHeight)
+            argIndex += 1
+          } else {
+            newX = args[argIndex] + (isRelative ? currentPoint.x : 0)
+            newY = isRelative
+              ? currentPoint.y - args[argIndex + 1]
+              : reflectY(args[argIndex + 1], svgHeight)
+            argIndex += 2
           }
-          const lineSegment: Line = [
-            currentPoint,
-            STRAIGHT_LINE_HANDLE,
-            STRAIGHT_LINE_HANDLE,
-            newPoint,
-          ]
-          currentSegments.push(lineSegment)
+
+          const newPoint = { x: newX, y: newY }
+          currentPoints.push(STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE, newPoint)
           currentPoint = newPoint
         }
-        lastControlPoint = null
+        lastHandle = null
         break
       }
 
@@ -164,11 +125,11 @@ function commandsToSegments(commands: PathCommand[], svgHeight: number): ShapeDa
         // Cubic Bezier
         const isRelative = command === 'c'
         for (let i = 0; i < args.length; i += 6) {
-          const cp1: Point = {
+          const h1: Point = {
             x: args[i] + (isRelative ? currentPoint.x : 0),
             y: isRelative ? currentPoint.y - args[i + 1] : reflectY(args[i + 1], svgHeight),
           }
-          const cp2: Point = {
+          const h2: Point = {
             x: args[i + 2] + (isRelative ? currentPoint.x : 0),
             y: isRelative ? currentPoint.y - args[i + 3] : reflectY(args[i + 3], svgHeight),
           }
@@ -177,10 +138,9 @@ function commandsToSegments(commands: PathCommand[], svgHeight: number): ShapeDa
             y: isRelative ? currentPoint.y - args[i + 5] : reflectY(args[i + 5], svgHeight),
           }
 
-          const curveSegment: BezierCurve = [currentPoint, cp1, cp2, endPoint]
-          currentSegments.push(curveSegment)
+          currentPoints.push(h1, h2, endPoint)
           currentPoint = endPoint
-          lastControlPoint = cp2
+          lastHandle = h2
         }
         break
       }
@@ -189,15 +149,14 @@ function commandsToSegments(commands: PathCommand[], svgHeight: number): ShapeDa
         // Smooth Cubic Bezier
         const isRelative = command === 's'
         for (let i = 0; i < args.length; i += 4) {
-          // First control point is reflection of last control point
-          const cp1: Point = lastControlPoint
+          const h1: Point = lastHandle
             ? {
-                x: 2 * currentPoint.x - lastControlPoint.x,
-                y: 2 * currentPoint.y - lastControlPoint.y,
+                x: 2 * currentPoint.x - lastHandle.x,
+                y: 2 * currentPoint.y - lastHandle.y,
               }
             : { ...currentPoint }
 
-          const cp2: Point = {
+          const h2: Point = {
             x: args[i] + (isRelative ? currentPoint.x : 0),
             y: isRelative ? currentPoint.y - args[i + 1] : reflectY(args[i + 1], svgHeight),
           }
@@ -206,42 +165,29 @@ function commandsToSegments(commands: PathCommand[], svgHeight: number): ShapeDa
             y: isRelative ? currentPoint.y - args[i + 3] : reflectY(args[i + 3], svgHeight),
           }
 
-          const curveSegment: BezierCurve = [currentPoint, cp1, cp2, endPoint]
-          currentSegments.push(curveSegment)
+          currentPoints.push(h1, h2, endPoint)
           currentPoint = endPoint
-          lastControlPoint = cp2
+          lastHandle = h2
         }
         break
       }
 
       case 'z': {
-        // ClosePath - close current path and start a new one
-        if (currentPoint.x !== pathStart.x || currentPoint.y !== pathStart.y) {
-          const lineSegment: Line = [
-            currentPoint,
-            STRAIGHT_LINE_HANDLE,
-            STRAIGHT_LINE_HANDLE,
-            pathStart,
-          ]
-          currentSegments.push(lineSegment)
+        if (currentPoints.length > 0) {
+          currentShapeClosed = true
         }
         currentPoint = pathStart
-        lastControlPoint = null
-        currentShapeClosed = true
-
-        // Finish the current path (this creates a new shape)
+        lastHandle = null
         finishCurrentPath()
         break
       }
 
-      // Note: Q, T, A commands not implemented yet (quadratic bezier and arc)
       default:
         console.warn(`SVG path command '${command}' not supported yet`)
-        lastControlPoint = null
+        lastHandle = null
     }
   }
 
-  // Finish any remaining path
   finishCurrentPath()
 
   return allShapes
@@ -249,7 +195,7 @@ function commandsToSegments(commands: PathCommand[], svgHeight: number): ShapeDa
 
 export default function parsePathData(dAttribute: string, svgHeight: number): ShapeData[] {
   const commands = getDataPathCommands(dAttribute)
-  const pathData = commandsToSegments(commands, svgHeight)
+  const pathData = commandsToPoints(commands, svgHeight)
 
   return pathData
 }

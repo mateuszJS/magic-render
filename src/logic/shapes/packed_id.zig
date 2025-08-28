@@ -13,11 +13,11 @@ const MASK_ID2 = (1 << BITS_ID2) - 1;
 const MASK_ID3 = (1 << BITS_ID3) - 1;
 
 pub const MAX_ASSET_ID = (ASSET_ID_MIN - 1) + MASK_ID3;
-pub const MIN_PACKED_ID = encode(1000, 0, 0);
+pub const MIN_PACKED_ID = encode(ASSET_ID_MIN, 0, 0);
 /// Encodes three integers into a single u32.
-/// - id1: Must be in the range 1000 to 10000.
-/// - id2: Must be in the range 0 to 511.
-/// - id3: Must be in the range 0 to 511.
+/// - shape: Must be in the range 1000 to 10000.
+/// - path: Must be in the range 0 to 511.
+/// - point: Must be in the range 0 to 511.
 /// we allow quietly to fail if there will be bigger ranges
 /// it's very unlikely with having that much point user wants to pick and modify individual points
 pub fn encode(shape_id: u32, path_index: u32, point_index: u32) u32 {
@@ -47,26 +47,26 @@ pub fn decode(encoded: u32) PointId {
 
 // --- Test ---
 test "encode and decode three integers in a u32" {
-    const val1: u32 = 9999;
-    const val2: u32 = 511;
-    const val3: u32 = 123;
+    const shape_id: u32 = 9999;
+    const path_index: u32 = 511;
+    const point_index: u32 = 123;
 
-    const encoded = encode(val1, val2, val3);
+    const encoded = encode(shape_id, path_index, point_index);
     const decoded = decode(encoded);
 
-    try std.testing.expectEqual(val1, decoded.id1);
-    try std.testing.expectEqual(val2, decoded.id2);
-    try std.testing.expectEqual(val3, decoded.id3);
+    try std.testing.expectEqual(shape_id, decoded.shape);
+    try std.testing.expectEqual(path_index, decoded.path);
+    try std.testing.expectEqual(point_index, decoded.point);
 
     // Test with minimum values
-    const val1_min: u32 = 1000;
-    const val2_min: u32 = 0;
-    const val3_min: u32 = 0;
+    const shape_id_min: u32 = 1000;
+    const path_index_min: u32 = 0;
+    const point_index_min: u32 = 0;
 
-    const encoded_min = encode(val1_min, val2_min, val3_min);
+    const encoded_min = encode(shape_id_min, path_index_min, point_index_min);
     const decoded_min = decode(encoded_min);
 
-    try std.testing.expectEqual(val1_min, decoded_min.id1);
-    try std.testing.expectEqual(val2_min, decoded_min.id2);
-    try std.testing.expectEqual(val3_min, decoded_min.id3);
+    try std.testing.expectEqual(shape_id_min, decoded_min.shape);
+    try std.testing.expectEqual(path_index_min, decoded_min.path);
+    try std.testing.expectEqual(point_index_min, decoded_min.point);
 }

@@ -28,10 +28,6 @@ pub const Point = extern struct {
         };
     }
 
-    pub fn clone(self: Point) Point {
-        return Point{ .x = self.x, .y = self.y };
-    }
-
     pub fn length(self: Point) f32 {
         return std.math.hypot(self.x, self.y);
     }

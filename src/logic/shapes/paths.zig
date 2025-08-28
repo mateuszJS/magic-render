@@ -27,23 +27,13 @@ pub const Path = struct {
         return shape;
     }
 
-    pub fn newFromPoints(path: []const Point, same_point_threshold: Point, allocator: std.mem.Allocator) !Path {
+    pub fn newFromPoints(path: []const Point, allocator: std.mem.Allocator) !Path {
         var point_list = std.ArrayList(Point).init(allocator);
-        var closed = false;
-
-        for (path, 0..) |point, i| {
-            try point_list.append(point);
-
-            if (i > 0 and i == path.len - 1) {
-                if (@abs(path[0].x - point.x) < same_point_threshold.x and @abs(path[0].y - point.y) < same_point_threshold.y) {
-                    closed = true;
-                }
-            }
-        }
+        try point_list.appendSlice(path);
 
         return Path{
             .points = point_list,
-            .closed = closed,
+            .closed = path.len % 3 == 0,
         };
     }
 
@@ -56,7 +46,7 @@ pub const Path = struct {
             // by default we add point and straight line handle on the start
             // but adding more points always ends path with a control point, not handle at the end
             const prev_handle = self.points.items[self.points.items.len - 2];
-            const last_cp = self.points.getLast().clone();
+            const last_cp = self.points.getLast();
             const next_handle = PathUtils.getOppositeHandle(last_cp, prev_handle);
             try self.points.append(next_handle);
         }
@@ -166,6 +156,11 @@ pub const Path = struct {
             try buffer.append(point);
         }
 
+        // std.debug.print("BEFORE==========================\n", .{});
+        // for (buffer.items) |p| {
+        //     std.debug.print("{d}, {d}\n", .{ p.x, p.y });
+        // }
+
         if (!self.closed) {
             if (preview_point) |preview| {
                 if (points.len > 2) {
@@ -185,6 +180,10 @@ pub const Path = struct {
         }
 
         try buffer.append(points[0]);
+        // std.debug.print("AFTER==========================\n", .{});
+        // for (buffer.items) |p| {
+        //     std.debug.print("{d}, {d}\n", .{ p.x, p.y });
+        // }
     }
 
     pub fn updateLastHandle(self: *Path, preview_point: Point) void {
