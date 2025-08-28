@@ -319,11 +319,6 @@ pub fn onPointerDown(x: f32, y: f32) !void {
         if (state.hovered_asset_id != NO_SELECTION) {
             try updateSelectedAsset(state.hovered_asset_id);
         }
-        // if (shapes.selected_point_id != null) {
-        //     state.action = .Move;
-        //     state.last_pointer_coords = types.Point{ .x = x, .y = y };
-        //     return;
-        // }
     }
 
     if (state.selected_asset_id == NO_SELECTION) {
@@ -351,7 +346,6 @@ pub fn onPointerUp() !void {
         }
     } else if (state.tool == Tool.EditShape) {
         shapes.selected_point_id = null;
-        // try updateSelectedAsset(NO_SELECTION);
     }
 }
 
