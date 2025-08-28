@@ -31,10 +31,12 @@ struct VSOutput {
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
   let sdf = textureLoad(texture, vec2u(vsOut.uv));
 
-  let is_filled = select(0.0, 1.0, sdf.r > -u.stroke_width * 0.5);
-  var color = select(u.stroke_color, u.fill_color, sdf.r > u.stroke_width * 0.5);
+  // let stroke_factor = select(0.5, 0.0, sdf.g > 1.0);
+  let stroke_factor = 0.0;
+  let is_filled = select(0.0, 1.0, sdf.r > -u.stroke_width * stroke_factor);
+  var color = select(u.stroke_color, u.fill_color, sdf.r > u.stroke_width * stroke_factor);
 
-  // return vec4f(sdf.r / 100.0, sdf.g % 1, sdf.b / (2 * 3.1415926), 1.0);
+  color = vec4f(sdf.r / 100.0, sdf.g % 1, sdf.b / (2 * 3.1415926), 1.0);
   // color = select(vec4f(0.5, 0, 0, 1), vec4f(0, 0, 0.5, 1), u32(sdf.r / 20.0) % 2 == 0);
 
   return color * is_filled;

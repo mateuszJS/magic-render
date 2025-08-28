@@ -6,23 +6,30 @@ const std = @import("std");
 const bounding_box = @import("bounding_box.zig");
 const triangles = @import("../triangle.zig");
 const squares = @import("../squares.zig");
-const lines = @import("../line.zig");
+const lines = @import("../lines.zig");
 const Path = @import("paths.zig").Path;
 const shared = @import("../shared.zig");
 const images = @import("../images.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const DEFAULT_BOUNDS = @import("../consts.zig").DEFAULT_BOUNDS;
+const PackedId = @import("packed_id.zig");
+const PathUtils = @import("path_utils.zig");
 
 const EPSILON = std.math.floatEps(f32);
+const CREATE_HANDLE_THRESHOLD = 10.0;
+// above this distance two handles are created around control point
+// below that distance, handle is a straight line handle
 
 // this state is not included in the shape struct only because there is no need, methods which uses these variables
 // are called only when shape is selected, so only one active shape/path uses them
 var active_path_index: ?usize = null;
 var is_handle_preview: bool = false;
+pub var selected_point_id: ?PackedId.PointId = null;
 
 pub fn resetState() void {
     active_path_index = null;
     is_handle_preview = false;
+    selected_point_id = null;
 }
 
 pub const ShapeProps = struct {
@@ -76,12 +83,9 @@ pub const Shape = struct {
     ) !Shape {
         var paths_list = std.ArrayList(Path).init(allocator);
 
-        const bounds = input_bounds orelse DEFAULT_BOUNDS;
-
         for (input_paths) |input_path| {
             const path = try Path.newFromPoints(
                 input_path,
-                getSnapThreshold(bounds),
                 allocator,
             );
             try paths_list.append(path);
@@ -92,7 +96,7 @@ pub const Shape = struct {
             .props = props,
             .texture_id = texture_id,
             .outdated_sdf = true,
-            .bounds = bounds,
+            .bounds = input_bounds orelse DEFAULT_BOUNDS,
         };
 
         return shape;
@@ -134,10 +138,21 @@ pub const Shape = struct {
         }
     }
 
-    pub fn updatePointPreview(self: *Shape, p: Point) !void {
+    pub fn updatePointPreview(self: *Shape, p: Point) void {
         if (is_handle_preview) {
-            try self.updateLastHandle(p);
-            self.outdated_sdf = true;
+            if (active_path_index) |index| {
+                const path = self.paths.items[index];
+                const points = path.points.items;
+                const last_cp: Point = if (points.len == 2) points[0] else if (path.closed) points[0] else points[points.len - 1];
+                const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
+                const dist = matrix.get(last_cp).distance(p);
+
+                if (dist > CREATE_HANDLE_THRESHOLD) {
+                    self.updateLastHandle(p);
+                } else {
+                    self.updateLastHandle(PathUtils.STRAIGHT_LINE_HANDLE);
+                }
+            }
         } else {
             self.update_preview_point(p);
         }
@@ -166,8 +181,9 @@ pub const Shape = struct {
             option_preview_point,
             active_path_index,
         );
-        const box = bounding_box.getBoundingBox(points);
 
+        const box = bounding_box.getBoundingBox(points);
+        std.debug.print("bounding box: ({}, {}) - ({}, {})\n", .{ box.min_x, box.min_y, box.max_x, box.max_y });
         const new_width = box.max_x - box.min_x;
         const new_height = box.max_y - box.min_y;
 
@@ -178,8 +194,7 @@ pub const Shape = struct {
         // Normalize points to [0,1] range
         for (self.paths.items) |*path| {
             for (path.points.items) |*p| {
-                if (Path.isStraightLineHandle(p.*)) continue;
-
+                if (PathUtils.isStraightLineHandle(p.*)) continue;
                 p.x = (p.x - box.min_x) / new_width;
                 p.y = (p.y - box.min_y) / new_height;
             }
@@ -194,23 +209,27 @@ pub const Shape = struct {
         };
     }
 
-    fn updateLastHandle(self: *Shape, absolute_point: Point) !void {
+    fn updateLastHandle(self: *Shape, absolute_point: Point) void {
         if (active_path_index) |i| {
-            const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
-            const point = matrix.inverse().get(absolute_point);
+            const point = if (PathUtils.isStraightLineHandle(absolute_point)) b: {
+                break :b absolute_point;
+            } else b: {
+                const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
+                break :b matrix.inverse().get(absolute_point);
+            };
 
             const active_path = &self.paths.items[i];
             active_path.updateLastHandle(point);
-
             self.outdated_sdf = true;
         }
     }
 
-    pub fn onReleasePointer(self: Shape) void {
+    pub fn onReleasePointer(self: *Shape) void {
         if (active_path_index) |i| {
             const active_path = self.paths.items[i];
             if (active_path.closed) {
                 active_path_index = null;
+                self.preview_point = null;
             }
         }
 
@@ -220,20 +239,43 @@ pub const Shape = struct {
     pub fn getSkeletonDrawVertexData(
         self: Shape,
         allocator: std.mem.Allocator,
+        input_hover_id: ?PackedId.PointId,
+        with_preview: bool,
     ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
 
-        for (self.paths.items) |path| {
-            const path_skeleton = try path.getSkeletonDrawVertexData(matrix, allocator);
+        for (self.paths.items, 0..) |path, i| {
+            const hover_id = if (input_hover_id) |h| if (h.path == i) h else null else null;
+            const path_skeleton = try path.getSkeletonDrawVertexData(
+                matrix,
+                allocator,
+                hover_id,
+                with_preview,
+            );
             try skeleton_buffer.appendSlice(path_skeleton);
         }
 
         if (self.preview_point) |point| {
             if (!is_handle_preview) {
-                const buffer = Path.getVertexSkeletonPoint(true, point);
+                const buffer = PathUtils.getVertexDrawSkeletonPoint(true, point, false);
                 try skeleton_buffer.appendSlice(&buffer);
             }
+        }
+
+        return skeleton_buffer.toOwnedSlice();
+    }
+
+    pub fn getSkeletonPickVertexData(
+        self: Shape,
+        allocator: std.mem.Allocator,
+    ) ![]triangles.PickInstance {
+        var skeleton_buffer = std.ArrayList(triangles.PickInstance).init(allocator);
+        const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
+
+        for (self.paths.items, 0..) |path, i| {
+            const path_skeleton = try path.getSkeletonPickVertexData(matrix, allocator, self.id, @as(u32, i));
+            try skeleton_buffer.appendSlice(path_skeleton);
         }
 
         return skeleton_buffer.toOwnedSlice();
@@ -258,10 +300,10 @@ pub const Shape = struct {
                 }
             }
 
-            if (try path.getDrawVertexData(allocator, preview_p)) |closed_path| {
-                points.appendSlice(closed_path) catch unreachable;
-            }
+            try path.getClosedPathPoints(&points, preview_p);
         }
+
+        PathUtils.prepareHalfStraightLines(points.items);
 
         return points.toOwnedSlice();
     }
@@ -276,9 +318,19 @@ pub const Shape = struct {
 
     // function has side effect, marks texture as generated
     pub fn getNewSdfPoint(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
-        if (self.outdated_sdf) {
-            try self.update_bounds(allocator, self.preview_point);
+        if (!self.outdated_sdf) {
+            @panic("getNewSdfPoint was called but the shape sdf was not marked as outdated!");
         }
+        const check_points = try self.getAllPoints(
+            allocator,
+            self.preview_point,
+            active_path_index,
+        );
+        if (check_points.len < 4) {
+            return null;
+        }
+
+        try self.update_bounds(allocator, self.preview_point);
 
         const points = try self.getAllPoints(
             allocator,

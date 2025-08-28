@@ -25,7 +25,7 @@ export default function createShapes(node: Node, svgHeight: number): void {
             if (typeof props?.d !== 'string') {
               throw Error("Path without 'd' property")
             }
-            result = parsePathData(props.d, svgHeight).map((shape) => shape.segments.flat())
+            result = parsePathData(props.d, svgHeight).map((shape) => shape.points)
             break
           case 'rect':
             if (typeof props?.width !== 'number' || typeof props?.height !== 'number') {
