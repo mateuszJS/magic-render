@@ -114,7 +114,6 @@ fn evaluateCubicBezierComponent(t: f32, p0: f32, p1: f32, p2: f32, p3: f32) f32 
 /// Returns an allocated slice of 6 points representing two triangles for the bounding rectangle
 /// Caller owns the returned memory and must free it
 pub fn getBoundingBox(curves: []const Point) BoundingBox {
-    // std.debug.print("curves len: {d}\n", .{curves.len});
     if (curves.len == 0) {
         return BoundingBox{};
     }

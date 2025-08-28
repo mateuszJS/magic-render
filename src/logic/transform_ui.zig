@@ -1,6 +1,6 @@
 const Image = @import("images.zig").Image;
 const Point = @import("types.zig").Point;
-const Line = @import("line.zig");
+const lines = @import("lines.zig");
 const PointUV = @import("types.zig").PointUV;
 const std = @import("std");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
@@ -188,7 +188,7 @@ pub fn getDrawVertexData(
         }
 
         const outer_line_width = thickness + 10.0 * shared.render_scale;
-        Line.getDrawVertexData(
+        lines.getDrawVertexData(
             triangle_buffer[i..][0..2],
             p1,
             p2,
@@ -196,7 +196,7 @@ pub fn getDrawVertexData(
             white,
             outer_line_width / 2.0,
         );
-        Line.getDrawVertexData(
+        lines.getDrawVertexData(
             triangle_buffer[(RENDER_TRIANGLE_INSTANCES / 2) + i ..][0..2],
             p1,
             p2,
@@ -216,7 +216,7 @@ pub fn getPickVertexData(buffer: *[PICK_TRIANGLE_INSTANCES]Triangle.PickInstance
         const p1, const p2 = getPointsOfLine(points, t_line);
         const thickness: f32 = if (t_line.id == 9) 30.0 * shared.render_scale else 10.0 * shared.render_scale;
 
-        Line.getPickVertexData(
+        lines.getPickVertexData(
             buffer[i..][0..2],
             p1,
             p2,

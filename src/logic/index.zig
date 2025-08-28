@@ -1,7 +1,7 @@
 const std = @import("std");
 const types = @import("types.zig");
 const images = @import("images.zig");
-const Line = @import("line.zig");
+const lines = @import("lines.zig");
 const Triangle = @import("triangle.zig");
 const TransformUI = @import("transform_ui.zig");
 const zigar = @import("zigar");
@@ -12,8 +12,9 @@ const bounding_box = @import("shapes/bounding_box.zig");
 const shared = @import("shared.zig");
 const get_sdf_texture_size = @import("get_sdf_texture_size.zig").get_sdf_texture_size;
 const Utils = @import("utils.zig");
-const PackedPickId = @import("shapes/packed_pick_id.zig");
+const PackedId = @import("shapes/packed_id.zig");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
+const PathUtils = @import("shapes/path_utils.zig");
 
 const WebGpuPrograms = struct {
     draw_texture: *const fn (images.DrawVertex, u32) void,
@@ -71,7 +72,6 @@ fn update_texture_cache(texture_id: u32, box: bounding_box.BoundingBox, width: f
 }
 
 pub const ASSET_ID_MIN: u32 = 1000;
-pub const ASSET_ID_MAX: u32 = 10000; // to distinguish between sape/path/point selection and asset selection
 const NO_SELECTION = 0;
 const MIN_NEW_CONTROL_POINT_DISTANCE = 10.0; // Minimum distance to consider a new control point
 
@@ -151,6 +151,7 @@ var next_asset_id: u32 = ASSET_ID_MIN;
 fn generateId() u32 {
     const id = next_asset_id;
     next_asset_id +%= 1;
+    // TODO: once hits PackedId.ASSET_ID_MAX we should re-indentify all assets
     return id;
 }
 
@@ -277,8 +278,8 @@ fn getSelectedShape() ?*shapes.Shape {
 fn updateSelectedAsset(id: u32) !void {
     try commitChanges();
 
-    if (id > ASSET_ID_MAX) {
-        const point_id = PackedPickId.decode(id);
+    if (id >= PackedId.MIN_PACKED_ID) {
+        const point_id = PackedId.decode(id);
         shapes.selected_point_id = point_id;
         state.selected_asset_id = point_id.shape;
     } else {
@@ -287,8 +288,7 @@ fn updateSelectedAsset(id: u32) !void {
     on_asset_select_cb(id);
 }
 
-pub fn onPointerDown(_allocator: std.mem.Allocator, x: f32, y: f32) !void {
-    _ = _allocator; // autofix
+pub fn onPointerDown(x: f32, y: f32) !void {
     if (state.tool == Tool.DrawShape) {
         if (state.selected_asset_id == NO_SELECTION) {
             const id = try addShape(
@@ -355,10 +355,10 @@ pub fn onPointerUp() !void {
     }
 }
 
-pub fn onPointerMove(x: f32, y: f32) !void {
+pub fn onPointerMove(x: f32, y: f32) void {
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
-            try shape.updatePointPreview(types.Point{ .x = x, .y = y });
+            shape.updatePointPreview(types.Point{ .x = x, .y = y });
         }
         return;
     }
@@ -368,8 +368,59 @@ pub fn onPointerMove(x: f32, y: f32) !void {
             if (getSelectedShape()) |shape| {
                 const matrix = Matrix3x3.getMatrixFromRectangle(shape.bounds);
                 const absolute_point = types.Point{ .x = x, .y = y };
-                const point = matrix.inverse().get(absolute_point);
-                shape.paths.items[selected_point_id.path].points.items[selected_point_id.point] = point;
+                const pointer = matrix.inverse().get(absolute_point);
+
+                var path = shape.paths.items[selected_point_id.path];
+                const points = path.points.items;
+                const i = selected_point_id.point;
+
+                const diff = types.Point{
+                    .x = pointer.x - points[i].x,
+                    .y = pointer.y - points[i].y,
+                };
+
+                if (i % 3 == 0) { // it's control point
+                    if (i < points.len - 1 or path.handle_zero == null) {
+                        if (!PathUtils.isStraightLineHandle(points[i + 1])) {
+                            points[i + 1].x += diff.x;
+                            points[i + 1].y += diff.y;
+                        }
+                    }
+
+                    if (i == 0) {
+                        if (path.handle_zero) |*hz| {
+                            if (!PathUtils.isStraightLineHandle(hz.*)) {
+                                path.handle_zero = types.Point{
+                                    .x = hz.x + diff.x,
+                                    .y = hz.y + diff.y,
+                                };
+                                // hz.*.x += diff.x;
+                                // hz.*.y += diff.y;
+                            }
+                        } else {
+                            if (!PathUtils.isStraightLineHandle(points[points.len - 1])) {
+                                points[points.len - 1].x += diff.x;
+                                points[points.len - 1].y += diff.y;
+                            }
+                        }
+                    } else {
+                        if (!PathUtils.isStraightLineHandle(points[i - 1])) {
+                            points[i - 1].x += diff.x;
+                            points[i - 1].y += diff.y;
+                        }
+                    }
+                }
+                // else {
+                //     const opposite_handle = if (i % 3 == 1) blk: { // it's first handle
+                //         break :blk if (i - 2 > 0) points[i - 2] else if (path.handle_zero) |hz| hz else points[points.len - 1];
+                //     } else points[i + 2]; // it's second handle
+
+                //     if (opposite_handle.distance(points[i]) < 1.0) {}
+                // }
+
+                points[i] = pointer;
+
+                shape.outdated_sdf = true;
             }
         }
         return;
@@ -451,7 +502,7 @@ fn getBorder(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []M
                 const next_point = if (i == 3) points[0] else points[i + 1];
                 var buffer: [2]Triangle.DrawInstance = undefined;
 
-                Line.getDrawVertexData(
+                lines.getDrawVertexData(
                     buffer[0..2],
                     point,
                     next_point,
@@ -476,7 +527,7 @@ fn getBorder(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []M
             const next_point = if (i == 3) points[0] else points[i + 1];
             var buffer: [2]Triangle.DrawInstance = undefined;
 
-            Line.getDrawVertexData(
+            lines.getDrawVertexData(
                 buffer[0..2],
                 point,
                 next_point,
@@ -537,7 +588,7 @@ fn drawProjectBoundary() void {
     for (points, 0..) |point, i| {
         const next_point = if (i == 3) points[0] else points[i + 1];
 
-        Line.getDrawVertexData(
+        lines.getDrawVertexData(
             buffer[i * 2 ..][0..2],
             point,
             next_point,
@@ -574,7 +625,7 @@ pub fn calculateShapesSDF() !void {
                         point.x *= scale;
                         point.y *= scale;
                     }
-
+                    std.debug.print("New SDF size: {}x{}\n", .{ shape.sdf_size.w, shape.sdf_size.h });
                     web_gpu_programs.compute_shape(
                         points,
                         shape.sdf_size.w,
@@ -622,7 +673,7 @@ pub fn renderDraw() !void {
     }
 
     if (state.tool == Tool.DrawShape or state.tool == Tool.EditShape) {
-        const hover_point_id = PackedPickId.decode(state.hovered_asset_id);
+        const hover_point_id = PackedId.decode(state.hovered_asset_id);
         const select_point_id = shapes.selected_point_id;
         _ = select_point_id; // autofix
 

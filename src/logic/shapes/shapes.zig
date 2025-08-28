@@ -6,13 +6,13 @@ const std = @import("std");
 const bounding_box = @import("bounding_box.zig");
 const triangles = @import("../triangle.zig");
 const squares = @import("../squares.zig");
-const lines = @import("../line.zig");
+const lines = @import("../lines.zig");
 const Path = @import("paths.zig").Path;
 const shared = @import("../shared.zig");
 const images = @import("../images.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const DEFAULT_BOUNDS = @import("../consts.zig").DEFAULT_BOUNDS;
-const PackedPickId = @import("packed_pick_id.zig");
+const PackedId = @import("packed_id.zig");
 const PathUtils = @import("path_utils.zig");
 
 const EPSILON = std.math.floatEps(f32);
@@ -21,7 +21,7 @@ const EPSILON = std.math.floatEps(f32);
 // are called only when shape is selected, so only one active shape/path uses them
 var active_path_index: ?usize = null;
 var is_handle_preview: bool = false;
-pub var selected_point_id: ?PackedPickId.PointId = null;
+pub var selected_point_id: ?PackedId.PointId = null;
 
 pub fn resetState() void {
     active_path_index = null;
@@ -138,9 +138,9 @@ pub const Shape = struct {
         }
     }
 
-    pub fn updatePointPreview(self: *Shape, p: Point) !void {
+    pub fn updatePointPreview(self: *Shape, p: Point) void {
         if (is_handle_preview) {
-            try self.updateLastHandle(p);
+            self.updateLastHandle(p);
             self.outdated_sdf = true;
         } else {
             self.update_preview_point(p);
@@ -187,6 +187,13 @@ pub const Shape = struct {
                 p.x = (p.x - box.min_x) / new_width;
                 p.y = (p.y - box.min_y) / new_height;
             }
+
+            if (path.handle_zero) |*h| {
+                if (PathUtils.isStraightLineHandle(h.*)) continue;
+
+                h.x = (h.x - box.min_x) / new_width;
+                h.y = (h.y - box.min_y) / new_height;
+            }
         }
 
         const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
@@ -198,7 +205,7 @@ pub const Shape = struct {
         };
     }
 
-    fn updateLastHandle(self: *Shape, absolute_point: Point) !void {
+    fn updateLastHandle(self: *Shape, absolute_point: Point) void {
         if (active_path_index) |i| {
             const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
             const point = matrix.inverse().get(absolute_point);
@@ -210,11 +217,12 @@ pub const Shape = struct {
         }
     }
 
-    pub fn onReleasePointer(self: Shape) void {
+    pub fn onReleasePointer(self: *Shape) void {
         if (active_path_index) |i| {
             const active_path = self.paths.items[i];
-            if (active_path.closed) {
+            if (active_path.handle_zero == null) {
                 active_path_index = null;
+                self.preview_point = null;
             }
         }
 
@@ -224,7 +232,7 @@ pub const Shape = struct {
     pub fn getSkeletonDrawVertexData(
         self: Shape,
         allocator: std.mem.Allocator,
-        input_hover_id: ?PackedPickId.PointId,
+        input_hover_id: ?PackedId.PointId,
     ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
@@ -237,7 +245,7 @@ pub const Shape = struct {
 
         if (self.preview_point) |point| {
             if (!is_handle_preview) {
-                const buffer = Path.getVertexDrawSkeletonPoint(true, point, false);
+                const buffer = PathUtils.getVertexDrawSkeletonPoint(true, point, false);
                 try skeleton_buffer.appendSlice(&buffer);
             }
         }
@@ -297,9 +305,19 @@ pub const Shape = struct {
 
     // function has side effect, marks texture as generated
     pub fn getNewSdfPoint(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
-        if (self.outdated_sdf) {
-            try self.update_bounds(allocator, self.preview_point);
+        const check_points = try self.getAllPoints(
+            allocator,
+            self.preview_point,
+            active_path_index,
+        );
+        if (check_points.len < 4) {
+            // std.debug.print("Not enough points to generate SDF\n", .{});
+            return null;
         }
+
+        // if (self.outdated_sdf) {
+        try self.update_bounds(allocator, self.preview_point);
+        // }
 
         const points = try self.getAllPoints(
             allocator,

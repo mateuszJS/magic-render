@@ -3,28 +3,30 @@ const ASSET_ID_MIN = @import("../index.zig").ASSET_ID_MIN;
 
 // --- Configuration ---
 // Bit allocation for each integer
-const BITS_ID1 = 14;
+const BITS_ID1 = 9;
 const BITS_ID2 = 9;
-const BITS_ID3 = 9;
+const BITS_ID3 = 14;
 
 // Masks to help with decoding
 const MASK_ID1 = (1 << BITS_ID1) - 1;
 const MASK_ID2 = (1 << BITS_ID2) - 1;
 const MASK_ID3 = (1 << BITS_ID3) - 1;
 
+pub const MAX_ASSET_ID = (ASSET_ID_MIN - 1) + MASK_ID3;
+pub const MIN_PACKED_ID = encode(1000, 0, 0);
 /// Encodes three integers into a single u32.
 /// - id1: Must be in the range 1000 to 10000.
 /// - id2: Must be in the range 0 to 511.
 /// - id3: Must be in the range 0 to 511.
 /// we allow quietly to fail if there will be bigger ranges
 /// it's very unlikely with having that much point user wants to pick and modify individual points
-pub fn encode(id1: u32, id2: u32, id3: u32) u32 {
+pub fn encode(shape_id: u32, path_index: u32, point_index: u32) u32 {
     // Pack the values using bit-shifting and bitwise OR
-    const val1_packed = id1 - ASSET_ID_MIN;
-    const val2_packed = id2 << BITS_ID1;
-    const val3_packed = id3 << (BITS_ID1 + BITS_ID2);
+    const normalized_shape_id = shape_id - (ASSET_ID_MIN - 1);
+    const shape_packed = normalized_shape_id << (BITS_ID1 + BITS_ID2); // to make sure we don't endup with zero as the result
+    const path_packed = path_index << BITS_ID1;
 
-    return val1_packed | val2_packed | val3_packed;
+    return shape_packed | path_packed | point_index;
 }
 
 pub const PointId = struct { shape: u32, path: u32, point: u32 };
@@ -32,14 +34,14 @@ pub const PointId = struct { shape: u32, path: u32, point: u32 };
 /// Decodes a u32 back into three integers.
 pub fn decode(encoded: u32) PointId {
     // Extract values using masks and bit-shifting
-    const id1_raw = encoded & MASK_ID1;
-    const id2 = (encoded >> BITS_ID1) & MASK_ID2;
-    const id3 = (encoded >> (BITS_ID1 + BITS_ID2)) & MASK_ID3;
+    const point_index = encoded & MASK_ID1;
+    const path_index = (encoded >> BITS_ID1) & MASK_ID2;
+    const norm_shape_id = (encoded >> (BITS_ID1 + BITS_ID2)) & MASK_ID3;
 
     return PointId{
-        .shape = id1_raw + ASSET_ID_MIN, // Add the offset back
-        .path = id2,
-        .point = id3,
+        .shape = norm_shape_id + (ASSET_ID_MIN - 1), // Add the offset back
+        .path = path_index,
+        .point = point_index,
     };
 }
 
