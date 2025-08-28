@@ -16,6 +16,9 @@ const PackedId = @import("packed_id.zig");
 const PathUtils = @import("path_utils.zig");
 
 const EPSILON = std.math.floatEps(f32);
+const CREATE_HANDLE_THRESHOLD = 10.0;
+// above this distance two handles are created around control point
+// below that distance, handle is a straight line handle
 
 // this state is not included in the shape struct only because there is no need, methods which uses these variables
 // are called only when shape is selected, so only one active shape/path uses them
@@ -140,8 +143,19 @@ pub const Shape = struct {
 
     pub fn updatePointPreview(self: *Shape, p: Point) void {
         if (is_handle_preview) {
-            self.updateLastHandle(p);
-            self.outdated_sdf = true;
+            if (active_path_index) |index| {
+                const path = self.paths.items[index];
+                const points = path.points.items;
+                const last_cp: Point = if (points.len == 2) points[0] else if (path.closed) points[0] else points[points.len - 1];
+                const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
+                const dist = matrix.get(last_cp).distance(p);
+
+                if (dist > CREATE_HANDLE_THRESHOLD) {
+                    self.updateLastHandle(p);
+                } else {
+                    self.updateLastHandle(PathUtils.STRAIGHT_LINE_HANDLE);
+                }
+            }
         } else {
             self.update_preview_point(p);
         }
@@ -199,12 +213,15 @@ pub const Shape = struct {
 
     fn updateLastHandle(self: *Shape, absolute_point: Point) void {
         if (active_path_index) |i| {
-            const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
-            const point = matrix.inverse().get(absolute_point);
+            const point = if (PathUtils.isStraightLineHandle(absolute_point)) b: {
+                break :b absolute_point;
+            } else b: {
+                const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
+                break :b matrix.inverse().get(absolute_point);
+            };
 
             const active_path = &self.paths.items[i];
             active_path.updateLastHandle(point);
-
             self.outdated_sdf = true;
         }
     }

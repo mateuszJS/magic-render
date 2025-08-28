@@ -100,19 +100,14 @@ pub const Path = struct {
                     self.getPrevHandle(i),
                     self.getNextHandle(i, with_preview),
                 };
-
-                if (handles[0]) |h| {
-                    if (PathUtils.isStraightLineHandle(h)) {
-                        handles[0] = null;
+                for (&handles) |*handle| {
+                    if (handle.*) |h| {
+                        if (PathUtils.isStraightLineHandle(h)) {
+                            handle.* = null;
+                        } else {
+                            handle.* = matrix.get(h);
+                        }
                     }
-                    handles[0] = matrix.get(h);
-                }
-
-                if (handles[1]) |h| {
-                    if (PathUtils.isStraightLineHandle(h)) {
-                        handles[1] = null;
-                    }
-                    handles[1] = matrix.get(h);
                 }
 
                 try PathUtils.drawControlPoint(

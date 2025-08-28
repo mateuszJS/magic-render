@@ -379,17 +379,11 @@ pub fn onPointerMove(x: f32, y: f32) void {
                         .y = pointer.y - points[i].y,
                     };
 
-                    if (i == 0) {
-                        if (path.closed) {
-                            if (!PathUtils.isStraightLineHandle(points[points.len - 1])) {
-                                points[points.len - 1].x += diff.x;
-                                points[points.len - 1].y += diff.y;
-                            }
-                        }
-                    } else {
-                        if (!PathUtils.isStraightLineHandle(points[i - 1])) {
-                            points[i - 1].x += diff.x;
-                            points[i - 1].y += diff.y;
+                    const option_index = if (i == 0 and path.closed) points.len - 1 else if (i > 0) i - 1 else null;
+                    if (option_index) |index| {
+                        if (!PathUtils.isStraightLineHandle(points[index])) {
+                            points[index].x += diff.x;
+                            points[index].y += diff.y;
                         }
                     }
                     if (i + 1 < points.len - 1) {
@@ -398,31 +392,33 @@ pub fn onPointerMove(x: f32, y: f32) void {
                             points[i + 1].y += diff.y;
                         }
                     }
-                } else if (i % 3 == 1) { // handler after cp
-                    if (i > 2) {
-                        const opposite_handler = PathUtils.getOppositeHandle(
-                            points[i - 1],
-                            points[i],
-                        );
-                        const dist = opposite_handler.distance(points[i - 2]);
-                        if (dist < 5.0) {
-                            points[i - 2] = opposite_handler;
-                        }
-                    }
                 } else {
-                    if (i + 2 < points.len) {
+                    const cp, const option_index = if (i % 3 == 1) blk: {
+                        const index = if (i == 1 and path.closed) points.len - 1 else if (i > 1) i - 2 else null;
+                        break :blk .{ points[i - 1], index };
+                    } else blk: {
+                        const index = if (i == points.len - 1 and path.closed) 1 else if (i + 2 < points.len) i + 2 else null;
+                        const cp = if (i == points.len - 1 and path.closed) points[0] else points[i + 1];
+                        break :blk .{ cp, index };
+                    };
+
+                    if (option_index) |index| {
                         const opposite_handler = PathUtils.getOppositeHandle(
-                            points[i + 1],
+                            cp,
                             points[i],
                         );
-                        const dist = opposite_handler.distance(points[i + 2]);
-                        if (dist < 5.0) {
-                            points[i + 2] = opposite_handler;
+
+                        const dist = opposite_handler.distance(points[index]);
+                        if (dist < 1.0) {
+                            points[index] = PathUtils.getOppositeHandle(
+                                cp,
+                                pointer,
+                            );
                         }
                     }
                 }
-                points[i] = pointer;
 
+                points[i] = pointer;
                 shape.outdated_sdf = true;
             }
         }
