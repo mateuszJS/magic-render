@@ -125,7 +125,7 @@ pub fn drawControlPoint(
             );
             try buffer.appendSlice(&local_buffer);
 
-            const id = if (index == 0) @min((index -% 1), (len - 1)) else i + 1;
+            const id: u32 = if (index == 0) @min(i -% 1, len - 1) else i + 1;
             try buffer.appendSlice(&getVertexDrawSkeletonPoint(
                 false,
                 hp,

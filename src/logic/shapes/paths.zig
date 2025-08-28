@@ -12,15 +12,16 @@ const PathUtils = @import("path_utils.zig");
 
 pub const Path = struct {
     points: std.ArrayList(Point),
-    handle_zero: ?Point,
+    closed: bool,
 
     pub fn new(point: Point, allocator: std.mem.Allocator) !Path {
         var point_list = std.ArrayList(Point).init(allocator);
         try point_list.append(point);
+        try point_list.append(PathUtils.STRAIGHT_LINE_HANDLE);
 
         const shape = Path{
             .points = point_list,
-            .handle_zero = PathUtils.STRAIGHT_LINE_HANDLE,
+            .closed = false,
         };
 
         return shape;
@@ -28,79 +29,59 @@ pub const Path = struct {
 
     pub fn newFromPoints(path: []const Point, same_point_threshold: Point, allocator: std.mem.Allocator) !Path {
         var point_list = std.ArrayList(Point).init(allocator);
-        var handle_zero: ?Point = null;
+        var closed = false;
 
         for (path, 0..) |point, i| {
             try point_list.append(point);
 
             if (i > 0 and i == path.len - 1) {
                 if (@abs(path[0].x - point.x) < same_point_threshold.x and @abs(path[0].y - point.y) < same_point_threshold.y) {
-                    handle_zero = null;
+                    closed = true;
                 }
             }
         }
 
         return Path{
             .points = point_list,
-            .handle_zero = handle_zero,
+            .closed = closed,
         };
     }
 
     pub fn addPoint(self: *Path, point: Point, same_point_threshold: Point) !void {
-        if (self.handle_zero) |handle_zero| {
-            const prev_handle = if (self.points.items.len == 1)
-                handle_zero
-            else
-                self.points.items[self.points.items.len - 2];
-            // The drop shape should be possible, but it's not right now
+        if (self.closed) {
+            @panic("Attempting to add point to already closed path!");
+        }
 
+        if (self.points.items.len > 2) {
+            // by default we add point and straight line handle on the start
+            // but adding more points always ends path with a control point, not handle at the end
+            const prev_handle = self.points.items[self.points.items.len - 2];
             const last_cp = self.points.getLast().clone();
             const next_handle = PathUtils.getOppositeHandle(last_cp, prev_handle);
-
             try self.points.append(next_handle);
-            try self.points.append(PathUtils.STRAIGHT_LINE_HANDLE);
+        }
 
-            const first_point = self.points.items[0];
-            if (@abs(first_point.x - point.x) < same_point_threshold.x and @abs(first_point.y - point.y) < same_point_threshold.y) {
-                self.handle_zero = null;
-                // try self.points.append(first_point);
-            } else {
-                try self.points.append(point);
-            }
+        try self.points.append(PathUtils.STRAIGHT_LINE_HANDLE);
+
+        const first_p = self.points.items[0];
+        if (@abs(first_p.x - point.x) < same_point_threshold.x and @abs(first_p.y - point.y) < same_point_threshold.y) {
+            self.closed = true;
         } else {
-            @panic("Attempting to add point to already closed path!");
+            try self.points.append(point);
         }
     }
 
     fn getPrevHandle(self: Path, i: usize) ?Point {
         const points = self.points.items;
-        if (i > 0) {
-            return points[i - 1];
-        } else if (i == 0) {
-            if (self.handle_zero) |h| {
-                return h;
-            } else {
-                return points[points.len - 1];
-            }
-        }
+        if (i > 0) return points[i - 1];
+        if (i == 0 and self.closed) return points[points.len - 1];
         return null;
     }
 
-    fn getNextHandle(self: Path, i: usize) ?Point {
+    fn getNextHandle(self: Path, i: usize, with_preview: bool) ?Point {
         const points = self.points.items;
-        if (points.len == 1) {
-            if (self.handle_zero) |h| {
-                return PathUtils.getOppositeHandle(points[0], h);
-            } else {
-                return null;
-            }
-        }
-        if (i == points.len - 1) {
-            return PathUtils.getOppositeHandle(points[i], points[i - 1]);
-        }
-        if (i < points.len - 1) {
-            return points[i + 1];
-        }
+        if (i + 1 <= points.len - 1) return points[i + 1];
+        if (i != 0 and with_preview and !self.closed) return PathUtils.getOppositeHandle(points[i], points[i - 1]);
         return null;
     }
 
@@ -109,16 +90,15 @@ pub const Path = struct {
         matrix: Matrix3x3,
         allocator: std.mem.Allocator,
         hover_id: ?PackedId.PointId,
+        with_preview: bool,
     ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
-        const points = self.points.items;
-
-        for (points, 0..) |relative_point, i| {
+        for (self.points.items, 0..) |relative_point, i| {
             if (i % 3 == 0) {
                 const cp = matrix.get(relative_point);
                 var handles = [2]?Point{
                     self.getPrevHandle(i),
-                    self.getNextHandle(i),
+                    self.getNextHandle(i, with_preview),
                 };
 
                 if (handles[0]) |h| {
@@ -137,7 +117,7 @@ pub const Path = struct {
 
                 try PathUtils.drawControlPoint(
                     i,
-                    points.len,
+                    self.points.items.len,
                     cp,
                     handles,
                     &skeleton_buffer,
@@ -181,7 +161,7 @@ pub const Path = struct {
         }
 
         for (points, 0..) |point, i| {
-            if (i != 0 and i % 3 == 0 and (i != points.len - 1 or self.handle_zero != null)) {
+            if (i != 0 and i % 3 == 0 and (i != points.len - 1 or !self.closed)) {
                 // inser duplicat(to start a new path) if:
                 // its not the first point
                 // it is a control point
@@ -191,40 +171,38 @@ pub const Path = struct {
             try buffer.append(point);
         }
 
-        if (self.handle_zero) |handle_zero| {
+        if (!self.closed) {
             if (preview_point) |preview| {
-                const last_handle = if (points.len == 1)
-                    handle_zero
-                else
-                    points[points.len - 2];
-
-                const last_cp = self.points.getLast();
-                try buffer.append(PathUtils.getOppositeHandle(last_cp, last_handle));
+                if (points.len > 2) {
+                    const last_cp = self.points.getLast();
+                    const last_handle = points[points.len - 2];
+                    try buffer.append(PathUtils.getOppositeHandle(last_cp, last_handle));
+                }
                 try buffer.append(PathUtils.STRAIGHT_LINE_HANDLE);
                 try buffer.append(preview);
                 try buffer.append(preview);
             }
 
-            const first_curve_point = points[0].clone();
+            if (points.len > 2 or preview_point != null) {
+                try buffer.append(PathUtils.STRAIGHT_LINE_HANDLE);
+            }
             try buffer.append(PathUtils.STRAIGHT_LINE_HANDLE);
-            try buffer.append(handle_zero);
-            try buffer.append(first_curve_point);
-        } else {
-            try buffer.append(points[0]);
         }
+
+        try buffer.append(points[0]);
     }
 
     pub fn updateLastHandle(self: *Path, preview_point: Point) void {
         const points = self.points.items;
 
-        const cp = if (self.handle_zero == null) points[0] else points[points.len - 1];
+        const cp = if (self.closed) points[0] else points[points.len - 1];
         const opposite_handle = PathUtils.getOppositeHandle(cp, preview_point);
 
-        if (self.handle_zero == null) {
+        if (self.closed) {
             points[1] = preview_point;
             points[points.len - 1] = opposite_handle;
-        } else if (self.points.items.len == 1) {
-            self.handle_zero = opposite_handle;
+        } else if (self.points.items.len == 2) {
+            points[1] = preview_point;
         } else {
             points[points.len - 2] = opposite_handle;
         }

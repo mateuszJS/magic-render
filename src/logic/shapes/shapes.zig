@@ -183,16 +183,8 @@ pub const Shape = struct {
         for (self.paths.items) |*path| {
             for (path.points.items) |*p| {
                 if (PathUtils.isStraightLineHandle(p.*)) continue;
-
                 p.x = (p.x - box.min_x) / new_width;
                 p.y = (p.y - box.min_y) / new_height;
-            }
-
-            if (path.handle_zero) |*h| {
-                if (PathUtils.isStraightLineHandle(h.*)) continue;
-
-                h.x = (h.x - box.min_x) / new_width;
-                h.y = (h.y - box.min_y) / new_height;
             }
         }
 
@@ -220,7 +212,7 @@ pub const Shape = struct {
     pub fn onReleasePointer(self: *Shape) void {
         if (active_path_index) |i| {
             const active_path = self.paths.items[i];
-            if (active_path.handle_zero == null) {
+            if (active_path.closed) {
                 active_path_index = null;
                 self.preview_point = null;
             }
@@ -233,13 +225,19 @@ pub const Shape = struct {
         self: Shape,
         allocator: std.mem.Allocator,
         input_hover_id: ?PackedId.PointId,
+        with_preview: bool,
     ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
 
         for (self.paths.items, 0..) |path, i| {
             const hover_id = if (input_hover_id) |h| if (h.path == i) h else null else null;
-            const path_skeleton = try path.getSkeletonDrawVertexData(matrix, allocator, hover_id);
+            const path_skeleton = try path.getSkeletonDrawVertexData(
+                matrix,
+                allocator,
+                hover_id,
+                with_preview,
+            );
             try skeleton_buffer.appendSlice(path_skeleton);
         }
 
@@ -305,19 +303,19 @@ pub const Shape = struct {
 
     // function has side effect, marks texture as generated
     pub fn getNewSdfPoint(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
+        if (!self.outdated_sdf) {
+            @panic("getNewSdfPoint was called but the shape sdf was not marked as outdated!");
+        }
         const check_points = try self.getAllPoints(
             allocator,
             self.preview_point,
             active_path_index,
         );
         if (check_points.len < 4) {
-            // std.debug.print("Not enough points to generate SDF\n", .{});
             return null;
         }
 
-        // if (self.outdated_sdf) {
         try self.update_bounds(allocator, self.preview_point);
-        // }
 
         const points = try self.getAllPoints(
             allocator,

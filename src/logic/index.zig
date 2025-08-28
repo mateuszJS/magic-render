@@ -367,37 +367,20 @@ pub fn onPointerMove(x: f32, y: f32) void {
         if (shapes.selected_point_id) |selected_point_id| {
             if (getSelectedShape()) |shape| {
                 const matrix = Matrix3x3.getMatrixFromRectangle(shape.bounds);
-                const absolute_point = types.Point{ .x = x, .y = y };
-                const pointer = matrix.inverse().get(absolute_point);
+                const pointer = matrix.inverse().get(types.Point{ .x = x, .y = y });
 
-                var path = shape.paths.items[selected_point_id.path];
+                const path = shape.paths.items[selected_point_id.path];
                 const points = path.points.items;
                 const i = selected_point_id.point;
 
-                const diff = types.Point{
-                    .x = pointer.x - points[i].x,
-                    .y = pointer.y - points[i].y,
-                };
-
                 if (i % 3 == 0) { // it's control point
-                    if (i < points.len - 1 or path.handle_zero == null) {
-                        if (!PathUtils.isStraightLineHandle(points[i + 1])) {
-                            points[i + 1].x += diff.x;
-                            points[i + 1].y += diff.y;
-                        }
-                    }
+                    const diff = types.Point{
+                        .x = pointer.x - points[i].x,
+                        .y = pointer.y - points[i].y,
+                    };
 
                     if (i == 0) {
-                        if (path.handle_zero) |*hz| {
-                            if (!PathUtils.isStraightLineHandle(hz.*)) {
-                                path.handle_zero = types.Point{
-                                    .x = hz.x + diff.x,
-                                    .y = hz.y + diff.y,
-                                };
-                                // hz.*.x += diff.x;
-                                // hz.*.y += diff.y;
-                            }
-                        } else {
+                        if (path.closed) {
                             if (!PathUtils.isStraightLineHandle(points[points.len - 1])) {
                                 points[points.len - 1].x += diff.x;
                                 points[points.len - 1].y += diff.y;
@@ -409,15 +392,35 @@ pub fn onPointerMove(x: f32, y: f32) void {
                             points[i - 1].y += diff.y;
                         }
                     }
+                    if (i + 1 < points.len - 1) {
+                        if (!PathUtils.isStraightLineHandle(points[i + 1])) {
+                            points[i + 1].x += diff.x;
+                            points[i + 1].y += diff.y;
+                        }
+                    }
+                } else if (i % 3 == 1) { // handler after cp
+                    if (i > 2) {
+                        const opposite_handler = PathUtils.getOppositeHandle(
+                            points[i - 1],
+                            points[i],
+                        );
+                        const dist = opposite_handler.distance(points[i - 2]);
+                        if (dist < 5.0) {
+                            points[i - 2] = opposite_handler;
+                        }
+                    }
+                } else {
+                    if (i + 2 < points.len) {
+                        const opposite_handler = PathUtils.getOppositeHandle(
+                            points[i + 1],
+                            points[i],
+                        );
+                        const dist = opposite_handler.distance(points[i + 2]);
+                        if (dist < 5.0) {
+                            points[i + 2] = opposite_handler;
+                        }
+                    }
                 }
-                // else {
-                //     const opposite_handle = if (i % 3 == 1) blk: { // it's first handle
-                //         break :blk if (i - 2 > 0) points[i - 2] else if (path.handle_zero) |hz| hz else points[points.len - 1];
-                //     } else points[i + 2]; // it's second handle
-
-                //     if (opposite_handle.distance(points[i]) < 1.0) {}
-                // }
-
                 points[i] = pointer;
 
                 shape.outdated_sdf = true;
@@ -679,7 +682,11 @@ pub fn renderDraw() !void {
 
         if (getSelectedShape()) |shape| {
             const hover_id = if (shape.id == hover_point_id.shape) hover_point_id else null;
-            const vertex_data = try shape.getSkeletonDrawVertexData(allocator, hover_id);
+            const vertex_data = try shape.getSkeletonDrawVertexData(
+                allocator,
+                hover_id,
+                state.tool == Tool.DrawShape,
+            );
             web_gpu_programs.draw_triangle(vertex_data);
             web_gpu_programs.draw_shape(&shape.getDrawBounds(), shapes.getSkeletonUniform(), shape.texture_id);
         }
