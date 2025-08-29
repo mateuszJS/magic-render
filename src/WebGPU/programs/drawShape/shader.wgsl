@@ -28,8 +28,29 @@ struct VSOutput {
   );
 }
 
+fn getSample(pos: vec2f) -> vec4f {
+  let floor_pos = floor(pos - 0.5);
+  let fract_pos = pos - 0.5 - floor_pos;
+
+  let p00 = vec2u(floor_pos);
+  let p10 = vec2u(floor_pos + vec2f(1.0, 0.0));
+  let p01 = vec2u(floor_pos + vec2f(0.0, 1.0));
+  let p11 = vec2u(floor_pos + vec2f(1.0, 1.0));
+
+  let c00 = textureLoad(texture, p00);
+  let c10 = textureLoad(texture, p10);
+  let c01 = textureLoad(texture, p01);
+  let c11 = textureLoad(texture, p11);
+
+  let top = mix(c00, c10, fract_pos.x);
+  let bottom = mix(c01, c11, fract_pos.x);
+
+  return mix(top, bottom, fract_pos.y);
+}
+
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
-  let sdf = textureLoad(texture, vec2u(vsOut.uv));
+  let sdf = getSample(vsOut.uv);
+  // let sdf = textureLoad(texture, vec2u(vsOut.uv));
 
   // let stroke_factor = select(0.5, 0.0, sdf.g > 1.0);
   let stroke_factor = 0.5;
