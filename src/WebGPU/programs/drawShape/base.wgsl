@@ -2,17 +2,10 @@ const STRAIGHT_LINE_THRESHOLD = 1e10;
 const EPSILON = 1e-10;
 const PI = 3.141592653589793;
 
-struct Uniforms {
-  stroke_width: f32,
-  fill_color: vec4f,
-  stroke_color: vec4f,
-};
-
 struct Vertex {
   @location(0) position: vec4f,
 };
 
-@group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var texture: texture_storage_2d<rgba32float, read>;
 @group(0) @binding(2) var<uniform> camera_projection: mat4x4f;
 
@@ -49,6 +42,7 @@ fn getSample(pos: vec2f) -> vec4f {
   return mix(top, bottom, fract_pos.y);
 }
 
+
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
   let sdf = getSample(vsOut.uv);
 
@@ -58,7 +52,9 @@ fn getSample(pos: vec2f) -> vec4f {
   let hs = u.stroke_width * 0.5;
 
   let fill_alpha = smoothstep(hs - width, hs + width, dist);
-  let color = mix(u.stroke_color, u.fill_color, fill_alpha);
+  let fill_color = getFillColor(sdf, vsOut.uv);
+  let stroke_color = getStrokeColor(sdf, vsOut.uv);
+  let color = mix(stroke_color, fill_color, fill_alpha);
 
   let total_alpha = smoothstep(-hs - width, -hs + width, dist);
 

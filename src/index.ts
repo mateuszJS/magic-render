@@ -177,8 +177,8 @@ export default async function initCreator(
             v: point.v,
           })),
           props: {
-            fill_color: [...shape.props.fill_color],
-            stroke_color: [...shape.props.stroke_color],
+            fill: shape.props.fill, // TODO: correctly filter out zigar added properties
+            stroke: shape.props.stroke, // TODO: correctly filter out zigar added properties
             stroke_width: shape.props.stroke_width,
           },
           texture_id: shape.texture_id,

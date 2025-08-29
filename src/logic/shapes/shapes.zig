@@ -32,10 +32,41 @@ pub fn resetState() void {
     selected_point_id = null;
 }
 
+const GradientStop = struct {
+    offset: f32, // 0..1
+    color: [4]f32,
+};
+
+const LinearGradient = struct {
+    stops: []GradientStop,
+    // final coordinates in document space (after gradientTransform applied)
+    x1: f32,
+    y1: f32,
+    x2: f32,
+    y2: f32,
+    // gradientUnits already baked into coordinates
+};
+
+const RadialGradient = struct {
+    stops: []GradientStop,
+    // final center/focus in document space (after gradientTransform applied)
+    cx: f32,
+    cy: f32,
+    r: f32,
+    fx: ?f32,
+    fy: ?f32,
+};
+
+const Fill = union(enum) {
+    linear: LinearGradient,
+    radial: RadialGradient,
+    solid: [4]f32,
+};
+
 pub const ShapeProps = struct {
     // f32 instead of u8 because Uniforms in wgsl doesn't support u8 anyway
-    fill_color: [4]f32 = .{ 1.0, 0.0, 0.0, 1.0 }, // Default fill color (red)
-    stroke_color: [4]f32 = .{ 0.9, 0.9, 0.0, 1.0 }, // Default stroke color (green)
+    fill: Fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } }, // Default fill color (red)
+    stroke: Fill = .{ .solid = .{ 0.9, 0.9, 0.0, 1.0 } }, // Default stroke color (green)
     stroke_width: f32 = 20.0, // Default stroke width
 };
 
@@ -263,9 +294,11 @@ pub const Shape = struct {
 
     pub fn getSkeletonUniform(self: Shape) Uniform {
         return Uniform{
-            .stroke_width = PathUtils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.render_scale,
-            .fill_color = .{ 0.0, 0.0, 0.0, 0.0 },
-            .stroke_color = .{ 0.0, 0.0, 1.0, 1.0 },
+            .solid = .{
+                .stroke_width = PathUtils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.render_scale,
+                .fill_color = .{ 0.0, 0.0, 0.0, 0.0 },
+                .stroke_color = .{ 0.0, 0.0, 1.0, 1.0 },
+            },
         };
     }
 
@@ -312,11 +345,49 @@ pub const Shape = struct {
     }
 
     pub fn getUniform(self: Shape) Uniform {
-        return Uniform{
-            .stroke_width = self.props.stroke_width * self.sdf_scale,
-            .fill_color = self.props.fill_color,
-            .stroke_color = self.props.stroke_color,
-        };
+        switch (self.props.fill) {
+            .solid => {
+                return Uniform{
+                    .solid = .{
+                        .stroke_width = self.props.stroke_width * self.sdf_scale,
+                        .fill_color = .{ 1, 0, 0, 1 }, //self.props.fill_color,
+                        .stroke_color = .{ 0, 1, 0, 1 }, //self.props.stroke_color,
+                    },
+                };
+            },
+            .radial, .linear => {
+                return Uniform{
+                    .linear = .{
+                        .stroke_width = self.props.stroke_width * self.sdf_scale,
+                        .stop_count = 2,
+                        .stop_positions = .{
+                            .{ 0.0, 0.0, 0.0, 0.0 },
+                            .{ 1.0, 1.0, 1.0, 1.0 },
+                            .{ 0.0, 0.0, 0.0, 0.0 },
+                            .{ 0.0, 0.0, 0.0, 0.0 },
+                            .{ 0.0, 0.0, 0.0, 0.0 },
+                            .{ 0.0, 0.0, 0.0, 0.0 },
+                            .{ 0.0, 0.0, 0.0, 0.0 },
+                            .{ 0.0, 0.0, 0.0, 0.0 },
+                            .{ 0.0, 0.0, 0.0, 0.0 },
+                            .{ 0.0, 0.0, 0.0, 0.0 },
+                        },
+                        .stop_colors = .{
+                            .{ 1, 0, 1, 1 },
+                            .{ 1, 1, 0, 1 },
+                            .{ 0, 0, 0, 0 },
+                            .{ 0, 0, 0, 0 },
+                            .{ 0, 0, 0, 0 },
+                            .{ 0, 0, 0, 0 },
+                            .{ 0, 0, 0, 0 },
+                            .{ 0, 0, 0, 0 },
+                            .{ 0, 0, 0, 0 },
+                            .{ 0, 0, 0, 0 },
+                        },
+                    },
+                };
+            },
+        }
     }
 
     // function has side effect, marks texture as generated
@@ -434,11 +505,24 @@ pub const Shape = struct {
     }
 };
 
-pub const Uniform = extern struct {
+const UniformSolid = extern struct {
     stroke_width: f32,
     padding: [3]f32 = .{ 0.0, 0.0, 0.0 }, // Padding for alignment
     fill_color: [4]f32,
     stroke_color: [4]f32,
+};
+
+const UniformLinearGradient = extern struct {
+    stroke_width: f32,
+    stop_count: u32,
+    padding: [2]f32 = .{ 0.0, 0.0 }, // Padding for alignment
+    stop_positions: [10][4]f32,
+    stop_colors: [10][4]f32,
+};
+
+pub const Uniform = union(enum) {
+    solid: UniformSolid,
+    linear: UniformLinearGradient,
 };
 
 const PickVertexOutput = struct { bounds: [6]images.PickVertex, uniforms: Uniform };

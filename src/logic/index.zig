@@ -16,6 +16,12 @@ const PackedId = @import("shapes/packed_id.zig");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 const PathUtils = @import("shapes/path_utils.zig");
 
+const FillType = enum(u8) {
+    Solid,
+    LinearGradient,
+    RadialGradient,
+};
+
 const WebGpuPrograms = struct {
     draw_texture: *const fn (images.DrawVertex, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
@@ -619,12 +625,14 @@ pub fn calculateShapesSDF() !void {
                         point.y *= shape.sdf_scale;
                     }
                     std.debug.print("New SDF size: {d}x{d}, scale: {d}\n", .{ shape.sdf_size.w, shape.sdf_size.h, shape.sdf_scale });
-                    web_gpu_programs.compute_shape(
-                        points,
-                        shape.sdf_size.w,
-                        shape.sdf_size.h,
-                        shape.texture_id,
-                    );
+                    if (shape.sdf_size.w > 0 and shape.sdf_size.h > 0) {
+                        web_gpu_programs.compute_shape(
+                            points,
+                            shape.sdf_size.w,
+                            shape.sdf_size.h,
+                            shape.texture_id,
+                        );
+                    }
                 }
             },
         }

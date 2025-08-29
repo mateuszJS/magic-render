@@ -1,18 +1,19 @@
-import shaderCode from './shader.wgsl'
+import baseCode from './base.wgsl'
 
 export default function getDrawShape(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
   canvasMatrixBuffer: GPUBuffer,
-  buffersToDestroy: GPUBuffer[]
+  buffersToDestroy: GPUBuffer[],
+  fragmentShader: string,
+  uniformSize: number
 ) {
   const shaderModule = device.createShaderModule({
     label: 'drawShape shader',
-    code: shaderCode,
+    code: baseCode + fragmentShader,
   })
 
-  const uniformBufferSize =
-    (1 /*stroke width*/ + 4 /*stroke color*/ + 4 /*fill color*/ + /*padding*/ 3) * 4
+  const uniformBufferSize = uniformSize * 4
 
   const pipeline = device.createRenderPipeline({
     label: 'drawShape pipeline',

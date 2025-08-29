@@ -8,8 +8,6 @@ struct Vertex {
 
 struct Uniforms {
   stroke_width: f32,
-  fill_color: vec4f,
-  stroke_color: vec4f,
 };
 
 @group(0) @binding(0) var<uniform> camera_projection: mat4x4f;

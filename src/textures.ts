@@ -53,7 +53,7 @@ export function add(
 
       const svgHeight = svgRoot.properties?.height || img.naturalHeight
       if (!svgHeight || typeof svgHeight !== 'number') throw Error('SVG height is required')
-      createShapes(svgRoot, svgHeight)
+      createShapes(svgRoot, {}, svgHeight)
       return
     }
     const { ctx } = getImageData(img, img.naturalWidth, img.naturalHeight)

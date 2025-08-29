@@ -12,8 +12,7 @@ export default function getDrawShape(
 
   const STRIDE = (4 /*position */ + 1) /*id*/ * 4
 
-  const uniformBufferSize =
-    (1 /*stroke width*/ + 4 /*stroke color*/ + 4 /*fill color*/ + /*padding*/ 3) * 4
+  const uniformBufferSize = (1 /*stroke width*/ + /*padding*/ 3) * 4
 
   const pipeline = device.createRenderPipeline({
     label: 'drawShape pipeline',
@@ -45,7 +44,7 @@ export default function getDrawShape(
   return function pickShape(
     pass: GPURenderPassEncoder,
     vertexData: DataView,
-    uniformDataView: DataView,
+    strokeWidth: number,
     sdfTexture: GPUTexture
   ) {
     const numVertices = vertexData.byteLength / STRIDE
@@ -55,7 +54,7 @@ export default function getDrawShape(
       size: uniformBufferSize,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
-    device.queue.writeBuffer(uniformBuffer, 0, uniformDataView)
+    device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([strokeWidth]))
     buffersToDestroy.push(uniformBuffer)
 
     const vertexBuffer = device.createBuffer({
