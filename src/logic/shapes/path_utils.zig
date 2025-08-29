@@ -55,6 +55,7 @@ pub fn getOppositeHandle(control_point: Point, handle: Point) Point {
 
 const SKELETON_POINT_SIZE = 10.0;
 const PICK_POINT_SCALE = 2.0;
+pub const SKELETON_LINE_WIDTH = 3.0;
 
 pub fn getVertexDrawSkeletonPoint(
     is_control_point: bool,
@@ -119,7 +120,7 @@ pub fn drawControlPoint(
                 local_buffer[0..2],
                 cp,
                 hp,
-                3.0 * shared.render_scale,
+                SKELETON_LINE_WIDTH * shared.render_scale,
                 [_]u8{ 0, 0, 255, 255 },
                 0.0,
             );

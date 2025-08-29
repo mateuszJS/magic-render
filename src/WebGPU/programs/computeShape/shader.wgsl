@@ -1,5 +1,6 @@
 const STRAIGHT_LINE_THRESHOLD = 1e10;
 const EPSILON = 1e-10;
+const PI = 3.141592653589793;
 
 struct CubicBezier {
   p0: vec2f,
@@ -8,13 +9,8 @@ struct CubicBezier {
   p3: vec2f,
 };
 
-struct Uniforms {
-  distance_scale: f32,
-};
-
 @group(0) @binding(0) var tex: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(1) var<storage, read> curves: array<vec2f>;
-@group(0) @binding(2) var<uniform> u: Uniforms;
 
 @compute @workgroup_size(1) fn cs(
   @builtin(global_invocation_id) id : vec3u
@@ -23,7 +19,7 @@ struct Uniforms {
   let shape_info = evaluate_shape(pos);
 
   textureStore(tex, id.xy, vec4f(
-    shape_info.signed_distance * u.distance_scale,
+    shape_info.signed_distance,
     shape_info.t,
     shape_info.angle,
     1.0
@@ -302,8 +298,12 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
       curves[i * 4 + 3]
     );
 
-    // Check if this is a straight line (handle points have x >= STRAIGHT_LINE_THRESHOLD)
-    let is_straight_line = curve.p1.x > STRAIGHT_LINE_THRESHOLD && curve.p2.x > STRAIGHT_LINE_THRESHOLD;
+    // Check if this is a straight line,
+    // we could check also p2, but at this point we should receive only
+    // straight line on both handles, not a case for just one straight handle,
+    // those are changed to have sibling cp value
+    let is_straight_line = curve.p1.x > STRAIGHT_LINE_THRESHOLD;
+    // let is_straight_line = curve.p1.x > STRAIGHT_LINE_THRESHOLD && curve.p2.x > STRAIGHT_LINE_THRESHOLD;
 
 
     if (is_straight_line) {
@@ -349,14 +349,21 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
     // min_distance = min(min_distance, distance);
   }
 
-  let curve = CubicBezier(
+  var curve = CubicBezier(
     curves[closest_curve_idx * 4 + 0],
     curves[closest_curve_idx * 4 + 1],
     curves[closest_curve_idx * 4 + 2],
     curves[closest_curve_idx * 4 + 3]
   );
+
+  // handling straight line case
+  if (curve.p1.x > STRAIGHT_LINE_THRESHOLD) {
+    curve.p1 = curve.p0;
+    curve.p2 = curve.p3;
+  }
+
   let closest_point = bezier_point(curve, closest_t);
-  let angle = atan2(point.y - closest_point.y, point.x - closest_point.x);
+  let angle = PI + atan2(point.y - closest_point.y, point.x - closest_point.x);
   
   // Determine if point is inside using odd-even rule (ray casting)
   // Count total crossings and check if odd

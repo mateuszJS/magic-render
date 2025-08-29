@@ -44,14 +44,6 @@ pub const Preview = struct {
     point: Point,
 };
 
-pub fn getSkeletonUniform() Uniform {
-    return Uniform{
-        .stroke_width = 2.0,
-        .fill_color = .{ 0.0, 0.0, 0.0, 0.0 },
-        .stroke_color = .{ 0.0, 0.0, 1.0, 1.0 },
-    };
-}
-
 fn getSnapThreshold(bounds: [4]PointUV) Point {
     const invert_matrix = Matrix3x3.getMatrixFromRectangle(bounds).inverse();
     const close_path_threshold = Point{
@@ -66,8 +58,11 @@ pub const Shape = struct {
     paths: std.ArrayList(Path),
     props: ShapeProps,
     bounds: [4]PointUV,
+
+    sdf_scale: f32 = 1.0,
     outdated_sdf: bool, // if true, we need to recalculate SDF
     texture_id: u32,
+
     preview_point: ?Point = null,
 
     sdf_size: TextureSize = .{ .w = 0, .h = 0 }, // stores the last size of computed sdf
@@ -266,6 +261,14 @@ pub const Shape = struct {
         return skeleton_buffer.toOwnedSlice();
     }
 
+    pub fn getSkeletonUniform(self: Shape) Uniform {
+        return Uniform{
+            .stroke_width = PathUtils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.render_scale,
+            .fill_color = .{ 0.0, 0.0, 0.0, 0.0 },
+            .stroke_color = .{ 0.0, 0.0, 1.0, 1.0 },
+        };
+    }
+
     pub fn getSkeletonPickVertexData(
         self: Shape,
         allocator: std.mem.Allocator,
@@ -310,7 +313,7 @@ pub const Shape = struct {
 
     pub fn getUniform(self: Shape) Uniform {
         return Uniform{
-            .stroke_width = self.props.stroke_width / shared.render_scale,
+            .stroke_width = self.props.stroke_width * self.sdf_scale,
             .fill_color = self.props.fill_color,
             .stroke_color = self.props.stroke_color,
         };
@@ -343,11 +346,11 @@ pub const Shape = struct {
         }
 
         const scale = Matrix3x3.scaling(
-            self.bounds[0].distance(self.bounds[1]) / shared.render_scale,
-            self.bounds[0].distance(self.bounds[3]) / shared.render_scale,
+            self.bounds[0].distance(self.bounds[1]),
+            self.bounds[0].distance(self.bounds[3]),
         );
 
-        const padding = (self.props.stroke_width / 2.0) / shared.render_scale;
+        const padding = self.props.stroke_width / 2.0;
         for (points) |*point| {
             const scaled = scale.get(point);
             point.x = padding + scaled.x;

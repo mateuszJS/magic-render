@@ -56,10 +56,10 @@ export default function runCreator(
       }
       */
     },
-    compute_shape: (curves_data, width, height, distanceScaleFactor, textureId) => {
+    compute_shape: (curves_data, width, height, textureId) => {
       const curvesDataView = curves_data['*'].dataView
       Textures.updateSDF(textureId, width, height)
-      computeShape(computePass, curvesDataView, distanceScaleFactor, Textures.getTexture(textureId))
+      computeShape(computePass, curvesDataView, Textures.getTexture(textureId))
     },
     draw_shape: (bound_box_data, uniform_data, textureId) => {
       const boundBoxDataView = bound_box_data['*'].dataView
