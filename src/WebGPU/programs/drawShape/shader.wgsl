@@ -1,5 +1,6 @@
 const STRAIGHT_LINE_THRESHOLD = 1e10;
 const EPSILON = 1e-10;
+const PI = 3.141592653589793;
 
 struct Uniforms {
   stroke_width: f32,
@@ -53,7 +54,7 @@ fn getSample(pos: vec2f) -> vec4f {
 
   let dist = sdf.r;
   let width = fwidth(dist);
-  
+
   let hs = u.stroke_width * 0.5;
 
   let fill_alpha = smoothstep(hs - width, hs + width, dist);
@@ -65,7 +66,7 @@ fn getSample(pos: vec2f) -> vec4f {
 
   // let stroke_factor = select(0.5, 0.0, sdf.g > 1.0);
   // color = vec4f(0, sdf.g % 1, 0, 1.0);
-  // color = vec4f(0, 0, sdf.b / (2 * 3.1415926), 1.0);
-  // color = vec4f(sdf.r / 100.0, sdf.g % 1, sdf.b / (2 * 3.1415926), 1.0);
+  // color = vec4f(0, 0, sdf.b / (2 * PI), 1.0);
+  // color = vec4f(sdf.r / 100.0, sdf.g % 1, sdf.b / (2 * PI), 1.0);
   // color = select(vec4f(0.5, 0, 0, 1), vec4f(0, 0, 0.5, 1), u32(sdf.r / 20.0) % 2 == 0);
 }

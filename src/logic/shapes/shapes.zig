@@ -263,7 +263,7 @@ pub const Shape = struct {
 
     pub fn getSkeletonUniform(self: Shape) Uniform {
         return Uniform{
-            .stroke_width = 3.0 * self.sdf_scale * shared.render_scale,
+            .stroke_width = PathUtils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.render_scale,
             .fill_color = .{ 0.0, 0.0, 0.0, 0.0 },
             .stroke_color = .{ 0.0, 0.0, 1.0, 1.0 },
         };

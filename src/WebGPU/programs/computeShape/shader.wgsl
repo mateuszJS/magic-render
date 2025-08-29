@@ -1,5 +1,6 @@
 const STRAIGHT_LINE_THRESHOLD = 1e10;
 const EPSILON = 1e-10;
+const PI = 3.141592653589793;
 
 struct CubicBezier {
   p0: vec2f,
@@ -354,13 +355,15 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
     curves[closest_curve_idx * 4 + 2],
     curves[closest_curve_idx * 4 + 3]
   );
+
+  // handling straight line case
   if (curve.p1.x > STRAIGHT_LINE_THRESHOLD) {
     curve.p1 = curve.p0;
     curve.p2 = curve.p3;
   }
 
   let closest_point = bezier_point(curve, closest_t);
-  let angle = 3.1415926 + atan2(point.y - closest_point.y, point.x - closest_point.x);
+  let angle = PI + atan2(point.y - closest_point.y, point.x - closest_point.x);
   
   // Determine if point is inside using odd-even rule (ray casting)
   // Count total crossings and check if odd
