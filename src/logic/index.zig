@@ -19,7 +19,7 @@ const PathUtils = @import("shapes/path_utils.zig");
 const WebGpuPrograms = struct {
     draw_texture: *const fn (images.DrawVertex, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
-    compute_shape: *const fn ([]const types.Point, u32, u32, f32, u32) void,
+    compute_shape: *const fn ([]const types.Point, u32, u32, u32) void,
     draw_shape: *const fn ([]const types.PointUV, shapes.Uniform, u32) void,
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
@@ -610,20 +610,19 @@ pub fn calculateShapesSDF() !void {
                 const option_points = try shape.getNewSdfPoint(allocator);
                 if (option_points) |points| {
                     const bounds = shape.getBoundsWithPadding(1 / shared.render_scale);
-                    const init_width = bounds[0].distance(bounds[1]);
                     shape.sdf_size = get_sdf_texture_size(bounds);
-                    const scale = @as(f32, @floatFromInt(shape.sdf_size.w)) / init_width;
+                    const init_width = bounds[0].distance(bounds[1]) * shared.render_scale; // revert to logical scale, nothing screen/camera/zoom related
+                    shape.sdf_scale = @as(f32, @floatFromInt(shape.sdf_size.w)) / init_width;
 
                     for (points) |*point| {
-                        point.x *= scale;
-                        point.y *= scale;
+                        point.x *= shape.sdf_scale;
+                        point.y *= shape.sdf_scale;
                     }
-                    std.debug.print("New SDF size: {}x{}\n", .{ shape.sdf_size.w, shape.sdf_size.h });
+                    std.debug.print("New SDF size: {d}x{d}, scale: {d}\n", .{ shape.sdf_size.w, shape.sdf_size.h, shape.sdf_scale });
                     web_gpu_programs.compute_shape(
                         points,
                         shape.sdf_size.w,
                         shape.sdf_size.h,
-                        1 / scale,
                         shape.texture_id,
                     );
                 }
@@ -678,7 +677,7 @@ pub fn renderDraw() !void {
                 state.tool == Tool.DrawShape,
             );
             web_gpu_programs.draw_triangle(vertex_data);
-            web_gpu_programs.draw_shape(&shape.getDrawBounds(), shapes.getSkeletonUniform(), shape.texture_id);
+            web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getSkeletonUniform(), shape.texture_id);
         }
     }
 

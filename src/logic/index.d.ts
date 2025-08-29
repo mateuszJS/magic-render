@@ -96,7 +96,6 @@ declare module '*.zig' {
       curves_data: ArrayPointerDataView,
       width: number,
       height: number,
-      distance_scale: number,
       texture_id: number
     ) => void
     draw_shape: (

@@ -17,7 +17,6 @@ export default function getComputeShape(device: GPUDevice, buffersToDestroy: GPU
   return function computeShape(
     passEncoder: GPUComputePassEncoder,
     curvesDataView: DataView,
-    distanceScaleFactor: number,
     texture: GPUTexture
   ) {
     const curvesBuffer = device.createBuffer({
@@ -28,14 +27,6 @@ export default function getComputeShape(device: GPUDevice, buffersToDestroy: GPU
     device.queue.writeBuffer(curvesBuffer, 0, curvesDataView)
     buffersToDestroy.push(curvesBuffer)
 
-    const uniformBuffer = device.createBuffer({
-      label: 'computeShape uniform buffer',
-      size: 4 /*scale*/ + 12 /*padding*/,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    })
-    device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([distanceScaleFactor]))
-    buffersToDestroy.push(uniformBuffer)
-
     passEncoder.setPipeline(pipeline)
 
     const bindGroup = device.createBindGroup({
@@ -43,7 +34,6 @@ export default function getComputeShape(device: GPUDevice, buffersToDestroy: GPU
       entries: [
         { binding: 0, resource: texture.createView() },
         { binding: 1, resource: { buffer: curvesBuffer } },
-        { binding: 2, resource: { buffer: uniformBuffer } },
       ],
     })
 

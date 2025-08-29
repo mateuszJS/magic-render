@@ -13,7 +13,11 @@ export default function createShapes(node: Node, svgHeight: number): void {
     if (typeof child !== 'string') {
       if ('properties' in child && typeof child.properties === 'object') {
         const props = child.properties
-        const serializedProps: Partial<ShapeProps> = {}
+        const serializedProps: Partial<ShapeProps> = {
+          fill_color: [0, 0, 0, 1],
+          stroke_color: [1, 0, 0, 1],
+          stroke_width: 10,
+        }
         if (props.fill) {
           const rgba = parseColor(props.fill as string)
           serializedProps.fill_color = rgba
