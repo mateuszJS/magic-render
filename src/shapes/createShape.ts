@@ -19,101 +19,78 @@ type LinearGradient = {
 
 type ShapeFill = { solid: [number, number, number, number] } | { linear: LinearGradient }
 
+type PathFill = {
+  points: { x: number; y: number }[]
+  fill: FillInfo | null
+}
+type GroupFill = {
+  paths: PathFill[]
+  groupFill: FillInfo | null
+}
 // Extract absolute geometry and fills from Paper.js items
 function extractPathsFromItem(item: paper.Item): {
-  paths: { points: { x: number; y: number }[]; fill: FillInfo | null }[]
-  groups: {
-    paths: { points: { x: number; y: number }[]; fill: FillInfo | null }[]
-    groupFill: FillInfo | null
-  }[]
+  paths: PathFill[]
+  groups: GroupFill[]
 } {
-  const result: {
-    paths: { points: { x: number; y: number }[]; fill: FillInfo | null }[]
-    groups: {
-      paths: { points: { x: number; y: number }[]; fill: FillInfo | null }[]
-      groupFill: FillInfo | null
-    }[]
-  } = {
-    paths: [],
-    groups: [],
-  }
+  const paths: PathFill[] = []
+  const groups: GroupFill[] = []
 
   // Handle Path items (most common)
   if (item instanceof paper.Path) {
-    try {
-      // Don't flatten - we want to preserve the original curve information
-      // Paper.js has already applied all transformations from parent groups
-      const points = convertSegmentsToLogicFormat(item.segments, item.closed)
+    const points = convertSegmentsToLogicFormat(item.segments, item.closed)
+    paths.push({ points, fill: convertFill(item.fillColor) })
+  } else if (item instanceof paper.Shape) {
+    // (rectangles, circles, etc.)
+    const pathFromShape = item.toPath(false)
+    if (pathFromShape.segments) {
+      const points = convertSegmentsToLogicFormat(pathFromShape.segments, pathFromShape.closed)
 
-      result.paths.push({ points, fill: convertFill(item.fillColor) })
-    } catch {
-      // Ignore items that can't be processed
+      // Extract fill information from the original shape
+      paths.push({ points, fill: convertFill(item.fillColor) })
+
+      // Clean up the temporary path
+      pathFromShape.remove()
     }
-  }
-  // Handle Shape items (rectangles, circles, etc.)
-  else if (item instanceof paper.Shape) {
-    try {
-      // Convert shape to path to get standardized point format
-      const pathFromShape = item.toPath(false) // false = don't insert into project
-      if (pathFromShape && pathFromShape.segments) {
-        const points = convertSegmentsToLogicFormat(pathFromShape.segments, pathFromShape.closed)
-
-        // Extract fill information from the original shape
-        result.paths.push({ points, fill: convertFill(item.fillColor) })
-
-        // Clean up the temporary path
-        pathFromShape.remove()
-      }
-    } catch {
-      // Ignore items that can't be processed
-    }
-  }
-  // Handle Group items - treat as separate logical groups
-  else if (item instanceof paper.Group) {
-    console.log('Processing group:', item)
-
+  } else if (item instanceof paper.Group) {
     // Collect all paths within this group
-    const groupPaths: { points: { x: number; y: number }[]; fill: FillInfo | null }[] = []
+    const groupPaths: PathFill[] = []
 
     item.children.forEach((child) => {
       const childResult = extractPathsFromItem(child)
       groupPaths.push(...childResult.paths)
       // Also collect any nested groups
-      result.groups.push(...childResult.groups)
+      groups.push(...childResult.groups)
     })
 
     // Add this group as a separate entity
     if (groupPaths.length > 0) {
-      result.groups.push({ paths: groupPaths, groupFill: convertFill(item.fillColor) })
+      groups.push({ paths: groupPaths, groupFill: convertFill(item.fillColor) })
     }
   }
 
   // Recursively process other children (layers, compound paths, etc.)
   if (
-    'children' in item &&
-    item.children &&
+    'children' in item && // paper.js typescript definitions are not up to date
+    item.children && // children might not exist
     item.children.length &&
     !(item instanceof paper.Group)
   ) {
     item.children.forEach((child) => {
       const childResult = extractPathsFromItem(child)
-      result.paths.push(...childResult.paths) // Each path stays separate
-      result.groups.push(...childResult.groups)
+      paths.push(...childResult.paths) // Each path stays separate
+      groups.push(...childResult.groups)
     })
-  }
-
-  // Handle CompoundPath items (paths with holes)
-  else if (item instanceof paper.CompoundPath) {
-    console.log('Processing CompoundPath')
+  } else if (item instanceof paper.CompoundPath) {
+    // Handle CompoundPath items (paths with holes)
     item.children.forEach((child) => {
       if (child instanceof paper.Path) {
         const childResult = extractPathsFromItem(child)
-        result.paths.push(...childResult.paths)
+        paths.push(...childResult.paths)
       }
     })
   }
 
-  return result
+  return { paths, groups }
 }
 
 export default function createShapes(svg: string): void {
@@ -154,14 +131,13 @@ export default function createShapes(svg: string): void {
               fill.gradientStart &&
               fill.gradientEnd
             ) {
-              // Use the extracted gradient coordinates from FillInfo
-              const start = fill.gradientStart
-              const end = fill.gradientEnd
-              console.log('gradient start', start, 'and end', end)
               // Reflect gradient coordinates to match the reflected coordinate system
               const svgHeight = imported.bounds?.height || 0
-              const reflectedStart = { x: start.x, y: svgHeight - start.y }
-              const reflectedEnd = { x: end.x, y: svgHeight - end.y }
+              const reflectedStart = {
+                x: fill.gradientStart.x,
+                y: svgHeight - fill.gradientStart.y,
+              }
+              const reflectedEnd = { x: fill.gradientEnd.x, y: svgHeight - fill.gradientEnd.y }
 
               // Normalize to bounding box space for shader
               const bbw = boundingBox.max_x - boundingBox.min_x || 1
@@ -174,9 +150,6 @@ export default function createShapes(svg: string): void {
                 x: (reflectedEnd.x - boundingBox.min_x) / bbw,
                 y: (reflectedEnd.y - boundingBox.min_y) / bbh,
               }
-              console.log('Original gradient:', { start, end })
-              console.log('Reflected gradient:', { reflectedStart, reflectedEnd })
-              console.log('Normalized gradient:', { p1, p2 })
               shapeFill = { linear: { stops: fill.stops, start: p1, end: p2 } }
             }
           }
