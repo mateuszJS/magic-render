@@ -35,7 +35,6 @@
     "@tsconfig/recommended": "^1.0.8",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.13.9",
-    "@types/paper": "^0.11.14",
     "@types/svg-parser": "^2.0.6",
     "@webgpu/types": "^0.1.54",
     "eslint": "^9.28.0",
@@ -74,7 +73,6 @@
     "lib/**/*"
   ],
   "dependencies": {
-    "paper": "^0.12.18",
-    "svg-parser": "^2.0.4"
+    "paper": "^0.12.18"
   }
 }

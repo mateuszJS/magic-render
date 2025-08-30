@@ -1,5 +1,4 @@
 import getLoadingTexture from 'loadingTexture'
-import { parse, RootNode, ElementNode } from 'svg-parser'
 import { createTextureFromSource } from 'WebGPU/getTexture'
 import createShapes from 'shapes/createShape'
 
@@ -8,26 +7,6 @@ let textures: TextureSource[]
 let loadingTexture: GPUTexture
 let updateProcessing: () => void
 let loadingTextures: number
-
-function getSvgSize(svgRoot: ElementNode, img: HTMLImageElement) {
-  const props = svgRoot.properties
-  const viewboxSize = props?.viewBox ? extractSizeFromSvgViewbox(props.viewBox as string) : null
-
-  const widthAttr = typeof props?.width === 'number' ? (props?.width as number) : undefined
-  const heightAttr = typeof props?.height === 'number' ? (props?.height as number) : undefined
-  const svgWidth = widthAttr || img.naturalWidth || viewboxSize?.[0]
-  const svgHeight = heightAttr || img.naturalHeight || viewboxSize?.[1]
-  return [svgWidth, svgHeight]
-}
-
-function extractSizeFromSvgViewbox(viewbox: string) {
-  const parts = viewbox.split(' ').map(Number)
-  if (parts.length === 4) {
-    const [minX, minY, width, height] = parts
-    return [width - minX, height - minY]
-  }
-  return null
-}
 
 export function init(
   _device: GPUDevice,
@@ -66,12 +45,9 @@ export function add(
   // we allow duplicates in textures array
   textures.push({ url })
 
-  getImageWithDetails(url).then(([img, svgTree]) => {
-    if (svgTree) {
-      const svgRoot = svgTree.children[0] as ElementNode
-      const [svgWidth, svgHeight] = getSvgSize(svgRoot, img)
-      if (!svgWidth || !svgHeight) throw Error('SVG width and height are required')
-      createShapes(svgRoot)
+  getImageWithDetails(url).then(([img, svg]) => {
+    if (svg) {
+      createShapes(svg)
       return
     }
     const { ctx } = getImageData(img, img.naturalWidth, img.naturalHeight)
@@ -201,19 +177,19 @@ export function updateTextureUrl(textureId: number, url: string) {
   textures[textureId].url = url
 }
 
-async function getImageWithDetails(url: string): Promise<[HTMLImageElement, RootNode | null]> {
+async function getImageWithDetails(url: string): Promise<[HTMLImageElement, string | null]> {
   return Promise.all([
     new Promise<HTMLImageElement>((resolve) => {
       const img = new Image()
       img.src = url
       img.onload = () => resolve(img)
     }),
-    new Promise<RootNode | null>((resolve) => {
+    new Promise<string | null>((resolve) => {
       fetch(url)
         .then((response) => response.text())
         .then((text) => {
           if (text.includes('<svg')) {
-            resolve(parse(text))
+            resolve(text)
           } else {
             resolve(null)
           }
