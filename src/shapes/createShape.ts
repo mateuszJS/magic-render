@@ -110,15 +110,27 @@ function convertSegmentsToLogicFormat(
 // Extract absolute geometry and fills from Paper.js items
 function extractPathsFromItem(item: paper.Item): {
   paths: { points: { x: number; y: number }[]; fill?: FillInfo }[]
+  groups: {
+    paths: { points: { x: number; y: number }[]; fill?: FillInfo }[]
+    groupFill?: FillInfo
+  }[]
 } {
-  const result: { paths: { points: { x: number; y: number }[]; fill?: FillInfo }[] } = {
+  const result: {
+    paths: { points: { x: number; y: number }[]; fill?: FillInfo }[]
+    groups: {
+      paths: { points: { x: number; y: number }[]; fill?: FillInfo }[]
+      groupFill?: FillInfo
+    }[]
+  } = {
     paths: [],
+    groups: [],
   }
 
   // Handle Path items (most common)
   if (item instanceof paper.Path) {
     try {
       // Don't flatten - we want to preserve the original curve information
+      // Paper.js has already applied all transformations from parent groups
       console.log('item', item)
       const points = convertSegmentsToLogicFormat(item.segments, item.closed)
 
@@ -158,12 +170,127 @@ function extractPathsFromItem(item: paper.Item): {
       // Ignore items that can't be processed
     }
   }
+  // Handle Shape items (rectangles, circles, etc.)
+  else if (item instanceof paper.Shape) {
+    try {
+      console.log('Processing Shape:', item.type)
+      
+      // Convert shape to path to get standardized point format
+      const pathFromShape = item.toPath(false) // false = don't insert into project
+      if (pathFromShape && pathFromShape.segments) {
+        const points = convertSegmentsToLogicFormat(pathFromShape.segments, pathFromShape.closed)
 
-  // Recursively process children (groups, etc.) - keep paths separate
-  if ('children' in item && item.children && item.children.length) {
+        // Extract fill information from the original shape
+        let fillInfo: FillInfo | undefined
+        const fc = item.fillColor
+        if (fc) {
+          const gradientFc = fc as unknown as {
+            gradient?: {
+              stops: { rampPoint: number; color: { toCSS: (includeAlpha: boolean) => string } }[]
+              origin?: { x: number; y: number }
+              destination?: { x: number; y: number }
+            }
+          }
+          if (gradientFc.gradient) {
+            const g = gradientFc.gradient
+            const stops: GradientStop[] = g.stops.map((s) => ({
+              offset: s.rampPoint,
+              color: parseColor(s.color.toCSS(true)),
+            }))
+            fillInfo = {
+              kind: 'linear',
+              stops,
+              gradient: g,
+            }
+          } else {
+            fillInfo = {
+              kind: 'solid',
+              color: parseColor(fc.toCSS(true)),
+            }
+          }
+        }
+
+        result.paths.push({ points, fill: fillInfo })
+        
+        // Clean up the temporary path
+        pathFromShape.remove()
+      }
+    } catch {
+      // Ignore items that can't be processed
+    }
+  }
+  // Handle Group items - treat as separate logical groups
+  else if (item instanceof paper.Group) {
+    console.log('Processing group:', item)
+
+    // Extract group-level fill if any
+    let groupFillInfo: FillInfo | undefined
+    const groupFc = item.fillColor
+    if (groupFc) {
+      const gradientFc = groupFc as unknown as {
+        gradient?: {
+          stops: { rampPoint: number; color: { toCSS: (includeAlpha: boolean) => string } }[]
+          origin?: { x: number; y: number }
+          destination?: { x: number; y: number }
+        }
+      }
+      if (gradientFc.gradient) {
+        const g = gradientFc.gradient
+        const stops: GradientStop[] = g.stops.map((s) => ({
+          offset: s.rampPoint,
+          color: parseColor(s.color.toCSS(true)),
+        }))
+        groupFillInfo = {
+          kind: 'linear',
+          stops,
+          gradient: g,
+        }
+      } else {
+        groupFillInfo = {
+          kind: 'solid',
+          color: parseColor(groupFc.toCSS(true)),
+        }
+      }
+    }
+
+    // Collect all paths within this group
+    const groupPaths: { points: { x: number; y: number }[]; fill?: FillInfo }[] = []
+
+    item.children.forEach((child) => {
+      const childResult = extractPathsFromItem(child)
+      groupPaths.push(...childResult.paths)
+      // Also collect any nested groups
+      result.groups.push(...childResult.groups)
+    })
+
+    // Add this group as a separate entity
+    if (groupPaths.length > 0) {
+      result.groups.push({ paths: groupPaths, groupFill: groupFillInfo })
+    }
+  }
+
+  // Recursively process other children (layers, compound paths, etc.)
+  if (
+    'children' in item &&
+    item.children &&
+    item.children.length &&
+    !(item instanceof paper.Group)
+  ) {
     item.children.forEach((child) => {
       const childResult = extractPathsFromItem(child)
       result.paths.push(...childResult.paths) // Each path stays separate
+      result.groups.push(...childResult.groups)
+    })
+  }
+  
+  // Handle CompoundPath items (paths with holes)
+  else if (item instanceof paper.CompoundPath) {
+    console.log('Processing CompoundPath')
+    item.children.forEach((child) => {
+      if (child instanceof paper.Path) {
+        const childResult = extractPathsFromItem(child)
+        result.paths.push(...childResult.paths)
+      }
     })
   }
 
@@ -187,67 +314,86 @@ export default function createShapes(node: Node): void {
     const imported = project.importSVG(svg)
     console.log('imported', imported)
     if (imported) {
-      const { paths } = extractPathsFromItem(imported)
+      const { paths, groups } = extractPathsFromItem(imported)
 
-      // Process each path separately to create individual shapes
-      paths.forEach((pathData) => {
-        const pathPoints = [pathData.points]
-        const boundingBox = getBoundingBox(pathPoints)
+      // Helper function to create a shape from path data
+      const createShapeFromPaths = (
+        pathsData: { points: { x: number; y: number }[]; fill?: FillInfo }[],
+        defaultFill?: FillInfo
+      ) => {
+        pathsData.forEach((pathData) => {
+          const pathPoints = [pathData.points]
+          const boundingBox = getBoundingBox(pathPoints)
 
-        // Build shape properties for this specific path
-        let shapeFill: ShapeFill = { solid: [0, 0, 0, 1] }
+          // Build shape properties for this specific path
+          let shapeFill: ShapeFill = { solid: [0, 0, 0, 1] }
 
-        if (pathData.fill) {
-          const fill = pathData.fill
-          if (fill.kind === 'solid' && fill.color) {
-            shapeFill = { solid: fill.color }
-          } else if (fill.kind === 'linear' && fill.stops && fill.gradient) {
-            // Paper.js gradient has absolute start/end coordinates!
-            const g = fill.gradient as {
-              origin?: { x: number; y: number }
-              destination?: { x: number; y: number }
+          // Use path-specific fill, or fall back to group fill, or default
+          const fillToUse = pathData.fill || defaultFill
+          if (fillToUse) {
+            const fill = fillToUse
+            if (fill.kind === 'solid' && fill.color) {
+              shapeFill = { solid: fill.color }
+            } else if (fill.kind === 'linear' && fill.stops && fill.gradient) {
+              // Paper.js gradient has absolute start/end coordinates!
+              const g = fill.gradient as {
+                origin?: { x: number; y: number }
+                destination?: { x: number; y: number }
+              }
+              const start = { x: g.origin?.x || 0, y: g.origin?.y || 0 }
+              const end = { x: g.destination?.x || 1, y: g.destination?.y || 0 }
+
+              // Normalize to bounding box space for shader
+              const bbw = boundingBox.max_x - boundingBox.min_x || 1
+              const bbh = boundingBox.max_y - boundingBox.min_y || 1
+              const p1 = {
+                x: (start.x - boundingBox.min_x) / bbw,
+                y: (start.y - boundingBox.min_y) / bbh,
+              }
+              const p2 = {
+                x: (end.x - boundingBox.min_x) / bbw,
+                y: (end.y - boundingBox.min_y) / bbh,
+              }
+
+              shapeFill = { linear: { stops: fill.stops, start: p1, end: p2 } }
             }
-            const start = { x: g.origin?.x || 0, y: g.origin?.y || 0 }
-            const end = { x: g.destination?.x || 1, y: g.destination?.y || 0 }
-
-            // Normalize to bounding box space for shader
-            const bbw = boundingBox.max_x - boundingBox.min_x || 1
-            const bbh = boundingBox.max_y - boundingBox.min_y || 1
-            const p1 = {
-              x: (start.x - boundingBox.min_x) / bbw,
-              y: (start.y - boundingBox.min_y) / bbh,
-            }
-            const p2 = {
-              x: (end.x - boundingBox.min_x) / bbw,
-              y: (end.y - boundingBox.min_y) / bbh,
-            }
-
-            shapeFill = { linear: { stops: fill.stops, start: p1, end: p2 } }
           }
-        }
 
-        const serializedProps = {
-          fill: shapeFill,
-          stroke: shapeFill, // Use same fill for stroke as fallback
-          stroke_width: 0,
-        }
+          const serializedProps = {
+            fill: shapeFill,
+            stroke: shapeFill, // Use same fill for stroke as fallback
+            stroke_width: 0,
+          }
 
-        // Add each path as a separate shape
-        const absolutePaths = pathPoints.map((path) => path.map((p) => ({ x: p.x, y: p.y })))
+          // Add each path as a separate shape
+          const absolutePaths = pathPoints.map((path) => path.map((p) => ({ x: p.x, y: p.y })))
 
-        // Reflect Y-axis: convert from SVG coordinates (top-left origin) to creator coordinates (bottom-left origin)
-        const svgHeight = imported.bounds?.height // Use SVG height or fallback
-        if (!svgHeight) {
-          throw Error('SVG height is required')
-        }
-        const reflectedPaths = absolutePaths.map((path) =>
-          path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
-        )
+          // Reflect Y-axis: convert from SVG coordinates (top-left origin) to creator coordinates (bottom-left origin)
+          const svgHeight = imported.bounds?.height // Use SVG height or fallback
+          if (!svgHeight) {
+            throw Error('SVG height is required')
+          }
+          const reflectedPaths = absolutePaths.map((path) =>
+            path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
+          )
 
-        console.log('absolutePaths', absolutePaths)
-        console.log('reflectedPaths', reflectedPaths)
-        console.log('serializedProps', serializedProps)
-        Logic.addShape(0, reflectedPaths, null, serializedProps, Textures.createSDF())
+          console.log('absolutePaths', absolutePaths)
+          console.log('reflectedPaths', reflectedPaths)
+          console.log('serializedProps', serializedProps)
+          Logic.addShape(0, reflectedPaths, null, serializedProps, Textures.createSDF())
+        })
+      }
+
+      // Process individual paths (not in groups)
+      if (paths.length > 0) {
+        console.log('Processing individual paths:', paths.length)
+        createShapeFromPaths(paths)
+      }
+
+      // Process groups as separate logical entities
+      groups.forEach((group, index) => {
+        console.log(`Processing group ${index}:`, group.paths.length, 'paths')
+        createShapeFromPaths(group.paths, group.groupFill)
       })
     }
   } catch (error) {
