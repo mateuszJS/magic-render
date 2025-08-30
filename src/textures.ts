@@ -71,7 +71,7 @@ export function add(
       const svgRoot = svgTree.children[0] as ElementNode
       const [svgWidth, svgHeight] = getSvgSize(svgRoot, img)
       if (!svgWidth || !svgHeight) throw Error('SVG width and height are required')
-      createShapes(svgRoot, {}, svgWidth, svgHeight)
+      createShapes(svgRoot)
       return
     }
     const { ctx } = getImageData(img, img.naturalWidth, img.naturalHeight)

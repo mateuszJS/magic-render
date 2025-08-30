@@ -1,366 +1,249 @@
-import { Node, ElementNode } from 'svg-parser'
+import paper from 'paper'
+import { Node } from 'svg-parser'
 import * as Logic from 'logic/index.zig'
-import parsePathData from './parsePathData'
-import parseRect from './parseRect'
 import parseColor from './parseColor'
-import parseEllipse from './parseEllipse'
 import * as Textures from 'textures'
 import { getBoundingBox } from './boundingBox'
+import { STRAIGHT_LINE_HANDLE } from './const'
 
-// Internal collection for raw defs from <defs>
-type DefStop = { offset: number; color: [number, number, number, number]; opacity: number }
-type LinearDef = {
-  kind: 'linear'
-  id: string
-  x1?: number
-  y1?: number
-  x2?: number
-  y2?: number
-  gradientUnits?: 'objectBoundingBox' | 'userSpaceOnUse'
-  gradientTransform?: string
-  href?: string
-  stops: DefStop[]
-}
-type RadialDef = {
-  kind: 'radial'
-  id: string
-  cx?: number
-  cy?: number
-  r?: number
-  fx?: number
-  fy?: number
-  gradientUnits?: 'objectBoundingBox' | 'userSpaceOnUse'
-  gradientTransform?: string
-  href?: string
-  stops: DefStop[]
-}
-type AnyDef = LinearDef | RadialDef
-type Def = Record<string, AnyDef>
-
-// Parse a gradientTransform into separate operations
-function parseTransform(str: string | undefined): {
-  translate: { x: number; y: number }
-  scale: { x: number; y: number }
-  rotate: number
-  matrix?: number[]
-} {
-  const res = { translate: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotate: 0 }
-  if (!str) return res
-
-  const matrixMatch = str.match(/matrix\(([^)]+)\)/)
-  if (matrixMatch) {
-    const [a, b, c, d, e, f] = matrixMatch[1].split(/[ ,]+/).map(Number)
-    return { ...res, matrix: [a, b, c, d, e, f] }
-  }
-
-  const t = str.match(/translate\(([^)]+)\)/)
-  if (t) {
-    const [x, y] = t[1].split(/[ ,]+/).map(Number)
-    res.translate.x = x || 0
-    res.translate.y = y || 0
-  }
-  const s = str.match(/scale\(([^)]+)\)/)
-  if (s) {
-    const parts = s[1].split(/[ ,]+/).map(Number)
-    res.scale.x = parts[0] ?? 1
-    res.scale.y = parts[1] ?? parts[0] ?? 1
-  }
-  const r = str.match(/rotate\(([^)]+)\)/)
-  if (r) res.rotate = Number(r[1]) || 0
-  return res
+// Import the exact types from Logic module
+type GradientStop = {
+  color: [number, number, number, number]
+  offset: number
 }
 
-function applyLinearTransform(x: number, y: number, tf: ReturnType<typeof parseTransform>) {
-  if (tf.matrix) {
-    const [a, b, c, d, e, f] = tf.matrix
-    return {
-      x: a * x + c * y + e,
-      y: b * x + d * y + f,
-    }
-  }
-  // scale -> rotate -> translate
-  const sx = x * tf.scale.x
-  const sy = y * tf.scale.y
-  const rad = (tf.rotate * Math.PI) / 180
-  const rx = sx * Math.cos(rad) - sy * Math.sin(rad)
-  const ry = sx * Math.sin(rad) + sy * Math.cos(rad)
-  return { x: rx + tf.translate.x, y: ry + tf.translate.y }
+type LinearGradient = {
+  start: { x: number; y: number }
+  end: { x: number; y: number }
+  stops: GradientStop[]
 }
 
-// Merge referenced gradient (href) into current. Current overrides referenced.
-function resolveRef(defs: Def, def: AnyDef, seen = new Set<string>()): AnyDef {
-  if (!def.href) return def
-  const id = def.href.replace('#', '')
-  if (seen.has(id)) return def
-  seen.add(id)
-  const base = defs[id]
-  if (!base) return def
-  const resolvedBase = resolveRef(defs, base, seen)
-  if (def.kind === 'linear' && resolvedBase.kind === 'linear') {
-    return {
-      kind: 'linear',
-      id: def.id,
-      x1: def.x1 ?? resolvedBase.x1,
-      y1: def.y1 ?? resolvedBase.y1,
-      x2: def.x2 ?? resolvedBase.x2,
-      y2: def.y2 ?? resolvedBase.y2,
-      gradientUnits: def.gradientUnits ?? resolvedBase.gradientUnits,
-      gradientTransform: def.gradientTransform ?? resolvedBase.gradientTransform,
-      href: undefined,
-      stops: def.stops.length ? def.stops : resolvedBase.stops,
-    }
-  } else if (def.kind === 'radial' && resolvedBase.kind === 'radial') {
-    return {
-      kind: 'radial',
-      id: def.id,
-      cx: def.cx ?? resolvedBase.cx,
-      cy: def.cy ?? resolvedBase.cy,
-      r: def.r ?? resolvedBase.r,
-      fx: def.fx ?? resolvedBase.fx,
-      fy: def.fy ?? resolvedBase.fy,
-      gradientUnits: def.gradientUnits ?? resolvedBase.gradientUnits,
-      gradientTransform: def.gradientTransform ?? resolvedBase.gradientTransform,
-      href: undefined,
-      stops: def.stops.length ? def.stops : resolvedBase.stops,
-    }
+type ShapeFill = { solid: [number, number, number, number] } | { linear: LinearGradient }
+
+// Convert svg-parser node tree back to SVG string for Paper.js import
+function nodeToSvg(node: Node | string): string {
+  if (typeof node === 'string') return node
+  // svg-parser types are incomplete, use unknown for safety
+  const element = node as unknown as {
+    tagName?: string
+    properties?: Record<string, unknown>
+    children?: (Node | string)[]
   }
-  return def
+  const tag = element.tagName || 'g'
+  const props = element.properties || {}
+  const attrs = Object.keys(props)
+    .map((k) => `${k}="${String(props[k]).replace(/"/g, '&quot;')}"`)
+    .join(' ')
+  const children = (element.children || []).map(nodeToSvg).join('')
+  return `<${tag} ${attrs}>${children}</${tag}>`
 }
 
-// Convert stops (apply opacity) and bake transform. Here we assume gradientUnits=userSpaceOnUse.
-function toRuntimeGradient(
-  def: AnyDef,
-  svgHeight: number,
-  boundingBox: BoundingBox
-): ShapeProps['fill'] | null {
-  const resolved = resolveRef({}, def) // def already resolved in caller, keep fn pure if needed
-  const stops = (resolved.stops || []).map((s) => ({
-    offset: s.offset,
-    color: [
-      s.color[0],
-      s.color[1],
-      s.color[2],
-      s.color[3] * (isFinite(s.opacity) ? s.opacity : 1),
-    ] as [number, number, number, number],
-  }))
-  const tf = parseTransform(resolved.gradientTransform)
+interface FillInfo {
+  kind: 'solid' | 'linear'
+  color?: [number, number, number, number]
+  stops?: GradientStop[]
+  gradient?: unknown // Paper.js gradient types are complex
+}
 
-  if (resolved.kind === 'linear') {
-    const x1_rel = resolved.x1 ?? 0
-    const y1_rel = resolved.y1 ?? 0
-    const x2_rel = resolved.x2 ?? 1
-    const y2_rel = resolved.y2 ?? 0
+// Convert Paper.js path segments to Logic module format
+function convertSegmentsToLogicFormat(
+  segments: paper.Segment[],
+  closed: boolean
+): { x: number; y: number }[] {
+  const points: { x: number; y: number }[] = []
 
-    let p1: { x: number; y: number }
-    let p2: { x: number; y: number }
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i]
+    const nextSegment = segments[(i + 1) % segments.length]
 
-    const bbWidth = boundingBox.max_x - boundingBox.min_x
-    const bbHeight = boundingBox.max_y - boundingBox.min_y
+    // Add the control point (anchor)
+    points.push({ x: segment.point.x, y: segment.point.y })
 
-    if (resolved.gradientUnits === 'objectBoundingBox') {
-      const x1 = boundingBox.min_x + x1_rel * bbWidth
-      const y1 = boundingBox.min_y + y1_rel * bbHeight
-      const x2 = boundingBox.min_x + x2_rel * bbWidth
-      const y2 = boundingBox.min_y + y2_rel * bbHeight
-      p1 = applyLinearTransform(x1, y1, tf)
-      p2 = applyLinearTransform(x2, y2, tf)
+    // Check if this segment has handleOut
+    const hasHandleOut =
+      segment.handleOut && (segment.handleOut.x !== 0 || segment.handleOut.y !== 0)
+    if (hasHandleOut) {
+      points.push({
+        x: segment.point.x + segment.handleOut.x,
+        y: segment.point.y + segment.handleOut.y,
+      })
     } else {
-      p1 = applyLinearTransform(x1_rel, svgHeight - y1_rel, tf)
-      p2 = applyLinearTransform(x2_rel, svgHeight - y2_rel, tf)
+      points.push(STRAIGHT_LINE_HANDLE)
     }
 
-    p1.x = p1.x / bbWidth
-    p1.y = p1.y / bbHeight
-    p2.x = p2.x / bbWidth
-    p2.y = p2.y / bbHeight
+    // For the last segment in a closed path, don't add the next segment's handleIn
+    // because it connects back to the start
+    if (closed && i === segments.length - 1) {
+      // Check if the first segment has handleIn (connection back to start)
+      const firstSegment = segments[0]
+      const hasHandleIn =
+        firstSegment.handleIn && (firstSegment.handleIn.x !== 0 || firstSegment.handleIn.y !== 0)
+      if (hasHandleIn) {
+        points.push({
+          x: firstSegment.point.x + firstSegment.handleIn.x,
+          y: firstSegment.point.y + firstSegment.handleIn.y,
+        })
+      } else {
+        points.push(STRAIGHT_LINE_HANDLE)
+      }
+      break // Don't add the control point again
+    }
 
-    return { linear: { stops, start: p1, end: p2 } }
-  } else if (resolved.kind === 'radial') {
-    const cx = resolved.cx ?? 0.5
-    const cy = resolved.cy ?? 0.5
-    const r = resolved.r ?? 0.5
-    const c = applyLinearTransform(cx, svgHeight - cy, tf)
-    const fx = resolved.fx
-    const fy = resolved.fy
-    const focus =
-      fx != null && fy != null ? applyLinearTransform(fx, svgHeight - fy, tf) : undefined
-    // Approximate radius scale: take max scale component
-    const scaleMax = Math.max(
-      parseTransform(resolved.gradientTransform).scale.x,
-      parseTransform(resolved.gradientTransform).scale.y
-    )
-    return {
-      radial: {
-        stops,
-        cx: c.x,
-        cy: c.y,
-        r: r * scaleMax,
-        fx: focus?.x ?? null,
-        fy: focus?.y ?? null,
-      },
+    // Check if the next segment has handleIn
+    const hasHandleIn =
+      nextSegment &&
+      nextSegment.handleIn &&
+      (nextSegment.handleIn.x !== 0 || nextSegment.handleIn.y !== 0)
+    if (hasHandleIn && nextSegment) {
+      points.push({
+        x: nextSegment.point.x + nextSegment.handleIn.x,
+        y: nextSegment.point.y + nextSegment.handleIn.y,
+      })
+    } else {
+      points.push(STRAIGHT_LINE_HANDLE)
     }
   }
-  return null
+
+  return points
 }
 
-function getProps(node: ElementNode): Record<string, string | number> {
-  if (typeof node.properties?.style === 'string') {
-    const styleProps: Record<string, string | number> = {}
-    node.properties.style.split(';').forEach((declaration) => {
-      const [property, value] = declaration.split(':')
-      if (property && value) {
-        styleProps[property.trim()] = value.trim()
+// Extract absolute geometry and fills from Paper.js items
+function extractPathsFromItem(item: paper.Item): {
+  paths: { points: { x: number; y: number }[] }[]
+  fills: FillInfo[]
+} {
+  const result: { paths: { points: { x: number; y: number }[] }[]; fills: FillInfo[] } = {
+    paths: [],
+    fills: [],
+  }
+
+  // Handle Path items (most common)
+  if (item instanceof paper.Path) {
+    try {
+      // Don't flatten - we want to preserve the original curve information
+      const points = convertSegmentsToLogicFormat(item.segments, item.closed)
+      result.paths.push({ points })
+
+      // Extract resolved fill information
+      const fc = item.fillColor
+      if (fc) {
+        // Check if this is a gradient fill (Paper.js internal structure)
+        const gradientFc = fc as unknown as {
+          gradient?: {
+            stops: { rampPoint: number; color: { toCSS: (includeAlpha: boolean) => string } }[]
+            origin?: { x: number; y: number }
+            destination?: { x: number; y: number }
+          }
+        }
+        if (gradientFc.gradient) {
+          const g = gradientFc.gradient
+          const stops: GradientStop[] = g.stops.map((s) => ({
+            offset: s.rampPoint,
+            color: parseColor(s.color.toCSS(true)),
+          }))
+          result.fills.push({
+            kind: 'linear',
+            stops,
+            gradient: g, // Paper.js gradient with absolute coordinates
+          })
+        } else {
+          result.fills.push({
+            kind: 'solid',
+            color: parseColor(fc.toCSS(true)),
+          })
+        }
       }
+    } catch {
+      // Ignore items that can't be processed
+    }
+  }
+
+  // Recursively process children (groups, etc.)
+  if ('children' in item && item.children && item.children.length) {
+    item.children.forEach((child) => {
+      const childResult = extractPathsFromItem(child)
+      result.paths.push(...childResult.paths)
+      result.fills.push(...childResult.fills)
     })
-    // Direct properties override style properties
-    return { ...styleProps, ...node.properties }
   }
-  return node.properties || {}
+
+  return result
 }
 
-function getGradientStops(nodes: ElementNode[]) {
-  return nodes.map((stop) => {
-    const stopProps = getProps(stop)
-    return {
-      offset: Number(stopProps.offset ?? 0),
-      color: parseColor(String(stopProps['stop-color'] ?? '#000')),
-      opacity: Number(stopProps['stop-opacity'] ?? 1),
-    }
-  })
-}
+export default function createShapes(node: Node): void {
+  // Convert parsed SVG node back to SVG string
+  const svgFragment = nodeToSvg(node)
+  const svg = svgFragment.trim().startsWith('<svg')
+    ? svgFragment
+    : `<svg xmlns="http://www.w3.org/2000/svg">${svgFragment}</svg>`
 
-export default function createShapes(
-  node: Node,
-  defs: Def,
-  svgWidth: number,
-  svgHeight: number
-): void {
-  if (!('children' in node)) return
+  // Create Paper.js scope to process SVG
+  const scope = new paper.PaperScope()
+  scope.setup(new paper.Size(1024, 1024))
+  const project = scope.project
 
-  node.children.forEach((child) => {
-    if (typeof child !== 'string') {
-      if ('properties' in child && typeof child.properties === 'object') {
-        const props = getProps(child)
+  try {
+    // Import SVG - Paper.js automatically resolves all transforms
+    const imported = project.importSVG(svg)
 
-        let paths: Point[][] | undefined = undefined
+    if (imported) {
+      const { paths, fills } = extractPathsFromItem(imported)
+      if (paths.length > 0) {
+        // Get absolute path points (no manual transform needed!)
+        const pathPoints = paths.map((p) => p.points)
+        const boundingBox = getBoundingBox(pathPoints)
 
-        switch (child.tagName) {
-          case 'path':
-            if (typeof props?.d !== 'string') {
-              throw Error("Path without 'd' property")
-            }
-            paths = parsePathData(props.d as string).map((curve) => curve.points)
-            break
-          case 'rect':
-            if (typeof props?.width !== 'number' || typeof props?.height !== 'number') {
-              throw Error("Rect without 'width' or 'height' property")
-            }
-            paths = [parseRect(props.width, props.height)]
-            break
-          case 'ellipse':
-            if (typeof props?.rx !== 'number' || typeof props?.ry !== 'number') {
-              throw Error("Ellipse without 'rx' or 'ry' property")
-            }
-            if (typeof props?.cx !== 'number' || typeof props?.cy !== 'number') {
-              throw Error("Ellipse without 'cx' or 'cy' property")
-            }
-            paths = [parseEllipse(props.cx, props.cy, props.rx, props.ry)]
-            break
-          case 'linearGradient': {
-            const id = String(props.id)
+        // Build shape properties
+        let shapeFill: ShapeFill = { solid: [0, 0, 0, 1] }
 
-            const gradientUnits =
-              props.gradientUnits === 'userSpaceOnUse'
-                ? 'userSpaceOnUse'
-                : props.gradientUnits === 'objectBoundingBox'
-                ? 'objectBoundingBox'
-                : undefined
-            defs[id] = {
-              kind: 'linear',
-              id,
-              x1: props.x1 != null ? Number(props.x1) : undefined,
-              y1: props.y1 != null ? Number(props.y1) : undefined,
-              x2: props.x2 != null ? Number(props.x2) : undefined,
-              y2: props.y2 != null ? Number(props.y2) : undefined,
-              gradientUnits,
-              gradientTransform: (props.gradientTransform as string) ?? undefined,
-              href: (props.href as string) || (props['xlink:href'] as string) || undefined,
-              stops: getGradientStops(child.children as ElementNode[]),
+        if (fills.length > 0) {
+          const fill = fills[0]
+          if (fill.kind === 'solid' && fill.color) {
+            shapeFill = { solid: fill.color }
+          } else if (fill.kind === 'linear' && fill.stops && fill.gradient) {
+            // Paper.js gradient has absolute start/end coordinates!
+            const g = fill.gradient as {
+              origin?: { x: number; y: number }
+              destination?: { x: number; y: number }
             }
-            return
-          }
-          case 'radialGradient': {
-            const id = String(props.id)
-            const gradientUnits =
-              props.gradientUnits === 'userSpaceOnUse'
-                ? 'userSpaceOnUse'
-                : props.gradientUnits === 'objectBoundingBox'
-                ? 'objectBoundingBox'
-                : undefined
-            defs[id] = {
-              kind: 'radial',
-              id,
-              cx: props.cx != null ? Number(props.cx) : undefined,
-              cy: props.cy != null ? Number(props.cy) : undefined,
-              r: props.r != null ? Number(props.r) : undefined,
-              fx: props.fx != null ? Number(props.fx) : undefined,
-              fy: props.fy != null ? Number(props.fy) : undefined,
-              gradientUnits,
-              gradientTransform: (props.gradientTransform as string) ?? undefined,
-              href: (props.href as string) || (props['xlink:href'] as string) || undefined,
-              stops: getGradientStops(child.children as ElementNode[]),
+            const start = { x: g.origin?.x || 0, y: g.origin?.y || 0 }
+            const end = { x: g.destination?.x || 1, y: g.destination?.y || 0 }
+
+            // Normalize to bounding box space for shader
+            const bbw = boundingBox.max_x - boundingBox.min_x || 1
+            const bbh = boundingBox.max_y - boundingBox.min_y || 1
+            const p1 = {
+              x: (start.x - boundingBox.min_x) / bbw,
+              y: (start.y - boundingBox.min_y) / bbh,
             }
-            return
+            const p2 = {
+              x: (end.x - boundingBox.min_x) / bbw,
+              y: (end.y - boundingBox.min_y) / bbh,
+            }
+
+            shapeFill = { linear: { stops: fill.stops, start: p1, end: p2 } }
           }
         }
 
-        if (paths) {
-          const boundingBox = getBoundingBox(paths)
-          const bbHeight = boundingBox.max_y - boundingBox.min_y
-
-          const serializedProps: Partial<ShapeProps> = {
-            fill: { solid: [0, 0, 0, 1] },
-            stroke: { solid: [0, 0, 0, 1] },
-            stroke_width: 0,
-          }
-          // fill/stroke: color or url(#id)
-          if (props.fill) {
-            const fill = String(props.fill)
-            const m = fill.match(/^url\(#([^)]+)\)$/)
-            if (m) {
-              const def = defs[m[1]]
-              if (def) {
-                const resolved = resolveRef(defs, def)
-                const grad = toRuntimeGradient(resolved, bbHeight, boundingBox)
-                if (grad) serializedProps.fill = grad
-              }
-            } else {
-              const rgba = parseColor(fill)
-              serializedProps.fill = { solid: rgba }
-            }
-          }
-          if (props.stroke) {
-            const stroke = String(props.stroke)
-            const m = stroke.match(/^url\(#([^)]+)\)$/)
-            if (m) {
-              const def = defs[m[1]]
-              if (def) {
-                const resolved = resolveRef(defs, def)
-                const grad = toRuntimeGradient(resolved, bbHeight, boundingBox)
-                if (grad) serializedProps.stroke = grad
-              }
-            } else {
-              const rgba = parseColor(stroke)
-              serializedProps.stroke = { solid: rgba }
-            }
-          }
-          const correctedPaths = paths.map((path) =>
-            path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
-          )
-          Logic.addShape(0, correctedPaths, null, serializedProps, Textures.createSDF())
+        const serializedProps = {
+          fill: shapeFill,
+          stroke: shapeFill, // Use same fill for stroke as fallback
+          stroke_width: 0,
         }
+
+        // Add shape to renderer with absolute coordinates
+        const absolutePaths = pathPoints.map((path) => path.map((p) => ({ x: p.x, y: p.y })))
+        console.log('absolutePaths', absolutePaths)
+        console.log('serializedProps', serializedProps)
+        Logic.addShape(0, absolutePaths, null, serializedProps, Textures.createSDF())
       }
-      createShapes(child, defs, svgWidth, svgHeight)
     }
-  })
+  } catch (error) {
+    console.error('Error processing SVG with Paper.js:', error)
+  } finally {
+    // Cleanup Paper.js scope
+    if (scope.project) {
+      scope.project.clear()
+    }
+  }
 }
