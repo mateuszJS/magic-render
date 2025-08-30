@@ -12,6 +12,7 @@ struct Vertex {
 struct VSOutput {
   @builtin(position) position: vec4f,
   @location(0) uv: vec2f,
+  @location(1) norm_uv: vec2f,
 };
 
 @vertex fn vs(vert: Vertex) -> VSOutput {
@@ -19,6 +20,7 @@ struct VSOutput {
   return VSOutput(
     camera_projection * vec4f(vert.position.xy, 0.0, 1.0),
     vert.position.zw * vec2f(size),
+    vert.position.zw,
   );
 }
 
@@ -52,8 +54,8 @@ fn getSample(pos: vec2f) -> vec4f {
   let hs = u.stroke_width * 0.5;
 
   let fill_alpha = smoothstep(hs - width, hs + width, dist);
-  let fill_color = getFillColor(sdf, vsOut.uv);
-  let stroke_color = getStrokeColor(sdf, vsOut.uv);
+  let fill_color = getFillColor(sdf, vsOut.uv, vsOut.norm_uv);
+  let stroke_color = getStrokeColor(sdf, vsOut.uv, vsOut.norm_uv);
   let color = mix(stroke_color, fill_color, fill_alpha);
 
   let total_alpha = smoothstep(-hs - width, -hs + width, dist);

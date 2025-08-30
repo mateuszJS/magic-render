@@ -5,6 +5,7 @@ import parseRect from './parseRect'
 import parseColor from './parseColor'
 import parseEllipse from './parseEllipse'
 import * as Textures from 'textures'
+import { getBoundingBox } from './boundingBox'
 
 // Internal collection for raw defs from <defs>
 type DefStop = { offset: number; color: [number, number, number, number]; opacity: number }
@@ -37,9 +38,21 @@ type AnyDef = LinearDef | RadialDef
 type Def = Record<string, AnyDef>
 
 // Parse a gradientTransform into separate operations
-function parseTransform(str: string | undefined) {
+function parseTransform(str: string | undefined): {
+  translate: { x: number; y: number }
+  scale: { x: number; y: number }
+  rotate: number
+  matrix?: number[]
+} {
   const res = { translate: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotate: 0 }
   if (!str) return res
+
+  const matrixMatch = str.match(/matrix\(([^)]+)\)/)
+  if (matrixMatch) {
+    const [a, b, c, d, e, f] = matrixMatch[1].split(/[ ,]+/).map(Number)
+    return { ...res, matrix: [a, b, c, d, e, f] }
+  }
+
   const t = str.match(/translate\(([^)]+)\)/)
   if (t) {
     const [x, y] = t[1].split(/[ ,]+/).map(Number)
@@ -58,6 +71,13 @@ function parseTransform(str: string | undefined) {
 }
 
 function applyLinearTransform(x: number, y: number, tf: ReturnType<typeof parseTransform>) {
+  if (tf.matrix) {
+    const [a, b, c, d, e, f] = tf.matrix
+    return {
+      x: a * x + c * y + e,
+      y: b * x + d * y + f,
+    }
+  }
   // scale -> rotate -> translate
   const sx = x * tf.scale.x
   const sy = y * tf.scale.y
@@ -108,7 +128,11 @@ function resolveRef(defs: Def, def: AnyDef, seen = new Set<string>()): AnyDef {
 }
 
 // Convert stops (apply opacity) and bake transform. Here we assume gradientUnits=userSpaceOnUse.
-function toRuntimeGradient(def: AnyDef, svgHeight: number): ShapeProps['fill'] | null {
+function toRuntimeGradient(
+  def: AnyDef,
+  svgHeight: number,
+  boundingBox: BoundingBox
+): ShapeProps['fill'] | null {
   const resolved = resolveRef({}, def) // def already resolved in caller, keep fn pure if needed
   const stops = (resolved.stops || []).map((s) => ({
     offset: s.offset,
@@ -122,13 +146,35 @@ function toRuntimeGradient(def: AnyDef, svgHeight: number): ShapeProps['fill'] |
   const tf = parseTransform(resolved.gradientTransform)
 
   if (resolved.kind === 'linear') {
-    const x1 = resolved.x1 ?? 0
-    const y1 = resolved.y1 ?? 0
-    const x2 = resolved.x2 ?? 1
-    const y2 = resolved.y2 ?? 0
-    const p1 = applyLinearTransform(x1, svgHeight - y1, tf)
-    const p2 = applyLinearTransform(x2, svgHeight - y2, tf)
-    return { linear: { stops, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y } }
+    const x1_rel = resolved.x1 ?? 0
+    const y1_rel = resolved.y1 ?? 0
+    const x2_rel = resolved.x2 ?? 1
+    const y2_rel = resolved.y2 ?? 0
+
+    let p1: { x: number; y: number }
+    let p2: { x: number; y: number }
+
+    const bbWidth = boundingBox.max_x - boundingBox.min_x
+    const bbHeight = boundingBox.max_y - boundingBox.min_y
+
+    if (resolved.gradientUnits === 'objectBoundingBox') {
+      const x1 = boundingBox.min_x + x1_rel * bbWidth
+      const y1 = boundingBox.min_y + y1_rel * bbHeight
+      const x2 = boundingBox.min_x + x2_rel * bbWidth
+      const y2 = boundingBox.min_y + y2_rel * bbHeight
+      p1 = applyLinearTransform(x1, y1, tf)
+      p2 = applyLinearTransform(x2, y2, tf)
+    } else {
+      p1 = applyLinearTransform(x1_rel, svgHeight - y1_rel, tf)
+      p2 = applyLinearTransform(x2_rel, svgHeight - y2_rel, tf)
+    }
+
+    p1.x = p1.x / bbWidth
+    p1.y = p1.y / bbHeight
+    p2.x = p2.x / bbWidth
+    p2.y = p2.y / bbHeight
+
+    return { linear: { stops, start: p1, end: p2 } }
   } else if (resolved.kind === 'radial') {
     const cx = resolved.cx ?? 0.5
     const cy = resolved.cy ?? 0.5
@@ -157,63 +203,59 @@ function toRuntimeGradient(def: AnyDef, svgHeight: number): ShapeProps['fill'] |
   return null
 }
 
-export default function createShapes(node: Node, defs: Def, svgHeight: number): void {
+function getProps(node: ElementNode): Record<string, string | number> {
+  if (typeof node.properties?.style === 'string') {
+    const styleProps: Record<string, string | number> = {}
+    node.properties.style.split(';').forEach((declaration) => {
+      const [property, value] = declaration.split(':')
+      if (property && value) {
+        styleProps[property.trim()] = value.trim()
+      }
+    })
+    // Direct properties override style properties
+    return { ...styleProps, ...node.properties }
+  }
+  return node.properties || {}
+}
+
+function getGradientStops(nodes: ElementNode[]) {
+  return nodes.map((stop) => {
+    const stopProps = getProps(stop)
+    return {
+      offset: Number(stopProps.offset ?? 0),
+      color: parseColor(String(stopProps['stop-color'] ?? '#000')),
+      opacity: Number(stopProps['stop-opacity'] ?? 1),
+    }
+  })
+}
+
+export default function createShapes(
+  node: Node,
+  defs: Def,
+  svgWidth: number,
+  svgHeight: number
+): void {
   if (!('children' in node)) return
 
   node.children.forEach((child) => {
     if (typeof child !== 'string') {
       if ('properties' in child && typeof child.properties === 'object') {
-        const props = child.properties
-        const serializedProps: Partial<ShapeProps> = {
-          fill: { solid: [0, 0, 0, 1] },
-          stroke: { solid: [0, 0, 0, 1] },
-          stroke_width: 0,
-        }
-        // fill/stroke: color or url(#id)
-        if (props.fill) {
-          const fill = String(props.fill)
-          const m = fill.match(/^url\(#([^)]+)\)$/)
-          if (m) {
-            const def = defs[m[1]]
-            if (def) {
-              const resolved = resolveRef(defs, def)
-              const grad = toRuntimeGradient(resolved, svgHeight)
-              if (grad) serializedProps.fill = grad
-            }
-          } else {
-            const rgba = parseColor(fill)
-            serializedProps.fill = { solid: rgba }
-          }
-        }
-        if (props.stroke) {
-          const stroke = String(props.stroke)
-          const m = stroke.match(/^url\(#([^)]+)\)$/)
-          if (m) {
-            const def = defs[m[1]]
-            if (def) {
-              const resolved = resolveRef(defs, def)
-              const grad = toRuntimeGradient(resolved, svgHeight)
-              if (grad) serializedProps.stroke = grad
-            }
-          } else {
-            const rgba = parseColor(stroke)
-            serializedProps.stroke = { solid: rgba }
-          }
-        }
-        let result: Point[][] | undefined = undefined
+        const props = getProps(child)
+
+        let paths: Point[][] | undefined = undefined
 
         switch (child.tagName) {
           case 'path':
             if (typeof props?.d !== 'string') {
               throw Error("Path without 'd' property")
             }
-            result = parsePathData(props.d, svgHeight).map((shape) => shape.points)
+            paths = parsePathData(props.d as string).map((curve) => curve.points)
             break
           case 'rect':
             if (typeof props?.width !== 'number' || typeof props?.height !== 'number') {
-              throw Error("Path without 'd' property")
+              throw Error("Rect without 'width' or 'height' property")
             }
-            result = [parseRect(props.width, props.height, svgHeight)]
+            paths = [parseRect(props.width, props.height)]
             break
           case 'ellipse':
             if (typeof props?.rx !== 'number' || typeof props?.ry !== 'number') {
@@ -222,17 +264,11 @@ export default function createShapes(node: Node, defs: Def, svgHeight: number): 
             if (typeof props?.cx !== 'number' || typeof props?.cy !== 'number') {
               throw Error("Ellipse without 'cx' or 'cy' property")
             }
-            result = [parseEllipse(props.cx, props.cy, props.rx, props.ry, svgHeight)]
+            paths = [parseEllipse(props.cx, props.cy, props.rx, props.ry)]
             break
           case 'linearGradient': {
             const id = String(props.id)
-            const stops: DefStop[] = (child.children as ElementNode[])
-              .filter((n) => n && 'properties' in n)
-              .map((stop) => ({
-                offset: Number(stop.properties!.offset ?? 0),
-                color: parseColor(String(stop.properties!['stop-color'] ?? '#000')),
-                opacity: Number(stop.properties!['stop-opacity'] ?? 1),
-              }))
+
             const gradientUnits =
               props.gradientUnits === 'userSpaceOnUse'
                 ? 'userSpaceOnUse'
@@ -249,19 +285,12 @@ export default function createShapes(node: Node, defs: Def, svgHeight: number): 
               gradientUnits,
               gradientTransform: (props.gradientTransform as string) ?? undefined,
               href: (props.href as string) || (props['xlink:href'] as string) || undefined,
-              stops,
+              stops: getGradientStops(child.children as ElementNode[]),
             }
             return
           }
           case 'radialGradient': {
             const id = String(props.id)
-            const stops: DefStop[] = (child.children as ElementNode[])
-              .filter((n) => n && 'properties' in n)
-              .map((stop) => ({
-                offset: Number(stop.properties!.offset ?? 0),
-                color: parseColor(String(stop.properties!['stop-color'] ?? '#000')),
-                opacity: Number(stop.properties!['stop-opacity'] ?? 1),
-              }))
             const gradientUnits =
               props.gradientUnits === 'userSpaceOnUse'
                 ? 'userSpaceOnUse'
@@ -279,18 +308,59 @@ export default function createShapes(node: Node, defs: Def, svgHeight: number): 
               gradientUnits,
               gradientTransform: (props.gradientTransform as string) ?? undefined,
               href: (props.href as string) || (props['xlink:href'] as string) || undefined,
-              stops,
+              stops: getGradientStops(child.children as ElementNode[]),
             }
             return
           }
         }
 
-        if (result) {
-          console.log('serializedProps', serializedProps)
-          Logic.addShape(0, result, null, serializedProps, Textures.createSDF())
+        if (paths) {
+          const boundingBox = getBoundingBox(paths)
+          const bbHeight = boundingBox.max_y - boundingBox.min_y
+
+          const serializedProps: Partial<ShapeProps> = {
+            fill: { solid: [0, 0, 0, 1] },
+            stroke: { solid: [0, 0, 0, 1] },
+            stroke_width: 0,
+          }
+          // fill/stroke: color or url(#id)
+          if (props.fill) {
+            const fill = String(props.fill)
+            const m = fill.match(/^url\(#([^)]+)\)$/)
+            if (m) {
+              const def = defs[m[1]]
+              if (def) {
+                const resolved = resolveRef(defs, def)
+                const grad = toRuntimeGradient(resolved, bbHeight, boundingBox)
+                if (grad) serializedProps.fill = grad
+              }
+            } else {
+              const rgba = parseColor(fill)
+              serializedProps.fill = { solid: rgba }
+            }
+          }
+          if (props.stroke) {
+            const stroke = String(props.stroke)
+            const m = stroke.match(/^url\(#([^)]+)\)$/)
+            if (m) {
+              const def = defs[m[1]]
+              if (def) {
+                const resolved = resolveRef(defs, def)
+                const grad = toRuntimeGradient(resolved, bbHeight, boundingBox)
+                if (grad) serializedProps.stroke = grad
+              }
+            } else {
+              const rgba = parseColor(stroke)
+              serializedProps.stroke = { solid: rgba }
+            }
+          }
+          const correctedPaths = paths.map((path) =>
+            path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
+          )
+          Logic.addShape(0, correctedPaths, null, serializedProps, Textures.createSDF())
         }
       }
-      createShapes(child, defs, svgHeight)
+      createShapes(child, defs, svgWidth, svgHeight)
     }
   })
 }

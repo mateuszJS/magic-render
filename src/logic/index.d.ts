@@ -19,17 +19,15 @@ interface BoundingBox {
 
 // Gradients used by shapes (precomputed, no raw transform strings)
 type GradientStop = {
-  offset: number // 0..1
   color: [number, number, number, number]
+  offset: number // 0..1
 }
 
 type LinearGradient = {
+  start: Point
+  end: Point
   stops: GradientStop[]
   // final coordinates in document space (after gradientTransform applied)
-  x1: number
-  y1: number
-  x2: number
-  y2: number
   // gradientUnits already baked into coordinates
 }
 

@@ -9,6 +9,26 @@ let loadingTexture: GPUTexture
 let updateProcessing: () => void
 let loadingTextures: number
 
+function getSvgSize(svgRoot: ElementNode, img: HTMLImageElement) {
+  const props = svgRoot.properties
+  const viewboxSize = props?.viewBox ? extractSizeFromSvgViewbox(props.viewBox as string) : null
+
+  const widthAttr = typeof props?.width === 'number' ? (props?.width as number) : undefined
+  const heightAttr = typeof props?.height === 'number' ? (props?.height as number) : undefined
+  const svgWidth = widthAttr || img.naturalWidth || viewboxSize?.[0]
+  const svgHeight = heightAttr || img.naturalHeight || viewboxSize?.[1]
+  return [svgWidth, svgHeight]
+}
+
+function extractSizeFromSvgViewbox(viewbox: string) {
+  const parts = viewbox.split(' ').map(Number)
+  if (parts.length === 4) {
+    const [minX, minY, width, height] = parts
+    return [width - minX, height - minY]
+  }
+  return null
+}
+
 export function init(
   _device: GPUDevice,
   _updateProcessing: (loadingTextures: number) => void
@@ -49,11 +69,9 @@ export function add(
   getImageWithDetails(url).then(([img, svgTree]) => {
     if (svgTree) {
       const svgRoot = svgTree.children[0] as ElementNode
-      console.log(svgRoot)
-
-      const svgHeight = svgRoot.properties?.height || img.naturalHeight
-      if (!svgHeight || typeof svgHeight !== 'number') throw Error('SVG height is required')
-      createShapes(svgRoot, {}, svgHeight)
+      const [svgWidth, svgHeight] = getSvgSize(svgRoot, img)
+      if (!svgWidth || !svgHeight) throw Error('SVG width and height are required')
+      createShapes(svgRoot, {}, svgWidth, svgHeight)
       return
     }
     const { ctx } = getImageData(img, img.naturalWidth, img.naturalHeight)

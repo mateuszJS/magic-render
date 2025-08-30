@@ -73,11 +73,12 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
     canvasMatrixBuffer,
     buffersToDestroy,
     linearGradientFS,
-    4 /*stroke width*/ +
-      4 /*stops counts*/ +
-      8 /*padding*/ +
-      4 * 10 /*stops positions*/ +
-      4 * 10 /*stops colors*/
+    1 /*stroke width*/ +
+      1 /*stops counts*/ +
+      2 /*padding*/ +
+      2 /*start*/ +
+      2 /*end*/ +
+      (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/
   )
   drawRadialGradientShape = getDrawShape(
     device,

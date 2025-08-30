@@ -32,18 +32,17 @@ pub fn resetState() void {
     selected_point_id = null;
 }
 
-const GradientStop = struct {
-    offset: f32, // 0..1
+const GradientStop = extern struct {
     color: [4]f32,
+    offset: f32, // 0..1
+    padding: [3]f32 = .{ 0, 0, 0 },
 };
 
 const LinearGradient = struct {
-    stops: []GradientStop,
     // final coordinates in document space (after gradientTransform applied)
-    x1: f32,
-    y1: f32,
-    x2: f32,
-    y2: f32,
+    start: Point,
+    end: Point,
+    stops: []GradientStop,
     // gradientUnits already baked into coordinates
 };
 
@@ -209,7 +208,7 @@ pub const Shape = struct {
         );
 
         const box = bounding_box.getBoundingBox(points);
-        std.debug.print("bounding box: ({}, {}) - ({}, {})\n", .{ box.min_x, box.min_y, box.max_x, box.max_y });
+
         const new_width = box.max_x - box.min_x;
         const new_height = box.max_y - box.min_y;
 
@@ -346,44 +345,47 @@ pub const Shape = struct {
 
     pub fn getUniform(self: Shape) Uniform {
         switch (self.props.fill) {
-            .solid => {
+            .solid => |color| {
                 return Uniform{
                     .solid = .{
                         .stroke_width = self.props.stroke_width * self.sdf_scale,
-                        .fill_color = .{ 1, 0, 0, 1 }, //self.props.fill_color,
+                        .fill_color = color, //self.props.fill_color,
                         .stroke_color = .{ 0, 1, 0, 1 }, //self.props.stroke_color,
                     },
                 };
             },
-            .radial, .linear => {
+            .linear => |gradient| {
+                var stops: [10]GradientStop = undefined;
+                for (0..10) |i| {
+                    stops[i] = if (i < gradient.stops.len) b: {
+                        // std.debug.print("gradient stop {any}\n", .{gradient.stops[i]});
+                        break :b gradient.stops[i];
+                    } else .{ .color = .{ 0.0, 0.0, 0.0, 0.0 }, .offset = 0.0 };
+                }
+
+                return Uniform{
+                    .linear = .{
+                        .stroke_width = self.props.stroke_width * self.sdf_scale,
+                        .stop_count = gradient.stops.len,
+                        .start = gradient.start,
+                        .end = gradient.end,
+                        .stops = stops,
+                    },
+                };
+            },
+            .radial => {
+                var stops: [10]GradientStop = undefined;
+                for (0..10) |i| {
+                    stops[i] = .{ .color = .{ 0.0, 0.0, 0.0, 0.0 }, .offset = 0.0 };
+                }
+
                 return Uniform{
                     .linear = .{
                         .stroke_width = self.props.stroke_width * self.sdf_scale,
                         .stop_count = 2,
-                        .stop_positions = .{
-                            .{ 0.0, 0.0, 0.0, 0.0 },
-                            .{ 1.0, 1.0, 1.0, 1.0 },
-                            .{ 0.0, 0.0, 0.0, 0.0 },
-                            .{ 0.0, 0.0, 0.0, 0.0 },
-                            .{ 0.0, 0.0, 0.0, 0.0 },
-                            .{ 0.0, 0.0, 0.0, 0.0 },
-                            .{ 0.0, 0.0, 0.0, 0.0 },
-                            .{ 0.0, 0.0, 0.0, 0.0 },
-                            .{ 0.0, 0.0, 0.0, 0.0 },
-                            .{ 0.0, 0.0, 0.0, 0.0 },
-                        },
-                        .stop_colors = .{
-                            .{ 1, 0, 1, 1 },
-                            .{ 1, 1, 0, 1 },
-                            .{ 0, 0, 0, 0 },
-                            .{ 0, 0, 0, 0 },
-                            .{ 0, 0, 0, 0 },
-                            .{ 0, 0, 0, 0 },
-                            .{ 0, 0, 0, 0 },
-                            .{ 0, 0, 0, 0 },
-                            .{ 0, 0, 0, 0 },
-                            .{ 0, 0, 0, 0 },
-                        },
+                        .start = .{ .x = 0.0, .y = 0.0 },
+                        .end = .{ .x = 1.0, .y = 0.5 },
+                        .stops = stops,
                     },
                 };
             },
@@ -516,8 +518,9 @@ const UniformLinearGradient = extern struct {
     stroke_width: f32,
     stop_count: u32,
     padding: [2]f32 = .{ 0.0, 0.0 }, // Padding for alignment
-    stop_positions: [10][4]f32,
-    stop_colors: [10][4]f32,
+    start: Point,
+    end: Point,
+    stops: [10]GradientStop,
 };
 
 pub const Uniform = union(enum) {
