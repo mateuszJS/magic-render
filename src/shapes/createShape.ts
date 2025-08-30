@@ -109,12 +109,10 @@ function convertSegmentsToLogicFormat(
 
 // Extract absolute geometry and fills from Paper.js items
 function extractPathsFromItem(item: paper.Item): {
-  paths: { points: { x: number; y: number }[] }[]
-  fills: FillInfo[]
+  paths: { points: { x: number; y: number }[]; fill?: FillInfo }[]
 } {
-  const result: { paths: { points: { x: number; y: number }[] }[]; fills: FillInfo[] } = {
+  const result: { paths: { points: { x: number; y: number }[]; fill?: FillInfo }[] } = {
     paths: [],
-    fills: [],
   }
 
   // Handle Path items (most common)
@@ -122,9 +120,9 @@ function extractPathsFromItem(item: paper.Item): {
     try {
       // Don't flatten - we want to preserve the original curve information
       const points = convertSegmentsToLogicFormat(item.segments, item.closed)
-      result.paths.push({ points })
 
-      // Extract resolved fill information
+      // Extract resolved fill information for this specific path
+      let fillInfo: FillInfo | undefined
       const fc = item.fillColor
       if (fc) {
         // Check if this is a gradient fill (Paper.js internal structure)
@@ -141,29 +139,30 @@ function extractPathsFromItem(item: paper.Item): {
             offset: s.rampPoint,
             color: parseColor(s.color.toCSS(true)),
           }))
-          result.fills.push({
+          fillInfo = {
             kind: 'linear',
             stops,
             gradient: g, // Paper.js gradient with absolute coordinates
-          })
+          }
         } else {
-          result.fills.push({
+          fillInfo = {
             kind: 'solid',
             color: parseColor(fc.toCSS(true)),
-          })
+          }
         }
       }
+
+      result.paths.push({ points, fill: fillInfo })
     } catch {
       // Ignore items that can't be processed
     }
   }
 
-  // Recursively process children (groups, etc.)
+  // Recursively process children (groups, etc.) - keep paths separate
   if ('children' in item && item.children && item.children.length) {
     item.children.forEach((child) => {
       const childResult = extractPathsFromItem(child)
-      result.paths.push(...childResult.paths)
-      result.fills.push(...childResult.fills)
+      result.paths.push(...childResult.paths) // Each path stays separate
     })
   }
 
@@ -187,17 +186,18 @@ export default function createShapes(node: Node): void {
     const imported = project.importSVG(svg)
 
     if (imported) {
-      const { paths, fills } = extractPathsFromItem(imported)
-      if (paths.length > 0) {
-        // Get absolute path points (no manual transform needed!)
-        const pathPoints = paths.map((p) => p.points)
+      const { paths } = extractPathsFromItem(imported)
+
+      // Process each path separately to create individual shapes
+      paths.forEach((pathData) => {
+        const pathPoints = [pathData.points]
         const boundingBox = getBoundingBox(pathPoints)
 
-        // Build shape properties
+        // Build shape properties for this specific path
         let shapeFill: ShapeFill = { solid: [0, 0, 0, 1] }
 
-        if (fills.length > 0) {
-          const fill = fills[0]
+        if (pathData.fill) {
+          const fill = pathData.fill
           if (fill.kind === 'solid' && fill.color) {
             shapeFill = { solid: fill.color }
           } else if (fill.kind === 'linear' && fill.stops && fill.gradient) {
@@ -231,12 +231,12 @@ export default function createShapes(node: Node): void {
           stroke_width: 0,
         }
 
-        // Add shape to renderer with absolute coordinates
+        // Add each path as a separate shape
         const absolutePaths = pathPoints.map((path) => path.map((p) => ({ x: p.x, y: p.y })))
         console.log('absolutePaths', absolutePaths)
         console.log('serializedProps', serializedProps)
         Logic.addShape(0, absolutePaths, null, serializedProps, Textures.createSDF())
-      }
+      })
     }
   } catch (error) {
     console.error('Error processing SVG with Paper.js:', error)
