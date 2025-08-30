@@ -119,6 +119,7 @@ function extractPathsFromItem(item: paper.Item): {
   if (item instanceof paper.Path) {
     try {
       // Don't flatten - we want to preserve the original curve information
+      console.log('item', item)
       const points = convertSegmentsToLogicFormat(item.segments, item.closed)
 
       // Extract resolved fill information for this specific path
@@ -184,7 +185,7 @@ export default function createShapes(node: Node): void {
   try {
     // Import SVG - Paper.js automatically resolves all transforms
     const imported = project.importSVG(svg)
-
+    console.log('imported', imported)
     if (imported) {
       const { paths } = extractPathsFromItem(imported)
 
@@ -233,9 +234,20 @@ export default function createShapes(node: Node): void {
 
         // Add each path as a separate shape
         const absolutePaths = pathPoints.map((path) => path.map((p) => ({ x: p.x, y: p.y })))
+
+        // Reflect Y-axis: convert from SVG coordinates (top-left origin) to creator coordinates (bottom-left origin)
+        const svgHeight = imported.bounds?.height // Use SVG height or fallback
+        if (!svgHeight) {
+          throw Error('SVG height is required')
+        }
+        const reflectedPaths = absolutePaths.map((path) =>
+          path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
+        )
+
         console.log('absolutePaths', absolutePaths)
+        console.log('reflectedPaths', reflectedPaths)
         console.log('serializedProps', serializedProps)
-        Logic.addShape(0, absolutePaths, null, serializedProps, Textures.createSDF())
+        Logic.addShape(0, reflectedPaths, null, serializedProps, Textures.createSDF())
       })
     }
   } catch (error) {
