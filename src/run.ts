@@ -69,6 +69,9 @@ export default function runCreator(
       if ('linear' in uniform_data && uniform_data.linear) {
         program = drawLinearGradientShape
         uniform = uniform_data.linear
+      } else if ('radial' in uniform_data && uniform_data.radial) {
+        program = drawRadialGradientShape
+        uniform = uniform_data.radial
       } else if ('solid' in uniform_data && uniform_data.solid) {
         program = drawSolidShape
         uniform = uniform_data.solid

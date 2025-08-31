@@ -34,11 +34,8 @@ type LinearGradient = {
 type RadialGradient = {
   stops: GradientStop[]
   // final center/focus in document space (after gradientTransform applied)
-  cx: number
-  cy: number
-  r: number
-  fx: number | null
-  fy: number | null
+  center: Point
+  radius: Point
 }
 
 type ShapeProps = {
@@ -91,7 +88,10 @@ type PointerDataView = {
   dataView: DataView
 }
 
-type Uniform = { solid: PointerDataView } | { linear: PointerDataView }
+type Uniform =
+  | { solid: PointerDataView }
+  | { linear: PointerDataView }
+  | { radial: PointerDataView }
 
 declare module '*.zig' {
   export const initState: (

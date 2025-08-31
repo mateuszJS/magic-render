@@ -1,4 +1,7 @@
-import paper from 'paper'
+export type ShapeFill =
+  | { solid: [number, number, number, number] }
+  | { linear: LinearGradient }
+  | { radial: RadialGradient }
 
 interface PaperGradientFill {
   gradient: {
@@ -12,15 +15,7 @@ interface PaperGradientFill {
   destination: { x: number; y: number }
 }
 
-export interface FillInfo {
-  kind: 'solid' | 'linear'
-  color?: [number, number, number, number]
-  stops?: GradientStop[]
-  gradientStart?: { x: number; y: number }
-  gradientEnd?: { x: number; y: number }
-}
-
-export default function convertFill(data: paper.Color | null): FillInfo | null {
+export default function convertFill(data: paper.Color | null): ShapeFill | null {
   if (!data) return null
 
   if (data.gradient) {
@@ -29,16 +24,28 @@ export default function convertFill(data: paper.Color | null): FillInfo | null {
       offset: s.offset,
       color: [s.color.red, s.color.green, s.color.blue, s.color.alpha],
     }))
-    return {
-      kind: 'linear',
-      stops,
-      gradientStart: fill.origin,
-      gradientEnd: fill.destination,
+
+    if (data.gradient.radial) {
+      console.log(fill)
+      return {
+        radial: {
+          center: fill.origin,
+          radius: fill.destination,
+          stops,
+        },
+      }
+    } else {
+      return {
+        linear: {
+          start: fill.origin,
+          end: fill.destination,
+          stops,
+        },
+      }
     }
   } else {
     return {
-      kind: 'solid',
-      color: [data.red, data.green, data.blue, data.alpha],
+      solid: [data.red, data.green, data.blue, data.alpha],
     }
   }
 }

@@ -2,30 +2,22 @@ import paper from 'paper'
 import * as Logic from 'logic/index.zig'
 import * as Textures from 'textures'
 import { getBoundingBox } from './boundingBox'
-import convertFill, { FillInfo } from './convertFill'
+import convertFill from './convertFill'
 import convertSegmentsToLogicFormat from './convertSegmentsToLogicFormat'
+import reflectGradientStops from './reflectGradientStop'
 
-// Import the exact types from Logic module
-type GradientStop = {
-  color: [number, number, number, number]
-  offset: number
-}
-
-type LinearGradient = {
-  start: { x: number; y: number }
-  end: { x: number; y: number }
-  stops: GradientStop[]
-}
-
-type ShapeFill = { solid: [number, number, number, number] } | { linear: LinearGradient }
+type ShapeFill =
+  | { linear: LinearGradient }
+  | { radial: RadialGradient }
+  | { solid: [number, number, number, number] }
 
 type PathFill = {
-  points: { x: number; y: number }[]
-  fill: FillInfo | null
+  points: Point[]
+  fill: ShapeFill | null
 }
 type GroupFill = {
   paths: PathFill[]
-  groupFill: FillInfo | null
+  groupFill: ShapeFill | null
 }
 // Extract absolute geometry and fills from Paper.js items
 function extractPathsFromItem(item: paper.Item): {
@@ -102,61 +94,44 @@ export default function createShapes(svg: string): void {
   try {
     // Import SVG - Paper.js automatically resolves all transforms
     const imported = project.importSVG(svg)
-    console.log('imported', imported)
+
     if (imported) {
       const { paths, groups } = extractPathsFromItem(imported)
 
       // Helper function to create a shape from path data
-      const createShapeFromPaths = (
-        pathsData: { points: { x: number; y: number }[]; fill: FillInfo | null }[],
-        defaultFill: FillInfo | null
-      ) => {
+      const createShapeFromPaths = (pathsData: PathFill[], defaultFill: ShapeFill | null) => {
         pathsData.forEach((pathData) => {
-          console.log('pathData', pathData)
           const pathPoints = [pathData.points]
           const boundingBox = getBoundingBox(pathPoints)
 
-          // Build shape properties for this specific path
-          let shapeFill: ShapeFill = { solid: [0, 0, 0, 1] }
-
           // Use path-specific fill, or fall back to group fill, or default
-          const fillToUse = pathData.fill || defaultFill
-          if (fillToUse) {
-            const fill = fillToUse
-            if (fill.kind === 'solid' && fill.color) {
-              shapeFill = { solid: fill.color }
-            } else if (
-              fill.kind === 'linear' &&
-              fill.stops &&
-              fill.gradientStart &&
-              fill.gradientEnd
-            ) {
-              // Reflect gradient coordinates to match the reflected coordinate system
-              const svgHeight = imported.bounds?.height || 0
-              const reflectedStart = {
-                x: fill.gradientStart.x,
-                y: svgHeight - fill.gradientStart.y,
-              }
-              const reflectedEnd = { x: fill.gradientEnd.x, y: svgHeight - fill.gradientEnd.y }
+          const shapeFill = pathData.fill || defaultFill
+          if (shapeFill && 'linear' in shapeFill) {
+            // Reflect gradient coordinates to match the reflected coordinate system
+            const { start, end } = reflectGradientStops(
+              imported.bounds.height,
+              shapeFill.linear.start,
+              shapeFill.linear.end,
+              boundingBox
+            )
+            shapeFill.linear.start = start
+            shapeFill.linear.end = end
+          } else if (shapeFill && 'radial' in shapeFill) {
+            // For radial gradients, reflect the center point
+            const { start, end } = reflectGradientStops(
+              imported.bounds.height,
+              shapeFill.radial.center,
+              shapeFill.radial.radius,
+              boundingBox
+            )
 
-              // Normalize to bounding box space for shader
-              const bbw = boundingBox.max_x - boundingBox.min_x || 1
-              const bbh = boundingBox.max_y - boundingBox.min_y || 1
-              const p1 = {
-                x: (reflectedStart.x - boundingBox.min_x) / bbw,
-                y: (reflectedStart.y - boundingBox.min_y) / bbh,
-              }
-              const p2 = {
-                x: (reflectedEnd.x - boundingBox.min_x) / bbw,
-                y: (reflectedEnd.y - boundingBox.min_y) / bbh,
-              }
-              shapeFill = { linear: { stops: fill.stops, start: p1, end: p2 } }
-            }
+            shapeFill.radial.center = start
+            shapeFill.radial.radius = end
           }
 
           const serializedProps = {
-            fill: shapeFill,
-            stroke: shapeFill, // Use same fill for stroke as fallback
+            fill: shapeFill || undefined || { solid: [1, 0, 1, 1] }, // Use same fill for fill as fallback
+            stroke: shapeFill || undefined || { solid: [1, 0, 1, 1] }, // Use same fill for fill as fallback // Use same fill for stroke as fallback
             stroke_width: 0,
           }
 
@@ -172,8 +147,6 @@ export default function createShapes(svg: string): void {
             path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
           )
 
-          // console.log('absolutePaths', absolutePaths)
-          // console.log('reflectedPaths', reflectedPaths)
           console.log('serializedProps', serializedProps)
           Logic.addShape(0, reflectedPaths, null, serializedProps, Textures.createSDF())
         })
@@ -181,13 +154,11 @@ export default function createShapes(svg: string): void {
 
       // Process individual paths (not in groups)
       if (paths.length > 0) {
-        // console.log('Processing individual paths:', paths.length)
         createShapeFromPaths(paths, null)
       }
 
       // Process groups as separate logical entities
-      groups.forEach((group, index) => {
-        // console.log(`Processing group ${index}:`, group.paths.length, 'paths')
+      groups.forEach((group) => {
         createShapeFromPaths(group.paths, group.groupFill)
       })
     }

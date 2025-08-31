@@ -86,7 +86,12 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
     canvasMatrixBuffer,
     buffersToDestroy,
     radialGradientFS,
-    1 /*stroke width*/ + 4 /*stroke color*/ + 4 /*fill color*/ + /*padding*/ 3
+    1 /*stroke width*/ +
+      1 /*stops counts*/ +
+      2 /*padding*/ +
+      2 /*start*/ +
+      2 /*end*/ +
+      (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/
   )
   pickShape = getPickShape(device, pickCanvasMatrixBuffer, buffersToDestroy)
   computeShape = getComputeShape(device, buffersToDestroy)

@@ -171,13 +171,7 @@ pub fn addImage(id_or_zero: u32, points: [4]types.PointUV, texture_id: u32) !voi
     try checkAssetsUpdate(true);
 }
 
-pub fn addShape(
-    id_or_zero: u32,
-    paths: []const []const types.Point,
-    bounds: ?[4]types.PointUV,
-    props: shapes.ShapeProps,
-    texture_id: u32,
-) !u32 {
+pub fn addShape(id_or_zero: u32, paths: []const []const types.Point, bounds: ?[4]types.PointUV, props: shapes.ShapeProps, texture_id: u32) !u32 {
     const id = if (id_or_zero == 0) generateId() else id_or_zero;
     const shape = try shapes.Shape.new(
         id,
@@ -779,7 +773,13 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
                 try addImage(img.id, img.points, img.texture_id);
             },
             .shape => |shape| {
-                _ = try addShape(shape.id, shape.paths, shape.bounds, shape.props, shape.texture_id);
+                _ = try addShape(
+                    shape.id,
+                    shape.paths,
+                    shape.bounds,
+                    shape.props,
+                    shape.texture_id,
+                );
             },
         }
     }

@@ -32,7 +32,7 @@ pub fn resetState() void {
     selected_point_id = null;
 }
 
-const GradientStop = extern struct {
+pub const GradientStop = extern struct {
     color: [4]f32,
     offset: f32, // 0..1
     padding: [3]f32 = .{ 0, 0, 0 },
@@ -47,13 +47,11 @@ const LinearGradient = struct {
 };
 
 const RadialGradient = struct {
-    stops: []GradientStop,
+    random_unnecessary_shit: u32 = 0,
     // final center/focus in document space (after gradientTransform applied)
-    cx: f32,
-    cy: f32,
-    r: f32,
-    fx: ?f32,
-    fy: ?f32,
+    center: Point,
+    radius: Point,
+    stops: []GradientStop,
 };
 
 const Fill = union(enum) {
@@ -358,7 +356,6 @@ pub const Shape = struct {
                 var stops: [10]GradientStop = undefined;
                 for (0..10) |i| {
                     stops[i] = if (i < gradient.stops.len) b: {
-                        // std.debug.print("gradient stop {any}\n", .{gradient.stops[i]});
                         break :b gradient.stops[i];
                     } else .{ .color = .{ 0.0, 0.0, 0.0, 0.0 }, .offset = 0.0 };
                 }
@@ -373,18 +370,20 @@ pub const Shape = struct {
                     },
                 };
             },
-            .radial => {
+            .radial => |gradient| {
                 var stops: [10]GradientStop = undefined;
                 for (0..10) |i| {
-                    stops[i] = .{ .color = .{ 0.0, 0.0, 0.0, 0.0 }, .offset = 0.0 };
+                    stops[i] = if (i < gradient.stops.len) b: {
+                        break :b gradient.stops[i];
+                    } else .{ .color = .{ 0.0, 0.0, 0.0, 0.0 }, .offset = 0.0 };
                 }
 
                 return Uniform{
-                    .linear = .{
+                    .radial = .{
                         .stroke_width = self.props.stroke_width * self.sdf_scale,
-                        .stop_count = 2,
-                        .start = .{ .x = 0.0, .y = 0.0 },
-                        .end = .{ .x = 1.0, .y = 0.5 },
+                        .stop_count = @intCast(gradient.stops.len),
+                        .center = gradient.center,
+                        .radius = gradient.radius,
                         .stops = stops,
                     },
                 };
@@ -523,9 +522,19 @@ const UniformLinearGradient = extern struct {
     stops: [10]GradientStop,
 };
 
+const UniformRadialGradient = extern struct {
+    stroke_width: f32,
+    stop_count: u32,
+    padding: [2]f32 = .{ 0.0, 0.0 }, // Padding for alignment
+    center: Point,
+    radius: Point, // rx, ry for elliptical gradients
+    stops: [10]GradientStop,
+};
+
 pub const Uniform = union(enum) {
     solid: UniformSolid,
     linear: UniformLinearGradient,
+    radial: UniformRadialGradient,
 };
 
 const PickVertexOutput = struct { bounds: [6]images.PickVertex, uniforms: Uniform };
