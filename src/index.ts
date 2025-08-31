@@ -11,6 +11,7 @@ import * as Textures from 'textures'
 import { startCache, endCache } from 'WebGPU/textureCache'
 import debounce from 'utils/debounce'
 import generatePreview from 'WebGPU/generatePreview'
+import sanitizeFill from 'sanitizeFill'
 
 export type SerializedInputImage = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
@@ -177,8 +178,8 @@ export default async function initCreator(
             v: point.v,
           })),
           props: {
-            fill: shape.props.fill, // TODO: correctly filter out zigar added properties
-            stroke: shape.props.stroke, // TODO: correctly filter out zigar added properties
+            fill: sanitizeFill(shape.props.fill), // TODO: correctly filter out zigar added properties
+            stroke: sanitizeFill(shape.props.stroke), // TODO: correctly filter out zigar added properties
             stroke_width: shape.props.stroke_width,
           },
           texture_id: shape.texture_id,
