@@ -1,7 +1,7 @@
 import getLoadingTexture from 'loadingTexture'
 import { createTextureFromSource } from 'WebGPU/getTexture'
 import { parse, RootNode, ElementNode } from 'svg-parser'
-import createShape from 'shapes/createShape'
+import { createShapes, collectDefs, Defs } from 'shapes/createShape'
 
 function getSvgSize(svgRoot: ElementNode, img: HTMLImageElement) {
   const props = svgRoot.properties
@@ -71,7 +71,9 @@ export function add(
       const svgRoot = svgTree.children[0] as ElementNode
       const [svgWidth, svgHeight] = getSvgSize(svgRoot, img)
       if (!svgWidth || !svgHeight) throw Error('SVG width and height are required')
-      createShape(svgRoot, {}, svgWidth, svgHeight)
+      const defs: Defs = {}
+      collectDefs(svgRoot, defs)
+      createShapes(svgRoot, defs, svgWidth, svgHeight)
       return
     }
     const { ctx } = getImageData(img, img.naturalWidth, img.naturalHeight)

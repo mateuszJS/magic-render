@@ -6,9 +6,10 @@ struct Stop {
 struct Uniform {
   stroke_width: f32,
   stop_count: u32,
-  padding: vec2f,
+  radius_ratio: f32,    // horizontal radius / vertical radius(to create ellipse)
+  padding: u32,
   center: vec2f,    // Center point of radial gradient
-  destination: vec2f,    // rx, ry for elliptical gradient (rx=ry for circular)
+  destination: vec2f,    // because we have scale, the angle between center an destination is visible in the gradient!
   stops: array<Stop, 10>,
 };
 
@@ -27,18 +28,32 @@ fn getFillColor(sdf: vec4f, world_uv: vec2f, uv: vec2f) -> vec4f {
     return u.stops[0u].color;
   }
 
-  // Calculate distance from center for radial gradient
+  // Calculate offset from center
   let offset = uv - u.center;
   
-  // Handle elliptical gradient by normalizing with radii
-  let rx = max(u.destination.x, 1e-8);
-  let ry = max(u.destination.y, 1e-8);
+  // Calculate the horizontal radius and angle from center to destination
+  let dest_offset = u.destination - u.center;
+  let horizontal_radius = length(dest_offset);
+  let angle = atan2(dest_offset.y, dest_offset.x);
   
-  // Normalized distance (0 at center, 1 at edge of ellipse)
-  let normalized_dist = sqrt((offset.x * offset.x) / (rx * rx) + (offset.y * offset.y) / (ry * ry));
+  // Calculate vertical radius using the aspect ratio scale
+  let vertical_radius = horizontal_radius * u.radius_ratio;
+  
+  // Create rotation matrix to align gradient with destination angle
+  let cos_angle = cos(-angle);
+  let sin_angle = sin(-angle);
+  
+  // Rotate the offset to align with gradient orientation
+  let rotated_x = offset.x * cos_angle - offset.y * sin_angle;
+  let rotated_y = offset.x * sin_angle + offset.y * cos_angle;
+  
+  // Apply elliptical scaling using calculated radii
+  let scaled_x = rotated_x / max(horizontal_radius, 1e-8);
+  let scaled_y = rotated_y / max(vertical_radius, 1e-8);
+  
+  // Calculate normalized distance (0 at center, 1 at edge of ellipse)
+  let normalized_dist = sqrt(scaled_x * scaled_x + scaled_y * scaled_y);
   let t_uv = clamp(normalized_dist, 0.0, 1.0);
-
-  // return vec4f(t_uv, t_uv, t_uv, 1.0);
 
   // Find lower/upper stops around t_uv using stop offsets
   let last_index = u.stop_count - 1u;

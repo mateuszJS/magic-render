@@ -35,7 +35,7 @@ type RadialDef = {
   stops: DefStop[]
 }
 type AnyDef = LinearDef | RadialDef
-type Def = Record<string, AnyDef>
+export type Defs = Record<string, AnyDef>
 
 // Parse a gradientTransform into separate operations
 function parseTransform(str: string | undefined): {
@@ -88,7 +88,7 @@ function applyLinearTransform(x: number, y: number, tf: ReturnType<typeof parseT
 }
 
 // Merge referenced gradient (href) into current. Current overrides referenced.
-function resolveRef(defs: Def, def: AnyDef, seen = new Set<string>()): AnyDef {
+function resolveRef(defs: Defs, def: AnyDef, seen = new Set<string>()): AnyDef {
   if (!def.href) return def
   const id = def.href.replace('#', '')
   if (seen.has(id)) return def
@@ -143,57 +143,66 @@ function toRuntimeGradient(
       s.color[3] * (isFinite(s.opacity) ? s.opacity : 1),
     ] as [number, number, number, number],
   }))
+
+  // gradient with matrix are treated as absolute in svg, position doesn't depend on shape(owner)
+  if (resolved.gradientUnits != 'userSpaceOnUse' && !resolved.gradientTransform) {
+    throw Error('gradient units is not userSpaceOnUse BUT there is no gradientTransform provided')
+  }
   const tf = parseTransform(resolved.gradientTransform)
-  console.log('----------', resolved.kind)
+
   if (resolved.kind === 'linear') {
     const x1_rel = resolved.x1 ?? 0
     const y1_rel = resolved.y1 ?? 0
     const x2_rel = resolved.x2 ?? 1
     const y2_rel = resolved.y2 ?? 0
 
-    // let p1: { x: number; y: number }
-    // let p2: { x: number; y: number }
+    // if (resolved.gradientUnits === 'objectBoundingBox') {
+    const p1 = applyLinearTransform(x1_rel, y1_rel, tf)
+    const p2 = applyLinearTransform(x2_rel, y2_rel, tf)
 
     const bbWidth = boundingBox.max_x - boundingBox.min_x
     const bbHeight = boundingBox.max_y - boundingBox.min_y
 
-    // if (resolved.gradientUnits === 'objectBoundingBox') {
-    const x1 = boundingBox.min_x + x1_rel * bbWidth
-    const y1 = boundingBox.min_y + y1_rel * bbHeight
-    const x2 = boundingBox.min_x + x2_rel * bbWidth
-    const y2 = boundingBox.min_y + y2_rel * bbHeight
-    const p1 = applyLinearTransform(x1, y1, tf)
-    const p2 = applyLinearTransform(x2, y2, tf)
-    // } else {
-    //   p1 = applyLinearTransform(x1_rel, svgHeight - y1_rel, tf)
-    //   p2 = applyLinearTransform(x2_rel, svgHeight - y2_rel, tf)
-    // }
-
     p1.x = p1.x / bbWidth
-    p1.y = p1.y / bbHeight
+    p1.y = 1 - p1.y / bbHeight
     p2.x = p2.x / bbWidth
-    p2.y = p2.y / bbHeight
-    console.log({ linear: { stops, start: p1, end: p2 } })
+    p2.y = 1 - p2.y / bbHeight
+
     return { linear: { stops, start: p1, end: p2 } }
   } else if (resolved.kind === 'radial') {
-    const cx = resolved.cx ?? 0.5
-    const cy = resolved.cy ?? 0.5
-    const r = resolved.r ?? 0.5
-    const c = applyLinearTransform(cx, svgHeight - cy, tf)
-    const fx = resolved.fx
-    const fy = resolved.fy
-    const focus =
-      fx != null && fy != null ? applyLinearTransform(fx, svgHeight - fy, tf) : undefined
+    const center = applyLinearTransform(resolved.cx ?? 0.5, resolved.cy ?? 0.5, tf)
+    const radiusX = applyLinearTransform(resolved.r ?? 0.5, 0, tf)
+    const radiusY = applyLinearTransform(0, resolved.r ?? 0.5, tf)
+
+    const radiusRatio =
+      Math.hypot(radiusY.x - center.x, radiusY.y - center.y) /
+      Math.hypot(radiusX.x - center.x, radiusX.y - center.y)
+
+    const bbWidth = boundingBox.max_x - boundingBox.min_x
+    const bbHeight = boundingBox.max_y - boundingBox.min_y
+    center.x = center.x / bbWidth
+    center.y = 1 - center.y / bbHeight
+    radiusX.x = radiusX.x / bbWidth
+    radiusX.y = 1 - radiusX.y / bbHeight
+    console.log('after norm radiusX', radiusX)
+
+    // const r = resolved.r ?? 0.5
+    // const c = applyLinearTransform(cx, svgHeight - cy, tf)
+    // const fx = resolved.fx
+    // const fy = resolved.fy
+    // const focus =
+    //   fx != null && fy != null ? applyLinearTransform(fx, svgHeight - fy, tf) : undefined
     // Approximate radius scale: take max scale component
-    const scaleMax = Math.max(
-      parseTransform(resolved.gradientTransform).scale.x,
-      parseTransform(resolved.gradientTransform).scale.y
-    )
+
+    // const bbWidth = boundingBox.max_x - boundingBox.min_x
+    // const bbHeight = boundingBox.max_y - boundingBox.min_y
+
     return {
       radial: {
         stops,
-        center: c,
-        radius: { x: 100, y: 100 },
+        center,
+        destination: radiusX,
+        radius_ratio: radiusRatio,
         // cx: c.x,
         // cy: c.y,
         // r: r * scaleMax,
@@ -231,12 +240,71 @@ function getGradientStops(nodes: ElementNode[]) {
   })
 }
 
-export default function createShapes(
-  node: Node,
-  defs: Def,
-  svgWidth: number,
-  svgHeight: number
-): void {
+export function collectDefs(node: Node, defs: Defs): void {
+  if (!('children' in node)) return
+
+  node.children.forEach((child) => {
+    if (typeof child !== 'string') {
+      if ('properties' in child && typeof child.properties === 'object') {
+        const props = getProps(child)
+
+        switch (child.tagName) {
+          case 'linearGradient': {
+            const id = String(props.id)
+
+            const gradientUnits =
+              props.gradientUnits === 'userSpaceOnUse'
+                ? 'userSpaceOnUse'
+                : props.gradientUnits === 'objectBoundingBox'
+                ? 'objectBoundingBox'
+                : undefined
+
+            defs[id] = {
+              kind: 'linear',
+              id,
+              x1: props.x1 != null ? Number(props.x1) : undefined,
+              y1: props.y1 != null ? Number(props.y1) : undefined,
+              x2: props.x2 != null ? Number(props.x2) : undefined,
+              y2: props.y2 != null ? Number(props.y2) : undefined,
+              gradientUnits,
+              gradientTransform: (props.gradientTransform as string) ?? undefined,
+              href: (props.href as string) || (props['xlink:href'] as string) || undefined,
+              stops: getGradientStops(child.children as ElementNode[]),
+            }
+            return
+          }
+          case 'radialGradient': {
+            const id = String(props.id)
+            const gradientUnits =
+              props.gradientUnits === 'userSpaceOnUse'
+                ? 'userSpaceOnUse'
+                : props.gradientUnits === 'objectBoundingBox'
+                ? 'objectBoundingBox'
+                : undefined
+
+            defs[id] = {
+              kind: 'radial',
+              id,
+              cx: props.cx != null ? Number(props.cx) : undefined,
+              cy: props.cy != null ? Number(props.cy) : undefined,
+              r: props.r != null ? Number(props.r) : undefined,
+              fx: props.fx != null ? Number(props.fx) : undefined,
+              fy: props.fy != null ? Number(props.fy) : undefined,
+              gradientUnits,
+              gradientTransform: (props.gradientTransform as string) ?? undefined,
+              href: (props.href as string) || (props['xlink:href'] as string) || undefined,
+              stops: getGradientStops(child.children as ElementNode[]),
+            }
+            return
+          }
+        }
+      }
+      collectDefs(child, defs)
+    }
+  })
+}
+
+export function createShapes(node: Node, defs: Defs, svgWidth: number, svgHeight: number): void {
   if (!('children' in node)) return
 
   node.children.forEach((child) => {
@@ -268,52 +336,6 @@ export default function createShapes(
             }
             paths = [parseEllipse(props.cx, props.cy, props.rx, props.ry)]
             break
-          case 'linearGradient': {
-            const id = String(props.id)
-
-            const gradientUnits =
-              props.gradientUnits === 'userSpaceOnUse'
-                ? 'userSpaceOnUse'
-                : props.gradientUnits === 'objectBoundingBox'
-                ? 'objectBoundingBox'
-                : undefined
-            defs[id] = {
-              kind: 'linear',
-              id,
-              x1: props.x1 != null ? Number(props.x1) : undefined,
-              y1: props.y1 != null ? Number(props.y1) : undefined,
-              x2: props.x2 != null ? Number(props.x2) : undefined,
-              y2: props.y2 != null ? Number(props.y2) : undefined,
-              gradientUnits,
-              gradientTransform: (props.gradientTransform as string) ?? undefined,
-              href: (props.href as string) || (props['xlink:href'] as string) || undefined,
-              stops: getGradientStops(child.children as ElementNode[]),
-            }
-            return
-          }
-          case 'radialGradient': {
-            const id = String(props.id)
-            const gradientUnits =
-              props.gradientUnits === 'userSpaceOnUse'
-                ? 'userSpaceOnUse'
-                : props.gradientUnits === 'objectBoundingBox'
-                ? 'objectBoundingBox'
-                : undefined
-            defs[id] = {
-              kind: 'radial',
-              id,
-              cx: props.cx != null ? Number(props.cx) : undefined,
-              cy: props.cy != null ? Number(props.cy) : undefined,
-              r: props.r != null ? Number(props.r) : undefined,
-              fx: props.fx != null ? Number(props.fx) : undefined,
-              fy: props.fy != null ? Number(props.fy) : undefined,
-              gradientUnits,
-              gradientTransform: (props.gradientTransform as string) ?? undefined,
-              href: (props.href as string) || (props['xlink:href'] as string) || undefined,
-              stops: getGradientStops(child.children as ElementNode[]),
-            }
-            return
-          }
         }
 
         if (paths) {

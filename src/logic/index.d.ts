@@ -32,10 +32,11 @@ type LinearGradient = {
 }
 
 type RadialGradient = {
+  radius_ratio: number
   stops: GradientStop[]
   // final center/focus in document space (after gradientTransform applied)
   center: Point
-  radius: Point
+  destination: Point
 }
 
 type ShapeProps = {

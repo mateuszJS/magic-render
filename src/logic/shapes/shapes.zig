@@ -39,18 +39,15 @@ pub const GradientStop = extern struct {
 };
 
 const LinearGradient = struct {
-    // final coordinates in document space (after gradientTransform applied)
     start: Point,
     end: Point,
     stops: []GradientStop,
-    // gradientUnits already baked into coordinates
 };
 
 const RadialGradient = struct {
-    random_unnecessary_shit: u32 = 0,
-    // final center/focus in document space (after gradientTransform applied)
+    radius_ratio: f32,
     center: Point,
-    radius: Point,
+    destination: Point,
     stops: []GradientStop,
 };
 
@@ -384,8 +381,9 @@ pub const Shape = struct {
                         .stroke_width = self.props.stroke_width * self.sdf_scale,
                         .stop_count = @intCast(gradient.stops.len),
                         .center = gradient.center,
-                        .radius = gradient.radius,
+                        .destination = gradient.destination,
                         .stops = stops,
+                        .radius_ratio = gradient.radius_ratio,
                     },
                 };
             },
@@ -526,9 +524,10 @@ const UniformLinearGradient = extern struct {
 const UniformRadialGradient = extern struct {
     stroke_width: f32,
     stop_count: u32,
-    padding: [2]f32 = .{ 0.0, 0.0 }, // Padding for alignment
+    radius_ratio: f32,
+    padding: u32 = 0.0, // Padding for alignment
     center: Point,
-    radius: Point, // rx, ry for elliptical gradients
+    destination: Point, // rx, ry for elliptical gradients
     stops: [10]GradientStop,
 };
 
