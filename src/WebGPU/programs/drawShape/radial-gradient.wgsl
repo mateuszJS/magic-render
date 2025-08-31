@@ -8,7 +8,7 @@ struct Uniform {
   stop_count: u32,
   padding: vec2f,
   center: vec2f,    // Center point of radial gradient
-  radius: vec2f,    // rx, ry for elliptical gradient (rx=ry for circular)
+  destination: vec2f,    // rx, ry for elliptical gradient (rx=ry for circular)
   stops: array<Stop, 10>,
 };
 
@@ -31,8 +31,8 @@ fn getFillColor(sdf: vec4f, world_uv: vec2f, uv: vec2f) -> vec4f {
   let offset = uv - u.center;
   
   // Handle elliptical gradient by normalizing with radii
-  let rx = max(u.radius.x, 1e-8);
-  let ry = max(u.radius.y, 1e-8);
+  let rx = max(u.destination.x, 1e-8);
+  let ry = max(u.destination.y, 1e-8);
   
   // Normalized distance (0 at center, 1 at edge of ellipse)
   let normalized_dist = sqrt((offset.x * offset.x) / (rx * rx) + (offset.y * offset.y) / (ry * ry));

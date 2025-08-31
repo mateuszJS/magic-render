@@ -113,6 +113,7 @@ pub const Shape = struct {
             );
             try paths_list.append(path);
         }
+        std.debug.print("props: {any}\n", .{props.fill});
         const shape = Shape{
             .id = id,
             .paths = paths_list,
