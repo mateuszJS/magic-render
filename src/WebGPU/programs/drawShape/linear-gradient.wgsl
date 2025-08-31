@@ -5,7 +5,7 @@ struct Stop {
 
 struct Uniform {
   stroke_width: f32,
-  stop_count: u32,
+  stops_count: u32,
   padding: vec2f, // Padding for alignment
   start: vec2f,
   end: vec2f,
@@ -20,10 +20,10 @@ fn getStrokeColor(sdf: vec4f, uv: vec2f, norm_uv: vec2f) -> vec4f {
 
 fn getFillColor(sdf: vec4f, world_uv: vec2f, uv: vec2f) -> vec4f {
   // Fallbacks
-  if (u.stop_count == 0u) {
+  if (u.stops_count == 0u) {
     return vec4f(1.0, 1.0, 1.0, 1.0);
   }
-  if (u.stop_count == 1u) {
+  if (u.stops_count == 1u) {
   return u.stops[0u].color;
   }
 
@@ -44,13 +44,13 @@ fn getFillColor(sdf: vec4f, world_uv: vec2f, uv: vec2f) -> vec4f {
   }
 
   // Find lower/upper stops around t_uv using stop offsets
-  let last_index = u.stop_count - 1u;
+  let last_index = u.stops_count - 1u;
   var lower_t = -1.0;
   var lower_color = u.stops[0u].color;
   var upper_t = 2.0;
   var upper_color = u.stops[last_index].color;
 
-  for (var i: u32 = 0u; i < u.stop_count; i = i + 1u) {
+  for (var i: u32 = 0u; i < u.stops_count; i = i + 1u) {
     let ti = clamp(u.stops[i].offset, 0.0, 1.0);
     if (ti <= t_uv && ti > lower_t) {
       lower_t = ti;

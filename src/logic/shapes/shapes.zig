@@ -361,7 +361,7 @@ pub const Shape = struct {
                 return Uniform{
                     .linear = .{
                         .stroke_width = self.props.stroke_width * self.sdf_scale,
-                        .stop_count = gradient.stops.len,
+                        .stops_count = @min(10, gradient.stops.len),
                         .start = gradient.start,
                         .end = gradient.end,
                         .stops = stops,
@@ -379,7 +379,7 @@ pub const Shape = struct {
                 return Uniform{
                     .radial = .{
                         .stroke_width = self.props.stroke_width * self.sdf_scale,
-                        .stop_count = @intCast(gradient.stops.len),
+                        .stops_count = @min(10, gradient.stops.len),
                         .center = gradient.center,
                         .destination = gradient.destination,
                         .stops = stops,
@@ -514,7 +514,7 @@ const UniformSolid = extern struct {
 
 const UniformLinearGradient = extern struct {
     stroke_width: f32,
-    stop_count: u32,
+    stops_count: u32,
     padding: [2]f32 = .{ 0.0, 0.0 }, // Padding for alignment
     start: Point,
     end: Point,
@@ -523,7 +523,7 @@ const UniformLinearGradient = extern struct {
 
 const UniformRadialGradient = extern struct {
     stroke_width: f32,
-    stop_count: u32,
+    stops_count: u32,
     radius_ratio: f32,
     padding: u32 = 0.0, // Padding for alignment
     center: Point,
