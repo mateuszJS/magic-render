@@ -49,7 +49,7 @@ export interface TextureSource {
 
 export function add(
   url: string,
-  callback?: (width: number, height: number, isNew: boolean) => void
+  onLoad?: (width: number, height: number, isNew: boolean) => void
 ): number {
   loadingTextures++
   updateProcessing()
@@ -58,7 +58,7 @@ export function add(
   if (sameUrl) {
     loadingTextures--
     updateProcessing()
-    callback?.(sameUrl.texture!.width, sameUrl.texture!.height, false)
+    onLoad?.(sameUrl.texture!.width, sameUrl.texture!.height, false)
     return textures.indexOf(sameUrl)
   }
 
@@ -67,6 +67,7 @@ export function add(
   textures.push({ url })
 
   getImageWithDetails(url).then(([img, svgTree]) => {
+    let existingTexture: TextureSource | null = null
     if (svgTree) {
       const svgRoot = svgTree.children[0] as ElementNode
       const [svgWidth, svgHeight] = getSvgSize(svgRoot, img)
@@ -74,23 +75,23 @@ export function add(
       const defs: Defs = {}
       collectDefs(svgRoot, defs)
       createShapes(svgRoot, defs, svgWidth, svgHeight)
-      return
-    }
-    const { ctx } = getImageData(img, img.naturalWidth, img.naturalHeight)
-    const data = ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data
-    const hash = hashImageData(data)
-
-    const existingTexture = findSameTexture(data, hash)
-    if (existingTexture !== null) {
-      textures[textureId] = existingTexture
+      // TODO: check if svg file was already uploaded
     } else {
-      textures[textureId].texture = createTextureFromSource(device, img, { flipY: true })
-      textures[textureId].data = data
-      textures[textureId].hash = hash
+      const { ctx } = getImageData(img, img.naturalWidth, img.naturalHeight)
+      const data = ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data
+      const hash = hashImageData(data)
+
+      existingTexture = findSameTexture(data, hash)
+      if (existingTexture !== null) {
+        textures[textureId] = existingTexture
+      } else {
+        textures[textureId].texture = createTextureFromSource(device, img, { flipY: true })
+        textures[textureId].data = data
+        textures[textureId].hash = hash
+      }
     }
 
-    callback?.(img.width, img.height, !existingTexture)
-
+    onLoad?.(img.width, img.height, !existingTexture)
     loadingTextures--
     updateProcessing()
   })

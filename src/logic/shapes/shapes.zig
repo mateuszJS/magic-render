@@ -525,7 +525,7 @@ const UniformRadialGradient = extern struct {
     stroke_width: f32,
     stops_count: u32,
     radius_ratio: f32,
-    padding: u32 = 0.0, // Padding for alignment
+    padding: u32 = 0, // Padding for alignment
     center: Point,
     destination: Point, // rx, ry for elliptical gradients
     stops: [10]GradientStop,

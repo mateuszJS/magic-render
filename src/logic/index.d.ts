@@ -17,7 +17,6 @@ interface BoundingBox {
   max_y: number
 }
 
-// Gradients used by shapes (precomputed, no raw transform strings)
 type GradientStop = {
   color: [number, number, number, number]
   offset: number // 0..1
@@ -27,21 +26,17 @@ type LinearGradient = {
   start: Point
   end: Point
   stops: GradientStop[]
-  // final coordinates in document space (after gradientTransform applied)
-  // gradientUnits already baked into coordinates
 }
 
 type RadialGradient = {
   radius_ratio: number
   stops: GradientStop[]
-  // final center/focus in document space (after gradientTransform applied)
   center: Point
   destination: Point
 }
 
 type ShapeProps = {
   stroke_width: number
-  // Optional resolved gradients, if fill/stroke use url(#...)
   fill:
     | { linear: LinearGradient }
     | { radial: RadialGradient }
