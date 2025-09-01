@@ -14,6 +14,7 @@ const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const DEFAULT_BOUNDS = @import("../consts.zig").DEFAULT_BOUNDS;
 const PackedId = @import("packed_id.zig");
 const PathUtils = @import("path_utils.zig");
+const fill = @import("fill.zig");
 
 const EPSILON = std.math.floatEps(f32);
 const CREATE_HANDLE_THRESHOLD = 10.0;
@@ -32,38 +33,6 @@ pub fn resetState() void {
     selected_point_id = null;
 }
 
-pub const GradientStop = extern struct {
-    color: [4]f32,
-    offset: f32, // 0..1
-    padding: [3]f32 = .{ 0, 0, 0 },
-};
-
-const LinearGradient = struct {
-    start: Point,
-    end: Point,
-    stops: []GradientStop,
-};
-
-const RadialGradient = struct {
-    radius_ratio: f32,
-    center: Point,
-    destination: Point,
-    stops: []GradientStop,
-};
-
-const Fill = union(enum) {
-    linear: LinearGradient,
-    radial: RadialGradient,
-    solid: [4]f32,
-};
-
-pub const ShapeProps = struct {
-    // f32 instead of u8 because Uniforms in wgsl doesn't support u8 anyway
-    fill: Fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } }, // Default fill color (red)
-    stroke: Fill = .{ .solid = .{ 0.9, 0.9, 0.0, 1.0 } }, // Default stroke color (green)
-    stroke_width: f32 = 20.0, // Default stroke width
-};
-
 pub const Preview = struct {
     index: usize,
     point: Point,
@@ -78,10 +47,21 @@ fn getSnapThreshold(bounds: [4]PointUV) Point {
     return close_path_threshold;
 }
 
+pub const Props = struct {
+    fill: fill.Fill,
+    stroke: fill.Fill,
+    stroke_width: f32,
+};
+pub const SerializedProps = struct {
+    fill: fill.SerializedFill,
+    stroke: fill.SerializedFill,
+    stroke_width: f32,
+};
+
 pub const Shape = struct {
     id: u32,
     paths: std.ArrayList(Path),
-    props: ShapeProps,
+    props: Props,
     bounds: [4]PointUV,
 
     sdf_scale: f32 = 1.0,
@@ -97,7 +77,7 @@ pub const Shape = struct {
         id: u32,
         input_paths: []const []const Point,
         input_bounds: ?[4]PointUV,
-        props: ShapeProps,
+        input_props: SerializedProps,
         texture_id: u32,
         allocator: std.mem.Allocator,
     ) !Shape {
@@ -110,7 +90,13 @@ pub const Shape = struct {
             );
             try paths_list.append(path);
         }
-        std.debug.print("props: {any}\n", .{props.fill});
+
+        const props = Props{
+            .fill = try fill.Fill.new(input_props.fill, allocator),
+            .stroke = try fill.Fill.new(input_props.stroke, allocator),
+            .stroke_width = input_props.stroke_width,
+        };
+
         const shape = Shape{
             .id = id,
             .paths = paths_list,
@@ -351,17 +337,18 @@ pub const Shape = struct {
                 };
             },
             .linear => |gradient| {
-                var stops: [10]GradientStop = undefined;
-                for (0..10) |i| {
-                    stops[i] = if (i < gradient.stops.len) b: {
-                        break :b gradient.stops[i];
-                    } else .{ .color = .{ 0.0, 0.0, 0.0, 0.0 }, .offset = 0.0 };
+                var stops: [10]UniformGradientStop = undefined;
+                for (gradient.stops.items, 0..) |stop, i| {
+                    stops[i] = UniformGradientStop{
+                        .offset = stop.offset,
+                        .color = stop.color,
+                    };
                 }
 
                 return Uniform{
                     .linear = .{
                         .stroke_width = self.props.stroke_width * self.sdf_scale,
-                        .stops_count = @min(10, gradient.stops.len),
+                        .stops_count = gradient.stops.items.len,
                         .start = gradient.start,
                         .end = gradient.end,
                         .stops = stops,
@@ -369,17 +356,18 @@ pub const Shape = struct {
                 };
             },
             .radial => |gradient| {
-                var stops: [10]GradientStop = undefined;
-                for (0..10) |i| {
-                    stops[i] = if (i < gradient.stops.len) b: {
-                        break :b gradient.stops[i];
-                    } else .{ .color = .{ 0.0, 0.0, 0.0, 0.0 }, .offset = 0.0 };
+                var stops: [10]UniformGradientStop = undefined;
+                for (gradient.stops.items, 0..) |stop, i| {
+                    stops[i] = UniformGradientStop{
+                        .offset = stop.offset,
+                        .color = stop.color,
+                    };
                 }
 
                 return Uniform{
                     .radial = .{
                         .stroke_width = self.props.stroke_width * self.sdf_scale,
-                        .stops_count = @min(10, gradient.stops.len),
+                        .stops_count = gradient.stops.items.len,
                         .center = gradient.center,
                         .destination = gradient.destination,
                         .stops = stops,
@@ -487,11 +475,16 @@ pub const Shape = struct {
             const serialized_path = path.serialize();
             try paths_list.append(serialized_path);
         }
+        const props = SerializedProps{
+            .fill = self.props.fill.serialize(),
+            .stroke = self.props.stroke.serialize(),
+            .stroke_width = self.props.stroke_width,
+        };
 
         return Serialized{
             .id = self.id,
             .paths = try paths_list.toOwnedSlice(),
-            .props = self.props,
+            .props = props,
             .bounds = self.bounds,
             .texture_id = self.texture_id,
         };
@@ -512,13 +505,19 @@ const UniformSolid = extern struct {
     stroke_color: [4]f32,
 };
 
+const UniformGradientStop = extern struct {
+    color: [4]f32 = .{ 0.0, 0.0, 0.0, 0.0 },
+    offset: f32 = 0.0,
+    padding: [3]u32 = .{ 0, 0, 0 },
+};
+
 const UniformLinearGradient = extern struct {
     stroke_width: f32,
     stops_count: u32,
     padding: [2]f32 = .{ 0.0, 0.0 }, // Padding for alignment
     start: Point,
     end: Point,
-    stops: [10]GradientStop,
+    stops: [10]UniformGradientStop,
 };
 
 const UniformRadialGradient = extern struct {
@@ -528,7 +527,7 @@ const UniformRadialGradient = extern struct {
     padding: u32 = 0, // Padding for alignment
     center: Point,
     destination: Point, // rx, ry for elliptical gradients
-    stops: [10]GradientStop,
+    stops: [10]UniformGradientStop,
 };
 
 pub const Uniform = union(enum) {
@@ -542,7 +541,7 @@ const PickVertexOutput = struct { bounds: [6]images.PickVertex, uniforms: Unifor
 pub const Serialized = struct {
     id: u32,
     paths: []const []const Point,
-    props: ShapeProps,
+    props: SerializedProps,
     bounds: [4]PointUV,
     texture_id: u32,
 

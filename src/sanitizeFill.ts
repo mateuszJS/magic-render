@@ -1,6 +1,5 @@
 export default function sanitizeFill(fill: ShapeProps['fill']): ShapeProps['fill'] {
   if ('solid' in fill && fill.solid) {
-    console.log('fill.solid', fill.solid)
     return { solid: [...fill.solid] }
   }
   if ('linear' in fill && fill.linear) {

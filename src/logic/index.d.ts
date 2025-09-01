@@ -104,6 +104,8 @@ declare module '*.zig' {
     props: Partial<ShapeProps>,
     texture_id: number
   ) => number /* id */
+  export const addShapeBegin: VoidFunction
+  export const addShapeFinish: VoidFunction
   export const removeAsset: () => void
   export const resetAssets: (assets: ZigAssetInput[], with_snapshot: boolean) => void
 

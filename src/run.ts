@@ -23,7 +23,7 @@ let renderPass: GPURenderPassEncoder
 export function updateRenderPass(newRenderPass: GPURenderPassEncoder) {
   renderPass = newRenderPass
 }
-let x = 0
+
 export default function runCreator(
   creatorCanvas: HTMLCanvasElement,
   context: GPUCanvasContext,
@@ -77,12 +77,6 @@ export default function runCreator(
         uniform = uniform_data.solid
       } else {
         throw Error('Unsupported shape uniform type')
-      }
-
-      if (x == 0 && program == drawLinearGradientShape) {
-        console.log('uniform.dataView')
-        console.log(new Float32Array(uniform.dataView.buffer))
-        x++
       }
 
       const boundBoxDataView = bound_box_data['*'].dataView

@@ -204,7 +204,7 @@ export default async function initCreator(
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = Textures.add(url, (width, height, isNew) => {
       const points = getDefaultPoints(width, height, projectWidth, projectHeight)
-      Logic.addImage(0 /* no id yet, needs to be generated */, points, textureId)
+      Logic.addImage(NO_ASSET_ID /* no id yet, needs to be generated */, points, textureId)
 
       if (isNew) {
         uploadTexture(url, (newUrl) => {
