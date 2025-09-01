@@ -17,10 +17,34 @@ interface BoundingBox {
   max_y: number
 }
 
+type GradientStop = {
+  color: [number, number, number, number]
+  offset: number // 0..1
+}
+
+type LinearGradient = {
+  start: Point
+  end: Point
+  stops: GradientStop[]
+}
+
+type RadialGradient = {
+  radius_ratio: number
+  stops: GradientStop[]
+  center: Point
+  destination: Point
+}
+
 type ShapeProps = {
-  fill_color: [number, number, number, number]
-  stroke_color: [number, number, number, number]
   stroke_width: number
+  fill:
+    | { linear: LinearGradient }
+    | { radial: RadialGradient }
+    | { solid: [number, number, number, number] }
+  stroke:
+    | { linear: LinearGradient }
+    | { radial: RadialGradient }
+    | { solid: [number, number, number, number] }
 }
 
 type ImageAssetOutput = {
@@ -60,6 +84,11 @@ type PointerDataView = {
   dataView: DataView
 }
 
+type Uniform =
+  | { solid: PointerDataView }
+  | { linear: PointerDataView }
+  | { radial: PointerDataView }
+
 declare module '*.zig' {
   export const initState: (
     width: number,
@@ -75,6 +104,8 @@ declare module '*.zig' {
     props: Partial<ShapeProps>,
     texture_id: number
   ) => number /* id */
+  export const addShapeBegin: VoidFunction
+  export const addShapeFinish: VoidFunction
   export const removeAsset: () => void
   export const resetAssets: (assets: ZigAssetInput[], with_snapshot: boolean) => void
 
@@ -100,12 +131,12 @@ declare module '*.zig' {
     ) => void
     draw_shape: (
       bound_box_data: ArrayPointerDataView,
-      uniformData: PointerDataView,
+      uniformData: Uniform,
       texture_id: number
     ) => void
     pick_shape: (
       bound_box_data: ArrayPointerDataView,
-      uniformData: PointerDataView,
+      strokeWidth: number,
       texture_id: number
     ) => void
   }) => void

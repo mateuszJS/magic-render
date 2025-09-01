@@ -14,6 +14,7 @@ const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const DEFAULT_BOUNDS = @import("../consts.zig").DEFAULT_BOUNDS;
 const PackedId = @import("packed_id.zig");
 const PathUtils = @import("path_utils.zig");
+const fill = @import("fill.zig");
 
 const EPSILON = std.math.floatEps(f32);
 const CREATE_HANDLE_THRESHOLD = 10.0;
@@ -32,13 +33,6 @@ pub fn resetState() void {
     selected_point_id = null;
 }
 
-pub const ShapeProps = struct {
-    // f32 instead of u8 because Uniforms in wgsl doesn't support u8 anyway
-    fill_color: [4]f32 = .{ 1.0, 0.0, 0.0, 1.0 }, // Default fill color (red)
-    stroke_color: [4]f32 = .{ 0.9, 0.9, 0.0, 1.0 }, // Default stroke color (green)
-    stroke_width: f32 = 20.0, // Default stroke width
-};
-
 pub const Preview = struct {
     index: usize,
     point: Point,
@@ -53,10 +47,21 @@ fn getSnapThreshold(bounds: [4]PointUV) Point {
     return close_path_threshold;
 }
 
+pub const Props = struct {
+    fill: fill.Fill,
+    stroke: fill.Fill,
+    stroke_width: f32,
+};
+pub const SerializedProps = struct {
+    fill: fill.SerializedFill,
+    stroke: fill.SerializedFill,
+    stroke_width: f32,
+};
+
 pub const Shape = struct {
     id: u32,
     paths: std.ArrayList(Path),
-    props: ShapeProps,
+    props: Props,
     bounds: [4]PointUV,
 
     sdf_scale: f32 = 1.0,
@@ -72,7 +77,7 @@ pub const Shape = struct {
         id: u32,
         input_paths: []const []const Point,
         input_bounds: ?[4]PointUV,
-        props: ShapeProps,
+        input_props: SerializedProps,
         texture_id: u32,
         allocator: std.mem.Allocator,
     ) !Shape {
@@ -85,6 +90,13 @@ pub const Shape = struct {
             );
             try paths_list.append(path);
         }
+
+        const props = Props{
+            .fill = try fill.Fill.new(input_props.fill, allocator),
+            .stroke = try fill.Fill.new(input_props.stroke, allocator),
+            .stroke_width = input_props.stroke_width,
+        };
+
         const shape = Shape{
             .id = id,
             .paths = paths_list,
@@ -178,7 +190,7 @@ pub const Shape = struct {
         );
 
         const box = bounding_box.getBoundingBox(points);
-        std.debug.print("bounding box: ({}, {}) - ({}, {})\n", .{ box.min_x, box.min_y, box.max_x, box.max_y });
+
         const new_width = box.max_x - box.min_x;
         const new_height = box.max_y - box.min_y;
 
@@ -263,9 +275,11 @@ pub const Shape = struct {
 
     pub fn getSkeletonUniform(self: Shape) Uniform {
         return Uniform{
-            .stroke_width = PathUtils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.render_scale,
-            .fill_color = .{ 0.0, 0.0, 0.0, 0.0 },
-            .stroke_color = .{ 0.0, 0.0, 1.0, 1.0 },
+            .solid = .{
+                .stroke_width = PathUtils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.render_scale,
+                .fill_color = .{ 0.0, 0.0, 0.0, 0.0 },
+                .stroke_color = .{ 0.0, 0.0, 1.0, 1.0 },
+            },
         };
     }
 
@@ -312,11 +326,56 @@ pub const Shape = struct {
     }
 
     pub fn getUniform(self: Shape) Uniform {
-        return Uniform{
-            .stroke_width = self.props.stroke_width * self.sdf_scale,
-            .fill_color = self.props.fill_color,
-            .stroke_color = self.props.stroke_color,
-        };
+        switch (self.props.fill) {
+            .solid => |color| {
+                return Uniform{
+                    .solid = .{
+                        .stroke_width = self.props.stroke_width * self.sdf_scale,
+                        .fill_color = color, //self.props.fill_color,
+                        .stroke_color = .{ 0, 1, 0, 1 }, //self.props.stroke_color,
+                    },
+                };
+            },
+            .linear => |gradient| {
+                var stops: [10]UniformGradientStop = undefined;
+                for (gradient.stops.items, 0..) |stop, i| {
+                    stops[i] = UniformGradientStop{
+                        .offset = stop.offset,
+                        .color = stop.color,
+                    };
+                }
+
+                return Uniform{
+                    .linear = .{
+                        .stroke_width = self.props.stroke_width * self.sdf_scale,
+                        .stops_count = gradient.stops.items.len,
+                        .start = gradient.start,
+                        .end = gradient.end,
+                        .stops = stops,
+                    },
+                };
+            },
+            .radial => |gradient| {
+                var stops: [10]UniformGradientStop = undefined;
+                for (gradient.stops.items, 0..) |stop, i| {
+                    stops[i] = UniformGradientStop{
+                        .offset = stop.offset,
+                        .color = stop.color,
+                    };
+                }
+
+                return Uniform{
+                    .radial = .{
+                        .stroke_width = self.props.stroke_width * self.sdf_scale,
+                        .stops_count = gradient.stops.items.len,
+                        .center = gradient.center,
+                        .destination = gradient.destination,
+                        .stops = stops,
+                        .radius_ratio = gradient.radius_ratio,
+                    },
+                };
+            },
+        }
     }
 
     // function has side effect, marks texture as generated
@@ -416,11 +475,16 @@ pub const Shape = struct {
             const serialized_path = path.serialize();
             try paths_list.append(serialized_path);
         }
+        const props = SerializedProps{
+            .fill = self.props.fill.serialize(),
+            .stroke = self.props.stroke.serialize(),
+            .stroke_width = self.props.stroke_width,
+        };
 
         return Serialized{
             .id = self.id,
             .paths = try paths_list.toOwnedSlice(),
-            .props = self.props,
+            .props = props,
             .bounds = self.bounds,
             .texture_id = self.texture_id,
         };
@@ -434,11 +498,42 @@ pub const Shape = struct {
     }
 };
 
-pub const Uniform = extern struct {
+const UniformSolid = extern struct {
     stroke_width: f32,
     padding: [3]f32 = .{ 0.0, 0.0, 0.0 }, // Padding for alignment
     fill_color: [4]f32,
     stroke_color: [4]f32,
+};
+
+const UniformGradientStop = extern struct {
+    color: [4]f32 = .{ 0.0, 0.0, 0.0, 0.0 },
+    offset: f32 = 0.0,
+    padding: [3]u32 = .{ 0, 0, 0 },
+};
+
+const UniformLinearGradient = extern struct {
+    stroke_width: f32,
+    stops_count: u32,
+    padding: [2]f32 = .{ 0.0, 0.0 }, // Padding for alignment
+    start: Point,
+    end: Point,
+    stops: [10]UniformGradientStop,
+};
+
+const UniformRadialGradient = extern struct {
+    stroke_width: f32,
+    stops_count: u32,
+    radius_ratio: f32,
+    padding: u32 = 0, // Padding for alignment
+    center: Point,
+    destination: Point, // rx, ry for elliptical gradients
+    stops: [10]UniformGradientStop,
+};
+
+pub const Uniform = union(enum) {
+    solid: UniformSolid,
+    linear: UniformLinearGradient,
+    radial: UniformRadialGradient,
 };
 
 const PickVertexOutput = struct { bounds: [6]images.PickVertex, uniforms: Uniform };
@@ -446,7 +541,7 @@ const PickVertexOutput = struct { bounds: [6]images.PickVertex, uniforms: Unifor
 pub const Serialized = struct {
     id: u32,
     paths: []const []const Point,
-    props: ShapeProps,
+    props: SerializedProps,
     bounds: [4]PointUV,
     texture_id: u32,
 

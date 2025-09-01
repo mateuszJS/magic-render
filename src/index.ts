@@ -11,6 +11,7 @@ import * as Textures from 'textures'
 import { startCache, endCache } from 'WebGPU/textureCache'
 import debounce from 'utils/debounce'
 import generatePreview from 'WebGPU/generatePreview'
+import sanitizeFill from 'sanitizeFill'
 
 export type SerializedInputImage = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
@@ -177,8 +178,8 @@ export default async function initCreator(
             v: point.v,
           })),
           props: {
-            fill_color: [...shape.props.fill_color],
-            stroke_color: [...shape.props.stroke_color],
+            fill: sanitizeFill(shape.props.fill), // TODO: correctly filter out zigar added properties
+            stroke: sanitizeFill(shape.props.stroke), // TODO: correctly filter out zigar added properties
             stroke_width: shape.props.stroke_width,
           },
           texture_id: shape.texture_id,
@@ -203,7 +204,7 @@ export default async function initCreator(
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = Textures.add(url, (width, height, isNew) => {
       const points = getDefaultPoints(width, height, projectWidth, projectHeight)
-      Logic.addImage(0 /* no id yet, needs to be generated */, points, textureId)
+      Logic.addImage(NO_ASSET_ID /* no id yet, needs to be generated */, points, textureId)
 
       if (isNew) {
         uploadTexture(url, (newUrl) => {

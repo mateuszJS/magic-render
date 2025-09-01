@@ -16,6 +16,12 @@ const PackedId = @import("shapes/packed_id.zig");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 const PathUtils = @import("shapes/path_utils.zig");
 
+const FillType = enum(u8) {
+    Solid,
+    LinearGradient,
+    RadialGradient,
+};
+
 const WebGpuPrograms = struct {
     draw_texture: *const fn (images.DrawVertex, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
@@ -35,8 +41,11 @@ pub fn connectWebGpuPrograms(programs: *const WebGpuPrograms) void {
 }
 
 var on_asset_update_cb: ?*const fn ([]const AssetSerialized) void = undefined;
+var original_on_asset_update_cb: ?*const fn ([]const AssetSerialized) void = undefined;
+
 pub fn connectOnAssetUpdateCallback(cb: *const fn ([]const AssetSerialized) void) void {
     on_asset_update_cb = cb;
+    original_on_asset_update_cb = cb;
 }
 
 var on_asset_select_cb: *const fn (u32) void = undefined;
@@ -169,7 +178,7 @@ pub fn addShape(
     id_or_zero: u32,
     paths: []const []const types.Point,
     bounds: ?[4]types.PointUV,
-    props: shapes.ShapeProps,
+    props: shapes.SerializedProps,
     texture_id: u32,
 ) !u32 {
     const id = if (id_or_zero == 0) generateId() else id_or_zero;
@@ -198,6 +207,15 @@ pub fn onUpdatePick(id: u32) void {
         state.hovered_asset_id = id;
         // hovered_asset_id stores id of the ui transform element during transformations
     }
+}
+
+pub fn addShapeBegin() void {
+    on_asset_update_cb = null;
+}
+
+pub fn addShapeFinish() !void {
+    on_asset_update_cb = original_on_asset_update_cb;
+    try checkAssetsUpdate(true);
 }
 
 var last_assets_update: []const AssetSerialized = &.{};
@@ -295,7 +313,11 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                 0,
                 &.{},
                 null,
-                shapes.ShapeProps{},
+                shapes.SerializedProps{
+                    .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
+                    .stroke = .{ .solid = .{ 0.0, 0.0, 0.0, 1.0 } },
+                    .stroke_width = 1.0,
+                },
                 create_sdf_texture(),
             );
             try updateSelectedAsset(id);
@@ -619,12 +641,14 @@ pub fn calculateShapesSDF() !void {
                         point.y *= shape.sdf_scale;
                     }
                     std.debug.print("New SDF size: {d}x{d}, scale: {d}\n", .{ shape.sdf_size.w, shape.sdf_size.h, shape.sdf_scale });
-                    web_gpu_programs.compute_shape(
-                        points,
-                        shape.sdf_size.w,
-                        shape.sdf_size.h,
-                        shape.texture_id,
-                    );
+                    if (shape.sdf_size.w > 0 and shape.sdf_size.h > 0) {
+                        web_gpu_programs.compute_shape(
+                            points,
+                            shape.sdf_size.w,
+                            shape.sdf_size.h,
+                            shape.texture_id,
+                        );
+                    }
                 }
             },
         }
@@ -758,11 +782,8 @@ pub fn renderPick() !void {
 }
 
 pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !void {
-    const real_callback_pointer = on_asset_update_cb;
     on_asset_update_cb = null;
-
     shapes.resetState();
-
     state.assets.clearAndFree();
 
     for (new_assets) |asset| {
@@ -771,7 +792,13 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
                 try addImage(img.id, img.points, img.texture_id);
             },
             .shape => |shape| {
-                _ = try addShape(shape.id, shape.paths, shape.bounds, shape.props, shape.texture_id);
+                _ = try addShape(
+                    shape.id,
+                    shape.paths,
+                    shape.bounds,
+                    shape.props,
+                    shape.texture_id,
+                );
             },
         }
     }
@@ -779,9 +806,7 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
     if (!state.assets.contains(state.selected_asset_id)) {
         try updateSelectedAsset(NO_SELECTION);
     }
-
-    on_asset_update_cb = real_callback_pointer;
-
+    on_asset_update_cb = original_on_asset_update_cb;
     try checkAssetsUpdate(with_snapshot);
 }
 

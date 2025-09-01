@@ -35,16 +35,12 @@ function getDataPathCommands(pathData: string): PathCommand[] {
   return commands
 }
 
-function reflectY(y: number, svgHeight: number): number {
-  return svgHeight - y
-}
-
-function commandsToPoints(commands: PathCommand[], svgHeight: number): ShapeData[] {
+function commandsToPoints(commands: PathCommand[]): ShapeData[] {
   const allShapes: ShapeData[] = []
 
   let currentPoints: Point[] = []
-  let currentPoint: Point = { x: 0, y: reflectY(0, svgHeight) }
-  let pathStart: Point = { x: 0, y: reflectY(0, svgHeight) }
+  let currentPoint: Point = { x: 0, y: 0 }
+  let pathStart: Point = { x: 0, y: 0 }
   let lastHandle: Point | null = null
   let currentShapeClosed = false
 
@@ -69,7 +65,8 @@ function commandsToPoints(commands: PathCommand[], svgHeight: number): ShapeData
         for (let i = 0; i < args.length; i += 2) {
           const newPoint = {
             x: isRelative ? currentPoint.x + args[i] : args[i],
-            y: isRelative ? currentPoint.y - args[i + 1] : reflectY(args[i + 1], svgHeight),
+            // Use SVG coordinates directly (no Y flip). For relative commands we add deltas.
+            y: isRelative ? currentPoint.y + args[i + 1] : args[i + 1],
           }
           if (i === 0) {
             // First move is the start of a new path
@@ -101,15 +98,11 @@ function commandsToPoints(commands: PathCommand[], svgHeight: number): ShapeData
             newX = args[argIndex] + (isRelative ? currentPoint.x : 0)
             argIndex += 1
           } else if (isVertical) {
-            newY = isRelative
-              ? currentPoint.y - args[argIndex]
-              : reflectY(args[argIndex], svgHeight)
+            newY = args[argIndex] + (isRelative ? currentPoint.y : 0)
             argIndex += 1
           } else {
             newX = args[argIndex] + (isRelative ? currentPoint.x : 0)
-            newY = isRelative
-              ? currentPoint.y - args[argIndex + 1]
-              : reflectY(args[argIndex + 1], svgHeight)
+            newY = args[argIndex + 1] + (isRelative ? currentPoint.y : 0)
             argIndex += 2
           }
 
@@ -127,15 +120,15 @@ function commandsToPoints(commands: PathCommand[], svgHeight: number): ShapeData
         for (let i = 0; i < args.length; i += 6) {
           const h1: Point = {
             x: args[i] + (isRelative ? currentPoint.x : 0),
-            y: isRelative ? currentPoint.y - args[i + 1] : reflectY(args[i + 1], svgHeight),
+            y: args[i + 1] + (isRelative ? currentPoint.y : 0),
           }
           const h2: Point = {
             x: args[i + 2] + (isRelative ? currentPoint.x : 0),
-            y: isRelative ? currentPoint.y - args[i + 3] : reflectY(args[i + 3], svgHeight),
+            y: args[i + 3] + (isRelative ? currentPoint.y : 0),
           }
           const endPoint: Point = {
             x: args[i + 4] + (isRelative ? currentPoint.x : 0),
-            y: isRelative ? currentPoint.y - args[i + 5] : reflectY(args[i + 5], svgHeight),
+            y: args[i + 5] + (isRelative ? currentPoint.y : 0),
           }
 
           currentPoints.push(h1, h2, endPoint)
@@ -158,11 +151,11 @@ function commandsToPoints(commands: PathCommand[], svgHeight: number): ShapeData
 
           const h2: Point = {
             x: args[i] + (isRelative ? currentPoint.x : 0),
-            y: isRelative ? currentPoint.y - args[i + 1] : reflectY(args[i + 1], svgHeight),
+            y: args[i + 1] + (isRelative ? currentPoint.y : 0),
           }
           const endPoint: Point = {
             x: args[i + 2] + (isRelative ? currentPoint.x : 0),
-            y: isRelative ? currentPoint.y - args[i + 3] : reflectY(args[i + 3], svgHeight),
+            y: args[i + 3] + (isRelative ? currentPoint.y : 0),
           }
 
           currentPoints.push(h1, h2, endPoint)
@@ -193,9 +186,9 @@ function commandsToPoints(commands: PathCommand[], svgHeight: number): ShapeData
   return allShapes
 }
 
-export default function parsePathData(dAttribute: string, svgHeight: number): ShapeData[] {
+export default function parsePathData(dAttribute: string): ShapeData[] {
   const commands = getDataPathCommands(dAttribute)
-  const pathData = commandsToPoints(commands, svgHeight)
+  const pathData = commandsToPoints(commands)
 
   return pathData
 }

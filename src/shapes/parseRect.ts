@@ -1,6 +1,6 @@
 import { STRAIGHT_LINE_HANDLE } from './const'
 
-export default function parseRect(width: number, height: number, svgHeight: number): Point[] {
+export default function parseRect(width: number, height: number): Point[] {
   // Define the four corners of the rectangle in Cartesian space
   const topLeft: Point = { x: 0, y: height }
   const topRight: Point = { x: width, y: height }

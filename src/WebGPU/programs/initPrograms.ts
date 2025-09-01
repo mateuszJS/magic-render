@@ -9,6 +9,9 @@ import getPickTexture from './pickTexture/getProgram'
 import getPickTriangle from './pickTriangle/getProgram'
 import getDrawMSDF from './drawMSDF/getProgram'
 import getDrawShape from './drawShape/getProgram'
+import solidFS from './drawShape/solid.wgsl'
+import linearGradientFS from './drawShape/linear-gradient.wgsl'
+import radialGradientFS from './drawShape/radial-gradient.wgsl'
 import getPickShape from './pickShape/getProgram'
 import getComputeShape from './computeShape/getProgram'
 
@@ -22,7 +25,9 @@ export let drawTexture: ReturnType<typeof getDrawtexture>
 export let pickTexture: ReturnType<typeof getPickTexture>
 export let pickTriangle: ReturnType<typeof getPickTriangle>
 export let drawMSDF: ReturnType<typeof getDrawMSDF>
-export let drawShape: ReturnType<typeof getDrawShape>
+export let drawSolidShape: ReturnType<typeof getDrawShape>
+export let drawLinearGradientShape: ReturnType<typeof getDrawShape>
+export let drawRadialGradientShape: ReturnType<typeof getDrawShape>
 export let pickShape: ReturnType<typeof getPickShape>
 export let computeShape: ReturnType<typeof getComputeShape>
 
@@ -54,7 +59,40 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
   pickTexture = getPickTexture(device, pickCanvasMatrixBuffer)
   pickTriangle = getPickTriangle(device, pickCanvasMatrixBuffer)
   drawMSDF = getDrawMSDF(device, presentationFormat, canvasMatrixBuffer)
-  drawShape = getDrawShape(device, presentationFormat, canvasMatrixBuffer, buffersToDestroy)
+  drawSolidShape = getDrawShape(
+    device,
+    presentationFormat,
+    canvasMatrixBuffer,
+    buffersToDestroy,
+    solidFS,
+    1 /*stroke width*/ + 4 /*stroke color*/ + 4 /*fill color*/ + /*padding*/ 3
+  )
+  drawLinearGradientShape = getDrawShape(
+    device,
+    presentationFormat,
+    canvasMatrixBuffer,
+    buffersToDestroy,
+    linearGradientFS,
+    1 /*stroke width*/ +
+      1 /*stops counts*/ +
+      2 /*padding*/ +
+      2 /*start*/ +
+      2 /*end*/ +
+      (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/
+  )
+  drawRadialGradientShape = getDrawShape(
+    device,
+    presentationFormat,
+    canvasMatrixBuffer,
+    buffersToDestroy,
+    radialGradientFS,
+    1 /*stroke width*/ +
+      1 /*stops counts*/ +
+      2 /*padding*/ +
+      2 /*start*/ +
+      2 /*end*/ +
+      (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/
+  )
   pickShape = getPickShape(device, pickCanvasMatrixBuffer, buffersToDestroy)
   computeShape = getComputeShape(device, buffersToDestroy)
 

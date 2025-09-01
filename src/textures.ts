@@ -1,7 +1,28 @@
 import getLoadingTexture from 'loadingTexture'
-import { parse, RootNode, ElementNode } from 'svg-parser'
 import { createTextureFromSource } from 'WebGPU/getTexture'
-import createShapes from 'shapes/createShape'
+import { parse, RootNode, ElementNode } from 'svg-parser'
+import { createShapes, collectDefs, Defs } from 'shapes/createShape'
+import * as Logic from './logic/index.zig'
+
+function getSvgSize(svgRoot: ElementNode, img: HTMLImageElement) {
+  const props = svgRoot.properties
+  const viewboxSize = props?.viewBox ? extractSizeFromSvgViewbox(props.viewBox as string) : null
+
+  const widthAttr = typeof props?.width === 'number' ? (props?.width as number) : undefined
+  const heightAttr = typeof props?.height === 'number' ? (props?.height as number) : undefined
+  const svgWidth = widthAttr || img.naturalWidth || viewboxSize?.[0]
+  const svgHeight = heightAttr || img.naturalHeight || viewboxSize?.[1]
+  return [svgWidth, svgHeight]
+}
+
+function extractSizeFromSvgViewbox(viewbox: string) {
+  const parts = viewbox.split(' ').map(Number)
+  if (parts.length === 4) {
+    const [minX, minY, width, height] = parts
+    return [width - minX, height - minY]
+  }
+  return null
+}
 
 let device: GPUDevice
 let textures: TextureSource[]
@@ -29,7 +50,7 @@ export interface TextureSource {
 
 export function add(
   url: string,
-  callback?: (width: number, height: number, isNew: boolean) => void
+  onLoad?: (width: number, height: number, isNew: boolean) => void
 ): number {
   loadingTextures++
   updateProcessing()
@@ -38,7 +59,7 @@ export function add(
   if (sameUrl) {
     loadingTextures--
     updateProcessing()
-    callback?.(sameUrl.texture!.width, sameUrl.texture!.height, false)
+    onLoad?.(sameUrl.texture!.width, sameUrl.texture!.height, false)
     return textures.indexOf(sameUrl)
   }
 
@@ -47,20 +68,28 @@ export function add(
   textures.push({ url })
 
   getImageWithDetails(url).then(([img, svgTree]) => {
+    let existingTexture: TextureSource | null = null
     if (svgTree) {
       const svgRoot = svgTree.children[0] as ElementNode
-      console.log(svgRoot)
+      const [svgWidth, svgHeight] = getSvgSize(svgRoot, img)
+      if (!svgWidth || !svgHeight) throw Error('SVG width and height are required')
+      const defs: Defs = {}
+      collectDefs(svgRoot, defs)
+      Logic.addShapeBegin()
+      createShapes(svgRoot, defs, svgWidth, svgHeight)
+      Logic.addShapeFinish()
 
-      const svgHeight = svgRoot.properties?.height || img.naturalHeight
-      if (!svgHeight || typeof svgHeight !== 'number') throw Error('SVG height is required')
-      createShapes(svgRoot, svgHeight)
+      // onLoad is not called on purpose, it's unnecessary for shapes
+      loadingTextures--
+      updateProcessing()
       return
     }
+
     const { ctx } = getImageData(img, img.naturalWidth, img.naturalHeight)
     const data = ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data
     const hash = hashImageData(data)
 
-    const existingTexture = findSameTexture(data, hash)
+    existingTexture = findSameTexture(data, hash)
     if (existingTexture !== null) {
       textures[textureId] = existingTexture
     } else {
@@ -69,8 +98,7 @@ export function add(
       textures[textureId].hash = hash
     }
 
-    callback?.(img.width, img.height, !existingTexture)
-
+    onLoad?.(img.width, img.height, !existingTexture)
     loadingTextures--
     updateProcessing()
   })
