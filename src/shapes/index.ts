@@ -37,54 +37,83 @@ type RadialDef = {
 type AnyDef = LinearDef | RadialDef
 export type Defs = Record<string, AnyDef>
 
-// Parse a gradientTransform into separate operations
-function parseTransform(str: string | undefined): {
-  translate: { x: number; y: number }
-  scale: { x: number; y: number }
-  rotate: number
-  matrix?: number[]
-} {
-  const res = { translate: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotate: 0 }
-  if (!str) return res
+const IDENTITY_MATRIX = [1, 0, 0, 1, 0, 0]
 
-  const matrixMatch = str.match(/matrix\(([^)]+)\)/)
-  if (matrixMatch) {
-    const [a, b, c, d, e, f] = matrixMatch[1].split(/[ ,]+/).map(Number)
-    return { ...res, matrix: [a, b, c, d, e, f] }
-  }
-
-  const t = str.match(/translate\(([^)]+)\)/)
-  if (t) {
-    const [x, y] = t[1].split(/[ ,]+/).map(Number)
-    res.translate.x = x || 0
-    res.translate.y = y || 0
-  }
-  const s = str.match(/scale\(([^)]+)\)/)
-  if (s) {
-    const parts = s[1].split(/[ ,]+/).map(Number)
-    res.scale.x = parts[0] ?? 1
-    res.scale.y = parts[1] ?? parts[0] ?? 1
-  }
-  const r = str.match(/rotate\(([^)]+)\)/)
-  if (r) res.rotate = Number(r[1]) || 0
-  return res
+function multiplyMatrices(m1: number[], m2: number[]): number[] {
+  const [a1, b1, c1, d1, e1, f1] = m1
+  const [a2, b2, c2, d2, e2, f2] = m2
+  return [
+    a1 * a2 + c1 * b2,
+    b1 * a2 + d1 * b2,
+    a1 * c2 + c1 * d2,
+    b1 * c2 + d1 * d2,
+    a1 * e2 + c1 * f2 + e1,
+    b1 * e2 + d1 * f2 + f1,
+  ]
 }
 
-function applyLinearTransform(x: number, y: number, tf: ReturnType<typeof parseTransform>) {
-  if (tf.matrix) {
-    const [a, b, c, d, e, f] = tf.matrix
-    return {
-      x: a * x + c * y + e,
-      y: b * x + d * y + f,
-    }
+// Parse a gradientTransform into a single transformation matrix.
+function parseTransform(
+  str: string | undefined,
+  initialMatrix: number[] = IDENTITY_MATRIX
+): number[] {
+  if (!str) return initialMatrix
+
+  const regex = /(\w+)\(([^)]+)\)/g
+  let match
+  let currentMatrix = initialMatrix
+
+  // We need to parse all operations first, then apply them right-to-left.
+  const ops: { op: string; args: number[] }[] = []
+  while ((match = regex.exec(str)) !== null) {
+    ops.push({
+      op: match[1],
+      args: match[2].split(/[ ,]+/).map(Number),
+    })
   }
-  // scale -> rotate -> translate
-  const sx = x * tf.scale.x
-  const sy = y * tf.scale.y
-  const rad = (tf.rotate * Math.PI) / 180
-  const rx = sx * Math.cos(rad) - sy * Math.sin(rad)
-  const ry = sx * Math.sin(rad) + sy * Math.cos(rad)
-  return { x: rx + tf.translate.x, y: ry + tf.translate.y }
+
+  for (let i = ops.length - 1; i >= 0; i--) {
+    const { op, args } = ops[i]
+    let opMatrix = IDENTITY_MATRIX
+    switch (op) {
+      case 'matrix':
+        opMatrix = args
+        break
+      case 'translate': {
+        const [tx, ty = 0] = args
+        opMatrix = [1, 0, 0, 1, tx, ty]
+        break
+      }
+      case 'scale': {
+        const [sx, sy = sx] = args
+        opMatrix = [sx, 0, 0, sy, 0, 0]
+        break
+      }
+      case 'rotate': {
+        const [angle, cx = 0, cy = 0] = args
+        const rad = (angle * Math.PI) / 180
+        const cos = Math.cos(rad)
+        const sin = Math.sin(rad)
+        // Create rotation matrix around a center point
+        const t1 = [1, 0, 0, 1, cx, cy]
+        const rot = [cos, sin, -sin, cos, 0, 0]
+        const t2 = [1, 0, 0, 1, -cx, -cy]
+        opMatrix = multiplyMatrices(t1, multiplyMatrices(rot, t2))
+        break
+      }
+    }
+    currentMatrix = multiplyMatrices(opMatrix, currentMatrix)
+  }
+
+  return currentMatrix
+}
+
+function applyLinearTransform(x: number, y: number, m: number[]): Point {
+  const [a, b, c, d, e, f] = m
+  return {
+    x: a * x + c * y + e,
+    y: b * x + d * y + f,
+  }
 }
 
 // Merge referenced gradient (href) into current. Current overrides referenced.
@@ -184,6 +213,7 @@ function toRuntimeGradient(def: AnyDef, boundingBox: BoundingBox): ShapeProps['f
     const r = resolved.r ?? 0.5
 
     const center = applyLinearTransform(cx, cy, tf)
+    console.log(cx, cy, tf, center)
     // To find the transformed radius, we transform a point on the original circle's
     // circumference and then find the vector from the new center.
     const pointOnCircle = applyLinearTransform(cx + r, cy, tf)
@@ -322,8 +352,16 @@ export function collectDefs(node: Node, defs: Defs): void {
   })
 }
 
-export function createShapes(node: Node, defs: Defs, svgWidth: number, svgHeight: number): void {
+export function createShapes(
+  node: Node,
+  defs: Defs,
+  svgWidth: number,
+  svgHeight: number,
+  parentTransform: number[] = IDENTITY_MATRIX
+): void {
   if (!('children' in node)) return
+
+  let currTransform = parentTransform
 
   node.children.forEach((child) => {
     if (typeof child !== 'string') {
@@ -354,6 +392,9 @@ export function createShapes(node: Node, defs: Defs, svgWidth: number, svgHeight
             }
             paths = [parseEllipse(props.cx, props.cy, props.rx, props.ry)]
             break
+          case 'g':
+            currTransform = parseTransform(props.transform as string | undefined, currTransform)
+            break
         }
 
         if (paths) {
@@ -370,9 +411,6 @@ export function createShapes(node: Node, defs: Defs, svgWidth: number, svgHeight
             const m = fill.match(/^url\(#([^)]+)\)$/)
 
             if (m) {
-              // if (m[1] === 'fill_naris_right') {
-              //   debugger
-              // }
               const def = defs[m[1]]
               if (def) {
                 const resolved = resolveRef(defs, def)
@@ -399,7 +437,16 @@ export function createShapes(node: Node, defs: Defs, svgWidth: number, svgHeight
               serializedProps.stroke = { solid: rgba }
             }
           }
-          const correctedPaths = paths.map((path) =>
+
+          const transform = props.transform as string | undefined
+          if (transform) {
+            currTransform = parseTransform(transform, currTransform)
+          }
+          const transformedPaths = paths.map((path) =>
+            path.map((point) => applyLinearTransform(point.x, point.y, currTransform))
+          )
+
+          const correctedPaths = transformedPaths.map((path) =>
             path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
           )
           console.log(child)
@@ -409,7 +456,7 @@ export function createShapes(node: Node, defs: Defs, svgWidth: number, svgHeight
           Logic.addShape(0, correctedPaths, null, serializedProps, Textures.createSDF())
         }
       }
-      createShapes(child, defs, svgWidth, svgHeight)
+      createShapes(child, defs, svgWidth, svgHeight, currTransform)
     }
   })
 }
