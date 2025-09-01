@@ -91,48 +91,57 @@ function applyLinearTransform(x: number, y: number, tf: ReturnType<typeof parseT
 function resolveRef(defs: Defs, def: AnyDef, seen = new Set<string>()): AnyDef {
   if (!def.href) return def
   const id = def.href.replace('#', '')
-  if (seen.has(id)) return def
+  if (seen.has(id)) {
+    // Circular reference detected, return def without href to stop recursion
+    const newDef = { ...def }
+    delete newDef.href
+    return newDef
+  }
   seen.add(id)
   const base = defs[id]
   if (!base) return def
   const resolvedBase = resolveRef(defs, base, seen)
-  if (def.kind === 'linear' && resolvedBase.kind === 'linear') {
+
+  const commonResolved = {
+    gradientUnits: def.gradientUnits ?? resolvedBase.gradientUnits,
+    gradientTransform: def.gradientTransform ?? resolvedBase.gradientTransform,
+    stops: def.stops.length ? def.stops : resolvedBase.stops,
+    href: undefined, // Mark as resolved
+  }
+
+  if (def.kind === 'linear') {
+    const resolvedLinear =
+      resolvedBase.kind === 'linear' ? resolvedBase : ({} as Partial<LinearDef>)
     return {
-      kind: 'linear',
-      id: def.id,
-      x1: def.x1 ?? resolvedBase.x1,
-      y1: def.y1 ?? resolvedBase.y1,
-      x2: def.x2 ?? resolvedBase.x2,
-      y2: def.y2 ?? resolvedBase.y2,
-      gradientUnits: def.gradientUnits ?? resolvedBase.gradientUnits,
-      gradientTransform: def.gradientTransform ?? resolvedBase.gradientTransform,
-      href: undefined,
-      stops: def.stops.length ? def.stops : resolvedBase.stops,
-    }
-  } else if (def.kind === 'radial' && resolvedBase.kind === 'radial') {
-    return {
-      kind: 'radial',
-      id: def.id,
-      cx: def.cx ?? resolvedBase.cx,
-      cy: def.cy ?? resolvedBase.cy,
-      r: def.r ?? resolvedBase.r,
-      fx: def.fx ?? resolvedBase.fx,
-      fy: def.fy ?? resolvedBase.fy,
-      gradientUnits: def.gradientUnits ?? resolvedBase.gradientUnits,
-      gradientTransform: def.gradientTransform ?? resolvedBase.gradientTransform,
-      href: undefined,
-      stops: def.stops.length ? def.stops : resolvedBase.stops,
+      ...def,
+      ...commonResolved,
+      x1: def.x1 ?? resolvedLinear.x1,
+      y1: def.y1 ?? resolvedLinear.y1,
+      x2: def.x2 ?? resolvedLinear.x2,
+      y2: def.y2 ?? resolvedLinear.y2,
     }
   }
+
+  if (def.kind === 'radial') {
+    const resolvedRadial =
+      resolvedBase.kind === 'radial' ? resolvedBase : ({} as Partial<RadialDef>)
+    return {
+      ...def,
+      ...commonResolved,
+      cx: def.cx ?? resolvedRadial.cx,
+      cy: def.cy ?? resolvedRadial.cy,
+      r: def.r ?? resolvedRadial.r,
+      fx: def.fx ?? resolvedRadial.fx,
+      fy: def.fy ?? resolvedRadial.fy,
+    }
+  }
+
+  // Fallback for unknown kinds, though should not be reached with current types
   return def
 }
 
 // Convert stops (apply opacity) and bake transform. Here we assume gradientUnits=userSpaceOnUse.
-function toRuntimeGradient(
-  def: AnyDef,
-  svgHeight: number,
-  boundingBox: BoundingBox
-): ShapeProps['fill'] | null {
+function toRuntimeGradient(def: AnyDef, boundingBox: BoundingBox): ShapeProps['fill'] | null {
   const resolved = resolveRef({}, def) // def already resolved in caller, keep fn pure if needed
   const stops = (resolved.stops || []).map((s) => ({
     offset: s.offset,
@@ -170,9 +179,18 @@ function toRuntimeGradient(
 
     return { linear: { stops, start: p1, end: p2 } }
   } else if (resolved.kind === 'radial') {
-    const center = applyLinearTransform(resolved.cx ?? 0.5, resolved.cy ?? 0.5, tf)
-    const radiusX = applyLinearTransform(resolved.r ?? 0.5, 0, tf)
-    const radiusY = applyLinearTransform(0, resolved.r ?? 0.5, tf)
+    const cx = resolved.cx ?? 0.5
+    const cy = resolved.cy ?? 0.5
+    const r = resolved.r ?? 0.5
+
+    const center = applyLinearTransform(cx, cy, tf)
+    // To find the transformed radius, we transform a point on the original circle's
+    // circumference and then find the vector from the new center.
+    const pointOnCircle = applyLinearTransform(cx + r, cy, tf)
+    const radiusX = { x: pointOnCircle.x, y: pointOnCircle.y }
+
+    const pointOnCircleY = applyLinearTransform(cx, cy + r, tf)
+    const radiusY = { x: pointOnCircleY.x, y: pointOnCircleY.y }
 
     const radiusRatio =
       Math.hypot(radiusY.x - center.x, radiusY.y - center.y) /
@@ -340,7 +358,6 @@ export function createShapes(node: Node, defs: Defs, svgWidth: number, svgHeight
 
         if (paths) {
           const boundingBox = getBoundingBox(paths)
-          const bbHeight = boundingBox.max_y - boundingBox.min_y
 
           const serializedProps: Partial<ShapeProps> = {
             fill: { solid: [0, 0, 0, 1] },
@@ -353,10 +370,13 @@ export function createShapes(node: Node, defs: Defs, svgWidth: number, svgHeight
             const m = fill.match(/^url\(#([^)]+)\)$/)
 
             if (m) {
+              // if (m[1] === 'fill_naris_right') {
+              //   debugger
+              // }
               const def = defs[m[1]]
               if (def) {
                 const resolved = resolveRef(defs, def)
-                const grad = toRuntimeGradient(resolved, bbHeight, boundingBox)
+                const grad = toRuntimeGradient(resolved, boundingBox)
                 if (grad) serializedProps.fill = grad
               }
             } else {
@@ -371,7 +391,7 @@ export function createShapes(node: Node, defs: Defs, svgWidth: number, svgHeight
               const def = defs[m[1]]
               if (def) {
                 const resolved = resolveRef(defs, def)
-                const grad = toRuntimeGradient(resolved, bbHeight, boundingBox)
+                const grad = toRuntimeGradient(resolved, boundingBox)
                 if (grad) serializedProps.stroke = grad
               }
             } else {
@@ -382,6 +402,9 @@ export function createShapes(node: Node, defs: Defs, svgWidth: number, svgHeight
           const correctedPaths = paths.map((path) =>
             path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
           )
+          console.log(child)
+          console.log('defs', defs)
+          console.log('correctedPaths', correctedPaths)
           console.log('serializedProps', serializedProps)
           Logic.addShape(0, correctedPaths, null, serializedProps, Textures.createSDF())
         }

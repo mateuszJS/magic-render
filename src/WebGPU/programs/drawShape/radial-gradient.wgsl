@@ -6,7 +6,7 @@ struct Stop {
 struct Uniform {
   stroke_width: f32,
   stops_count: u32,
-  radius_ratio: f32,    // horizontal radius / vertical radius(to create ellipse)
+  radius_ratio: f32, // vertical radius / horizontal radius (to create ellipse)
   padding: u32,
   center: vec2f,    // Center point of radial gradient
   destination: vec2f,    // because we have scale, the angle between center an destination is visible in the gradient!

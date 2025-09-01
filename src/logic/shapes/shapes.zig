@@ -536,8 +536,6 @@ pub const Uniform = union(enum) {
     radial: UniformRadialGradient,
 };
 
-const PickVertexOutput = struct { bounds: [6]images.PickVertex, uniforms: Uniform };
-
 pub const Serialized = struct {
     id: u32,
     paths: []const []const Point,

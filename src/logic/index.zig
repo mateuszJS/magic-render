@@ -30,7 +30,7 @@ const WebGpuPrograms = struct {
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
     pick_triangle: *const fn ([]const Triangle.PickInstance) void,
-    pick_shape: *const fn ([]const images.PickVertex, shapes.Uniform, u32) void,
+    pick_shape: *const fn ([]const images.PickVertex, f32, u32) void,
 };
 var web_gpu_programs: *const WebGpuPrograms = undefined;
 
@@ -752,7 +752,11 @@ pub fn renderPick() !void {
                 web_gpu_programs.pick_texture(&vertex_data, img.texture_id);
             },
             .shape => |shape| {
-                web_gpu_programs.pick_shape(&shape.getPickBounds(), shape.getUniform(), shape.texture_id);
+                web_gpu_programs.pick_shape(
+                    &shape.getPickBounds(),
+                    shape.props.stroke_width,
+                    shape.texture_id,
+                );
             },
         }
     }

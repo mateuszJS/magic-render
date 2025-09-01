@@ -94,25 +94,33 @@ pub const Fill = union(enum) {
                     .solid = color,
                 };
             },
-            .linear => |gradient| {
+            .linear => |g| {
                 return SerializedFill{
                     .linear = .{
-                        .start = gradient.start,
-                        .end = gradient.end,
-                        .stops = gradient.stops.items,
+                        .start = g.start,
+                        .end = g.end,
+                        .stops = g.stops.items,
                     },
                 };
             },
-            .radial => |gradient| {
+            .radial => |g| {
                 return SerializedFill{
                     .radial = .{
-                        .center = gradient.center,
-                        .destination = gradient.destination,
-                        .radius_ratio = gradient.radius_ratio,
-                        .stops = gradient.stops.items,
+                        .center = g.center,
+                        .destination = g.destination,
+                        .radius_ratio = g.radius_ratio,
+                        .stops = g.stops.items,
                     },
                 };
             },
         };
+    }
+
+    pub fn deinit(self: *Fill) void {
+        switch (self.*) {
+            .solid => {},
+            .linear => |*g| g.stops.deinit(),
+            .radial => |*g| g.stops.deinit(),
+        }
     }
 };

@@ -1,7 +1,7 @@
 import getLoadingTexture from 'loadingTexture'
 import { createTextureFromSource } from 'WebGPU/getTexture'
 import { parse, RootNode, ElementNode } from 'svg-parser'
-import { createShapes, collectDefs, Defs } from 'shapes/createShape'
+import { createShapes, collectDefs, Defs } from 'shapes'
 import * as Logic from './logic/index.zig'
 
 function getSvgSize(svgRoot: ElementNode, img: HTMLImageElement) {

@@ -1,3 +1,4 @@
+import arcToBezier from './arcToBezier'
 import { STRAIGHT_LINE_HANDLE } from './const'
 
 interface PathCommand {
@@ -111,6 +112,48 @@ function commandsToPoints(commands: PathCommand[]): ShapeData[] {
           currentPoint = newPoint
         }
         lastHandle = null
+        break
+      }
+
+      case 'a': {
+        // Arc
+        const isRelative = command === 'a'
+        for (let i = 0; i < args.length; i += 7) {
+          const rx = args[i]
+          const ry = args[i + 1]
+          const xAxisRotation = args[i + 2]
+          const largeArcFlag = args[i + 3]
+          const sweepFlag = args[i + 4]
+          const endPoint: Point = {
+            x: args[i + 5] + (isRelative ? currentPoint.x : 0),
+            y: args[i + 6] + (isRelative ? currentPoint.y : 0),
+          }
+
+          const curves = arcToBezier(
+            currentPoint.x,
+            currentPoint.y,
+            rx,
+            ry,
+            xAxisRotation,
+            largeArcFlag,
+            sweepFlag,
+            endPoint.x,
+            endPoint.y
+          )
+
+          for (const curve of curves) {
+            currentPoints.push(
+              { x: curve.cp1x, y: curve.cp1y },
+              { x: curve.cp2x, y: curve.cp2y },
+              { x: curve.x, y: curve.y }
+            )
+            currentPoint = { x: curve.x, y: curve.y }
+          }
+          lastHandle =
+            curves.length > 0
+              ? { x: curves[curves.length - 1].cp2x, y: curves[curves.length - 1].cp2y }
+              : null
+        }
         break
       }
 
