@@ -197,14 +197,15 @@ function toRuntimeGradient(def: AnyDef, boundingBox: BoundingBox): ShapeProps['f
     // if (resolved.gradientUnits === 'objectBoundingBox') {
     const p1 = applyLinearTransform(x1_rel, y1_rel, tf)
     const p2 = applyLinearTransform(x2_rel, y2_rel, tf)
+    // at this point p and p2 ARE CORRECT but for absolute value, according to whole svg boudning box(not just shape)
 
     const bbWidth = boundingBox.max_x - boundingBox.min_x
     const bbHeight = boundingBox.max_y - boundingBox.min_y
 
-    p1.x = p1.x / bbWidth
-    p1.y = 1 - p1.y / bbHeight
-    p2.x = p2.x / bbWidth
-    p2.y = 1 - p2.y / bbHeight
+    p1.x = (p1.x - boundingBox.min_x) / bbWidth
+    p1.y = 1 - (p1.y - boundingBox.min_y) / bbHeight
+    p2.x = (p2.x - boundingBox.min_x) / bbWidth
+    p2.y = 1 - (p2.y - boundingBox.min_y) / bbHeight
 
     return { linear: { stops, start: p1, end: p2 } }
   } else if (resolved.kind === 'radial') {
@@ -222,14 +223,24 @@ function toRuntimeGradient(def: AnyDef, boundingBox: BoundingBox): ShapeProps['f
     const pointOnCircleY = applyLinearTransform(cx, cy + r, tf)
     const radiusY = { x: pointOnCircleY.x, y: pointOnCircleY.y }
 
+    radiusX.x -= boundingBox.min_x
+    radiusX.y -= boundingBox.min_y
+    radiusY.x -= boundingBox.min_x
+    radiusY.y -= boundingBox.min_y
+    // radiusX IS WROOOOONG
+
     const radiusRatio =
       Math.hypot(radiusY.x - center.x, radiusY.y - center.y) /
       Math.hypot(radiusX.x - center.x, radiusX.y - center.y)
 
     const bbWidth = boundingBox.max_x - boundingBox.min_x
     const bbHeight = boundingBox.max_y - boundingBox.min_y
-    center.x = center.x / bbWidth
-    center.y = 1 - center.y / bbHeight
+    // center.x = center.x / bbWidth
+    // center.y = 1 - center.y / bbHeight
+    // radiusX.x = radiusX.x / bbWidth
+    // radiusX.y = 1 - radiusX.y / bbHeight
+    center.x = (center.x - boundingBox.min_x) / bbWidth
+    center.y = 1 - (center.y - boundingBox.min_y) / bbHeight
     radiusX.x = radiusX.x / bbWidth
     radiusX.y = 1 - radiusX.y / bbHeight
     console.log('after norm radiusX', radiusX)
@@ -398,6 +409,11 @@ export function createShapes(
         }
 
         if (paths) {
+          //           if (props.id === 'eyelid_right') {
+          //   console.log(paths)
+          //   console.log(boundingBox)
+          //   debugger
+          // }
           const boundingBox = getBoundingBox(paths)
 
           const serializedProps: Partial<ShapeProps> = {
@@ -414,6 +430,15 @@ export function createShapes(
               const def = defs[m[1]]
               if (def) {
                 const resolved = resolveRef(defs, def)
+
+                /*
+                  eyelid_right
+                  shape width: 41.9, height: 29.8
+
+                  start: x:29.5, y: 24.2
+                  end: x: 10.8, y: 13.6
+                */
+
                 const grad = toRuntimeGradient(resolved, boundingBox)
                 if (grad) serializedProps.fill = grad
               }

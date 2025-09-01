@@ -84,7 +84,10 @@ function evaluateCubicBezierComponent(
  * Calculates the precise bounding box for a cubic Bézier curve by finding its extrema.
  */
 function calculateCubicBezierRealBounds(p0: Point, p1: Point, p2: Point, p3: Point): BoundingBox {
-  const box = new BoundingBox([p0, p3])
+  let min_x = Math.min(p0.x, p3.x)
+  let max_x = Math.max(p0.x, p3.x)
+  let min_y = Math.min(p0.y, p3.y)
+  let max_y = Math.max(p0.y, p3.y)
 
   // For cubic Bézier: B(t) = (1-t)³P0 + 3(1-t)²tP1 + 3(1-t)t²P2 + t³P3
   // Derivative B'(t) is a quadratic equation. Roots of B'(t)=0 give extrema.
@@ -96,7 +99,8 @@ function calculateCubicBezierRealBounds(p0: Point, p1: Point, p2: Point, p3: Poi
   solveQuadratic(ax, bx, cx).forEach((t) => {
     if (t > 0.0 && t < 1.0) {
       const x = evaluateCubicBezierComponent(t, p0.x, p1.x, p2.x, p3.x)
-      box.addPoint({ x, y: 0 }) // y is irrelevant here
+      min_x = Math.min(min_x, x)
+      max_x = Math.max(max_x, x)
     }
   })
 
@@ -107,17 +111,17 @@ function calculateCubicBezierRealBounds(p0: Point, p1: Point, p2: Point, p3: Poi
   solveQuadratic(ay, by, cy).forEach((t) => {
     if (t > 0.0 && t < 1.0) {
       const y = evaluateCubicBezierComponent(t, p0.y, p1.y, p2.y, p3.y)
-      box.addPoint({ x: 0, y }) // x is irrelevant here
+      min_y = Math.min(min_y, y)
+      max_y = Math.max(max_y, y)
     }
   })
 
-  // Since we added points with 0 for the other coordinate, we need to fix the box
-  const finalBox = new BoundingBox()
-  finalBox.min_x = box.min_x
-  finalBox.max_x = box.max_x
-  finalBox.min_y = box.min_y
-  finalBox.max_y = box.max_y
-  return finalBox
+  const box = new BoundingBox()
+  box.min_x = min_x
+  box.min_y = min_y
+  box.max_x = max_x
+  box.max_y = max_y
+  return box
 }
 
 /**
