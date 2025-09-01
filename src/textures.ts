@@ -69,26 +69,28 @@ export function add(
   getImageWithDetails(url).then(([img, svgTree]) => {
     let existingTexture: TextureSource | null = null
     if (svgTree) {
+      loadingTextures--
+
       const svgRoot = svgTree.children[0] as ElementNode
       const [svgWidth, svgHeight] = getSvgSize(svgRoot, img)
       if (!svgWidth || !svgHeight) throw Error('SVG width and height are required')
       const defs: Defs = {}
       collectDefs(svgRoot, defs)
       createShapes(svgRoot, defs, svgWidth, svgHeight)
-      // TODO: check if svg file was already uploaded
-    } else {
-      const { ctx } = getImageData(img, img.naturalWidth, img.naturalHeight)
-      const data = ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data
-      const hash = hashImageData(data)
+      return
+    }
 
-      existingTexture = findSameTexture(data, hash)
-      if (existingTexture !== null) {
-        textures[textureId] = existingTexture
-      } else {
-        textures[textureId].texture = createTextureFromSource(device, img, { flipY: true })
-        textures[textureId].data = data
-        textures[textureId].hash = hash
-      }
+    const { ctx } = getImageData(img, img.naturalWidth, img.naturalHeight)
+    const data = ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data
+    const hash = hashImageData(data)
+
+    existingTexture = findSameTexture(data, hash)
+    if (existingTexture !== null) {
+      textures[textureId] = existingTexture
+    } else {
+      textures[textureId].texture = createTextureFromSource(device, img, { flipY: true })
+      textures[textureId].data = data
+      textures[textureId].hash = hash
     }
 
     onLoad?.(img.width, img.height, !existingTexture)
