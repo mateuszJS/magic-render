@@ -35,7 +35,14 @@ type RadialDef = {
   href?: string
   stops: DefStop[]
 }
-type AnyDef = LinearDef | RadialDef
+type PathDef = {
+  kind: 'path'
+  id: string
+  paths: Point[][]
+  props: Record<string, string | number>
+}
+
+type AnyDef = LinearDef | RadialDef | PathDef
 export type Defs = Record<string, AnyDef>
 
 const IDENTITY_MATRIX = [1, 0, 0, 1, 0, 0]
@@ -119,6 +126,8 @@ function applyLinearTransform(x: number, y: number, m: number[]): Point {
 
 // Merge referenced gradient (href) into current. Current overrides referenced.
 function resolveRef(defs: Defs, def: AnyDef, seen = new Set<string>()): AnyDef {
+  if (def.kind === 'path') return def // we assume path cannot have any hrefs
+
   if (!def.href) return def
   const id = def.href.replace('#', '')
   if (seen.has(id)) {
@@ -131,6 +140,8 @@ function resolveRef(defs: Defs, def: AnyDef, seen = new Set<string>()): AnyDef {
   const base = defs[id]
   if (!base) return def
   const resolvedBase = resolveRef(defs, base, seen)
+
+  if (resolvedBase.kind === 'path') return resolvedBase // we assume path cannot have any hrefs
 
   const commonResolved = {
     gradientUnits: def.gradientUnits ?? resolvedBase.gradientUnits,
@@ -171,8 +182,13 @@ function resolveRef(defs: Defs, def: AnyDef, seen = new Set<string>()): AnyDef {
 }
 
 // Convert stops (apply opacity) and bake transform. Here we assume gradientUnits=userSpaceOnUse.
-function toRuntimeGradient(def: AnyDef, boundingBox: BoundingBox): ShapeProps['fill'] | null {
-  const resolved = resolveRef({}, def) // def already resolved in caller, keep fn pure if needed
+function toRuntimeGradient(resolved: AnyDef, boundingBox: BoundingBox): ShapeProps['fill'] | null {
+  // const resolved = resolveRef({}, def) // def already resolved in caller, keep fn pure if needed
+
+  if (resolved.kind === 'path') {
+    throw Error('Definition with path was passed to toRuntimeGradient')
+  }
+
   const stops = (resolved.stops || []).map((s) => ({
     offset: s.offset,
     color: [
@@ -325,15 +341,23 @@ function getProps(node: ElementNode): Record<string, string | number> {
 function getGradientStops(nodes: ElementNode[]) {
   return nodes.map((stop) => {
     const stopProps = getProps(stop)
+    const color = parseColor(String(stopProps['stop-color'] ?? '#000'))
+
+    if (typeof stopProps['stop-opacity'] === 'number') {
+      color[0] *= stopProps['stop-opacity']
+      color[1] *= stopProps['stop-opacity']
+      color[2] *= stopProps['stop-opacity']
+      color[3] *= stopProps['stop-opacity']
+    }
     return {
       offset: Number(stopProps.offset ?? 0),
-      color: parseColor(String(stopProps['stop-color'] ?? '#000')),
+      color,
       opacity: Number(stopProps['stop-opacity'] ?? 1),
     }
   })
 }
 
-export function collectDefs(node: Node, defs: Defs): void {
+export function collectDefs(node: Node, defs: Defs, insideDefs = false): void {
   if (!('children' in node)) return
 
   node.children.forEach((child) => {
@@ -391,9 +415,27 @@ export function collectDefs(node: Node, defs: Defs): void {
           }
           return
         }
+
+        case 'defs': {
+          insideDefs = true
+          break
+        }
+
+        case 'path': {
+          if (insideDefs) {
+            const { id, d, ...restProps } = props
+            defs[id] = {
+              kind: 'path',
+              id: id as string,
+              paths: parsePathData(d as string),
+              props: restProps,
+            }
+          }
+          return
+        }
       }
     }
-    collectDefs(child, defs)
+    collectDefs(child, defs, insideDefs)
   })
 }
 
@@ -412,7 +454,7 @@ export function createShapes(
     let currTransform = parentTransform
 
     if ('properties' in child && typeof child.properties === 'object') {
-      const props = getProps(child)
+      let props = getProps(child)
 
       let paths: Point[][] | undefined = undefined
 
@@ -421,7 +463,7 @@ export function createShapes(
           if (typeof props?.d !== 'string') {
             throw Error("Path without 'd' property")
           }
-          paths = parsePathData(props.d as string).map((curve) => curve.points)
+          paths = parsePathData(props.d as string)
           break
         }
         case 'rect': {
@@ -456,6 +498,29 @@ export function createShapes(
         }
         case 'g': {
           currTransform = parseTransform(props.transform as string | undefined, currTransform)
+          break
+        }
+        case 'defs': {
+          return // do not render any content of defs, those were collected already
+        }
+        case 'use': {
+          if (props.href) {
+            const id = (props.href as string).slice(1)
+            if (id) {
+              const def = defs[id]
+              if (def) {
+                if (def.kind !== 'path') {
+                  throw Error('The resolved definition of <use> was not a path!')
+                }
+
+                paths = def.paths
+                props = {
+                  ...props,
+                  ...def.props,
+                }
+              }
+            }
+          }
           break
         }
       }

@@ -6,11 +6,6 @@ interface PathCommand {
   args: number[]
 }
 
-export interface ShapeData {
-  points: Point[]
-  closed: boolean
-}
-
 function getDataPathCommands(pathData: string): PathCommand[] {
   // Remove whitespace and split by command letters
   const commands: PathCommand[] = []
@@ -36,23 +31,18 @@ function getDataPathCommands(pathData: string): PathCommand[] {
   return commands
 }
 
-function commandsToPoints(commands: PathCommand[]): ShapeData[] {
-  const allShapes: ShapeData[] = []
+function commandsToPoints(commands: PathCommand[]): Point[][] {
+  const allShapes: Point[][] = []
 
   let currentPoints: Point[] = []
   let currentPoint: Point = { x: 0, y: 0 }
   let pathStart: Point = { x: 0, y: 0 }
   let lastHandle: Point | null = null
-  let currentShapeClosed = false
 
   const finishCurrentPath = () => {
     if (currentPoints.length > 0) {
-      allShapes.push({
-        points: [...currentPoints],
-        closed: currentShapeClosed,
-      })
+      allShapes.push([...currentPoints])
       currentPoints = []
-      currentShapeClosed = false
     }
   }
 
@@ -209,9 +199,6 @@ function commandsToPoints(commands: PathCommand[]): ShapeData[] {
       }
 
       case 'z': {
-        if (currentPoints.length > 0) {
-          currentShapeClosed = true
-        }
         currentPoint = pathStart
         lastHandle = null
         finishCurrentPath()
@@ -229,7 +216,7 @@ function commandsToPoints(commands: PathCommand[]): ShapeData[] {
   return allShapes
 }
 
-export default function parsePathData(dAttribute: string): ShapeData[] {
+export default function parsePathData(dAttribute: string): Point[][] {
   const commands = getDataPathCommands(dAttribute)
   const pathData = commandsToPoints(commands)
 
