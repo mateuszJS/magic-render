@@ -31,13 +31,13 @@ fn getFillColor(sdf: vec4f, world_uv: vec2f, uv: vec2f) -> vec4f {
   // Calculate offset from center
   let offset = uv - u.center;
 
-  if (length(uv - u.center) < 0.1) {
+  if (length(uv - u.center) < 0.01) {
     return vec4f(1.0, 0.0, 0.0, 1.0);
   }
-  if (length(uv - u.destination) < 0.1) {
+  if (length(uv - u.destination) < 0.01) {
     return vec4f(0.0, 0.0, 1.0, 1.0);
   }
-  return vec4f(0,0,0,1);
+  // return vec4f(1,1,1,1);
   
   // Calculate the horizontal radius and angle from center to destination
   let dest_offset = u.destination - u.center;

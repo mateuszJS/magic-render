@@ -1,3 +1,5 @@
+import { isStraightHandle } from './utils'
+
 interface Point {
   x: number
   y: number
@@ -32,8 +34,6 @@ class BoundingBox {
     this.max_y = Math.max(this.max_y, box.max_y)
   }
 }
-
-const STRAIGHT_LINE_THRESHOLD = 1e10
 
 /**
  * Solves the quadratic equation ax² + bx + c = 0.
@@ -155,8 +155,8 @@ function getBoundingBoxForPath(path: Point[]): BoundingBox {
   for (let i = 0; i < numSegments; i++) {
     const p0 = path[i * 3]
     const p3 = path[i * 3 + 3]
-    const p1 = path[i * 3 + 1].x > STRAIGHT_LINE_THRESHOLD ? p0 : path[i * 3 + 1]
-    const p2 = path[i * 3 + 2].x > STRAIGHT_LINE_THRESHOLD ? p3 : path[i * 3 + 2]
+    const p1 = isStraightHandle(path[i * 3 + 1]) ? p0 : path[i * 3 + 1]
+    const p2 = isStraightHandle(path[i * 3 + 2]) ? p3 : path[i * 3 + 2]
 
     const segmentBox = calculateCubicBezierRealBounds(p0, p1, p2, p3)
     totalBox.addBox(segmentBox)
@@ -166,8 +166,8 @@ function getBoundingBoxForPath(path: Point[]): BoundingBox {
   if (isClosed && path.length > 1) {
     const p0 = path[path.length - 3]
     const p3 = path[0]
-    const p1 = path[path.length - 2].x > STRAIGHT_LINE_THRESHOLD ? p0 : path[path.length - 2]
-    const p2 = path[path.length - 1].x > STRAIGHT_LINE_THRESHOLD ? p3 : path[path.length - 1]
+    const p1 = isStraightHandle(path[path.length - 2]) ? p0 : path[path.length - 2]
+    const p2 = isStraightHandle(path[path.length - 1]) ? p3 : path[path.length - 1]
 
     const segmentBox = calculateCubicBezierRealBounds(p0, p1, p2, p3)
     totalBox.addBox(segmentBox)

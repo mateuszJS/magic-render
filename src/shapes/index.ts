@@ -6,6 +6,7 @@ import parseColor from './parseColor'
 import parseEllipse from './parseEllipse'
 import * as Textures from 'textures'
 import { getBoundingBox } from './boundingBox'
+import { isStraightHandle } from './utils'
 
 // Internal collection for raw defs from <defs>
 type DefStop = { offset: number; color: [number, number, number, number]; opacity: number }
@@ -215,6 +216,7 @@ function toRuntimeGradient(def: AnyDef, boundingBox: BoundingBox): ShapeProps['f
 
     const bbWidth = boundingBox.max_x - boundingBox.min_x
     const bbHeight = boundingBox.max_y - boundingBox.min_y
+    const bbRatio = bbWidth / bbHeight
 
     const center = applyLinearTransform(cx, cy, tf)
     console.log(cx, cy, tf, center)
@@ -224,7 +226,7 @@ function toRuntimeGradient(def: AnyDef, boundingBox: BoundingBox): ShapeProps['f
     const radiusX = { x: pointOnCircle.x, y: pointOnCircle.y }
     // const radiusX = { x: pointOnCircle.x - center.x, y: pointOnCircle.y - center.y }
 
-    const pointOnCircleY = applyLinearTransform(cx, cy + r, tf)
+    const pointOnCircleY = applyLinearTransform(cx, cy + r * bbRatio, tf)
     const radiusY = { x: pointOnCircleY.x, y: pointOnCircleY.y }
     // const radiusY = { x: pointOnCircleY.x - center.x, y: pointOnCircleY.y - center.y }
     console.log('absolute center', center)
@@ -240,7 +242,6 @@ function toRuntimeGradient(def: AnyDef, boundingBox: BoundingBox): ShapeProps['f
     // center.y = 1 - center.y / bbHeight
     // radiusX.x = radiusX.x / bbWidth
     // radiusX.y = 1 - radiusX.y / bbHeight
-    const bbRatio = bbWidth / bbHeight
 
     center.x = (center.x - boundingBox.min_x) / bbWidth
     center.y = 1 - (center.y - boundingBox.min_y) / bbHeight
@@ -307,63 +308,63 @@ export function collectDefs(node: Node, defs: Defs): void {
   if (!('children' in node)) return
 
   node.children.forEach((child) => {
-    if (typeof child !== 'string') {
-      if ('properties' in child && typeof child.properties === 'object') {
-        const props = getProps(child)
+    if (typeof child === 'string') return
 
-        switch (child.tagName) {
-          case 'linearGradient': {
-            const id = String(props.id)
+    if ('properties' in child && typeof child.properties === 'object') {
+      const props = getProps(child)
 
-            const gradientUnits =
-              props.gradientUnits === 'userSpaceOnUse'
-                ? 'userSpaceOnUse'
-                : props.gradientUnits === 'objectBoundingBox'
-                ? 'objectBoundingBox'
-                : undefined
+      switch (child.tagName) {
+        case 'linearGradient': {
+          const id = String(props.id)
 
-            defs[id] = {
-              kind: 'linear',
-              id,
-              x1: props.x1 != null ? Number(props.x1) : undefined,
-              y1: props.y1 != null ? Number(props.y1) : undefined,
-              x2: props.x2 != null ? Number(props.x2) : undefined,
-              y2: props.y2 != null ? Number(props.y2) : undefined,
-              gradientUnits,
-              gradientTransform: (props.gradientTransform as string) ?? undefined,
-              href: (props.href as string) || (props['xlink:href'] as string) || undefined,
-              stops: getGradientStops(child.children as ElementNode[]),
-            }
-            return
+          const gradientUnits =
+            props.gradientUnits === 'userSpaceOnUse'
+              ? 'userSpaceOnUse'
+              : props.gradientUnits === 'objectBoundingBox'
+              ? 'objectBoundingBox'
+              : undefined
+
+          defs[id] = {
+            kind: 'linear',
+            id,
+            x1: props.x1 != null ? Number(props.x1) : undefined,
+            y1: props.y1 != null ? Number(props.y1) : undefined,
+            x2: props.x2 != null ? Number(props.x2) : undefined,
+            y2: props.y2 != null ? Number(props.y2) : undefined,
+            gradientUnits,
+            gradientTransform: (props.gradientTransform as string) ?? undefined,
+            href: (props.href as string) || (props['xlink:href'] as string) || undefined,
+            stops: getGradientStops(child.children as ElementNode[]),
           }
-          case 'radialGradient': {
-            const id = String(props.id)
-            const gradientUnits =
-              props.gradientUnits === 'userSpaceOnUse'
-                ? 'userSpaceOnUse'
-                : props.gradientUnits === 'objectBoundingBox'
-                ? 'objectBoundingBox'
-                : undefined
+          return
+        }
+        case 'radialGradient': {
+          const id = String(props.id)
+          const gradientUnits =
+            props.gradientUnits === 'userSpaceOnUse'
+              ? 'userSpaceOnUse'
+              : props.gradientUnits === 'objectBoundingBox'
+              ? 'objectBoundingBox'
+              : undefined
 
-            defs[id] = {
-              kind: 'radial',
-              id,
-              cx: props.cx != null ? Number(props.cx) : undefined,
-              cy: props.cy != null ? Number(props.cy) : undefined,
-              r: props.r != null ? Number(props.r) : undefined,
-              fx: props.fx != null ? Number(props.fx) : undefined,
-              fy: props.fy != null ? Number(props.fy) : undefined,
-              gradientUnits,
-              gradientTransform: (props.gradientTransform as string) ?? undefined,
-              href: (props.href as string) || (props['xlink:href'] as string) || undefined,
-              stops: getGradientStops(child.children as ElementNode[]),
-            }
-            return
+          defs[id] = {
+            kind: 'radial',
+            id,
+            cx: props.cx != null ? Number(props.cx) : undefined,
+            cy: props.cy != null ? Number(props.cy) : undefined,
+            r: props.r != null ? Number(props.r) : undefined,
+            fx: props.fx != null ? Number(props.fx) : undefined,
+            fy: props.fy != null ? Number(props.fy) : undefined,
+            gradientUnits,
+            gradientTransform: (props.gradientTransform as string) ?? undefined,
+            href: (props.href as string) || (props['xlink:href'] as string) || undefined,
+            stops: getGradientStops(child.children as ElementNode[]),
           }
+          return
         }
       }
-      collectDefs(child, defs)
     }
+    collectDefs(child, defs)
   })
 }
 
@@ -376,117 +377,146 @@ export function createShapes(
 ): void {
   if (!('children' in node)) return
 
-  let currTransform = parentTransform
-
   node.children.forEach((child) => {
-    if (typeof child !== 'string') {
-      if ('properties' in child && typeof child.properties === 'object') {
-        const props = getProps(child)
+    if (typeof child === 'string') return
 
-        let paths: Point[][] | undefined = undefined
+    let currTransform = parentTransform
 
-        switch (child.tagName) {
-          case 'path':
-            if (typeof props?.d !== 'string') {
-              throw Error("Path without 'd' property")
-            }
-            paths = parsePathData(props.d as string).map((curve) => curve.points)
-            break
-          case 'rect':
-            if (typeof props?.width !== 'number' || typeof props?.height !== 'number') {
-              throw Error("Rect without 'width' or 'height' property")
-            }
-            paths = [parseRect(props.width, props.height)]
-            break
-          case 'ellipse':
-            if (typeof props?.rx !== 'number' || typeof props?.ry !== 'number') {
-              throw Error("Ellipse without 'rx' or 'ry' property")
-            }
-            if (typeof props?.cx !== 'number' || typeof props?.cy !== 'number') {
-              throw Error("Ellipse without 'cx' or 'cy' property")
-            }
-            paths = [parseEllipse(props.cx, props.cy, props.rx, props.ry)]
-            break
-          case 'g':
-            currTransform = parseTransform(props.transform as string | undefined, currTransform)
-            break
-        }
+    if ('properties' in child && typeof child.properties === 'object') {
+      const props = getProps(child)
 
-        if (paths) {
-          const boundingBox = getBoundingBox(paths)
-          console.log('boundingBox, paths')
-          console.log(boundingBox, paths)
+      let paths: Point[][] | undefined = undefined
 
-          const serializedProps: Partial<ShapeProps> = {
-            fill: { solid: [0, 0, 0, 1] },
-            stroke: { solid: [0, 0, 0, 1] },
-            stroke_width: 0,
+      switch (child.tagName) {
+        case 'path': {
+          if (typeof props?.d !== 'string') {
+            throw Error("Path without 'd' property")
           }
-          // fill/stroke: color or url(#id)
-          if (props.fill) {
-            const fill = String(props.fill)
-            const m = fill.match(/^url\(#([^)]+)\)$/)
+          paths = parsePathData(props.d as string).map((curve) => curve.points)
+          break
+        }
+        case 'rect': {
+          if (typeof props?.width !== 'number' || typeof props?.height !== 'number') {
+            throw Error("Rect without 'width' or 'height' property")
+          }
+          const x = typeof props.x === 'number' ? props.x : 0
+          const y = typeof props.y === 'number' ? props.y : 0
 
-            if (m) {
-              const def = defs[m[1]]
-              if (def) {
-                const resolved = resolveRef(defs, def)
+          paths = [parseRect(x, y, props.width, props.height)]
+          break
+        }
+        case 'ellipse': {
+          if (typeof props?.rx !== 'number' || typeof props?.ry !== 'number') {
+            throw Error("Ellipse without 'rx' or 'ry' property")
+          }
+          if (typeof props?.cx !== 'number' || typeof props?.cy !== 'number') {
+            throw Error("Ellipse without 'cx' or 'cy' property")
+          }
+          paths = [parseEllipse(props.cx, props.cy, props.rx, props.ry)]
+          break
+        }
+        case 'circle': {
+          if (typeof props?.r !== 'number') {
+            throw Error("Circle without 'r' property")
+          }
+          if (typeof props?.cx !== 'number' || typeof props?.cy !== 'number') {
+            throw Error("Circle without 'cx' or 'cy' property")
+          }
+          paths = [parseEllipse(props.cx, props.cy, props.r, props.r)]
+          break
+        }
+        case 'g': {
+          currTransform = parseTransform(props.transform as string | undefined, currTransform)
+          break
+        }
+      }
 
-                /*
+      if (paths) {
+        const boundingBox = getBoundingBox(paths)
+        console.log('boundingBox, paths')
+        console.log(boundingBox, paths)
+
+        const serializedProps: Partial<ShapeProps> = {
+          fill: { solid: [0, 0, 0, 1] },
+          stroke: { solid: [0, 0, 0, 1] },
+          stroke_width: 0,
+        }
+        // fill/stroke: color or url(#id)
+        if (props.fill) {
+          const fill = String(props.fill)
+          const m = fill.match(/^url\(#([^)]+)\)$/)
+
+          if (m) {
+            const def = defs[m[1]]
+            if (def) {
+              const resolved = resolveRef(defs, def)
+
+              /*
                   eyelid_right
                   shape width: 41.9, height: 29.8
 
                   start: x:29.5, y: 24.2
                   end: x: 10.8, y: 13.6
                 */
-                if (props.id === 'eyelid_left') {
-                  console.log(paths)
-                  console.log(boundingBox)
-                  // debugger
-                }
-                const grad = toRuntimeGradient(resolved, boundingBox)
-                if (grad) serializedProps.fill = grad
+              if (props.id === 'eyelid_left') {
+                console.log(paths)
+                console.log(boundingBox)
+                // debugger
               }
-            } else {
-              const rgba = parseColor(fill)
-              serializedProps.fill = { solid: rgba }
+              const grad = toRuntimeGradient(resolved, boundingBox)
+              if (grad) serializedProps.fill = grad
             }
+          } else {
+            const rgba = parseColor(fill)
+            serializedProps.fill = { solid: rgba }
           }
-          if (props.stroke) {
-            const stroke = String(props.stroke)
-            const m = stroke.match(/^url\(#([^)]+)\)$/)
-            if (m) {
-              const def = defs[m[1]]
-              if (def) {
-                const resolved = resolveRef(defs, def)
-                const grad = toRuntimeGradient(resolved, boundingBox)
-                if (grad) serializedProps.stroke = grad
-              }
-            } else {
-              const rgba = parseColor(stroke)
-              serializedProps.stroke = { solid: rgba }
-            }
-          }
-
-          const transform = props.transform as string | undefined
-          if (transform) {
-            currTransform = parseTransform(transform, currTransform)
-          }
-          const transformedPaths = paths.map((path) =>
-            path.map((point) => applyLinearTransform(point.x, point.y, currTransform))
-          )
-
-          const correctedPaths = transformedPaths.map((path) =>
-            path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
-          )
-          console.log(child)
-          console.log('defs', defs)
-          console.log('correctedPaths', correctedPaths)
-          console.log('serializedProps', serializedProps)
-          Logic.addShape(0, correctedPaths, null, serializedProps, Textures.createSDF())
         }
+        if (props.stroke) {
+          const stroke = String(props.stroke)
+          const m = stroke.match(/^url\(#([^)]+)\)$/)
+          if (m) {
+            const def = defs[m[1]]
+            if (def) {
+              const resolved = resolveRef(defs, def)
+              const grad = toRuntimeGradient(resolved, boundingBox)
+              if (grad) serializedProps.stroke = grad
+            }
+          } else {
+            const rgba = parseColor(stroke)
+            serializedProps.stroke = { solid: rgba }
+          }
+        }
+
+        const transform = props.transform as string | undefined
+        if (transform) {
+          currTransform = parseTransform(transform, currTransform)
+        }
+        const transformedPaths = paths.map((path) =>
+          path.map((point) => {
+            if (isStraightHandle(point)) return point
+            return applyLinearTransform(point.x, point.y, currTransform)
+          })
+        )
+
+        if (props.id === 'debug') {
+          console.log('==========DEBUG=========')
+          console.log('transform', transform)
+          console.log('currTransform', currTransform)
+          console.log(paths)
+          console.log(transformedPaths)
+          console.log(child)
+        }
+
+        const correctedPaths = transformedPaths.map((path) =>
+          path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
+        )
+        console.log(child)
+        console.log('defs', defs)
+        console.log('correctedPaths', correctedPaths)
+        console.log('serializedProps', serializedProps)
+        Logic.addShape(0, correctedPaths, null, serializedProps, Textures.createSDF())
       }
-      createShapes(child, defs, svgWidth, svgHeight, currTransform)
     }
+    createShapes(child, defs, svgWidth, svgHeight, currTransform)
   })
 }
