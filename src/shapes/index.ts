@@ -213,38 +213,42 @@ function toRuntimeGradient(def: AnyDef, boundingBox: BoundingBox): ShapeProps['f
     const cy = resolved.cy ?? 0.5
     const r = resolved.r ?? 0.5
 
+    const bbWidth = boundingBox.max_x - boundingBox.min_x
+    const bbHeight = boundingBox.max_y - boundingBox.min_y
+
     const center = applyLinearTransform(cx, cy, tf)
     console.log(cx, cy, tf, center)
     // To find the transformed radius, we transform a point on the original circle's
     // circumference and then find the vector from the new center.
     const pointOnCircle = applyLinearTransform(cx + r, cy, tf)
     const radiusX = { x: pointOnCircle.x, y: pointOnCircle.y }
+    // const radiusX = { x: pointOnCircle.x - center.x, y: pointOnCircle.y - center.y }
 
     const pointOnCircleY = applyLinearTransform(cx, cy + r, tf)
     const radiusY = { x: pointOnCircleY.x, y: pointOnCircleY.y }
-
-    radiusX.x -= boundingBox.min_x
-    radiusX.y -= boundingBox.min_y
-    radiusY.x -= boundingBox.min_x
-    radiusY.y -= boundingBox.min_y
+    // const radiusY = { x: pointOnCircleY.x - center.x, y: pointOnCircleY.y - center.y }
+    console.log('absolute center', center)
+    console.log('absolute radiusY', radiusY)
+    console.log('absolute radiusX', radiusX)
     // radiusX IS WROOOOONG
-
+    console.log('boundingBox', boundingBox)
     const radiusRatio =
       Math.hypot(radiusY.x - center.x, radiusY.y - center.y) /
       Math.hypot(radiusX.x - center.x, radiusX.y - center.y)
 
-    const bbWidth = boundingBox.max_x - boundingBox.min_x
-    const bbHeight = boundingBox.max_y - boundingBox.min_y
     // center.x = center.x / bbWidth
     // center.y = 1 - center.y / bbHeight
     // radiusX.x = radiusX.x / bbWidth
     // radiusX.y = 1 - radiusX.y / bbHeight
+    const bbRatio = bbWidth / bbHeight
+
     center.x = (center.x - boundingBox.min_x) / bbWidth
     center.y = 1 - (center.y - boundingBox.min_y) / bbHeight
-    radiusX.x = radiusX.x / bbWidth
-    radiusX.y = 1 - radiusX.y / bbHeight
+    radiusX.x = (radiusX.x - boundingBox.min_x) / bbWidth
+    // radiusX.x /= bbRatio
+    radiusX.y = 1 - (radiusX.y - boundingBox.min_y) / bbHeight
     console.log('after norm radiusX', radiusX)
-
+    console.log('center', center)
     // const r = resolved.r ?? 0.5
     // const c = applyLinearTransform(cx, svgHeight - cy, tf)
     // const fx = resolved.fx
@@ -255,13 +259,13 @@ function toRuntimeGradient(def: AnyDef, boundingBox: BoundingBox): ShapeProps['f
 
     // const bbWidth = boundingBox.max_x - boundingBox.min_x
     // const bbHeight = boundingBox.max_y - boundingBox.min_y
-
+    // 100k
     return {
       radial: {
         stops,
         center,
         destination: radiusX,
-        radius_ratio: radiusRatio,
+        radius_ratio: radiusRatio, // / bbRatio,
         // cx: c.x,
         // cy: c.y,
         // r: r * scaleMax,
@@ -409,12 +413,9 @@ export function createShapes(
         }
 
         if (paths) {
-          //           if (props.id === 'eyelid_right') {
-          //   console.log(paths)
-          //   console.log(boundingBox)
-          //   debugger
-          // }
           const boundingBox = getBoundingBox(paths)
+          console.log('boundingBox, paths')
+          console.log(boundingBox, paths)
 
           const serializedProps: Partial<ShapeProps> = {
             fill: { solid: [0, 0, 0, 1] },
@@ -438,7 +439,11 @@ export function createShapes(
                   start: x:29.5, y: 24.2
                   end: x: 10.8, y: 13.6
                 */
-
+                if (props.id === 'eyelid_left') {
+                  console.log(paths)
+                  console.log(boundingBox)
+                  // debugger
+                }
                 const grad = toRuntimeGradient(resolved, boundingBox)
                 if (grad) serializedProps.fill = grad
               }
