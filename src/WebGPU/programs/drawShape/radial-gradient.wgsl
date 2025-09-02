@@ -47,17 +47,13 @@ fn getFillColor(sdf: vec4f, world_uv: vec2f, uv: vec2f) -> vec4f {
   // Calculate vertical radius using the aspect ratio scale
   let vertical_radius = horizontal_radius * u.radius_ratio;
   
-  // Create rotation matrix to align gradient with destination angle
-  let cos_angle = cos(-angle);
-  let sin_angle = sin(-angle);
-  
-  // Rotate the offset to align with gradient orientation
-  let rotated_x = offset.x * cos_angle - offset.y * sin_angle;
-  let rotated_y = offset.x * sin_angle + offset.y * cos_angle;
-  
-  // Apply elliptical scaling using calculated radii
-  let scaled_x = rotated_x / max(horizontal_radius, 1e-8);
-  let scaled_y = rotated_y / max(vertical_radius, 1e-8);
+  // Build orthonormal basis aligned with gradient: u along destination, v perpendicular
+  let u_dir = normalize(dest_offset);
+  let v_dir = vec2f(-u_dir.y, u_dir.x);
+
+  // Project offset onto this basis and normalize by radii
+  let scaled_x = dot(offset, u_dir) / max(horizontal_radius, 1e-8);
+  let scaled_y = dot(offset, v_dir) / max(vertical_radius, 1e-8);
   
   // Calculate normalized distance (0 at center, 1 at edge of ellipse)
   let normalized_dist = sqrt(scaled_x * scaled_x + scaled_y * scaled_y);

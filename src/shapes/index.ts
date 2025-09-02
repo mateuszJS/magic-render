@@ -216,62 +216,91 @@ function toRuntimeGradient(def: AnyDef, boundingBox: BoundingBox): ShapeProps['f
 
     const bbWidth = boundingBox.max_x - boundingBox.min_x
     const bbHeight = boundingBox.max_y - boundingBox.min_y
-    const bbRatio = bbWidth / bbHeight
 
-    const center = applyLinearTransform(cx, cy, tf)
-    console.log(cx, cy, tf, center)
-    // To find the transformed radius, we transform a point on the original circle's
-    // circumference and then find the vector from the new center.
-    const pointOnCircle = applyLinearTransform(cx + r, cy, tf)
-    const radiusX = { x: pointOnCircle.x, y: pointOnCircle.y }
-    // const radiusX = { x: pointOnCircle.x - center.x, y: pointOnCircle.y - center.y }
+    // 1) Absolute positions after gradientTransform
+    const cAbs = applyLinearTransform(cx, cy, tf)
+    const exAbs = applyLinearTransform(cx + r, cy, tf) // +X
+    const eyAbs = applyLinearTransform(cx, cy + r, tf) // +Y
 
-    const pointOnCircleY = applyLinearTransform(cx, cy + r * bbRatio, tf)
-    const radiusY = { x: pointOnCircleY.x, y: pointOnCircleY.y }
-    // const radiusY = { x: pointOnCircleY.x - center.x, y: pointOnCircleY.y - center.y }
-    console.log('absolute center', center)
-    console.log('absolute radiusY', radiusY)
-    console.log('absolute radiusX', radiusX)
-    // radiusX IS WROOOOONG
-    console.log('boundingBox', boundingBox)
-    const radiusRatio =
-      Math.hypot(radiusY.x - center.x, radiusY.y - center.y) /
-      Math.hypot(radiusX.x - center.x, radiusX.y - center.y)
+    // 2) Normalize into shape's bbox uv space (same space the shader uses for uv/center/destination)
+    const toNorm = (p: Point): Point => ({
+      x: (p.x - boundingBox.min_x) / Math.max(bbWidth, 1e-8),
+      y: 1 - (p.y - boundingBox.min_y) / Math.max(bbHeight, 1e-8),
+    })
+    const center = toNorm(cAbs)
+    const ex = toNorm(exAbs)
+    const ey = toNorm(eyAbs)
 
-    // center.x = center.x / bbWidth
-    // center.y = 1 - center.y / bbHeight
-    // radiusX.x = radiusX.x / bbWidth
-    // radiusX.y = 1 - radiusX.y / bbHeight
+    // 3) Build 2x2 linear map columns in normalized space
+    const vx = { x: ex.x - center.x, y: ex.y - center.y }
+    const vy = { x: ey.x - center.x, y: ey.y - center.y }
 
-    center.x = (center.x - boundingBox.min_x) / bbWidth
-    center.y = 1 - (center.y - boundingBox.min_y) / bbHeight
-    radiusX.x = (radiusX.x - boundingBox.min_x) / bbWidth
-    // radiusX.x /= bbRatio
-    radiusX.y = 1 - (radiusX.y - boundingBox.min_y) / bbHeight
-    console.log('after norm radiusX', radiusX)
-    console.log('center', center)
-    // const r = resolved.r ?? 0.5
-    // const c = applyLinearTransform(cx, svgHeight - cy, tf)
-    // const fx = resolved.fx
-    // const fy = resolved.fy
-    // const focus =
-    //   fx != null && fy != null ? applyLinearTransform(fx, svgHeight - fy, tf) : undefined
-    // Approximate radius scale: take max scale component
+    // If degenerate, fall back to simple case
+    const lenx = Math.hypot(vx.x, vx.y)
+    const leny = Math.hypot(vy.x, vy.y)
+    if (lenx < 1e-8 || leny < 1e-8) {
+      const horizontal_radius = Math.max(lenx, 1e-8)
+      const radius_ratio = lenx > 1e-8 ? leny / lenx : 1
+      const destination = {
+        x: center.x + (vx.x || 1) * (horizontal_radius / (lenx || 1)),
+        y: center.y + (vx.y || 0) * (horizontal_radius / (lenx || 1)),
+      }
+      return {
+        radial: {
+          stops,
+          center,
+          destination,
+          radius_ratio: isFinite(radius_ratio) ? radius_ratio : 1,
+        },
+      }
+    }
 
-    // const bbWidth = boundingBox.max_x - boundingBox.min_x
-    // const bbHeight = boundingBox.max_y - boundingBox.min_y
-    // 100k
+    // 4) Principal axes via eigen-decomposition of A*A^T where A=[vx vy]
+    const Sxx = vx.x * vx.x + vy.x * vy.x
+    const Sxy = vx.x * vx.y + vy.x * vy.y
+    const Syy = vx.y * vx.y + vy.y * vy.y
+
+    const trace = Sxx + Syy
+    const det = Sxx * Syy - Sxy * Sxy
+    const tmp = Math.sqrt(Math.max(0, trace * trace * 0.25 - det))
+
+    // Largest then smallest eigenvalue
+    const lambda1 = trace * 0.5 + tmp
+    const lambda2 = trace * 0.5 - tmp
+
+    const s1 = Math.sqrt(Math.max(lambda1, 0))
+    const s2 = Math.sqrt(Math.max(lambda2, 0))
+
+    // Eigenvector for lambda1 (principal axis)
+    let ux = 0
+    let uy = 0
+    if (Math.abs(Sxy) > 1e-8 || Math.abs(lambda1 - Sxx) > 1e-8) {
+      // Solve (S - lambda1 I) u = 0; choose a stable component
+      if (Math.abs(Sxy) > Math.abs(lambda1 - Sxx)) {
+        ux = 1
+        uy = (lambda1 - Sxx) / (Sxy || 1e-12)
+      } else {
+        ux = (Sxy || 1e-12) / (lambda1 - Sxx || 1e-12)
+        uy = 1
+      }
+    } else {
+      ux = 1
+      uy = 0
+    }
+    const un = Math.hypot(ux, uy) || 1
+    ux /= un
+    uy /= un
+
+    // 5) Compose outputs expected by shader
+    const destination = { x: center.x + ux * s1, y: center.y + uy * s1 }
+    const radius_ratio = s1 > 1e-8 ? s2 / s1 : 1
+
     return {
       radial: {
         stops,
         center,
-        destination: radiusX,
-        radius_ratio: radiusRatio, // / bbRatio,
-        // cx: c.x,
-        // cy: c.y,
-        // r: r * scaleMax,
-        // fx: focus?.x ?? null,
-        // fy: focus?.y ?? null,
+        destination,
+        radius_ratio: isFinite(radius_ratio) ? radius_ratio : 1,
       },
     }
   }
