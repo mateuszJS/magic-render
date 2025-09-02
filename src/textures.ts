@@ -1,7 +1,9 @@
 import getLoadingTexture from 'loadingTexture'
 import { createTextureFromSource } from 'WebGPU/getTexture'
 import { parse, RootNode, ElementNode } from 'svg-parser'
-import { createShapes, collectDefs, Defs } from 'shapes'
+import { createShapes } from 'shapes'
+import * as def from 'shapes/definitions'
+import type { Defs } from 'shapes/definitions'
 import * as Logic from './logic/index.zig'
 
 function getSvgSize(svgRoot: ElementNode, img: HTMLImageElement) {
@@ -74,7 +76,8 @@ export function add(
       const [svgWidth, svgHeight] = getSvgSize(svgRoot, img)
       if (!svgWidth || !svgHeight) throw Error('SVG width and height are required')
       const defs: Defs = {}
-      collectDefs(svgRoot, defs)
+      def.collect(svgRoot, defs)
+      def.resolveAll(defs)
       Logic.addShapeBegin()
       createShapes(svgRoot, defs, svgWidth, svgHeight)
       Logic.addShapeFinish()
