@@ -694,6 +694,8 @@ pub fn renderDraw() !void {
         _ = select_point_id; // autofix
 
         if (getSelectedShape()) |shape| {
+            web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getSkeletonUniform(), shape.texture_id);
+
             const hover_id = if (shape.id == hover_point_id.shape) hover_point_id else null;
             const vertex_data = try shape.getSkeletonDrawVertexData(
                 allocator,
@@ -701,7 +703,6 @@ pub fn renderDraw() !void {
                 state.tool == Tool.DrawShape,
             );
             web_gpu_programs.draw_triangle(vertex_data);
-            web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getSkeletonUniform(), shape.texture_id);
         }
     }
 
@@ -754,7 +755,7 @@ pub fn renderPick() !void {
             .shape => |shape| {
                 web_gpu_programs.pick_shape(
                     &shape.getPickBounds(),
-                    shape.props.stroke_width,
+                    shape.getStrokeWidth(),
                     shape.texture_id,
                 );
             },
