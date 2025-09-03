@@ -131,16 +131,25 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
             endPoint.y
           )
 
-          for (const curve of curves) {
-            currentPoints.push(
-              { x: curve.cp1x, y: curve.cp1y },
-              { x: curve.cp2x, y: curve.cp2y },
-              { x: curve.x, y: curve.y }
-            )
-            currentPoint = { x: curve.x, y: curve.y }
+          if (curves.length === 0) {
+            // Degenerate arc → straight line to endPoint (if non-zero length)
+            if (endPoint.x !== currentPoint.x || endPoint.y !== currentPoint.y) {
+              currentPoints.push(STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE, endPoint)
+            }
+            currentPoint = endPoint
+            lastHandle = null
+          } else {
+            for (const curve of curves) {
+              currentPoints.push(
+                { x: curve.cp1x, y: curve.cp1y },
+                { x: curve.cp2x, y: curve.cp2y },
+                { x: curve.x, y: curve.y }
+              )
+              currentPoint = { x: curve.x, y: curve.y }
+            }
+            // Arcs do not establish reflection for the next 'S/s' segment
+            lastHandle = null
           }
-          // Arcs do not establish reflection for the next 'S/s' segment
-          lastHandle = null
         }
         break
       }
