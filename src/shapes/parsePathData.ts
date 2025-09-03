@@ -139,10 +139,8 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
             )
             currentPoint = { x: curve.x, y: curve.y }
           }
-          lastHandle =
-            curves.length > 0
-              ? { x: curves[curves.length - 1].cp2x, y: curves[curves.length - 1].cp2y }
-              : null
+          // Arcs do not establish reflection for the next 'S/s' segment
+          lastHandle = null
         }
         break
       }

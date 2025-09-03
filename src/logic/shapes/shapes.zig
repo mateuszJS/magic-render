@@ -499,6 +499,8 @@ pub const Shape = struct {
             path.deinit();
         }
         self.paths.deinit();
+        self.props.stroke.deinit();
+        self.props.fill.deinit();
     }
 };
 

@@ -2,7 +2,7 @@
  * Get the distance and ratio between two points for radial gradient
  * When shape's boundary has aspect ratio different than 1:1,
  * then scale affect radial gradient angle calculations.
- * Thats why this function exists to elliminate that effect.
+ * Thats why this function exists to eliminate that effect.
  * @param center center of the radius gradient
  * @param vx horizontal radius - distance between center of the gradient and further point on horizontal line(after transforming by angle of radial gradient)
  * @param vy vertical radius - distance between center of the gradient and further point on vertical line(after transforming by angle of radial gradient)

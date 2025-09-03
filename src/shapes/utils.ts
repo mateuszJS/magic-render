@@ -79,14 +79,7 @@ function getGradientStops(nodes: ElementNode[]) {
   return nodes.map((stop) => {
     const stopProps = getProps(stop)
     const color = parseColor(String(stopProps['stop-color'] ?? '#000'))
-    const opacity = stopProps['stop-opacity']
-
-    if (typeof opacity === 'number') {
-      color[0] *= opacity
-      color[1] *= opacity
-      color[2] *= opacity
-      color[3] *= opacity
-    }
+    color[3] = ensureNumber(stopProps['stop-opacity'], 1)
 
     return {
       offset: Number(stopProps.offset ?? 0),
