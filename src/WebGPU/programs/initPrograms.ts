@@ -31,11 +31,24 @@ export let drawRadialGradientShape: ReturnType<typeof getDrawShape>
 export let pickShape: ReturnType<typeof getPickShape>
 export let computeShape: ReturnType<typeof getComputeShape>
 
-export let canvasMatrixBuffer: GPUBuffer
+export const canvasMatrix: {
+  buffer: GPUBuffer
+} = { buffer: null as unknown as GPUBuffer } // should throw error when used before assigning
 export let pickCanvasMatrixBuffer: GPUBuffer
 
+let buffersToDestroy: GPUBuffer[] = []
+
+export function addDestroyBuf(buffer: GPUBuffer) {
+  buffersToDestroy.push(buffer)
+}
+
+export function destroyBufs() {
+  buffersToDestroy.forEach((buffer) => buffer.destroy())
+  buffersToDestroy = []
+}
+
 export default function initPrograms(device: GPUDevice, presentationFormat: GPUTextureFormat) {
-  canvasMatrixBuffer = device.createBuffer({
+  canvasMatrix.buffer = device.createBuffer({
     label: 'uniforms',
     size: 16 /*projection matrix*/ * 4,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -47,31 +60,25 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   })
 
-  const buffersToDestroy: GPUBuffer[] = []
-
-  drawTriangle = getDrawTriangle(device, presentationFormat, canvasMatrixBuffer, buffersToDestroy)
+  drawTriangle = getDrawTriangle(device, presentationFormat)
   drawBezier = getDrawBezier(device, presentationFormat)
   draw3dModelTexture = getDraw3dModelTexture(device, presentationFormat)
   draw3dModel = getDraw3dModel(device, presentationFormat)
   draw3dModelLight = getDraw3dModelLight(device, presentationFormat)
   drawBlur = getBlur(device)
-  drawTexture = getDrawtexture(device, presentationFormat, canvasMatrixBuffer)
+  drawTexture = getDrawtexture(device, presentationFormat)
   pickTexture = getPickTexture(device, pickCanvasMatrixBuffer)
   pickTriangle = getPickTriangle(device, pickCanvasMatrixBuffer)
-  drawMSDF = getDrawMSDF(device, presentationFormat, canvasMatrixBuffer)
+  drawMSDF = getDrawMSDF(device, presentationFormat)
   drawSolidShape = getDrawShape(
     device,
     presentationFormat,
-    canvasMatrixBuffer,
-    buffersToDestroy,
     solidFS,
     1 /*stroke width*/ + 4 /*stroke color*/ + 4 /*fill color*/ + /*padding*/ 3
   )
   drawLinearGradientShape = getDrawShape(
     device,
     presentationFormat,
-    canvasMatrixBuffer,
-    buffersToDestroy,
     linearGradientFS,
     1 /*stroke width*/ +
       1 /*stops counts*/ +
@@ -83,8 +90,6 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
   drawRadialGradientShape = getDrawShape(
     device,
     presentationFormat,
-    canvasMatrixBuffer,
-    buffersToDestroy,
     radialGradientFS,
     1 /*stroke width*/ +
       1 /*stops counts*/ +
@@ -93,10 +98,6 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
       2 /*end*/ +
       (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/
   )
-  pickShape = getPickShape(device, pickCanvasMatrixBuffer, buffersToDestroy)
-  computeShape = getComputeShape(device, buffersToDestroy)
-
-  return function cleanup() {
-    buffersToDestroy.forEach((buffer) => buffer.destroy())
-  }
+  pickShape = getPickShape(device, pickCanvasMatrixBuffer)
+  computeShape = getComputeShape(device)
 }

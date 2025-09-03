@@ -113,6 +113,7 @@ export function createTextureFromSource(
   options: Options = {}
 ) {
   const texture = device.createTexture({
+    label: 'createTextureFromSource',
     format: 'rgba8unorm',
     mipLevelCount: options.mips ? numMipLevels(source.width, source.height) : 1,
     size: [source.width, source.height],

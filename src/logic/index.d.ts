@@ -71,7 +71,8 @@ type ShapeAssetInput = {
   paths: Point[][]
   props: ShapeProps
   bounds: PointUV[] | null
-  texture_id: number
+  sdf_texture_id: number
+  cache_texture_id: number
 }
 
 type ZigAssetOutput = { img: ImageAssetOutput } | { shape: ShapeAssetOutput }
@@ -97,6 +98,7 @@ declare module '*.zig' {
     max_buffer_size: number
   ) => void
   export const addImage: (maybe_asset_id: number, points: PointUV[], texture_id: number) => void
+  export const updateCache: VoidFunction
   export const addShape: (
     maybe_asset_id: number,
     paths: Point[][],

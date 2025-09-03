@@ -17,12 +17,14 @@ export default class PickManager {
     })
 
     this.pickTexture = device.createTexture({
+      label: 'picking texture color',
       size: [1, 1],
       format: 'r32uint',
       usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
     })
 
     this.pickDepthTexture = device.createTexture({
+      label: 'picking texture depth',
       size: [1, 1],
       format: 'depth24plus',
       usage: GPUTextureUsage.RENDER_ATTACHMENT,

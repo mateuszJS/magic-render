@@ -1,8 +1,11 @@
-import { canvasMatrix } from '../initPrograms'
 import shaderCode from './shader.wgsl'
 
 const STRIDE = 4
-export default function getProgram(device: GPUDevice, presentationFormat: GPUTextureFormat) {
+export default function getProgram(
+  device: GPUDevice,
+  presentationFormat: GPUTextureFormat,
+  matrixBuffer: GPUBuffer
+) {
   const module = device.createShaderModule({
     label: 'draw texture module',
     code: shaderCode,
@@ -11,8 +14,6 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
   const sampler = device.createSampler({
     minFilter: 'linear',
     magFilter: 'linear',
-    addressModeU: 'repeat',
-    addressModeV: 'repeat',
   })
 
   const pipeline = device.createRenderPipeline({
@@ -60,17 +61,26 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
   return function drawTexture(
     pass: GPURenderPassEncoder,
     vertexData: DataView,
-    texture: GPUTexture
+    texture: GPUTexture,
+    uniformData: DataView
   ) {
     const numVertices = vertexData.byteLength / (4 * STRIDE)
 
     const vertexBuffer = device.createBuffer({
-      label: 'draw texture - vertex buffer',
+      label: 'draw gaussian blur - vertex buffer',
       size: vertexData.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
 
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
+
+    const uniformBuffer = device.createBuffer({
+      label: 'draw gaussian blur - uniform buffer',
+      size: uniformData.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    })
+
+    device.queue.writeBuffer(uniformBuffer, 0, uniformData)
 
     // Get or create bind group for this texture
     let bindGroup = bindGroupCache.get(texture)
@@ -78,9 +88,10 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
       bindGroup = device.createBindGroup({
         layout: pipeline.getBindGroupLayout(0),
         entries: [
-          { binding: 0, resource: { buffer: canvasMatrix.buffer } },
-          { binding: 1, resource: sampler },
-          { binding: 2, resource: texture.createView() },
+          { binding: 0, resource: { buffer: matrixBuffer } },
+          { binding: 1, resource: { buffer: uniformBuffer } },
+          { binding: 2, resource: sampler },
+          { binding: 3, resource: texture.createView() },
         ],
       })
       bindGroupCache.set(texture, bindGroup)

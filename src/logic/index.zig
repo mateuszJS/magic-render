@@ -58,26 +58,26 @@ pub fn connectCreateSdfTexture(cb: *const fn () u32) void {
     create_sdf_texture = cb;
 }
 
-var create_cache_texture_callback: *const fn () u32 = undefined;
-var start_cache_callback: *const fn (u32, bounding_box.BoundingBox, f32, f32) void = undefined;
-var end_cache_callback: *const fn () void = undefined;
+var create_cache_texture: *const fn () u32 = undefined;
+var start_cache: *const fn (u32, bounding_box.BoundingBox, f32, f32) void = undefined;
+var end_cache: *const fn () void = undefined;
 
 pub fn connectCacheCallbacks(
-    create_cache_texture: *const fn () u32,
-    start_cache: *const fn (u32, bounding_box.BoundingBox, f32, f32) void,
-    end_cache: *const fn () void,
+    create_cache_texture_cb: *const fn () u32,
+    start_cache_cb: *const fn (u32, bounding_box.BoundingBox, f32, f32) void,
+    end_cache_cb: *const fn () void,
 ) void {
-    create_cache_texture_callback = create_cache_texture;
-    start_cache_callback = start_cache;
-    end_cache_callback = end_cache;
+    create_cache_texture = create_cache_texture_cb;
+    start_cache = start_cache_cb;
+    end_cache = end_cache_cb;
 
     // shapes.update_texture_cache = update_texture_cache;
 }
 
 fn update_texture_cache(texture_id: u32, box: bounding_box.BoundingBox, width: f32, height: f32) void {
-    start_cache_callback(texture_id, box, width, height);
+    start_cache(texture_id, box, width, height);
     // web_gpu_programs.compute_shape(vertex_data.curves);
-    end_cache_callback();
+    end_cache();
 }
 
 pub const ASSET_ID_MIN: u32 = 1000;
@@ -179,7 +179,8 @@ pub fn addShape(
     paths: []const []const types.Point,
     bounds: ?[4]types.PointUV,
     props: shapes.SerializedProps,
-    texture_id: u32,
+    sdf_texture_id: u32,
+    cache_texture_id: u32,
 ) !u32 {
     const id = if (id_or_zero == 0) generateId() else id_or_zero;
     const shape = try shapes.Shape.new(
@@ -187,7 +188,8 @@ pub fn addShape(
         paths,
         bounds,
         props,
-        texture_id,
+        sdf_texture_id,
+        cache_texture_id,
         std.heap.page_allocator,
     );
     try state.assets.put(id, Asset{ .shape = shape });
@@ -319,6 +321,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                     .stroke_width = 1.0,
                 },
                 create_sdf_texture(),
+                create_cache_texture(),
             );
             try updateSelectedAsset(id);
         }
@@ -629,6 +632,7 @@ pub fn calculateShapesSDF() !void {
                 if (!shape.outdated_sdf) {
                     continue;
                 }
+
                 const option_points = try shape.getNewSdfPoint(allocator);
                 if (option_points) |points| {
                     const bounds = shape.getBoundsWithPadding(1 / shared.render_scale);
@@ -640,16 +644,55 @@ pub fn calculateShapesSDF() !void {
                         point.x *= shape.sdf_scale;
                         point.y *= shape.sdf_scale;
                     }
-                    std.debug.print("New SDF size: {d}x{d}, scale: {d}\n", .{ shape.sdf_size.w, shape.sdf_size.h, shape.sdf_scale });
+
                     if (shape.sdf_size.w > 0 and shape.sdf_size.h > 0) {
                         web_gpu_programs.compute_shape(
                             points,
                             shape.sdf_size.w,
                             shape.sdf_size.h,
-                            shape.texture_id,
+                            shape.sdf_texture_id,
                         );
                     }
                 }
+
+                shape.outdated_cache = true;
+            },
+        }
+    }
+}
+
+pub fn updateCache() void {
+    var iterator = state.assets.iterator();
+    while (iterator.next()) |asset| {
+        switch (asset.value_ptr.*) {
+            .img => {},
+            .shape => |*shape| {
+                if (!shape.outdated_cache) continue;
+
+                const bounds = shape.getDrawBounds();
+                const size = get_sdf_texture_size(shape.bounds);
+
+                if (shape.sdf_size.w == 0 or shape.sdf_size.h == 0) continue;
+                const width = @as(f32, @floatFromInt(size.w));
+                const height = @as(f32, @floatFromInt(size.h));
+
+                const bb = bounding_box.BoundingBox{
+                    .min_x = shape.bounds[3].x,
+                    .min_y = shape.bounds[3].y,
+                    .max_x = shape.bounds[3].x + width,
+                    .max_y = shape.bounds[3].y + height,
+                };
+                start_cache(shape.cache_texture_id, bb, width, height);
+
+                web_gpu_programs.draw_shape(
+                    &bounds,
+                    shape.getUniform(),
+                    shape.sdf_texture_id,
+                );
+
+                end_cache();
+
+                shape.outdated_cache = false;
             },
         }
     }
@@ -671,7 +714,7 @@ pub fn renderDraw() !void {
                 web_gpu_programs.draw_texture(vertex_data, img.texture_id);
             },
             .shape => |*shape| {
-                web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getUniform(), shape.texture_id);
+                web_gpu_programs.draw_texture(shape.getDrawBounds(), shape.cache_texture_id);
             },
         }
     }
@@ -694,7 +737,7 @@ pub fn renderDraw() !void {
         _ = select_point_id; // autofix
 
         if (getSelectedShape()) |shape| {
-            web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getSkeletonUniform(), shape.texture_id);
+            // web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getSkeletonUniform(), shape.texture_id);
 
             const hover_id = if (shape.id == hover_point_id.shape) hover_point_id else null;
             const vertex_data = try shape.getSkeletonDrawVertexData(
@@ -756,7 +799,7 @@ pub fn renderPick() !void {
                 web_gpu_programs.pick_shape(
                     &shape.getPickBounds(),
                     shape.getStrokeWidth(),
-                    shape.texture_id,
+                    shape.sdf_texture_id,
                 );
             },
         }
@@ -802,7 +845,8 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
                     shape.paths,
                     shape.bounds,
                     shape.props,
-                    shape.texture_id,
+                    shape.sdf_texture_id,
+                    shape.cache_texture_id,
                 );
             },
         }

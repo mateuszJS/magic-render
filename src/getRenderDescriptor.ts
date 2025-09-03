@@ -13,6 +13,7 @@ export default function getRenderDescriptor(
       depthTexture.destroy()
     }
     depthTexture = device.createTexture({
+      label: 'canvas render depth texture',
       size: [texture.width, texture.height],
       format: 'depth24plus',
       usage: GPUTextureUsage.RENDER_ATTACHMENT,

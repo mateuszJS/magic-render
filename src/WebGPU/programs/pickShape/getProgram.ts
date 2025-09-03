@@ -1,10 +1,7 @@
+import { addDestroyBuf } from '../initPrograms'
 import shaderCode from './shader.wgsl'
 
-export default function getDrawShape(
-  device: GPUDevice,
-  matrixBuffer: GPUBuffer,
-  buffersToDestroy: GPUBuffer[]
-) {
+export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer) {
   const module = device.createShaderModule({
     label: 'pickShape shader',
     code: shaderCode,
@@ -15,7 +12,7 @@ export default function getDrawShape(
   const uniformBufferSize = (1 /*stroke width*/ + /*padding*/ 3) * 4
 
   const pipeline = device.createRenderPipeline({
-    label: 'drawShape pipeline',
+    label: 'pickShape pipeline',
     layout: 'auto',
     vertex: {
       module,
@@ -55,7 +52,7 @@ export default function getDrawShape(
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([strokeWidth]))
-    buffersToDestroy.push(uniformBuffer)
+    addDestroyBuf(uniformBuffer)
 
     const vertexBuffer = device.createBuffer({
       label: 'pick texture - vertex buffer',

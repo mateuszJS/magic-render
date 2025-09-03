@@ -1,11 +1,11 @@
-import shaderCode from "./index.wgsl"
+import shaderCode from './index.wgsl'
 
 const tileDim = 128
 const batch = [4, 4]
 
 export default function getProgram(device: GPUDevice) {
   const module = device.createShaderModule({
-    label: "blur shader module",
+    label: 'blur shader module',
     code: shaderCode,
   })
 
@@ -17,13 +17,10 @@ export default function getProgram(device: GPUDevice) {
     },
   })
 
-  return function renderBlur(
-    texture: GPUTexture,
-    commandEncoder: GPUCommandEncoder,
-  ): GPUTexture {
-  
-    const textures = [0, 1].map(() => {
+  return function renderBlur(texture: GPUTexture, commandEncoder: GPUCommandEncoder): GPUTexture {
+    const textures = [0, 1].map((_, index) => {
       return device.createTexture({
+        label: `render blur index: ${index}`,
         size: {
           width: texture.width,
           height: texture.height,
@@ -35,7 +32,7 @@ export default function getProgram(device: GPUDevice) {
           GPUTextureUsage.TEXTURE_BINDING,
       })
     })
-  
+
     const buffer0 = (() => {
       const buffer = device.createBuffer({
         size: 4,
@@ -46,7 +43,7 @@ export default function getProgram(device: GPUDevice) {
       buffer.unmap()
       return buffer
     })()
-  
+
     const buffer1 = (() => {
       const buffer = device.createBuffer({
         size: 4,
@@ -57,7 +54,7 @@ export default function getProgram(device: GPUDevice) {
       buffer.unmap()
       return buffer
     })()
-  
+
     const blurParamsBuffer = device.createBuffer({
       size: 8,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
@@ -67,7 +64,7 @@ export default function getProgram(device: GPUDevice) {
       magFilter: 'linear',
       minFilter: 'linear',
     })
-  
+
     const computeConstants = device.createBindGroup({
       layout: blurPipeline.getBindGroupLayout(0),
       entries: [
@@ -83,7 +80,7 @@ export default function getProgram(device: GPUDevice) {
         },
       ],
     })
-  
+
     const computeBindGroup0 = device.createBindGroup({
       layout: blurPipeline.getBindGroupLayout(1),
       entries: [
@@ -103,7 +100,7 @@ export default function getProgram(device: GPUDevice) {
         },
       ],
     })
-  
+
     const computeBindGroup1 = device.createBindGroup({
       layout: blurPipeline.getBindGroupLayout(1),
       entries: [
@@ -123,7 +120,7 @@ export default function getProgram(device: GPUDevice) {
         },
       ],
     })
-  
+
     const computeBindGroup2 = device.createBindGroup({
       layout: blurPipeline.getBindGroupLayout(1),
       entries: [
@@ -143,7 +140,7 @@ export default function getProgram(device: GPUDevice) {
         },
       ],
     })
-  
+
     const settings = {
       filterSize: 15,
       iterations: 2,
@@ -151,11 +148,7 @@ export default function getProgram(device: GPUDevice) {
 
     // const blockDim = 128 - (15 - 1) = 114
     const blockDim = tileDim - (settings.filterSize - 1)
-    device.queue.writeBuffer(
-      blurParamsBuffer,
-      0,
-      new Uint32Array([settings.filterSize, blockDim])
-    )
+    device.queue.writeBuffer(blurParamsBuffer, 0, new Uint32Array([settings.filterSize, blockDim]))
 
     const computePass = commandEncoder.beginComputePass()
     computePass.setPipeline(blurPipeline)

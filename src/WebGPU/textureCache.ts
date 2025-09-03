@@ -1,4 +1,4 @@
-import { canvasMatrixBuffer } from 'WebGPU/programs/initPrograms'
+import { canvasMatrix } from 'WebGPU/programs/initPrograms'
 import mat4 from 'utils/mat4'
 import { updateRenderPass } from 'run'
 import * as Textures from 'textures'
@@ -15,6 +15,7 @@ export function endCache() {
 export function startCache(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
+  encoder: GPUCommandEncoder,
   textureId: number,
   boundingBox: BoundingBox,
   outputWidth: number,
@@ -43,7 +44,6 @@ export function startCache(
     throw new Error('Failed to create texture for cache')
   }
 
-  const encoder = device.createCommandEncoder()
   const multisampleTexture = getMultisampleTexture(
     device,
     outputWidth,
@@ -58,12 +58,17 @@ export function startCache(
         resolveTarget: texture.createView(),
         loadOp: 'clear',
         storeOp: 'store',
+        // clearValue: [0.5, 0, 0.5, 0],
       },
     ],
   }
-
   const pass = encoder.beginRenderPass(descriptor)
   updateRenderPass(pass)
+  const matrixBuffer = device.createBuffer({
+    label: 'texture cache - matrix buffer',
+    size: 16 * 4,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  })
   const matrix = mat4.ortho(
     boundingBox.min_x, // left
     boundingBox.min_x + width, // right
@@ -73,12 +78,14 @@ export function startCache(
     -1 // far
   )
 
-  device.queue.writeBuffer(canvasMatrixBuffer, 0, matrix)
+  device.queue.writeBuffer(matrixBuffer, 0, matrix)
+
+  const canvasMatrixCopy = canvasMatrix.buffer
+  canvasMatrix.buffer = matrixBuffer
 
   endCacheCallback = () => {
     pass.end()
-    const commandBuffer = encoder.finish()
-    device.queue.submit([commandBuffer])
+    canvasMatrix.buffer = canvasMatrixCopy
   }
 
   Textures.setCacheTexture(textureId, texture)

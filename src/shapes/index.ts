@@ -3,7 +3,7 @@ import * as Logic from 'logic/index.zig'
 import parseRect from './parseRect'
 import parseEllipse from './parseEllipse'
 import * as Textures from 'textures'
-import { getBoundingBox } from './boundingBox'
+import { BoundingBox, getBoundingBox } from './boundingBox'
 import {
   ensureNumber,
   getProps,

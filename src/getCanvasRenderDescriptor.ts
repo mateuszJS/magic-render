@@ -1,16 +1,18 @@
 import getMultisampleTexture from './getMultisampleTexture'
 import getDepthTexture from './getDepthTexture'
+let multisampleTexture: GPUTexture | undefined
 
 export default function getCanvasRenderDescriptor(context: GPUCanvasContext, device: GPUDevice) {
   // here we need to render that texture into canvas
   const canvasTexture = context.getCurrentTexture()
 
-  const depthTexture = getDepthTexture(device, canvasTexture.width, canvasTexture.height)
-  const multisampleTexture = getMultisampleTexture(
+  // const depthTexture = getDepthTexture(device, canvasTexture.width, canvasTexture.height)
+  multisampleTexture = getMultisampleTexture(
     device,
     canvasTexture.width,
     canvasTexture.height,
-    canvasTexture.format
+    canvasTexture.format,
+    multisampleTexture
   )
   const descriptor: GPURenderPassDescriptor = {
     // describe which textures we want to raw to and how use them

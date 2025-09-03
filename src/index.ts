@@ -8,7 +8,6 @@ import IconsPng from '../msdf/output/icons.png'
 import IconsJson from '../msdf/output/icons.json'
 import getDefaultPoints from 'utils/getDefaultPoints'
 import * as Textures from 'textures'
-import { startCache, endCache } from 'WebGPU/textureCache'
 import debounce from 'utils/debounce'
 import generatePreview from 'WebGPU/generatePreview'
 import sanitizeFill from 'sanitizeFill'
@@ -24,7 +23,8 @@ export type SerializedInputShape = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   paths: Point[][]
   props: ShapeProps
-  texture_id?: number
+  sdf_texture_id?: number
+  cache_texture_id?: number
   bounds?: PointUV[]
 }
 
@@ -119,7 +119,7 @@ export default async function initCreator(
     updateRenderScale()
   })
 
-  const cleanupPrograms = initPrograms(device, presentationFormat)
+  initPrograms(device, presentationFormat)
 
   initMouseController(canvas, updateRenderScale, () => {
     isMouseEventProcessing = true
@@ -192,13 +192,6 @@ export default async function initCreator(
   }
 
   Logic.connectOnAssetSelectionCallback(onAssetSelect)
-
-  Logic.connectCacheCallbacks(
-    Textures.createCacheTexture,
-    startCache.bind(null, device, presentationFormat),
-    endCache
-  )
-
   Logic.connectCreateSdfTexture(Textures.createSDF)
 
   const addImage: CreatorAPI['addImage'] = (url) => {
@@ -234,7 +227,6 @@ export default async function initCreator(
     canvas,
     context,
     device,
-    cleanupPrograms,
     presentationFormat,
     () => {
       isMouseEventProcessing = false
@@ -255,7 +247,8 @@ export default async function initCreator(
                   paths: asset.paths,
                   props: asset.props,
                   bounds: asset.bounds || null,
-                  texture_id: asset.texture_id || Textures.createSDF(),
+                  sdf_texture_id: asset.sdf_texture_id || Textures.createSDF(),
+                  cache_texture_id: asset.cache_texture_id || Textures.createCacheTexture(),
                 },
               })
             } // otherwise it's an image

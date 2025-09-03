@@ -1,14 +1,10 @@
+import { addDestroyBuf, canvasMatrix } from '../initPrograms'
 import shaderCode from './shader.wgsl'
 
 const INSTANCE_STRIDE =
   4 * 3 /* positon */ + 1 /* color */ + 3 /* value of roudned corner  for each of three positions */
 
-export default function getProgram(
-  device: GPUDevice,
-  presentationFormat: GPUTextureFormat,
-  matrixBuffer: GPUBuffer,
-  buffersToDestroy: GPUBuffer[]
-) {
+export default function getProgram(device: GPUDevice, presentationFormat: GPUTextureFormat) {
   const module = device.createShaderModule({
     label: 'draw triangle module',
     code: shaderCode,
@@ -61,7 +57,7 @@ export default function getProgram(
   // Cache bind group for this program (no texture needed)
   const cachedBindGroup = device.createBindGroup({
     layout: pipeline.getBindGroupLayout(0),
-    entries: [{ binding: 0, resource: { buffer: matrixBuffer } }],
+    entries: [{ binding: 0, resource: { buffer: canvasMatrix.buffer } }],
   })
 
   return function drawTriangle(pass: GPURenderPassEncoder, vertexData: DataView) {
@@ -73,7 +69,7 @@ export default function getProgram(
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
-    buffersToDestroy.push(vertexBuffer)
+    addDestroyBuf(vertexBuffer)
 
     pass.setPipeline(pipeline)
     pass.setVertexBuffer(0, vertexBuffer)

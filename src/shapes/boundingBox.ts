@@ -1,14 +1,9 @@
 import { isStraightHandle } from './utils'
 
-interface Point {
-  x: number
-  y: number
-}
-
 /**
  * Represents a 2D bounding box with minimum and maximum coordinates.
  */
-class BoundingBox {
+export class BoundingBox {
   min_x: number = Infinity
   min_y: number = Infinity
   max_x: number = -Infinity
