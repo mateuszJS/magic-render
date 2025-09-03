@@ -30,7 +30,7 @@ const WebGpuPrograms = struct {
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
     pick_triangle: *const fn ([]const Triangle.PickInstance) void,
-    pick_shape: *const fn ([]const images.PickVertex, shapes.Uniform, u32) void,
+    pick_shape: *const fn ([]const images.PickVertex, f32, u32) void,
 };
 var web_gpu_programs: *const WebGpuPrograms = undefined;
 
@@ -694,6 +694,8 @@ pub fn renderDraw() !void {
         _ = select_point_id; // autofix
 
         if (getSelectedShape()) |shape| {
+            web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getSkeletonUniform(), shape.texture_id);
+
             const hover_id = if (shape.id == hover_point_id.shape) hover_point_id else null;
             const vertex_data = try shape.getSkeletonDrawVertexData(
                 allocator,
@@ -701,7 +703,6 @@ pub fn renderDraw() !void {
                 state.tool == Tool.DrawShape,
             );
             web_gpu_programs.draw_triangle(vertex_data);
-            web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getSkeletonUniform(), shape.texture_id);
         }
     }
 
@@ -752,7 +753,11 @@ pub fn renderPick() !void {
                 web_gpu_programs.pick_texture(&vertex_data, img.texture_id);
             },
             .shape => |shape| {
-                web_gpu_programs.pick_shape(&shape.getPickBounds(), shape.getUniform(), shape.texture_id);
+                web_gpu_programs.pick_shape(
+                    &shape.getPickBounds(),
+                    shape.getStrokeWidth(),
+                    shape.texture_id,
+                );
             },
         }
     }

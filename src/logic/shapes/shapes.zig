@@ -325,12 +325,16 @@ pub const Shape = struct {
         return points.toOwnedSlice();
     }
 
+    pub fn getStrokeWidth(self: Shape) f32 {
+        return self.props.stroke_width * self.sdf_scale;
+    }
+
     pub fn getUniform(self: Shape) Uniform {
         switch (self.props.fill) {
             .solid => |color| {
                 return Uniform{
                     .solid = .{
-                        .stroke_width = self.props.stroke_width * self.sdf_scale,
+                        .stroke_width = self.getStrokeWidth(),
                         .fill_color = color, //self.props.fill_color,
                         .stroke_color = .{ 0, 1, 0, 1 }, //self.props.stroke_color,
                     },
@@ -347,7 +351,7 @@ pub const Shape = struct {
 
                 return Uniform{
                     .linear = .{
-                        .stroke_width = self.props.stroke_width * self.sdf_scale,
+                        .stroke_width = self.getStrokeWidth(),
                         .stops_count = gradient.stops.items.len,
                         .start = gradient.start,
                         .end = gradient.end,
@@ -366,7 +370,7 @@ pub const Shape = struct {
 
                 return Uniform{
                     .radial = .{
-                        .stroke_width = self.props.stroke_width * self.sdf_scale,
+                        .stroke_width = self.getStrokeWidth(),
                         .stops_count = gradient.stops.items.len,
                         .center = gradient.center,
                         .destination = gradient.destination,
@@ -495,6 +499,8 @@ pub const Shape = struct {
             path.deinit();
         }
         self.paths.deinit();
+        self.props.stroke.deinit();
+        self.props.fill.deinit();
     }
 };
 
@@ -535,8 +541,6 @@ pub const Uniform = union(enum) {
     linear: UniformLinearGradient,
     radial: UniformRadialGradient,
 };
-
-const PickVertexOutput = struct { bounds: [6]images.PickVertex, uniforms: Uniform };
 
 pub const Serialized = struct {
     id: u32,

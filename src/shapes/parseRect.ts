@@ -1,11 +1,11 @@
 import { STRAIGHT_LINE_HANDLE } from './const'
 
-export default function parseRect(width: number, height: number): Point[] {
+export default function parseRect(x: number, y: number, width: number, height: number): Point[] {
   // Define the four corners of the rectangle in Cartesian space
-  const topLeft: Point = { x: 0, y: height }
-  const topRight: Point = { x: width, y: height }
-  const bottomRight: Point = { x: width, y: 0 }
-  const bottomLeft: Point = { x: 0, y: 0 }
+  const topLeft: Point = { x, y: y + height }
+  const topRight: Point = { x: x + width, y: y + height }
+  const bottomRight: Point = { x: x + width, y }
+  const bottomLeft: Point = { x, y }
 
   // Create four lines that form the rectangle
   // prettier-ignore

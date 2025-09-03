@@ -1,13 +1,9 @@
+import arcToBezier from './arcToBezier'
 import { STRAIGHT_LINE_HANDLE } from './const'
 
 interface PathCommand {
   command: string
   args: number[]
-}
-
-export interface ShapeData {
-  points: Point[]
-  closed: boolean
 }
 
 function getDataPathCommands(pathData: string): PathCommand[] {
@@ -35,23 +31,18 @@ function getDataPathCommands(pathData: string): PathCommand[] {
   return commands
 }
 
-function commandsToPoints(commands: PathCommand[]): ShapeData[] {
-  const allShapes: ShapeData[] = []
+function commandsToPoints(commands: PathCommand[]): Point[][] {
+  const allShapes: Point[][] = []
 
   let currentPoints: Point[] = []
   let currentPoint: Point = { x: 0, y: 0 }
   let pathStart: Point = { x: 0, y: 0 }
   let lastHandle: Point | null = null
-  let currentShapeClosed = false
 
   const finishCurrentPath = () => {
     if (currentPoints.length > 0) {
-      allShapes.push({
-        points: [...currentPoints],
-        closed: currentShapeClosed,
-      })
+      allShapes.push([...currentPoints])
       currentPoints = []
-      currentShapeClosed = false
     }
   }
 
@@ -114,6 +105,55 @@ function commandsToPoints(commands: PathCommand[]): ShapeData[] {
         break
       }
 
+      case 'a': {
+        // Arc
+        const isRelative = command === 'a'
+        for (let i = 0; i < args.length; i += 7) {
+          const rx = args[i]
+          const ry = args[i + 1]
+          const xAxisRotation = args[i + 2]
+          const largeArcFlag = args[i + 3]
+          const sweepFlag = args[i + 4]
+          const endPoint: Point = {
+            x: args[i + 5] + (isRelative ? currentPoint.x : 0),
+            y: args[i + 6] + (isRelative ? currentPoint.y : 0),
+          }
+
+          const curves = arcToBezier(
+            currentPoint.x,
+            currentPoint.y,
+            rx,
+            ry,
+            xAxisRotation,
+            largeArcFlag,
+            sweepFlag,
+            endPoint.x,
+            endPoint.y
+          )
+
+          if (curves.length === 0) {
+            // Degenerate arc → straight line to endPoint (if non-zero length)
+            if (endPoint.x !== currentPoint.x || endPoint.y !== currentPoint.y) {
+              currentPoints.push(STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE, endPoint)
+            }
+            currentPoint = endPoint
+            lastHandle = null
+          } else {
+            for (const curve of curves) {
+              currentPoints.push(
+                { x: curve.cp1x, y: curve.cp1y },
+                { x: curve.cp2x, y: curve.cp2y },
+                { x: curve.x, y: curve.y }
+              )
+              currentPoint = { x: curve.x, y: curve.y }
+            }
+            // Arcs do not establish reflection for the next 'S/s' segment
+            lastHandle = null
+          }
+        }
+        break
+      }
+
       case 'c': {
         // Cubic Bezier
         const isRelative = command === 'c'
@@ -166,9 +206,6 @@ function commandsToPoints(commands: PathCommand[]): ShapeData[] {
       }
 
       case 'z': {
-        if (currentPoints.length > 0) {
-          currentShapeClosed = true
-        }
         currentPoint = pathStart
         lastHandle = null
         finishCurrentPath()
@@ -186,7 +223,7 @@ function commandsToPoints(commands: PathCommand[]): ShapeData[] {
   return allShapes
 }
 
-export default function parsePathData(dAttribute: string): ShapeData[] {
+export default function parsePathData(dAttribute: string): Point[][] {
   const commands = getDataPathCommands(dAttribute)
   const pathData = commandsToPoints(commands)
 
