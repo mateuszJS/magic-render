@@ -42,7 +42,8 @@ export type SerializedOutputShape = {
   paths: Point[][]
   props: ShapeProps
   bounds: PointUV[]
-  texture_id: number
+  sdf_texture_id: number
+  cache_texture_id: number
 }
 
 export type SerializedOutputAsset = SerializedOutputImage | SerializedOutputShape
@@ -180,8 +181,17 @@ export default async function initCreator(
             fill: sanitizeFill(shape.props.fill), // TODO: correctly filter out zigar added properties
             stroke: sanitizeFill(shape.props.stroke), // TODO: correctly filter out zigar added properties
             stroke_width: shape.props.stroke_width,
+            filter: shape.props.filter?.gaussianBlur
+              ? {
+                  gaussianBlur: {
+                    x: shape.props.filter.gaussianBlur.x,
+                    y: shape.props.filter.gaussianBlur.y,
+                  },
+                }
+              : null,
           },
-          texture_id: shape.texture_id,
+          sdf_texture_id: shape.sdf_texture_id,
+          cache_texture_id: shape.cache_texture_id,
         }
       } else {
         throw Error('Unknown asset type')

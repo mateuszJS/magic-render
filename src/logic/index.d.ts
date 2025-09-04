@@ -17,8 +17,10 @@ interface BoundingBox {
   max_y: number
 }
 
+type Color = [number, number, number, number]
+
 type GradientStop = {
-  color: [number, number, number, number]
+  color: Color
   offset: number // 0..1
 }
 
@@ -37,14 +39,9 @@ type RadialGradient = {
 
 type ShapeProps = {
   stroke_width: number
-  fill:
-    | { linear: LinearGradient }
-    | { radial: RadialGradient }
-    | { solid: [number, number, number, number] }
-  stroke:
-    | { linear: LinearGradient }
-    | { radial: RadialGradient }
-    | { solid: [number, number, number, number] }
+  fill: { linear: LinearGradient } | { radial: RadialGradient } | { solid: Color }
+  stroke: { linear: LinearGradient } | { radial: RadialGradient } | { solid: Color }
+  filter: { gaussianBlur: Point } | null
 }
 
 type ImageAssetOutput = {
@@ -58,7 +55,8 @@ type ShapeAssetOutput = {
   paths: Point[][]
   props: ShapeProps
   bounds: PointUV[]
-  texture_id: number
+  sdf_texture_id: number
+  cache_texture_id: number
 }
 type ImageAssetInput = {
   id: number

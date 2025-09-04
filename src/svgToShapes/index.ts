@@ -180,6 +180,7 @@ export function createShapes(
           fill: { solid: [0, 0, 0, 1] },
           stroke: { solid: [0, 0, 0, 1] },
           stroke_width: 0,
+          filter: null,
         }
         // fill/stroke: color or url(#id)
         if (props.fill) {
@@ -210,6 +211,25 @@ export function createShapes(
           } else {
             const rgba = parseColor(stroke)
             serializedProps.stroke = { solid: rgba }
+          }
+        }
+        if (props.filter) {
+          const filter = String(props.filter)
+          const m = filter.match(/^url\(#([^)]+)\)$/)
+
+          if (m) {
+            const def = defs[m[1]]
+            if (def) {
+              // if (props.id === 'eyelid_left') debugger
+              // const grad = toRuntimeGradient(def, boundingBox)
+              if (def.stdDeviation)
+                serializedProps.filter = {
+                  gaussianBlur: {
+                    x: def.stdDeviation[0],
+                    y: def.stdDeviation[1],
+                  },
+                }
+            }
           }
         }
 

@@ -79,6 +79,7 @@ export function add(
       if (!svgWidth || !svgHeight) throw Error('SVG width and height are required')
       const defs: Defs = {}
       def.collect(svgRoot, defs)
+      console.log(defs)
       def.resolveAll(defs)
       Logic.addShapeBegin()
       createShapes(svgRoot, defs, svgWidth, svgHeight)

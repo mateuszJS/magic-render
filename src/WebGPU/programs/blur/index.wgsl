@@ -31,7 +31,7 @@ struct Flip {
 // does it in 4x4 block of texels(takes advantage of texture sampling hardware)
 // with this beign said, we don't have all the neighbours, only this block
 // That's why we can only compute & write out blocks of size 128 - (filterSize - 1)
-var<workgroup> tile : array<array<vec3<f32>, 128>, 4>;
+var<workgroup> tile : array<array<vec4f, 128>, 4>;
 
 @compute @workgroup_size(32, 1, 1)
 fn main(
@@ -56,7 +56,7 @@ fn main(
         samp,
         (vec2<f32>(loadIndex) + vec2<f32>(0.25, 0.25)) / vec2<f32>(dims),
         0.0
-      ).rgb;
+      ).rgba;
     }
   }
 
@@ -75,12 +75,12 @@ fn main(
       if (center >= filterOffset &&
           center < 128 - filterOffset &&
           all(writeIndex < dims)) {
-        var acc = vec3(0.0, 0.0, 0.0);
+        var acc = vec4f(0);
         for (var f = 0; f < params.filterDim; f++) {
           var i = center + f - filterOffset;
           acc = acc + (1.0 / f32(params.filterDim)) * tile[r][i];
         }
-        textureStore(outputTex, writeIndex, vec4(acc, 1.0));
+        textureStore(outputTex, writeIndex, acc);
       }
     }
   }

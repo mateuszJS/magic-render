@@ -320,6 +320,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                     .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
                     .stroke = .{ .solid = .{ 0.0, 0.0, 0.0, 1.0 } },
                     .stroke_width = 1.0,
+                    .filter = null,
                 },
                 create_sdf_texture(),
                 create_cache_texture(),
@@ -703,7 +704,10 @@ pub fn updateCache() void {
 
                 end_cache();
 
-                // web_gpu_programs.draw_blur(shape.cache_texture_id);
+                if (shape.props.filter) |filter| {
+                    _ = filter; // autofix
+                    web_gpu_programs.draw_blur(shape.cache_texture_id);
+                }
 
                 shape.outdated_cache = false;
             },

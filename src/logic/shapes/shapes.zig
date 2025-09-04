@@ -47,15 +47,21 @@ fn getSnapThreshold(bounds: [4]PointUV) Point {
     return close_path_threshold;
 }
 
+pub const Filter = struct {
+    gaussianBlur: Point,
+};
+
 pub const Props = struct {
     fill: fill.Fill,
     stroke: fill.Fill,
     stroke_width: f32,
+    filter: ?Filter,
 };
 pub const SerializedProps = struct {
     fill: fill.SerializedFill,
     stroke: fill.SerializedFill,
     stroke_width: f32,
+    filter: ?Filter,
 };
 
 pub const Shape = struct {
@@ -99,6 +105,7 @@ pub const Shape = struct {
             .fill = try fill.Fill.new(input_props.fill, allocator),
             .stroke = try fill.Fill.new(input_props.stroke, allocator),
             .stroke_width = input_props.stroke_width,
+            .filter = input_props.filter,
         };
 
         const shape = Shape{ .id = id, .paths = paths_list, .props = props, .sdf_texture_id = sdf_texture_id, .outdated_sdf = true, .bounds = input_bounds orelse DEFAULT_BOUNDS, .cache_texture_id = cache_texture_id, .outdated_cache = true };
@@ -484,6 +491,7 @@ pub const Shape = struct {
             .fill = self.props.fill.serialize(),
             .stroke = self.props.stroke.serialize(),
             .stroke_width = self.props.stroke_width,
+            .filter = self.props.filter,
         };
 
         return Serialized{
