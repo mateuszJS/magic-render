@@ -26,6 +26,7 @@ const WebGpuPrograms = struct {
     draw_texture: *const fn (images.DrawVertex, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
     compute_shape: *const fn ([]const types.Point, u32, u32, u32) void,
+    draw_blur: *const fn (u32) void,
     draw_shape: *const fn ([]const types.PointUV, shapes.Uniform, u32) void,
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
@@ -682,8 +683,8 @@ pub fn updateCache() void {
                     .max_x = shape.bounds[3].x + width,
                     .max_y = shape.bounds[3].y + height,
                 };
+                // const cache_id = create_cache_texture();
                 start_cache(shape.cache_texture_id, bb, width, height);
-
                 web_gpu_programs.draw_shape(
                     &bounds,
                     shape.getUniform(),
@@ -691,6 +692,12 @@ pub fn updateCache() void {
                 );
 
                 end_cache();
+                // std.debug.print("zig end {d}\n", .{cache_id});
+
+                web_gpu_programs.draw_blur(shape.cache_texture_id);
+
+                // start_cache(shape.cache_texture_id, bb, width, height);
+                // end_cache();
 
                 shape.outdated_cache = false;
             },

@@ -3,10 +3,10 @@ import shaderCode from './index.wgsl'
 const tileDim = 128
 const batch = [4, 4]
 
-export default function getProgram(device: GPUDevice) {
+export default function getProgram(device: GPUDevice, presentationFormat: GPUTextureFormat) {
   const module = device.createShaderModule({
     label: 'blur shader module',
-    code: shaderCode,
+    code: shaderCode.replace('{presentationFormat}', presentationFormat),
   })
 
   const blurPipeline = device.createComputePipeline({
@@ -17,15 +17,17 @@ export default function getProgram(device: GPUDevice) {
     },
   })
 
-  return function renderBlur(texture: GPUTexture, commandEncoder: GPUCommandEncoder): GPUTexture {
+  return function renderBlur(encoder: GPUCommandEncoder, texture: GPUTexture) {
     const textures = [0, 1].map((_, index) => {
+      if (index === 1) return texture
+
       return device.createTexture({
         label: `render blur index: ${index}`,
         size: {
           width: texture.width,
           height: texture.height,
         },
-        format: 'rgba8unorm',
+        format: texture.format,
         usage:
           GPUTextureUsage.COPY_DST |
           GPUTextureUsage.STORAGE_BINDING |
@@ -86,7 +88,8 @@ export default function getProgram(device: GPUDevice) {
       entries: [
         {
           binding: 1,
-          resource: texture.createView(),
+          resource: textures[1].createView(),
+          // resource: texture.createView(),
         },
         {
           binding: 2,
@@ -150,7 +153,9 @@ export default function getProgram(device: GPUDevice) {
     const blockDim = tileDim - (settings.filterSize - 1)
     device.queue.writeBuffer(blurParamsBuffer, 0, new Uint32Array([settings.filterSize, blockDim]))
 
-    const computePass = commandEncoder.beginComputePass()
+    const computePass = encoder.beginComputePass({
+      label: 'blur-pass',
+    })
     computePass.setPipeline(blurPipeline)
     computePass.setBindGroup(0, computeConstants)
 
@@ -182,6 +187,6 @@ export default function getProgram(device: GPUDevice) {
 
     computePass.end()
 
-    return textures[1]
+    // return textures[1]
   }
 }

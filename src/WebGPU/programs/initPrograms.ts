@@ -65,7 +65,7 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
   draw3dModelTexture = getDraw3dModelTexture(device, presentationFormat)
   draw3dModel = getDraw3dModel(device, presentationFormat)
   draw3dModelLight = getDraw3dModelLight(device, presentationFormat)
-  drawBlur = getBlur(device)
+  drawBlur = getBlur(device, presentationFormat)
   drawTexture = getDrawtexture(device, presentationFormat)
   pickTexture = getPickTexture(device, pickCanvasMatrixBuffer)
   pickTriangle = getPickTriangle(device, pickCanvasMatrixBuffer)

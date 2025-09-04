@@ -125,6 +125,7 @@ declare module '*.zig' {
     draw_msdf: (vertex_data: ArrayPointerDataView, texture_id: number) => void
     pick_texture: (vertex_data: ArrayPointerDataView, texture_id: number) => void
     pick_triangle: (vertex_data: ArrayPointerDataView) => void
+    draw_blur: (texture_id: number) => void
     compute_shape: (
       curves_data: ArrayPointerDataView,
       width: number,

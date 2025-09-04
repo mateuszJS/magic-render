@@ -34,11 +34,12 @@ let loadingTextures: number
 
 export function init(
   _device: GPUDevice,
+  presentationFormat: GPUTextureFormat,
   _updateProcessing: (loadingTextures: number) => void
 ): void {
   device = _device
   textures = []
-  loadingTexture = getLoadingTexture(device)
+  loadingTexture = getLoadingTexture(device, presentationFormat)
   updateProcessing = () => _updateProcessing(loadingTextures)
   loadingTextures = 0
 }
@@ -52,6 +53,7 @@ export interface TextureSource {
 
 export function add(
   url: string,
+  presentationFormat: GPUTextureFormat,
   onLoad?: (width: number, height: number, isNew: boolean) => void
 ): number {
   loadingTextures++
@@ -96,7 +98,9 @@ export function add(
     if (existingTexture !== null) {
       textures[textureId] = existingTexture
     } else {
-      textures[textureId].texture = createTextureFromSource(device, img, { flipY: true })
+      textures[textureId].texture = createTextureFromSource(device, presentationFormat, img, {
+        flipY: true,
+      })
       textures[textureId].data = data
       textures[textureId].hash = hash
     }

@@ -31,11 +31,14 @@ export function startCache(
     Math.abs(texture.height - outputHeight) <= Number.EPSILON
 
   if (!canReuseTexture) {
-    texture?.destroy()
+    // texture?.destroy()
     texture = device.createTexture({
       label: 'texture cache',
       format: presentationFormat,
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+      usage:
+        GPUTextureUsage.RENDER_ATTACHMENT |
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.STORAGE_BINDING,
       size: [outputWidth, outputHeight],
     })
   }

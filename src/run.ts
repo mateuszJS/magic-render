@@ -75,62 +75,9 @@ export default function runCreator(
       Textures.updateSDF(textureId, width, height)
       computeShape(computePass, curvesDataView, Textures.getTexture(textureId))
     },
-    // cache_shape: (bound_box_data, startX, startY, uniform_data, textureId) => {
-    //   const boundBoxDataView = bound_box_data['*'].dataView
-
-    //   let program
-    //   let uniform
-    //   if ('linear' in uniform_data && uniform_data.linear) {
-    //     program = drawLinearGradientShape
-    //     uniform = uniform_data.linear
-    //   } else if ('radial' in uniform_data && uniform_data.radial) {
-    //     program = drawRadialGradientShape
-    //     uniform = uniform_data.radial
-    //   } else if ('solid' in uniform_data && uniform_data.solid) {
-    //     program = drawSolidShape
-    //     uniform = uniform_data.solid
-    //   } else {
-    //     throw Error('Unsupported shape uniform type')
-    //   }
-    //   const cacheTexId = Textures.createCacheTexture()
-    //   const sdf = Textures.getTexture(textureId)
-    //   setCacheTexture
-
-    //   const cacheTexture = device.createTexture({
-    //     label: 'draw shape texture - blur test',
-    //     size: [sdf.width, sdf.height, 1],
-    //     format: presentationFormat,
-    //     usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-    //   })
-
-    //   const pass = encoder.beginRenderPass({
-    //     label: 'draw shape render - blur test',
-    //     colorAttachments: [
-    //       {
-    //         view: cacheTexture.createView(),
-    //         clearValue: [1, 0, 0, 1],
-    //         loadOp: 'clear',
-    //         storeOp: 'store',
-    //       },
-    //     ],
-    //   })
-
-    //   const ortho = mat4.ortho(
-    //     startX, // left
-    //     sdf.width + startX, // right
-    //     sdf.height + startY, // bottom - reversed with top on purpose, to avoid reverting texture y
-    //     startY, // top
-    //     1, // near
-    //     -1 // far
-    //   )
-    //   program(pass, sdf, boundBoxDataView, uniform.dataView, ortho)
-
-    //   pass.end()
-    //   // const blurredTexture = drawBlur(texture, encoder)
-    //   const commandBuffer = encoder.finish()
-    //   device.queue.submit([commandBuffer])
-    //   drawTexture(renderPass, boundBoxDataView, cacheTexture)
-    // },
+    draw_blur: (textureId) => {
+      drawBlur(encoder, Textures.getTexture(textureId))
+    },
     draw_shape: (bound_box_data, uniform_data, textureId) => {
       const boundBoxDataView = bound_box_data['*'].dataView
 
@@ -150,14 +97,6 @@ export default function runCreator(
         throw Error('Unsupported shape uniform type')
       }
 
-      // const ortho = mat4.ortho(
-      //   startX, // left
-      //   sdf.width + startX, // right
-      //   sdf.height + startY, // bottom - reversed with top on purpose, to avoid reverting texture y
-      //   startY, // top
-      //   1, // near
-      //   -1 // far
-      // )
       program(renderPass, Textures.getTexture(textureId), boundBoxDataView, uniform.dataView)
     },
     pick_texture: (vertex_data, texture_id) => {
@@ -192,12 +131,14 @@ export default function runCreator(
 
     const canvasDescriptor = getCanvasRenderDescriptor(preview?.ctx || context, device)
     renderPass = encoder.beginRenderPass(canvasDescriptor)
+    // console.log('start canvas render pass')
 
     const matrix = getCanvasMatrix(preview?.canvas || creatorCanvas)
     device.queue.writeBuffer(canvasMatrix.buffer, 0, matrix)
     // time = performance.now()
     Logic.renderDraw()
     renderPass.end()
+    // console.log('end canvas render pass')
 
     if (preview) {
       const commandBuffer = encoder.finish()
