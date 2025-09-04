@@ -1,7 +1,7 @@
 const Utils = @import("../utils.zig");
 const Point = @import("../types.zig").Point;
 const PointUV = @import("../types.zig").PointUV;
-const TextureSize = @import("../types.zig").TextureSize;
+const TextureSize = @import("../texture_size.zig").TextureSize;
 const std = @import("std");
 const bounding_box = @import("bounding_box.zig");
 const triangles = @import("../triangle.zig");
@@ -379,6 +379,10 @@ pub const Shape = struct {
         }
     }
 
+    pub fn getPadding(self: Shape) f32 {
+        return self.props.stroke_width / 2.0;
+    }
+
     // function has side effect, marks texture as generated
     pub fn getNewSdfPoint(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
         if (!self.outdated_sdf) {
@@ -410,7 +414,7 @@ pub const Shape = struct {
             self.bounds[0].distance(self.bounds[3]),
         );
 
-        const padding = self.props.stroke_width / 2.0;
+        const padding = self.getPadding();
         for (points) |*point| {
             const scaled = scale.get(point);
             point.x = padding + scaled.x;
@@ -423,7 +427,7 @@ pub const Shape = struct {
     }
 
     pub fn getBoundsWithPadding(self: Shape, scale: f32) [4]PointUV {
-        const padding = (self.props.stroke_width / 2.0);
+        const padding = self.getPadding();
         var buffer: [4]PointUV = undefined;
         const len = self.bounds.len;
 

@@ -226,7 +226,14 @@ export function createShapes(
         const correctedPaths = transformedPaths.map((path) =>
           path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
         )
-        Logic.addShape(0, correctedPaths, null, serializedProps, Textures.createSDF())
+        Logic.addShape(
+          0,
+          correctedPaths,
+          null,
+          serializedProps,
+          Textures.createSDF(),
+          Textures.createCacheTexture()
+        )
       }
     }
     createShapes(child, defs, svgWidth, svgHeight, currTransform)

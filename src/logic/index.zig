@@ -10,7 +10,7 @@ const shapes = @import("./shapes/shapes.zig");
 const squares = @import("squares.zig");
 const bounding_box = @import("shapes/bounding_box.zig");
 const shared = @import("shared.zig");
-const get_sdf_texture_size = @import("get_sdf_texture_size.zig").get_sdf_texture_size;
+const texture_size = @import("texture_size.zig");
 const Utils = @import("utils.zig");
 const PackedId = @import("shapes/packed_id.zig");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
@@ -25,7 +25,7 @@ const FillType = enum(u8) {
 const WebGpuPrograms = struct {
     draw_texture: *const fn (images.DrawVertex, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
-    compute_shape: *const fn ([]const types.Point, u32, u32, u32) void,
+    compute_shape: *const fn ([]const types.Point, f32, f32, u32) void,
     draw_blur: *const fn (u32) void,
     draw_shape: *const fn ([]const types.PointUV, shapes.Uniform, u32) void,
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
@@ -147,7 +147,7 @@ pub fn updateRenderScale(scale: f32) !void {
             .img => {},
             .shape => |*shape| {
                 const bounds = shape.getBoundsWithPadding(1 / shared.render_scale);
-                const new_size = get_sdf_texture_size(bounds);
+                const new_size = texture_size.get_sdf_size(bounds);
 
                 if (new_size.w > shape.sdf_size.w or new_size.h > shape.sdf_size.h) {
                     shape.outdated_sdf = true;
@@ -637,9 +637,9 @@ pub fn calculateShapesSDF() !void {
                 const option_points = try shape.getNewSdfPoint(allocator);
                 if (option_points) |points| {
                     const bounds = shape.getBoundsWithPadding(1 / shared.render_scale);
-                    shape.sdf_size = get_sdf_texture_size(bounds);
-                    const init_width = bounds[0].distance(bounds[1]) * shared.render_scale; // revert to logical scale, nothing screen/camera/zoom related
-                    shape.sdf_scale = @as(f32, @floatFromInt(shape.sdf_size.w)) / init_width;
+                    shape.sdf_size = texture_size.get_sdf_size(bounds);
+                    const init_width = bounds[0].distance(bounds[1]) * shared.render_scale; // * shared.render_scale to revert to logical scale, nothing screen/camera/zoom related
+                    shape.sdf_scale = shape.sdf_size.w / init_width;
 
                     for (points) |*point| {
                         point.x *= shape.sdf_scale;
@@ -653,10 +653,10 @@ pub fn calculateShapesSDF() !void {
                             shape.sdf_size.h,
                             shape.sdf_texture_id,
                         );
+
+                        shape.outdated_cache = true;
                     }
                 }
-
-                shape.outdated_cache = true;
             },
         }
     }
@@ -670,34 +670,40 @@ pub fn updateCache() void {
             .shape => |*shape| {
                 if (!shape.outdated_cache) continue;
 
-                const bounds = shape.getDrawBounds();
-                const size = get_sdf_texture_size(shape.bounds);
+                const bounds = shape.getBoundsWithPadding(1 / shared.render_scale);
+                const size = texture_size.get_size(bounds);
 
-                if (shape.sdf_size.w == 0 or shape.sdf_size.h == 0) continue;
-                const width = @as(f32, @floatFromInt(size.w));
-                const height = @as(f32, @floatFromInt(size.h));
-
+                if (size.w == 0 or size.h == 0) continue;
+                const padding = shape.getPadding() / shared.render_scale;
                 const bb = bounding_box.BoundingBox{
-                    .min_x = shape.bounds[3].x,
-                    .min_y = shape.bounds[3].y,
-                    .max_x = shape.bounds[3].x + width,
-                    .max_y = shape.bounds[3].y + height,
+                    .min_x = padding,
+                    .min_y = padding,
+                    .max_x = padding + size.w,
+                    .max_y = padding + size.h,
                 };
-                // const cache_id = create_cache_texture();
-                start_cache(shape.cache_texture_id, bb, width, height);
+
+                start_cache(shape.cache_texture_id, bb, size.w, size.h);
+
+                const vertex_bounds = [_]types.PointUV{
+                    // first triangle
+                    .{ .x = 0, .y = 0, .u = 0, .v = 0 },
+                    .{ .x = 0, .y = size.h, .u = 0, .v = 1 },
+                    .{ .x = size.w, .y = size.h, .u = 1, .v = 1 },
+                    // second triangle
+                    .{ .x = size.w, .y = size.h, .u = 1, .v = 1 },
+                    .{ .x = size.w, .y = 0, .u = 1, .v = 0 },
+                    .{ .x = 0, .y = 0, .u = 0, .v = 0 },
+                };
+
                 web_gpu_programs.draw_shape(
-                    &bounds,
+                    &vertex_bounds,
                     shape.getUniform(),
                     shape.sdf_texture_id,
                 );
 
                 end_cache();
-                // std.debug.print("zig end {d}\n", .{cache_id});
 
-                web_gpu_programs.draw_blur(shape.cache_texture_id);
-
-                // start_cache(shape.cache_texture_id, bb, width, height);
-                // end_cache();
+                // web_gpu_programs.draw_blur(shape.cache_texture_id);
 
                 shape.outdated_cache = false;
             },

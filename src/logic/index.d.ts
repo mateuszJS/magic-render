@@ -104,7 +104,8 @@ declare module '*.zig' {
     paths: Point[][],
     bounds: PointUV[] | null,
     props: Partial<ShapeProps>,
-    texture_id: number
+    sdf_texture_id: number,
+    cache_texture_id: number
   ) => number /* id */
   export const addShapeBegin: VoidFunction
   export const addShapeFinish: VoidFunction

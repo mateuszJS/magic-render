@@ -24,7 +24,7 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
             { shaderLocation: 0, offset: 0, format: 'float32x4' }, // position 0
             { shaderLocation: 1, offset: 16, format: 'float32x4' }, // position 1
             { shaderLocation: 2, offset: 16 + 16, format: 'float32x4' }, // position 2
-            { shaderLocation: 3, offset: 16 + 16 + 16, format: 'unorm8x4' }, // color 'rgba8unorm'
+            { shaderLocation: 3, offset: 16 + 16 + 16, format: 'unorm8x4' }, // color rgba8unorm/bgra8unorm
             { shaderLocation: 4, offset: 16 + 16 + 16 + 4, format: 'float32x3' }, // rounded corner values
           ] as const,
         },
