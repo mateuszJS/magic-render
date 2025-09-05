@@ -225,8 +225,8 @@ export function createShapes(
               if (def.stdDeviation)
                 serializedProps.filter = {
                   gaussianBlur: {
-                    x: def.stdDeviation[0],
-                    y: def.stdDeviation[1],
+                    x: 2, //def.stdDeviation[0],
+                    y: 2, //def.stdDeviation[1],
                   },
                 }
             }
@@ -246,14 +246,7 @@ export function createShapes(
         const correctedPaths = transformedPaths.map((path) =>
           path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
         )
-        Logic.addShape(
-          0,
-          correctedPaths,
-          null,
-          serializedProps,
-          Textures.createSDF(),
-          Textures.createCacheTexture()
-        )
+        Logic.addShape(0, correctedPaths, null, serializedProps, Textures.createSDF(), null)
       }
     }
     createShapes(child, defs, svgWidth, svgHeight, currTransform)

@@ -26,7 +26,7 @@ const WebGpuPrograms = struct {
     draw_texture: *const fn (images.DrawVertex, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
     compute_shape: *const fn ([]const types.Point, f32, f32, u32) void,
-    draw_blur: *const fn (u32) void,
+    draw_blur: *const fn (u32, f32, f32, f32, f32) void,
     draw_shape: *const fn ([]const types.PointUV, shapes.Uniform, u32) void,
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
@@ -181,7 +181,7 @@ pub fn addShape(
     bounds: ?[4]types.PointUV,
     props: shapes.SerializedProps,
     sdf_texture_id: u32,
-    cache_texture_id: u32,
+    cache_texture_id: ?u32,
 ) !u32 {
     const id = if (id_or_zero == 0) generateId() else id_or_zero;
     const shape = try shapes.Shape.new(
@@ -320,7 +320,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                     .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
                     .stroke = .{ .solid = .{ 0.0, 0.0, 0.0, 1.0 } },
                     .stroke_width = 1.0,
-                    .filter = null,
+                    .filter = .{ .gaussianBlur = .{ .x = 0.5, .y = 0.5 } },
                 },
                 create_sdf_texture(),
                 create_cache_texture(),
@@ -647,11 +647,14 @@ pub fn calculateShapesSDF() !void {
                         point.y *= shape.sdf_scale;
                     }
 
-                    if (shape.sdf_size.w > 0 and shape.sdf_size.h > 0) {
+                    std.debug.print("shape.sdf_scale: {d}\n", .{shape.sdf_scale});
+
+                    if (shape.sdf_size.w > 1.001 and shape.sdf_size.h > 1.001) {
+                        // std.debug.print("Computing SDF, texture id: {d}, size: {d}x{d}\n", .{ shape.sdf_texture_id, shape.sdf_size.w, shape.sdf_size.h });
                         web_gpu_programs.compute_shape(
                             points,
-                            shape.sdf_size.w,
-                            shape.sdf_size.h,
+                            @floor(shape.sdf_size.w),
+                            @floor(shape.sdf_size.h),
                             shape.sdf_texture_id,
                         );
 
@@ -669,47 +672,76 @@ pub fn updateCache() void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                if (!shape.outdated_cache) continue;
-
-                const bounds = shape.getBoundsWithPadding(1 / shared.render_scale);
-                const size = texture_size.get_size(bounds);
-
-                if (size.w == 0 or size.h == 0) continue;
-                const padding = shape.getPadding() / shared.render_scale;
-                const bb = bounding_box.BoundingBox{
-                    .min_x = padding,
-                    .min_y = padding,
-                    .max_x = padding + size.w,
-                    .max_y = padding + size.h,
-                };
-
-                start_cache(shape.cache_texture_id, bb, size.w, size.h);
-
-                const vertex_bounds = [_]types.PointUV{
-                    // first triangle
-                    .{ .x = 0, .y = 0, .u = 0, .v = 0 },
-                    .{ .x = 0, .y = size.h, .u = 0, .v = 1 },
-                    .{ .x = size.w, .y = size.h, .u = 1, .v = 1 },
-                    // second triangle
-                    .{ .x = size.w, .y = size.h, .u = 1, .v = 1 },
-                    .{ .x = size.w, .y = 0, .u = 1, .v = 0 },
-                    .{ .x = 0, .y = 0, .u = 0, .v = 0 },
-                };
-
-                web_gpu_programs.draw_shape(
-                    &vertex_bounds,
-                    shape.getUniform(),
-                    shape.sdf_texture_id,
-                );
-
-                end_cache();
-
                 if (shape.props.filter) |filter| {
-                    _ = filter; // autofix
-                    web_gpu_programs.draw_blur(shape.cache_texture_id);
-                }
+                    if (!shape.outdated_cache) continue;
+                    const cache_texture_id: u32 = if (shape.cache_texture_id) |id| id else b: {
+                        const id = create_cache_texture();
+                        shape.cache_texture_id = id;
+                        break :b id;
+                    };
 
-                shape.outdated_cache = false;
+                    const bounds = shape.getBoundsWithPadding(1 / shared.render_scale);
+                    const init_width = bounds[0].distance(bounds[1]) * shared.render_scale; // * shared.render_scale to revert to logical scale, nothing screen/camera/zoom related
+                    var size = texture_size.get_size(bounds);
+                    var cache_scale = size.w / init_width;
+
+                    // blur specific
+                    size = texture_size.within_max_blur_size(size, filter.gaussianBlur, cache_scale);
+                    cache_scale = size.w / init_width;
+
+                    shape.cache_scale = cache_scale;
+
+                    // size.w = @floor(size.w);
+                    // size.h = @floor(size.h);
+
+                    if (size.w < 1.001 or size.h < 1.001) continue;
+                    const padding = shape.getPadding() / shared.render_scale;
+                    // const padding = @floor(shape.getPadding() / shared.render_scale);
+                    const bb = bounding_box.BoundingBox{
+                        .min_x = padding,
+                        .min_y = padding,
+                        .max_x = padding + size.w,
+                        .max_y = padding + size.h,
+                    };
+
+                    start_cache(cache_texture_id, bb, size.w, size.h);
+
+                    var vertex_bounds = [_]types.PointUV{
+                        // first triangle
+                        .{ .x = 0, .y = 0, .u = 0, .v = 0 },
+                        .{ .x = 0, .y = size.h, .u = 0, .v = 1 },
+                        .{ .x = size.w, .y = size.h, .u = 1, .v = 1 },
+                        // second triangle
+                        .{ .x = size.w, .y = size.h, .u = 1, .v = 1 },
+                        .{ .x = size.w, .y = 0, .u = 1, .v = 0 },
+                        .{ .x = 0, .y = 0, .u = 0, .v = 0 },
+                    };
+
+                    web_gpu_programs.draw_shape(
+                        &vertex_bounds,
+                        shape.getUniform(),
+                        shape.sdf_texture_id,
+                    );
+
+                    end_cache();
+
+                    // if (shape.props.filter) |filter| {
+                    const sigma_x = filter.gaussianBlur.x * shape.cache_scale;
+                    const sigma_y = filter.gaussianBlur.y * shape.cache_scale;
+                    std.debug.print("shape.cache_scale: {d}\n", .{shape.cache_scale});
+                    const filter_size_x = @max(1.0, 2.0 * @ceil(3 * sigma_x) + 1.0);
+                    const filter_size_y = @max(1.0, 2.0 * @ceil(3 * sigma_y) + 1.0);
+
+                    web_gpu_programs.draw_blur(
+                        cache_texture_id,
+                        filter_size_x,
+                        filter_size_y,
+                        sigma_x,
+                        sigma_y,
+                    );
+
+                    shape.outdated_cache = false;
+                }
             },
         }
     }
@@ -731,7 +763,19 @@ pub fn renderDraw() !void {
                 web_gpu_programs.draw_texture(vertex_data, img.texture_id);
             },
             .shape => |*shape| {
-                web_gpu_programs.draw_texture(shape.getDrawBounds(), shape.cache_texture_id);
+                // std.debug.print("shape id: {d}", .{shape.id});
+                if (shape.cache_texture_id) |cache_texture_id| {
+                    var bounds = shape.getDrawBounds();
+                    for (&bounds) |*b| {
+                        // std.debug.print("BEFORE draw bounds: {d}, {d}\n", .{ b.x, b.y });
+                        b.x = @floor(b.x);
+                        b.y = @floor(b.y);
+                        // std.debug.print("AFTER draw bounds: {d}, {d}\n", .{ b.x, b.y });
+                    }
+                    web_gpu_programs.draw_texture(bounds, cache_texture_id);
+                } else {
+                    web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getUniform(), shape.sdf_texture_id);
+                }
             },
         }
     }

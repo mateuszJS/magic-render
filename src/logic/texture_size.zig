@@ -1,5 +1,7 @@
+const Point = @import("types.zig").Point;
 const PointUV = @import("types.zig").PointUV;
 const shared = @import("shared.zig");
+const std = @import("std");
 
 pub const TextureSize = struct {
     w: f32,
@@ -37,4 +39,24 @@ pub fn get_size(bounds: [4]PointUV) TextureSize {
     }
 
     return TextureSize{ .w = width, .h = height };
+}
+
+const MAX_FILTER_RADIUS = 128.0 - 2.0; // 2.0 just to avoid being on the edge of floating
+// point precision during later computations
+pub fn within_max_blur_size(tex_size: TextureSize, blur_size: Point, scale: f32) TextureSize {
+    const sigma_x = blur_size.x * scale;
+    const sigma_y = blur_size.y * scale;
+    const filter_size_x = @max(1.0, 2.0 * @ceil(3 * sigma_x) + 1.0);
+    const filter_size_y = @max(1.0, 2.0 * @ceil(3 * sigma_y) + 1.0);
+    const filter_size_max = @max(filter_size_x, filter_size_y);
+
+    if (filter_size_max > MAX_FILTER_RADIUS) {
+        const ratio = MAX_FILTER_RADIUS / filter_size_max;
+        return TextureSize{
+            .w = tex_size.w * ratio,
+            .h = tex_size.h * ratio,
+        };
+    }
+
+    return tex_size;
 }

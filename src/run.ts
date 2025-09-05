@@ -75,8 +75,16 @@ export default function runCreator(
       Textures.updateSDF(textureId, width, height)
       computeShape(computePass, curvesDataView, Textures.getTexture(textureId))
     },
-    draw_blur: (textureId) => {
-      drawBlur(encoder, Textures.getTexture(textureId))
+    draw_blur: (textureId, filterRadiusX, filterRadiusY, sigmaX, sigmaY) => {
+      drawBlur(
+        encoder,
+        Textures.getTexture(textureId),
+        filterRadiusX,
+        filterRadiusY,
+        sigmaX,
+        sigmaY,
+        2
+      )
     },
     draw_shape: (bound_box_data, uniform_data, textureId) => {
       const boundBoxDataView = bound_box_data['*'].dataView

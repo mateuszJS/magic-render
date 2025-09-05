@@ -1,17 +1,18 @@
 struct Params {
-  filterDim : i32,
+  filterDim : i32, // x for horizontal, y for vertical
   blockDim : u32,
+  sigma : vec2f, // standard deviation for X (when flip=0) and Y (when flip=1)
 }
-
-@group(0) @binding(0) var samp : sampler;
-@group(0) @binding(1) var<uniform> params : Params;
-@group(1) @binding(1) var inputTex : texture_2d<f32>;
-@group(1) @binding(2) var outputTex : texture_storage_2d<{presentationFormat}, write>;
 
 struct Flip {
   value : u32,
 }
-@group(1) @binding(3) var<uniform> flip : Flip;
+
+@group(0) @binding(0) var samp : sampler;
+@group(0) @binding(1) var<uniform> params : Params;
+@group(0) @binding(2) var inputTex : texture_2d<f32>;
+@group(0) @binding(3) var outputTex : texture_storage_2d<{presentationFormat}, write>;
+@group(0) @binding(4) var<uniform> flip : Flip;
 
 // This shader blurs the input texture in one direction, depending on whether
 // |flip.value| is 0 or 1.
@@ -38,6 +39,7 @@ fn main(
   @builtin(workgroup_id) WorkGroupID : vec3<u32>,
   @builtin(local_invocation_id) LocalInvocationID : vec3<u32>
 ) {
+  // let fdim = select(params.filterDim.x, params.filterDim.y, flip.value == 1u);
   let filterOffset = (params.filterDim - 1) / 2;
   let dims = vec2<i32>(textureDimensions(inputTex, 0));
   let baseIndex = vec2<i32>(WorkGroupID.xy * vec2(params.blockDim, 4) + // it's just the index of the first texel in a group
@@ -75,11 +77,30 @@ fn main(
       if (center >= filterOffset &&
           center < 128 - filterOffset &&
           all(writeIndex < dims)) {
-        var acc = vec4f(0);
+        // Choose sigma along the blur axis
+        let s: f32 = select(params.sigma.x, params.sigma.y, flip.value == 1u);
+        // if (flip.value != 0u) {
+        //   s = params.sigma.y;
+        // }
+        let denom = max(1e-6, 2.0 * s * s);
+
+        var acc = vec4f(0.0);
+        var wsum = 0.0;
+        /*
+        Before transforming into gaussian blur:
+          for (var f = 0; f < params.filterDim; f++) {
+            var i = center + f - filterOffset;
+            acc = acc + (1.0 / f32(params.filterDim)) * tile[r][i];
+          }
+        */
         for (var f = 0; f < params.filterDim; f++) {
-          var i = center + f - filterOffset;
-          acc = acc + (1.0 / f32(params.filterDim)) * tile[r][i];
+          let rel = f - filterOffset;
+          var i = center + rel;
+          let w = exp(- (f32(rel) * f32(rel)) / denom);
+          acc = acc + w * tile[r][i];
+          wsum = wsum + w;
         }
+        acc = acc / max(wsum, 1e-6);
         textureStore(outputTex, writeIndex, acc);
       }
     }

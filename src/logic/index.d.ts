@@ -70,7 +70,7 @@ type ShapeAssetInput = {
   props: ShapeProps
   bounds: PointUV[] | null
   sdf_texture_id: number
-  cache_texture_id: number
+  cache_texture_id: number | null
 }
 
 type ZigAssetOutput = { img: ImageAssetOutput } | { shape: ShapeAssetOutput }
@@ -103,7 +103,7 @@ declare module '*.zig' {
     bounds: PointUV[] | null,
     props: Partial<ShapeProps>,
     sdf_texture_id: number,
-    cache_texture_id: number
+    cache_texture_id: null | number
   ) => number /* id */
   export const addShapeBegin: VoidFunction
   export const addShapeFinish: VoidFunction
@@ -124,7 +124,13 @@ declare module '*.zig' {
     draw_msdf: (vertex_data: ArrayPointerDataView, texture_id: number) => void
     pick_texture: (vertex_data: ArrayPointerDataView, texture_id: number) => void
     pick_triangle: (vertex_data: ArrayPointerDataView) => void
-    draw_blur: (texture_id: number) => void
+    draw_blur: (
+      texture_id: number,
+      filterRadiusX: number,
+      filterRadiusY: number,
+      sigmaX: number,
+      sigmaY: number
+    ) => void
     compute_shape: (
       curves_data: ArrayPointerDataView,
       width: number,

@@ -24,7 +24,7 @@ export type SerializedInputShape = {
   paths: Point[][]
   props: ShapeProps
   sdf_texture_id?: number
-  cache_texture_id?: number
+  cache_texture_id?: number | null
   bounds?: PointUV[]
 }
 
@@ -43,7 +43,7 @@ export type SerializedOutputShape = {
   props: ShapeProps
   bounds: PointUV[]
   sdf_texture_id: number
-  cache_texture_id: number
+  cache_texture_id: number | null
 }
 
 export type SerializedOutputAsset = SerializedOutputImage | SerializedOutputShape
@@ -257,7 +257,7 @@ export default async function initCreator(
                   props: asset.props,
                   bounds: asset.bounds || null,
                   sdf_texture_id: asset.sdf_texture_id || Textures.createSDF(),
-                  cache_texture_id: asset.cache_texture_id || Textures.createCacheTexture(),
+                  cache_texture_id: asset.cache_texture_id || null,
                 },
               })
             } // otherwise it's an image

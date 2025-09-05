@@ -11,8 +11,6 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
   const sampler = device.createSampler({
     minFilter: 'linear',
     magFilter: 'linear',
-    addressModeU: 'repeat',
-    addressModeV: 'repeat',
   })
 
   const pipeline = device.createRenderPipeline({

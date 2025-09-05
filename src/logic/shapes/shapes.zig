@@ -74,8 +74,9 @@ pub const Shape = struct {
     outdated_sdf: bool, // if true, we need to recalculate SDF
     sdf_texture_id: u32,
 
-    cache_texture_id: u32,
+    cache_scale: f32 = 1.0,
     outdated_cache: bool,
+    cache_texture_id: ?u32,
 
     preview_point: ?Point = null,
 
@@ -88,7 +89,7 @@ pub const Shape = struct {
         input_bounds: ?[4]PointUV,
         input_props: SerializedProps,
         sdf_texture_id: u32,
-        cache_texture_id: u32,
+        cache_texture_id: ?u32,
         allocator: std.mem.Allocator,
     ) !Shape {
         var paths_list = std.ArrayList(Path).init(allocator);
@@ -108,7 +109,16 @@ pub const Shape = struct {
             .filter = input_props.filter,
         };
 
-        const shape = Shape{ .id = id, .paths = paths_list, .props = props, .sdf_texture_id = sdf_texture_id, .outdated_sdf = true, .bounds = input_bounds orelse DEFAULT_BOUNDS, .cache_texture_id = cache_texture_id, .outdated_cache = true };
+        const shape = Shape{
+            .id = id,
+            .paths = paths_list,
+            .props = props,
+            .sdf_texture_id = sdf_texture_id,
+            .outdated_sdf = true,
+            .bounds = input_bounds orelse DEFAULT_BOUNDS,
+            .cache_texture_id = cache_texture_id,
+            .outdated_cache = true,
+        };
 
         return shape;
     }
@@ -558,7 +568,7 @@ pub const Serialized = struct {
     props: SerializedProps,
     bounds: [4]PointUV,
     sdf_texture_id: u32,
-    cache_texture_id: u32,
+    cache_texture_id: ?u32,
 
     // this function returns a lot of false positives because we compare floating point numbers
     pub fn compare(self: Serialized, other: Serialized) bool {
