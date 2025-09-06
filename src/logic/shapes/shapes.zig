@@ -358,7 +358,7 @@ pub const Shape = struct {
                             color[2] * self.props.opacity,
                             color[3] * self.props.opacity,
                         },
-                        .stroke_color = .{ 0, 1, 0, 1 }, //self.props.stroke_color,
+                        .stroke_color = .{ 0, 0, 0, 0 }, //self.props.stroke_color,
                     },
                 };
             },

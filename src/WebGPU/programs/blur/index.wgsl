@@ -1,21 +1,17 @@
-struct Params {
-  filterDim : i32, // x for horizontal, y for vertical
-  blockDim : u32,
-  sigma : vec2f, // standard deviation for X (when flip=0) and Y (when flip=1)
-}
-
-struct Flip {
-  value : u32,
+struct Uniform {
+  filterDim: i32, // x for horizontal, y for vertical
+  blockDim: u32,
+  sigma: f32, // standard deviation for X (when flip=0) and Y (when flip=1)
+  flip: u32,
 }
 
 @group(0) @binding(0) var samp : sampler;
-@group(0) @binding(1) var<uniform> params : Params;
+@group(0) @binding(1) var<uniform> u : Uniform;
 @group(0) @binding(2) var inputTex : texture_2d<f32>;
 @group(0) @binding(3) var outputTex : texture_storage_2d<{presentationFormat}, write>;
-@group(0) @binding(4) var<uniform> flip : Flip;
 
 // This shader blurs the input texture in one direction, depending on whether
-// |flip.value| is 0 or 1.
+// |u.flip| is 0 or 1.
 // It does so by running (128 / 4) threads per workgroup to load 128
 // texels into 4 rows of shared memory. Each thread loads a
 // 4 x 4 block of texels to take advantage of the texture sampling
@@ -39,17 +35,16 @@ fn main(
   @builtin(workgroup_id) WorkGroupID : vec3<u32>,
   @builtin(local_invocation_id) LocalInvocationID : vec3<u32>
 ) {
-  // let fdim = select(params.filterDim.x, params.filterDim.y, flip.value == 1u);
-  let filterOffset = (params.filterDim - 1) / 2;
+  let filterOffset = (u.filterDim - 1) / 2;
   let dims = vec2<i32>(textureDimensions(inputTex, 0));
-  let baseIndex = vec2<i32>(WorkGroupID.xy * vec2(params.blockDim, 4) + // it's just the index of the first texel in a group
+  let baseIndex = vec2<i32>(WorkGroupID.xy * vec2(u.blockDim, 4) + // it's just the index of the first texel in a group
                             LocalInvocationID.xy * vec2(4, 1)) // <0, 128>
                   - vec2(filterOffset, 0);
   // baseIndex = xy of first texel of group
   for (var r = 0; r < 4; r++) {
     for (var c = 0; c < 4; c++) {
       var loadIndex = baseIndex + vec2(c, r);
-      if (flip.value != 0) {
+      if (u.flip != 0) {
         loadIndex = loadIndex.yx;
       }
 
@@ -69,7 +64,7 @@ fn main(
   for (var r = 0; r < 4; r++) {
     for (var c = 0; c < 4; c++) {
       var writeIndex = baseIndex + vec2(c, r);
-      if (flip.value != 0) {
+      if (u.flip != 0) {
         writeIndex = writeIndex.yx;
       }
 
@@ -77,30 +72,20 @@ fn main(
       if (center >= filterOffset &&
           center < 128 - filterOffset &&
           all(writeIndex < dims)) {
-        // Choose sigma along the blur axis
-        let s: f32 = select(params.sigma.x, params.sigma.y, flip.value == 1u);
-        // if (flip.value != 0u) {
-        //   s = params.sigma.y;
-        // }
-        let denom = max(1e-6, 2.0 * s * s);
 
+        let denom = 2.0 * u.sigma * u.sigma;
         var acc = vec4f(0.0);
         var wsum = 0.0;
-        /*
-        Before transforming into gaussian blur:
-          for (var f = 0; f < params.filterDim; f++) {
-            var i = center + f - filterOffset;
-            acc = acc + (1.0 / f32(params.filterDim)) * tile[r][i];
-          }
-        */
-        for (var f = 0; f < params.filterDim; f++) {
+
+        for (var f = 0; f < u.filterDim; f++) {
           let rel = f - filterOffset;
           var i = center + rel;
-          let w = exp(- (f32(rel) * f32(rel)) / denom);
+          let w = exp(- (f32(rel * rel)) / denom);
           acc = acc + w * tile[r][i];
           wsum = wsum + w;
         }
-        acc = acc / max(wsum, 1e-6);
+        acc = acc / wsum;
+
         textureStore(outputTex, writeIndex, acc);
       }
     }

@@ -316,7 +316,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                 .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
                 .stroke = .{ .solid = .{ 0.0, 0.0, 0.0, 1.0 } },
                 .stroke_width = 1.0,
-                .filter = .{ .gaussianBlur = .{ .x = 30, .y = 0 } },
+                .filter = .{ .gaussianBlur = .{ .x = 30, .y = 1 } },
                 .opacity = 1.0,
             };
             const id = try addShape(
@@ -731,7 +731,7 @@ pub fn updateCache() void {
 
                     // Calculate dynamic iterations based on sigma to maintain consistent blur strength
                     const maxSigma = @max(sigma_x, sigma_y);
-                    const maxSigmaPerPass = 2.0; // Reduced from 4.0 since we're using 3×sigma instead of 6×sigma
+                    const maxSigmaPerPass = 2.0; // Feel free to increase to 4.0 for betetr quality
 
                     // Calculate required iterations to achieve target sigma
                     const iterations = @max(1, @ceil(maxSigma / maxSigmaPerPass));
@@ -741,13 +741,13 @@ pub fn updateCache() void {
                     const sigma_per_pass_y = sigma_y / @sqrt(iterations);
 
                     // Calculate per-pass filter sizes from per-pass sigma
-                    const filter_size_per_pass_x = @max(3, @ceil(3 * sigma_per_pass_x)); // Ensure odd
-                    const filter_size_per_pass_y = @max(3, @ceil(3 * sigma_per_pass_y)); // Ensure odd
+                    const filter_size_per_pass_x = @max(1, @ceil(1.5 * maxSigmaPerPass * sigma_per_pass_x));
+                    const filter_size_per_pass_y = @max(1, @ceil(1.5 * maxSigmaPerPass * sigma_per_pass_y));
 
                     web_gpu_programs.draw_blur(
                         cache_texture_id,
                         @as(u32, @intFromFloat(iterations)),
-                        @as(u32, @intFromFloat(filter_size_per_pass_x)) | 1,
+                        @as(u32, @intFromFloat(filter_size_per_pass_x)) | 1, // Ensure odd
                         @as(u32, @intFromFloat(filter_size_per_pass_y)) | 1,
                         sigma_per_pass_x,
                         sigma_per_pass_y,

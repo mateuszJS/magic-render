@@ -23,28 +23,6 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     minFilter: 'linear',
   })
 
-  const buffer0 = (() => {
-    const buffer = device.createBuffer({
-      size: 4,
-      mappedAtCreation: true,
-      usage: GPUBufferUsage.UNIFORM,
-    })
-    new Uint32Array(buffer.getMappedRange())[0] = 0
-    buffer.unmap()
-    return buffer
-  })()
-
-  const buffer1 = (() => {
-    const buffer = device.createBuffer({
-      size: 4,
-      mappedAtCreation: true,
-      usage: GPUBufferUsage.UNIFORM,
-    })
-    new Uint32Array(buffer.getMappedRange())[0] = 1
-    buffer.unmap()
-    return buffer
-  })()
-
   return function renderBlur(
     encoder: GPUCommandEncoder,
     texture: GPUTexture,
@@ -55,11 +33,11 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     sigmaPerPassY: number
   ) {
     const blurParamsBufferX = device.createBuffer({
-      size: 24,
+      size: 16,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
     })
     const blurParamsBufferY = device.createBuffer({
-      size: 24,
+      size: 16,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
     })
 
@@ -83,7 +61,6 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
         { binding: 1, resource: { buffer: blurParamsBufferX } },
         { binding: 2, resource: textures[1].createView() },
         { binding: 3, resource: textures[0].createView() },
-        { binding: 4, resource: { buffer: buffer0 } },
       ],
     })
     const computeConstantsY = device.createBindGroup({
@@ -93,7 +70,6 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
         { binding: 1, resource: { buffer: blurParamsBufferY } },
         { binding: 2, resource: textures[0].createView() },
         { binding: 3, resource: textures[1].createView() },
-        { binding: 4, resource: { buffer: buffer1 } },
       ],
     })
 
@@ -102,15 +78,17 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     console.log('filterSizePerPassX', filterSizePerPassX)
     console.log('filterSizePerPassY', filterSizePerPassY)
 
-    const dataViewX = new DataView(new ArrayBuffer(5 * 4))
+    const dataViewX = new DataView(new ArrayBuffer(4 * 4))
     dataViewX.setInt32(0, filterSizePerPassX, true)
     dataViewX.setUint32(4, blockDimX, true)
     dataViewX.setFloat32(8, sigmaPerPassX, true)
-    dataViewX.setFloat32(12, sigmaPerPassY, true)
+    dataViewX.setUint32(12, 0, true)
 
-    const dataViewY = new DataView(dataViewX.buffer.slice())
+    const dataViewY = new DataView(new ArrayBuffer(4 * 4))
     dataViewY.setInt32(0, filterSizePerPassY, true)
     dataViewY.setUint32(4, blockDimY, true)
+    dataViewY.setFloat32(8, sigmaPerPassY, true)
+    dataViewY.setUint32(12, 1, true)
 
     device.queue.writeBuffer(blurParamsBufferX, 0, dataViewX)
     device.queue.writeBuffer(blurParamsBufferY, 0, dataViewY)
