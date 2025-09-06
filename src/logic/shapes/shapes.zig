@@ -56,12 +56,14 @@ pub const Props = struct {
     stroke: fill.Fill,
     stroke_width: f32,
     filter: ?Filter,
+    opacity: f32,
 };
 pub const SerializedProps = struct {
     fill: fill.SerializedFill,
     stroke: fill.SerializedFill,
     stroke_width: f32,
     filter: ?Filter,
+    opacity: f32,
 };
 
 pub const Shape = struct {
@@ -107,6 +109,7 @@ pub const Shape = struct {
             .stroke = try fill.Fill.new(input_props.stroke, allocator),
             .stroke_width = input_props.stroke_width,
             .filter = input_props.filter,
+            .opacity = input_props.opacity,
         };
 
         const shape = Shape{
@@ -349,7 +352,12 @@ pub const Shape = struct {
                 return Uniform{
                     .solid = .{
                         .stroke_width = self.getStrokeWidth(),
-                        .fill_color = color, //self.props.fill_color,
+                        .fill_color = .{
+                            color[0] * self.props.opacity,
+                            color[1] * self.props.opacity,
+                            color[2] * self.props.opacity,
+                            color[3] * self.props.opacity,
+                        },
                         .stroke_color = .{ 0, 1, 0, 1 }, //self.props.stroke_color,
                     },
                 };
@@ -359,7 +367,12 @@ pub const Shape = struct {
                 for (gradient.stops.items, 0..) |stop, i| {
                     stops[i] = UniformGradientStop{
                         .offset = stop.offset,
-                        .color = stop.color,
+                        .color = .{
+                            stop.color[0] * self.props.opacity,
+                            stop.color[1] * self.props.opacity,
+                            stop.color[2] * self.props.opacity,
+                            stop.color[3] * self.props.opacity,
+                        },
                     };
                 }
 
@@ -378,7 +391,12 @@ pub const Shape = struct {
                 for (gradient.stops.items, 0..) |stop, i| {
                     stops[i] = UniformGradientStop{
                         .offset = stop.offset,
-                        .color = stop.color,
+                        .color = .{
+                            stop.color[0] * self.props.opacity,
+                            stop.color[1] * self.props.opacity,
+                            stop.color[2] * self.props.opacity,
+                            stop.color[3] * self.props.opacity,
+                        },
                     };
                 }
 
@@ -396,8 +414,21 @@ pub const Shape = struct {
         }
     }
 
-    pub fn getPadding(self: Shape) f32 {
-        return self.props.stroke_width / 2.0;
+    pub fn getPadding(self: Shape) Point {
+        _ = self; // autofix
+        return Point{
+            .x = 100.0,
+            .y = 100.0,
+        };
+        // var padding = Point{
+        //     .x = 1.0 + self.props.stroke_width / 2.0,
+        //     .y = 1.0 + self.props.stroke_width / 2.0,
+        // };
+        // if (self.props.filter) |filter| {
+        //     padding.x += filter.gaussianBlur.x;
+        //     padding.y += @max(3.0, filter.gaussianBlur.y);
+        // }
+        // return padding;
     }
 
     // function has side effect, marks texture as generated
@@ -434,8 +465,8 @@ pub const Shape = struct {
         const padding = self.getPadding();
         for (points) |*point| {
             const scaled = scale.get(point);
-            point.x = padding + scaled.x;
-            point.y = padding + scaled.y;
+            point.x = padding.x + scaled.x;
+            point.y = padding.y + scaled.y;
         }
 
         self.outdated_sdf = false;
@@ -456,8 +487,8 @@ pub const Shape = struct {
             const angle_prev = b.angleTo(b_prev);
 
             buffer[i] = b;
-            buffer[i].x -= @cos(angle_next) * padding + @cos(angle_prev) * padding;
-            buffer[i].y -= @sin(angle_next) * padding + @sin(angle_prev) * padding;
+            buffer[i].x -= @cos(angle_next) * padding.x + @cos(angle_prev) * padding.x;
+            buffer[i].y -= @sin(angle_next) * padding.y + @sin(angle_prev) * padding.y;
             buffer[i].x *= scale;
             buffer[i].y *= scale;
         }
@@ -502,6 +533,7 @@ pub const Shape = struct {
             .stroke = self.props.stroke.serialize(),
             .stroke_width = self.props.stroke_width,
             .filter = self.props.filter,
+            .opacity = self.props.opacity,
         };
 
         return Serialized{

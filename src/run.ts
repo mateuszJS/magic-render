@@ -75,15 +75,22 @@ export default function runCreator(
       Textures.updateSDF(textureId, width, height)
       computeShape(computePass, curvesDataView, Textures.getTexture(textureId))
     },
-    draw_blur: (textureId, filterRadiusX, filterRadiusY, sigmaX, sigmaY) => {
+    draw_blur: (
+      textureId,
+      iterations,
+      filterSizePerPassX,
+      filterSizePerPassY,
+      sigmaPerPassX,
+      sigmaPerPassY
+    ) => {
       drawBlur(
         encoder,
         Textures.getTexture(textureId),
-        filterRadiusX,
-        filterRadiusY,
-        sigmaX,
-        sigmaY,
-        2
+        iterations,
+        filterSizePerPassX,
+        filterSizePerPassY,
+        sigmaPerPassX,
+        sigmaPerPassY
       )
     },
     draw_shape: (bound_box_data, uniform_data, textureId) => {

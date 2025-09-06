@@ -56,7 +56,7 @@ fn main(
       tile[r][4 * LocalInvocationID.x + u32(c)] = textureSampleLevel(
         inputTex,
         samp,
-        (vec2<f32>(loadIndex) + vec2<f32>(0.25, 0.25)) / vec2<f32>(dims),
+        (vec2<f32>(loadIndex) + vec2<f32>(0.5, 0.5)) / vec2<f32>(dims),
         0.0
       ).rgba;
     }

@@ -1,7 +1,7 @@
 import { Node } from 'svg-parser'
 import { getProps } from './utils'
 
-type DefStop = {
+export type DefStop = {
   offset: number
   color: Color
 }
@@ -39,6 +39,8 @@ export type Def = {
   fill?: AttrValue
   stroke?: AttrValue
   filter?: AttrValue
+  opacity?: AttrValue
+  'fill-opacity'?: AttrValue
 }
 
 export type Defs = Record<string, Def>

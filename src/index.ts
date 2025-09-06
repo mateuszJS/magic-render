@@ -189,6 +189,7 @@ export default async function initCreator(
                   },
                 }
               : null,
+            opacity: shape.props.opacity,
           },
           sdf_texture_id: shape.sdf_texture_id,
           cache_texture_id: shape.cache_texture_id,

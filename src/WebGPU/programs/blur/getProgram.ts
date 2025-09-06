@@ -1,3 +1,4 @@
+import { addDestroyBuf } from '../initPrograms'
 import shaderCode from './index.wgsl'
 
 const tileDim = 128
@@ -44,24 +45,24 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     return buffer
   })()
 
-  const blurParamsBufferX = device.createBuffer({
-    size: 24,
-    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-  })
-  const blurParamsBufferY = device.createBuffer({
-    size: 24,
-    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-  })
-
   return function renderBlur(
     encoder: GPUCommandEncoder,
     texture: GPUTexture,
-    filterSizeX: number,
-    filterSizeY: number,
-    sigmaX: number,
-    sigmaY: number,
-    iterations: number
+    iterations: number,
+    filterSizePerPassX: number,
+    filterSizePerPassY: number,
+    sigmaPerPassX: number,
+    sigmaPerPassY: number
   ) {
+    const blurParamsBufferX = device.createBuffer({
+      size: 24,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+    })
+    const blurParamsBufferY = device.createBuffer({
+      size: 24,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+    })
+
     const textures = [
       device.createTexture({
         label: 'draw blur swap texture',
@@ -96,17 +97,19 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
       ],
     })
 
-    const blockDimX = Math.max(1, tileDim - (filterSizeX - 1))
-    const blockDimY = Math.max(1, tileDim - (filterSizeY - 1))
+    const blockDimX = Math.max(1, tileDim - (filterSizePerPassX - 1))
+    const blockDimY = Math.max(1, tileDim - (filterSizePerPassY - 1))
+    console.log('filterSizePerPassX', filterSizePerPassX)
+    console.log('filterSizePerPassY', filterSizePerPassY)
 
     const dataViewX = new DataView(new ArrayBuffer(5 * 4))
-    dataViewX.setInt32(0, filterSizeX, true)
+    dataViewX.setInt32(0, filterSizePerPassX, true)
     dataViewX.setUint32(4, blockDimX, true)
-    dataViewX.setFloat32(8, sigmaX, true)
-    dataViewX.setFloat32(12, sigmaY, true)
+    dataViewX.setFloat32(8, sigmaPerPassX, true)
+    dataViewX.setFloat32(12, sigmaPerPassY, true)
 
     const dataViewY = new DataView(dataViewX.buffer.slice())
-    dataViewY.setInt32(0, filterSizeY, true)
+    dataViewY.setInt32(0, filterSizePerPassY, true)
     dataViewY.setUint32(4, blockDimY, true)
 
     device.queue.writeBuffer(blurParamsBufferX, 0, dataViewX)
@@ -134,5 +137,8 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     }
 
     computePass.end()
+
+    addDestroyBuf(blurParamsBufferX)
+    addDestroyBuf(blurParamsBufferY)
   }
 }

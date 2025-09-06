@@ -42,6 +42,7 @@ type ShapeProps = {
   fill: { linear: LinearGradient } | { radial: RadialGradient } | { solid: Color }
   stroke: { linear: LinearGradient } | { radial: RadialGradient } | { solid: Color }
   filter: { gaussianBlur: Point } | null
+  opacity: number
 }
 
 type ImageAssetOutput = {
@@ -126,10 +127,11 @@ declare module '*.zig' {
     pick_triangle: (vertex_data: ArrayPointerDataView) => void
     draw_blur: (
       texture_id: number,
-      filterRadiusX: number,
-      filterRadiusY: number,
-      sigmaX: number,
-      sigmaY: number
+      iterations: number,
+      filterSizePerPassX: number,
+      filterSizePerPassY: number,
+      sigmaPerPassX: number,
+      sigmaPerPassY: number
     ) => void
     compute_shape: (
       curves_data: ArrayPointerDataView,

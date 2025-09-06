@@ -26,7 +26,7 @@ const WebGpuPrograms = struct {
     draw_texture: *const fn (images.DrawVertex, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
     compute_shape: *const fn ([]const types.Point, f32, f32, u32) void,
-    draw_blur: *const fn (u32, f32, f32, f32, f32) void,
+    draw_blur: *const fn (u32, u32, u32, u32, f32, f32) void,
     draw_shape: *const fn ([]const types.PointUV, shapes.Uniform, u32) void,
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
@@ -312,18 +312,20 @@ fn updateSelectedAsset(id: u32) !void {
 pub fn onPointerDown(x: f32, y: f32) !void {
     if (state.tool == Tool.DrawShape) {
         if (state.selected_asset_id == NO_SELECTION) {
+            const props = shapes.SerializedProps{
+                .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
+                .stroke = .{ .solid = .{ 0.0, 0.0, 0.0, 1.0 } },
+                .stroke_width = 1.0,
+                .filter = .{ .gaussianBlur = .{ .x = 30, .y = 0 } },
+                .opacity = 1.0,
+            };
             const id = try addShape(
                 0,
                 &.{},
                 null,
-                shapes.SerializedProps{
-                    .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
-                    .stroke = .{ .solid = .{ 0.0, 0.0, 0.0, 1.0 } },
-                    .stroke_width = 1.0,
-                    .filter = .{ .gaussianBlur = .{ .x = 0.5, .y = 0.5 } },
-                },
+                props,
                 create_sdf_texture(),
-                create_cache_texture(),
+                if (props.filter != null) create_cache_texture() else null,
             );
             try updateSelectedAsset(id);
         }
@@ -482,19 +484,6 @@ pub fn onPointerLeave() !void {
     try checkAssetsUpdate(true);
 }
 
-fn updateShapeCache(shape: *shapes.Shape) !void {
-    _ = shape; // autofix
-    // if (shape.cache.valid) {
-    //     return; // no need to update
-    // }
-
-    // var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    // defer arena.deinit();
-    // const allocator = arena.allocator();
-
-    // try shape.drawTextureCache(allocator);
-}
-
 pub fn commitChanges() !void {
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
@@ -637,6 +626,7 @@ pub fn calculateShapesSDF() !void {
 
                 const option_points = try shape.getNewSdfPoint(allocator);
                 if (option_points) |points| {
+                    // TODO: rethink if SDF really needs blur to be included in the padding
                     const bounds = shape.getBoundsWithPadding(1 / shared.render_scale);
                     shape.sdf_size = texture_size.get_sdf_size(bounds);
                     const init_width = bounds[0].distance(bounds[1]) * shared.render_scale; // * shared.render_scale to revert to logical scale, nothing screen/camera/zoom related
@@ -646,8 +636,6 @@ pub fn calculateShapesSDF() !void {
                         point.x *= shape.sdf_scale;
                         point.y *= shape.sdf_scale;
                     }
-
-                    std.debug.print("shape.sdf_scale: {d}\n", .{shape.sdf_scale});
 
                     if (shape.sdf_size.w > 1.001 and shape.sdf_size.h > 1.001) {
                         // std.debug.print("Computing SDF, texture id: {d}, size: {d}x{d}\n", .{ shape.sdf_texture_id, shape.sdf_size.w, shape.sdf_size.h });
@@ -674,6 +662,7 @@ pub fn updateCache() void {
             .shape => |*shape| {
                 if (shape.props.filter) |filter| {
                     if (!shape.outdated_cache) continue;
+
                     const cache_texture_id: u32 = if (shape.cache_texture_id) |id| id else b: {
                         const id = create_cache_texture();
                         shape.cache_texture_id = id;
@@ -682,29 +671,41 @@ pub fn updateCache() void {
 
                     const bounds = shape.getBoundsWithPadding(1 / shared.render_scale);
                     const init_width = bounds[0].distance(bounds[1]) * shared.render_scale; // * shared.render_scale to revert to logical scale, nothing screen/camera/zoom related
-                    var size = texture_size.get_size(bounds);
+                    const size = texture_size.get_size(bounds);
                     var cache_scale = size.w / init_width;
 
-                    // blur specific
-                    size = texture_size.within_max_blur_size(size, filter.gaussianBlur, cache_scale);
+                    // Calculate blur radius with current scale
+                    const blur_radius = texture_size.get_blur_radius_pixels(filter.gaussianBlur, cache_scale);
+                    std.debug.print("blur radius: {d}x{d}\n", .{ blur_radius.x, blur_radius.y });
+
+                    // Add blur padding to texture size
+                    // size.w += 2 * blur_radius.x;
+                    // size.h += 2 * blur_radius.y;
+
+                    // Apply max blur size constraints after adding padding
+                    // size = texture_size.within_max_blur_size(size, filter.gaussianBlur, cache_scale);
+
+                    // Recalculate cache scale with final size
                     cache_scale = size.w / init_width;
 
                     shape.cache_scale = cache_scale;
 
-                    // size.w = @floor(size.w);
-                    // size.h = @floor(size.h);
-
                     if (size.w < 1.001 or size.h < 1.001) continue;
-                    const padding = shape.getPadding() / shared.render_scale;
-                    // const padding = @floor(shape.getPadding() / shared.render_scale);
                     const bb = bounding_box.BoundingBox{
-                        .min_x = padding,
-                        .min_y = padding,
-                        .max_x = padding + size.w,
-                        .max_y = padding + size.h,
+                        .min_x = 0,
+                        .min_y = 0,
+                        .max_x = size.w,
+                        .max_y = size.h,
                     };
+                    // const bb = bounding_box.BoundingBox{
+                    //     .min_x = -blur_radius.x,
+                    //     .min_y = -blur_radius.y,
+                    //     .max_x = blur_radius.x + size.w,
+                    //     .max_y = blur_radius.y + size.h,
+                    // };
 
                     start_cache(cache_texture_id, bb, size.w, size.h);
+                    // start_cache(cache_texture_id, bb, size.w + 2 * padding, size.h + 2 * padding);
 
                     var vertex_bounds = [_]types.PointUV{
                         // first triangle
@@ -725,20 +726,97 @@ pub fn updateCache() void {
 
                     end_cache();
 
-                    // if (shape.props.filter) |filter| {
                     const sigma_x = filter.gaussianBlur.x * shape.cache_scale;
                     const sigma_y = filter.gaussianBlur.y * shape.cache_scale;
-                    std.debug.print("shape.cache_scale: {d}\n", .{shape.cache_scale});
-                    const filter_size_x = @max(1.0, 2.0 * @ceil(3 * sigma_x) + 1.0);
-                    const filter_size_y = @max(1.0, 2.0 * @ceil(3 * sigma_y) + 1.0);
+
+                    // Calculate dynamic iterations based on sigma to maintain consistent blur strength
+                    const maxSigma = @max(sigma_x, sigma_y);
+                    const maxSigmaPerPass = 2.0; // Reduced from 4.0 since we're using 3×sigma instead of 6×sigma
+
+                    // Calculate required iterations to achieve target sigma
+                    const iterations = @max(1, @ceil(maxSigma / maxSigmaPerPass));
+
+                    // Calculate per-pass sigma values
+                    const sigma_per_pass_x = sigma_x / @sqrt(iterations);
+                    const sigma_per_pass_y = sigma_y / @sqrt(iterations);
+
+                    // Calculate per-pass filter sizes from per-pass sigma
+                    const filter_size_per_pass_x = @max(3, @ceil(3 * sigma_per_pass_x)); // Ensure odd
+                    const filter_size_per_pass_y = @max(3, @ceil(3 * sigma_per_pass_y)); // Ensure odd
 
                     web_gpu_programs.draw_blur(
                         cache_texture_id,
-                        filter_size_x,
-                        filter_size_y,
-                        sigma_x,
-                        sigma_y,
+                        @as(u32, @intFromFloat(iterations)),
+                        @as(u32, @intFromFloat(filter_size_per_pass_x)) | 1,
+                        @as(u32, @intFromFloat(filter_size_per_pass_y)) | 1,
+                        sigma_per_pass_x,
+                        sigma_per_pass_y,
                     );
+
+                    shape.outdated_cache = false;
+                } else {
+                    if (!shape.outdated_cache) continue;
+
+                    const cache_texture_id: u32 = if (shape.cache_texture_id) |id| id else b: {
+                        const id = create_cache_texture();
+                        shape.cache_texture_id = id;
+                        break :b id;
+                    };
+
+                    const bounds = shape.getBoundsWithPadding(1 / shared.render_scale);
+                    const init_width = bounds[0].distance(bounds[1]) * shared.render_scale; // * shared.render_scale to revert to logical scale, nothing screen/camera/zoom related
+                    const size = texture_size.get_size(bounds);
+                    var cache_scale = size.w / init_width;
+
+                    // Calculate blur radius with current scale
+
+                    // Add blur padding to texture size
+                    // size.w += 2 * blur_radius.x;
+                    // size.h += 2 * blur_radius.y;
+
+                    // Apply max blur size constraints after adding padding
+                    // size = texture_size.within_max_blur_size(size, filter.gaussianBlur, cache_scale);
+
+                    // Recalculate cache scale with final size
+                    cache_scale = size.w / init_width;
+
+                    shape.cache_scale = cache_scale;
+
+                    if (size.w < 1.001 or size.h < 1.001) continue;
+                    const bb = bounding_box.BoundingBox{
+                        .min_x = 0,
+                        .min_y = 0,
+                        .max_x = size.w,
+                        .max_y = size.h,
+                    };
+                    // const bb = bounding_box.BoundingBox{
+                    //     .min_x = -blur_radius.x,
+                    //     .min_y = -blur_radius.y,
+                    //     .max_x = blur_radius.x + size.w,
+                    //     .max_y = blur_radius.y + size.h,
+                    // };
+
+                    start_cache(cache_texture_id, bb, size.w, size.h);
+                    // start_cache(cache_texture_id, bb, size.w + 2 * padding, size.h + 2 * padding);
+
+                    var vertex_bounds = [_]types.PointUV{
+                        // first triangle
+                        .{ .x = 0, .y = 0, .u = 0, .v = 0 },
+                        .{ .x = 0, .y = size.h, .u = 0, .v = 1 },
+                        .{ .x = size.w, .y = size.h, .u = 1, .v = 1 },
+                        // second triangle
+                        .{ .x = size.w, .y = size.h, .u = 1, .v = 1 },
+                        .{ .x = size.w, .y = 0, .u = 1, .v = 0 },
+                        .{ .x = 0, .y = 0, .u = 0, .v = 0 },
+                    };
+
+                    web_gpu_programs.draw_shape(
+                        &vertex_bounds,
+                        shape.getUniform(),
+                        shape.sdf_texture_id,
+                    );
+
+                    end_cache();
 
                     shape.outdated_cache = false;
                 }
@@ -765,14 +843,7 @@ pub fn renderDraw() !void {
             .shape => |*shape| {
                 // std.debug.print("shape id: {d}", .{shape.id});
                 if (shape.cache_texture_id) |cache_texture_id| {
-                    var bounds = shape.getDrawBounds();
-                    for (&bounds) |*b| {
-                        // std.debug.print("BEFORE draw bounds: {d}, {d}\n", .{ b.x, b.y });
-                        b.x = @floor(b.x);
-                        b.y = @floor(b.y);
-                        // std.debug.print("AFTER draw bounds: {d}, {d}\n", .{ b.x, b.y });
-                    }
-                    web_gpu_programs.draw_texture(bounds, cache_texture_id);
+                    web_gpu_programs.draw_texture(shape.getDrawBounds(), cache_texture_id);
                 } else {
                     web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getUniform(), shape.sdf_texture_id);
                 }

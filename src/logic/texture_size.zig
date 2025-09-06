@@ -60,3 +60,17 @@ pub fn within_max_blur_size(tex_size: TextureSize, blur_size: Point, scale: f32)
 
     return tex_size;
 }
+
+// Calculate the blur radius in pixels for padding calculation
+// Returns the maximum distance the blur can extend in each direction
+pub fn get_blur_radius_pixels(blur_size: Point, scale: f32) Point {
+    const sigma_x = blur_size.x * scale;
+    const sigma_y = blur_size.y * scale;
+
+    // Calculate the effective blur radius (3 * sigma is ~99.7% of the blur effect)
+    // Using 3.1 for extra safety margin to ensure no clipping
+    const radius_x = 3.1 * sigma_x;
+    const radius_y = 3.1 * sigma_y;
+
+    return .{ .x = radius_x, .y = radius_y };
+}

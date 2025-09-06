@@ -9,7 +9,7 @@ export function isStraightHandle(p: Point) {
 }
 
 // we use canvas to support ALL possible way of describing color in CSS
-export function parseColor(cssColor: string): Color {
+export function parseColor(cssColor: string, overrideAlpha = 1): Color {
   // Create a temporary canvas element
   const canvas = new OffscreenCanvas(1, 1)
   const ctx = canvas.getContext('2d')!
@@ -24,10 +24,10 @@ export function parseColor(cssColor: string): Color {
 
   // Return normalized RGBA values (0-1 range)
   return [
-    r / 255, // red
-    g / 255, // green
-    b / 255, // blue
-    a / 255, // alpha
+    (r / 255) * overrideAlpha, // red
+    (g / 255) * overrideAlpha, // green
+    (b / 255) * overrideAlpha, // blue
+    (a / 255) * overrideAlpha, // alpha
   ]
 }
 
