@@ -13,7 +13,7 @@ import {
   pickShape,
   drawBlur,
   canvasMatrix,
-  destroyBufs,
+  destroyGpuObjects,
 } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
@@ -146,19 +146,17 @@ export default function runCreator(
 
     const canvasDescriptor = getCanvasRenderDescriptor(preview?.ctx || context, device)
     renderPass = encoder.beginRenderPass(canvasDescriptor)
-    // console.log('start canvas render pass')
 
     const matrix = getCanvasMatrix(preview?.canvas || creatorCanvas)
     device.queue.writeBuffer(canvasMatrix.buffer, 0, matrix)
     // time = performance.now()
     Logic.renderDraw()
     renderPass.end()
-    // console.log('end canvas render pass')
 
     if (preview) {
       const commandBuffer = encoder.finish()
       device.queue.submit([commandBuffer])
-      destroyBufs()
+      destroyGpuObjects()
       preview.onCapture()
       return
     }
@@ -185,7 +183,7 @@ export default function runCreator(
 
     const commandBuffer = encoder.finish()
     device.queue.submit([commandBuffer])
-    destroyBufs()
+    destroyGpuObjects()
 
     pickManager.asyncPick()
 

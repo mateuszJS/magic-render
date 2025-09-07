@@ -1,4 +1,4 @@
-import { addDestroyBuf } from '../initPrograms'
+import { delayedDestroy } from '../initPrograms'
 import shaderCode from './index.wgsl'
 
 const tileDim = 128
@@ -113,8 +113,8 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     }
 
     computePass.end()
-
-    addDestroyBuf(blurParamsBufferX)
-    addDestroyBuf(blurParamsBufferY)
+    delayedDestroy(textures[0])
+    delayedDestroy(blurParamsBufferX)
+    delayedDestroy(blurParamsBufferY)
   }
 }

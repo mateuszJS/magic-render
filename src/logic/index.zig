@@ -72,14 +72,6 @@ pub fn connectCacheCallbacks(
     create_cache_texture = create_cache_texture_cb;
     start_cache = start_cache_cb;
     end_cache = end_cache_cb;
-
-    // shapes.update_texture_cache = update_texture_cache;
-}
-
-fn update_texture_cache(texture_id: u32, box: bounding_box.BoundingBox, width: f32, height: f32) void {
-    start_cache(texture_id, box, width, height);
-    // web_gpu_programs.compute_shape(vertex_data.curves);
-    end_cache();
 }
 
 pub const ASSET_ID_MIN: u32 = 1000;
@@ -627,10 +619,12 @@ pub fn calculateShapesSDF() !void {
 
                 const option_points = try shape.getNewSdfPoint(allocator);
                 if (option_points) |points| {
-                    // TODO: rethink if SDF really needs blur to be included in the padding
                     const bounds = shape.getBoundsWithPadding(1 / shared.render_scale, false);
                     shape.sdf_size = texture_size.get_sdf_size(bounds);
-                    const init_width = bounds[0].distance(bounds[1]) * shared.render_scale; // * shared.render_scale to revert to logical scale, nothing screen/camera/zoom related
+
+                    const init_width = bounds[0].distance(bounds[1]) * shared.render_scale;
+                    // * shared.render_scale to revert to logical scale, without impact of camera/zoom
+
                     shape.sdf_scale = shape.sdf_size.w / init_width;
 
                     for (points) |*point| {
@@ -638,7 +632,7 @@ pub fn calculateShapesSDF() !void {
                         point.y *= shape.sdf_scale;
                     }
 
-                    if (shape.sdf_size.w > 1.001 and shape.sdf_size.h > 1.001) {
+                    if (shape.sdf_size.w > consts.MIN_TEXTURE_SIZE and shape.sdf_size.h > consts.MIN_TEXTURE_SIZE) {
                         web_gpu_programs.compute_shape(
                             points,
                             @floor(shape.sdf_size.w),
@@ -679,7 +673,7 @@ pub fn updateCache() void {
                         filter.gaussianBlur,
                     );
 
-                    if (size.w < 1.001 or size.h < 1.001) continue;
+                    if (size.w < consts.MIN_TEXTURE_SIZE or size.h < consts.MIN_TEXTURE_SIZE) continue;
                     // just to make sure device.createTexture won't round number down to 0
 
                     shape.cache_scale = cache_scale;

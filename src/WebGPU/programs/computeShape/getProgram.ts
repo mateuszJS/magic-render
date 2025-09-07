@@ -1,4 +1,4 @@
-import { addDestroyBuf } from '../initPrograms'
+import { delayedDestroy } from '../initPrograms'
 import shaderCode from './shader.wgsl'
 
 export default function getComputeShape(device: GPUDevice) {
@@ -26,7 +26,7 @@ export default function getComputeShape(device: GPUDevice) {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(curvesBuffer, 0, curvesDataView)
-    addDestroyBuf(curvesBuffer)
+    delayedDestroy(curvesBuffer)
 
     passEncoder.setPipeline(pipeline)
 

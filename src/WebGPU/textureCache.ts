@@ -89,6 +89,7 @@ export function startCache(
   endCacheCallback = () => {
     pass.end()
     canvasMatrix.buffer = canvasMatrixCopy
+    matrixBuffer.destroy()
   }
 
   Textures.setCacheTexture(textureId, texture)

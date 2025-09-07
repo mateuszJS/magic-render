@@ -173,8 +173,7 @@ export function parseTransform(
 function addFilterProps(def: Def, child: ElementNode) {
   if (child.tagName === 'feGaussianBlur') {
     def.type = 'gaussian-blur'
-    // stdDeviation can be one or two numbers (e.g., "2" or "1.78 2.19").
-    // Read raw attribute and normalize to a tuple [sx, sy]; if only one is present, copy it to both.
+
     const v = child.properties?.stdDeviation
     let sx = 0
     let sy = 0
@@ -193,5 +192,4 @@ function addFilterProps(def: Def, child: ElementNode) {
     }
     def.stdDeviation = [sx, sy]
   }
-  return null
 }

@@ -1,4 +1,4 @@
-import { addDestroyBuf } from '../initPrograms'
+import { delayedDestroy } from '../initPrograms'
 import shaderCode from './shader.wgsl'
 
 export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer) {
@@ -52,7 +52,7 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([strokeWidth]))
-    addDestroyBuf(uniformBuffer)
+    delayedDestroy(uniformBuffer)
 
     const vertexBuffer = device.createBuffer({
       label: 'pick texture - vertex buffer',

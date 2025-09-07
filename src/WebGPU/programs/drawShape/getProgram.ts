@@ -1,4 +1,4 @@
-import { addDestroyBuf, canvasMatrix } from '../initPrograms'
+import { delayedDestroy, canvasMatrix } from '../initPrograms'
 import baseCode from './base.wgsl'
 
 export default function getDrawShape(
@@ -69,7 +69,7 @@ export default function getDrawShape(
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(boundBoxBuffer, 0, boundingBoxDataView)
-    addDestroyBuf(boundBoxBuffer)
+    delayedDestroy(boundBoxBuffer)
 
     const uniformBuffer = device.createBuffer({
       label: 'drawShape uniforms',
@@ -77,7 +77,7 @@ export default function getDrawShape(
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(uniformBuffer, 0, uniformDataView)
-    addDestroyBuf(uniformBuffer)
+    delayedDestroy(uniformBuffer)
 
     passEncoder.setPipeline(pipeline)
 

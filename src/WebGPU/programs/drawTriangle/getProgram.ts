@@ -1,4 +1,4 @@
-import { addDestroyBuf, canvasMatrix } from '../initPrograms'
+import { delayedDestroy, canvasMatrix } from '../initPrograms'
 import shaderCode from './shader.wgsl'
 
 const INSTANCE_STRIDE =
@@ -69,7 +69,7 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
-    addDestroyBuf(vertexBuffer)
+    delayedDestroy(vertexBuffer)
 
     pass.setPipeline(pipeline)
     pass.setVertexBuffer(0, vertexBuffer)
