@@ -673,29 +673,21 @@ pub fn updateCache() void {
                         1 / shared.render_scale,
                         true,
                     );
-                    const init_width = bounds[0].distance(bounds[1]) * shared.render_scale; // * shared.render_scale to revert to logical scale, nothing screen/camera/zoom related
-                    const initial_size = texture_size.get_size(bounds);
-                    const init_cache_scale = initial_size.w / init_width;
 
-                    // Cost control: scale down texture if blur cost is too high
-                    const initial_sigma = types.Point{
-                        .x = filter.gaussianBlur.x * init_cache_scale,
-                        .y = filter.gaussianBlur.y * init_cache_scale,
-                    };
-                    const size, const sigma = texture_size.get_safe_blur_dims(
-                        initial_size,
-                        initial_sigma,
+                    const size, const sigma, const cache_scale = texture_size.get_safe_blur_dims(
+                        bounds,
+                        filter.gaussianBlur,
                     );
 
                     if (size.w < 1.001 or size.h < 1.001) continue;
                     // just to make sure device.createTexture won't round number down to 0
 
-                    shape.cache_scale = size.w / init_width;
+                    shape.cache_scale = cache_scale;
 
                     const extra_padding = shape.getFilterMargin();
                     const scaled_extra_padding = types.Point{
-                        .x = extra_padding.x * shape.cache_scale,
-                        .y = extra_padding.y * shape.cache_scale,
+                        .x = extra_padding.x * cache_scale,
+                        .y = extra_padding.y * cache_scale,
                     };
                     const bb = bounding_box.BoundingBox{
                         .min_x = -scaled_extra_padding.x,
