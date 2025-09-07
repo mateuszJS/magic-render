@@ -316,7 +316,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                 .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
                 .stroke = .{ .solid = .{ 0.0, 0.0, 0.0, 1.0 } },
                 .stroke_width = 1.0,
-                .filter = .{ .gaussianBlur = .{ .x = 3, .y = 1 } },
+                .filter = .{ .gaussianBlur = .{ .x = 30, .y = 1 } },
                 .opacity = 1.0,
             };
             const id = try addShape(
@@ -683,8 +683,8 @@ pub fn updateCache() void {
                     const init_cache_scale = size.w / init_width;
 
                     // Cost control: scale down texture if blur cost is too high
-                    const sigma_x = filter.gaussianBlur.x * init_cache_scale; // render scale
-                    const sigma_y = filter.gaussianBlur.y * init_cache_scale; // render scale
+                    var sigma_x = filter.gaussianBlur.x * init_cache_scale; // render scale
+                    var sigma_y = filter.gaussianBlur.y * init_cache_scale; // render scale
                     const MAX_COST = 2050924;
 
                     const pixels = size.w * size.h;
@@ -692,25 +692,32 @@ pub fn updateCache() void {
                     var cache_scale = init_cache_scale;
 
                     if (cost > MAX_COST) {
-                        const scale_down = @sqrt(cost / MAX_COST);
+                        const scale_down = std.math.pow(f32, cost / MAX_COST, 1.0 / 3.0); // Cube root
+                        std.debug.print("scale_down factor: {d}\n", .{scale_down});
                         size.w /= scale_down;
                         size.h /= scale_down;
                         cache_scale = size.w / init_width;
 
-                        // Verify new cost using original sigma values (not rescaled ones)
+                        // Scale both texture and sigma proportionally
+                        sigma_x /= scale_down;
+                        sigma_y /= scale_down;
+
+                        // Verify new cost
                         const new_pixels = size.w * size.h;
                         const new_cost = 3 * sigma_x * new_pixels + 3 * sigma_y * new_pixels;
                         std.debug.print("prev cost: {d}\n new cost: {d}\n   target: {d}\n", .{ cost, new_cost, MAX_COST });
                     }
 
                     // Use the final calculated values
-                    shape.cache_scale = cache_scale;
 
                     if (size.w < 1.001 or size.h < 1.001) continue;
+
+                    shape.cache_scale = cache_scale;
+
                     // just to make sure device.createTexture won't round number down to 0
                     const scaled_extra_padding = types.Point{
-                        .x = extra_padding.x * init_cache_scale,
-                        .y = extra_padding.y * init_cache_scale,
+                        .x = extra_padding.x * cache_scale,
+                        .y = extra_padding.y * cache_scale,
                     };
                     const bb = bounding_box.BoundingBox{
                         .min_x = -scaled_extra_padding.x,
