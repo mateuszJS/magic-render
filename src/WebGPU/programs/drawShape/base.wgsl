@@ -60,7 +60,8 @@ fn getSample(pos: vec2f) -> vec4f {
 
   let total_alpha = smoothstep(-hs - width, -hs + width, dist);
 
-  return vec4f(color.rgb, color.a * total_alpha);
+  // return vec4f(color.rgb, color.a * total_alpha);
+  return vec4f(fill_color.rgb, fill_color.a * fill_alpha);
   // let result = vec4f(fill_color.rgb, fill_color.a * fill_alpha);
   // if (result.a < 0.5) {
   //   return vec4f(1, 0, 0, 1);

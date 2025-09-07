@@ -11,7 +11,7 @@ const Path = @import("paths.zig").Path;
 const shared = @import("../shared.zig");
 const images = @import("../images.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
-const DEFAULT_BOUNDS = @import("../consts.zig").DEFAULT_BOUNDS;
+const consts = @import("../consts.zig");
 const PackedId = @import("packed_id.zig");
 const PathUtils = @import("path_utils.zig");
 const fill = @import("fill.zig");
@@ -118,7 +118,7 @@ pub const Shape = struct {
             .props = props,
             .sdf_texture_id = sdf_texture_id,
             .outdated_sdf = true,
-            .bounds = input_bounds orelse DEFAULT_BOUNDS,
+            .bounds = input_bounds orelse consts.DEFAULT_BOUNDS,
             .cache_texture_id = cache_texture_id,
             .outdated_cache = true,
         };
@@ -134,7 +134,7 @@ pub const Shape = struct {
         is_handle_preview = true;
 
         if (self.paths.items.len == 0) {
-            for (&self.bounds, DEFAULT_BOUNDS) |*b, default| {
+            for (&self.bounds, consts.DEFAULT_BOUNDS) |*b, default| {
                 b.* = default;
                 b.x += absolute_point.x;
                 b.y += absolute_point.y;
@@ -414,13 +414,6 @@ pub const Shape = struct {
         }
     }
 
-    pub fn getPadding(self: Shape) Point {
-        return Point{
-            .x = 1.0 + self.props.stroke_width / 2.0,
-            .y = 1.0 + self.props.stroke_width / 2.0,
-        };
-    }
-
     // function has side effect, marks texture as generated
     pub fn getNewSdfPoint(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
         if (!self.outdated_sdf) {
@@ -452,7 +445,7 @@ pub const Shape = struct {
             self.bounds[0].distance(self.bounds[3]),
         );
 
-        const padding = self.getPadding();
+        const padding = self.getSdfPadding();
         for (points) |*point| {
             const scaled = scale.get(point);
             point.x = padding.x + scaled.x;
@@ -464,10 +457,14 @@ pub const Shape = struct {
         return points;
     }
 
-    pub fn getBoundsWithPadding(self: Shape, scale: f32, extra_space: Point) [4]PointUV {
-        var padding = self.getPadding();
-        padding.x += extra_space.x;
-        padding.y += extra_space.y;
+    pub fn getBoundsWithPadding(self: Shape, scale: f32, include_filter_margin: bool) [4]PointUV {
+        var padding = self.getSdfPadding();
+
+        if (include_filter_margin) {
+            const filter_margin = self.getFilterMargin();
+            padding.x += filter_margin.x;
+            padding.y += filter_margin.y;
+        }
 
         var buffer: [4]PointUV = undefined;
         const len = self.bounds.len;
@@ -489,8 +486,8 @@ pub const Shape = struct {
         return buffer;
     }
 
-    pub fn getDrawBounds(self: Shape, extra_space: Point) [6]PointUV {
-        const bounds = self.getBoundsWithPadding(1, extra_space);
+    pub fn getDrawBounds(self: Shape, include_filter_margin: bool) [6]PointUV {
+        const bounds = self.getBoundsWithPadding(1, include_filter_margin);
         return [_]PointUV{
             // first triangle
             bounds[0],
@@ -504,7 +501,7 @@ pub const Shape = struct {
     }
 
     pub fn getPickBounds(self: Shape) [6]images.PickVertex {
-        const bounds = self.getDrawBounds(Point{ .x = 0, .y = 0 });
+        const bounds = self.getDrawBounds(false);
         var buffer: [6]images.PickVertex = undefined;
         for (bounds, 0..) |b, i| {
             buffer[i] = .{
@@ -513,6 +510,20 @@ pub const Shape = struct {
             };
         }
         return buffer;
+    }
+
+    pub fn getFilterMargin(self: Shape) Point {
+        return if (self.props.filter) |filter| Point{
+            .x = 3 * filter.gaussianBlur.x,
+            .y = 3 * filter.gaussianBlur.y,
+        } else consts.POINT_ZERO;
+    }
+
+    fn getSdfPadding(self: Shape) Point {
+        return Point{
+            .x = 1.0 + self.props.stroke_width / 2.0,
+            .y = 1.0 + self.props.stroke_width / 2.0,
+        };
     }
 
     pub fn serialize(self: Shape) !Serialized {

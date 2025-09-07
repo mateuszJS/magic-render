@@ -41,36 +41,31 @@ pub fn get_size(bounds: [4]PointUV) TextureSize {
     return TextureSize{ .w = width, .h = height };
 }
 
-const MAX_FILTER_RADIUS = 128.0 - 2.0; // 2.0 just to avoid being on the edge of floating
-// point precision during later computations
-pub fn within_max_blur_size(tex_size: TextureSize, blur_size: Point, scale: f32) TextureSize {
-    const sigma_x = blur_size.x * scale;
-    const sigma_y = blur_size.y * scale;
-    const filter_size_x = @max(1.0, 2.0 * @ceil(3 * sigma_x) + 1.0);
-    const filter_size_y = @max(1.0, 2.0 * @ceil(3 * sigma_y) + 1.0);
-    const filter_size_max = @max(filter_size_x, filter_size_y);
+const MAX_COST = 90050924; // it's just chosen base on my own preferences
+// returns new safe size and new sigma
+pub fn get_safe_blur_dims(tex_size: TextureSize, scaled_sigma: Point) struct { TextureSize, Point } {
 
-    if (filter_size_max > MAX_FILTER_RADIUS) {
-        const ratio = MAX_FILTER_RADIUS / filter_size_max;
-        return TextureSize{
-            .w = tex_size.w * ratio,
-            .h = tex_size.h * ratio,
-        };
+    // Cost control: scale down texture if blur cost is too high
+    var new_sigma = Point{ .x = scaled_sigma.x, .y = scaled_sigma.y };
+    // in the future would be nice to measure speed of the blur and base on that calculate MAX_COST
+    var new_tex_size = TextureSize{ .w = tex_size.w, .h = tex_size.h };
+    const pixels = tex_size.w * tex_size.h;
+    const cost = 3 * new_sigma.x * pixels + 3 * new_sigma.y * pixels;
+
+    if (cost > MAX_COST) {
+        const scale_down = std.math.pow(f32, cost / MAX_COST, 1.0 / 3.0); // Cube root
+        new_tex_size.w /= scale_down;
+        new_tex_size.h /= scale_down;
+
+        // Scale both texture and sigma proportionally
+        new_sigma.x /= scale_down;
+        new_sigma.y /= scale_down;
+
+        // Verify new cost
+        // const new_pixels = size.w * size.h;
+        // const new_cost = 3 * sigma_x * new_pixels + 3 * sigma_y * new_pixels;
+        // std.debug.print("prev cost: {d}\n new cost: {d}\n   target: {d}\n", .{ cost, new_cost, MAX_COST });
     }
 
-    return tex_size;
-}
-
-// Calculate the blur radius in pixels for padding calculation
-// Returns the maximum distance the blur can extend in each direction
-pub fn get_blur_radius_pixels(blur_size: Point, scale: f32) Point {
-    const sigma_x = blur_size.x * scale;
-    const sigma_y = blur_size.y * scale;
-
-    // Calculate the effective blur radius (3 * sigma is ~99.7% of the blur effect)
-    // Using 3.1 for extra safety margin to ensure no clipping
-    const radius_x = 3.1 * sigma_x;
-    const radius_y = 3.1 * sigma_y;
-
-    return .{ .x = radius_x, .y = radius_y };
+    return .{ new_tex_size, new_sigma };
 }

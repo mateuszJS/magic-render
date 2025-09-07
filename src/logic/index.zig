@@ -15,6 +15,7 @@ const Utils = @import("utils.zig");
 const PackedId = @import("shapes/packed_id.zig");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 const PathUtils = @import("shapes/path_utils.zig");
+const consts = @import("consts.zig");
 
 const FillType = enum(u8) {
     Solid,
@@ -146,7 +147,7 @@ pub fn updateRenderScale(scale: f32) !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                const bounds = shape.getBoundsWithPadding(1 / shared.render_scale, types.Point{ .x = 0, .y = 0 });
+                const bounds = shape.getBoundsWithPadding(1 / shared.render_scale, false);
                 const new_size = texture_size.get_sdf_size(bounds);
 
                 if (new_size.w > shape.sdf_size.w or new_size.h > shape.sdf_size.h) {
@@ -627,7 +628,7 @@ pub fn calculateShapesSDF() !void {
                 const option_points = try shape.getNewSdfPoint(allocator);
                 if (option_points) |points| {
                     // TODO: rethink if SDF really needs blur to be included in the padding
-                    const bounds = shape.getBoundsWithPadding(1 / shared.render_scale, types.Point{ .x = 0, .y = 0 });
+                    const bounds = shape.getBoundsWithPadding(1 / shared.render_scale, false);
                     shape.sdf_size = texture_size.get_sdf_size(bounds);
                     const init_width = bounds[0].distance(bounds[1]) * shared.render_scale; // * shared.render_scale to revert to logical scale, nothing screen/camera/zoom related
                     shape.sdf_scale = shape.sdf_size.w / init_width;
@@ -668,55 +669,33 @@ pub fn updateCache() void {
                         break :b id;
                     };
 
-                    const extra_padding = types.Point{
-                        .x = 3 * filter.gaussianBlur.x,
-                        .y = 3 * filter.gaussianBlur.y,
-                    };
-
                     const bounds = shape.getBoundsWithPadding(
                         1 / shared.render_scale,
-                        extra_padding,
+                        true,
                     );
                     const init_width = bounds[0].distance(bounds[1]) * shared.render_scale; // * shared.render_scale to revert to logical scale, nothing screen/camera/zoom related
-                    var size = texture_size.get_size(bounds);
-                    const init_cache_scale = size.w / init_width;
+                    const initial_size = texture_size.get_size(bounds);
+                    const init_cache_scale = initial_size.w / init_width;
 
                     // Cost control: scale down texture if blur cost is too high
-                    var sigma_x = filter.gaussianBlur.x * init_cache_scale; // render scale
-                    var sigma_y = filter.gaussianBlur.y * init_cache_scale; // render scale
-                    const MAX_COST = 90050924; // it's just chosen base on my own preferences
-                    // in the future would be nice to measure speed of the blur and base on that calculate MAX_COST
-
-                    const pixels = size.w * size.h;
-                    const cost = 3 * sigma_x * pixels + 3 * sigma_y * pixels;
-                    var cache_scale = init_cache_scale;
-
-                    if (cost > MAX_COST) {
-                        const scale_down = std.math.pow(f32, cost / MAX_COST, 1.0 / 3.0); // Cube root
-                        size.w /= scale_down;
-                        size.h /= scale_down;
-                        cache_scale = size.w / init_width;
-
-                        // Scale both texture and sigma proportionally
-                        sigma_x /= scale_down;
-                        sigma_y /= scale_down;
-
-                        // Verify new cost
-                        const new_pixels = size.w * size.h;
-                        const new_cost = 3 * sigma_x * new_pixels + 3 * sigma_y * new_pixels;
-                        std.debug.print("prev cost: {d}\n new cost: {d}\n   target: {d}\n", .{ cost, new_cost, MAX_COST });
-                    }
-
-                    // Use the final calculated values
+                    const initial_sigma = types.Point{
+                        .x = filter.gaussianBlur.x * init_cache_scale,
+                        .y = filter.gaussianBlur.y * init_cache_scale,
+                    };
+                    const size, const sigma = texture_size.get_safe_blur_dims(
+                        initial_size,
+                        initial_sigma,
+                    );
 
                     if (size.w < 1.001 or size.h < 1.001) continue;
-
-                    shape.cache_scale = cache_scale;
-
                     // just to make sure device.createTexture won't round number down to 0
+
+                    shape.cache_scale = size.w / init_width;
+
+                    const extra_padding = shape.getFilterMargin();
                     const scaled_extra_padding = types.Point{
-                        .x = extra_padding.x * cache_scale,
-                        .y = extra_padding.y * cache_scale,
+                        .x = extra_padding.x * shape.cache_scale,
+                        .y = extra_padding.y * shape.cache_scale,
                     };
                     const bb = bounding_box.BoundingBox{
                         .min_x = -scaled_extra_padding.x,
@@ -747,15 +726,15 @@ pub fn updateCache() void {
                     end_cache();
 
                     // Calculate dynamic iterations based on sigma to maintain consistent blur strength
-                    const maxSigma = @max(sigma_x, sigma_y);
+                    const maxSigma = @max(sigma.x, sigma.y);
                     const maxSigmaPerPass = 2.0; // Feel free to increase to 4.0 for betetr quality
 
                     // Calculate required iterations to achieve target sigma
                     const iterations = @max(1, @ceil(maxSigma / maxSigmaPerPass));
 
                     // Calculate per-pass sigma values
-                    const sigma_per_pass_x = sigma_x / @sqrt(iterations);
-                    const sigma_per_pass_y = sigma_y / @sqrt(iterations);
+                    const sigma_per_pass_x = sigma.x / @sqrt(iterations);
+                    const sigma_per_pass_y = sigma.y / @sqrt(iterations);
 
                     // Calculate per-pass filter sizes from per-pass sigma
                     const factor = 1.5 * maxSigmaPerPass;
@@ -794,15 +773,17 @@ pub fn renderDraw() !void {
                 web_gpu_programs.draw_texture(vertex_data, img.texture_id);
             },
             .shape => |*shape| {
-                const extra_space = if (shape.props.filter) |filter| types.Point{
-                    .x = 3 * filter.gaussianBlur.x,
-                    .y = 3 * filter.gaussianBlur.y,
-                } else types.Point{ .x = 0, .y = 0 };
-                // std.debug.print("shape id: {d}", .{shape.id});
                 if (shape.cache_texture_id) |cache_texture_id| {
-                    web_gpu_programs.draw_texture(shape.getDrawBounds(extra_space), cache_texture_id);
+                    web_gpu_programs.draw_texture(
+                        shape.getDrawBounds(true),
+                        cache_texture_id,
+                    );
                 } else {
-                    web_gpu_programs.draw_shape(&shape.getDrawBounds(extra_space), shape.getUniform(), shape.sdf_texture_id);
+                    web_gpu_programs.draw_shape(
+                        &shape.getDrawBounds(true),
+                        shape.getUniform(),
+                        shape.sdf_texture_id,
+                    );
                 }
             },
         }
@@ -826,7 +807,11 @@ pub fn renderDraw() !void {
         _ = select_point_id; // autofix
 
         if (getSelectedShape()) |shape| {
-            // web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getSkeletonUniform(), shape.texture_id);
+            web_gpu_programs.draw_shape(
+                &shape.getDrawBounds(false),
+                shape.getSkeletonUniform(),
+                shape.sdf_texture_id,
+            );
 
             const hover_id = if (shape.id == hover_point_id.shape) hover_point_id else null;
             const vertex_data = try shape.getSkeletonDrawVertexData(
