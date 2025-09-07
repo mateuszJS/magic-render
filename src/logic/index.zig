@@ -638,7 +638,6 @@ pub fn calculateShapesSDF() !void {
                     }
 
                     if (shape.sdf_size.w > 1.001 and shape.sdf_size.h > 1.001) {
-                        // std.debug.print("Computing SDF, texture id: {d}, size: {d}x{d}\n", .{ shape.sdf_texture_id, shape.sdf_size.w, shape.sdf_size.h });
                         web_gpu_programs.compute_shape(
                             points,
                             @floor(shape.sdf_size.w),
@@ -685,7 +684,8 @@ pub fn updateCache() void {
                     // Cost control: scale down texture if blur cost is too high
                     var sigma_x = filter.gaussianBlur.x * init_cache_scale; // render scale
                     var sigma_y = filter.gaussianBlur.y * init_cache_scale; // render scale
-                    const MAX_COST = 2050924;
+                    const MAX_COST = 90050924; // it's just chosen base on my own preferences
+                    // in the future would be nice to measure speed of the blur and base on that calculate MAX_COST
 
                     const pixels = size.w * size.h;
                     const cost = 3 * sigma_x * pixels + 3 * sigma_y * pixels;
@@ -693,7 +693,6 @@ pub fn updateCache() void {
 
                     if (cost > MAX_COST) {
                         const scale_down = std.math.pow(f32, cost / MAX_COST, 1.0 / 3.0); // Cube root
-                        std.debug.print("scale_down factor: {d}\n", .{scale_down});
                         size.w /= scale_down;
                         size.h /= scale_down;
                         cache_scale = size.w / init_width;
@@ -728,7 +727,7 @@ pub fn updateCache() void {
 
                     start_cache(cache_texture_id, bb, size.w, size.h);
 
-                    var vertex_bounds = [_]types.PointUV{
+                    const vertex_bounds = [_]types.PointUV{
                         // first triangle
                         .{ .x = 0, .y = 0, .u = 0, .v = 0 },
                         .{ .x = 0, .y = size.h, .u = 0, .v = 1 },

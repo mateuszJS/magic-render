@@ -10,11 +10,11 @@ pub const TextureSize = struct {
 
 pub fn get_sdf_size(bounds: [4]PointUV) TextureSize {
     var size = get_size(bounds);
+    const sdf_texture_size = size.w * size.h * 16;
 
-    const sdf_texture_size = size.w * size.w * 16;
     if (sdf_texture_size > shared.max_buffer_size) {
         const max_pixels = shared.max_buffer_size / 16.0;
-        const ratio = @sqrt(max_pixels / (size.w * size.h));
+        const ratio = max_pixels / (size.w * size.h);
         size.w *= ratio;
         size.h *= ratio;
     }

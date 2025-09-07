@@ -25,9 +25,10 @@ struct VertexOutput {
 }
 
 @fragment fn fs(in: VertexOutput) -> @location(0) vec4f {
-  let color = textureSample(ourTexture, ourSampler, in.texCoord);
-  if (color.a < 0.01) {
-    return vec4f(0, 0, 1, 1);
-  }
-  return color;
+  return textureSample(ourTexture, ourSampler, in.texCoord);
+  // let color = textureSample(ourTexture, ourSampler, in.texCoord);
+  // if (color.a < 0.01) {
+  //   return vec4f(0, 0, 1, 1);
+  // }
+  // return color;
 }
