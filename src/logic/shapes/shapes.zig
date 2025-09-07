@@ -415,20 +415,10 @@ pub const Shape = struct {
     }
 
     pub fn getPadding(self: Shape) Point {
-        _ = self; // autofix
         return Point{
-            .x = 100.0,
-            .y = 100.0,
+            .x = 1.0 + self.props.stroke_width / 2.0,
+            .y = 1.0 + self.props.stroke_width / 2.0,
         };
-        // var padding = Point{
-        //     .x = 1.0 + self.props.stroke_width / 2.0,
-        //     .y = 1.0 + self.props.stroke_width / 2.0,
-        // };
-        // if (self.props.filter) |filter| {
-        //     padding.x += filter.gaussianBlur.x;
-        //     padding.y += @max(3.0, filter.gaussianBlur.y);
-        // }
-        // return padding;
     }
 
     // function has side effect, marks texture as generated
@@ -474,8 +464,11 @@ pub const Shape = struct {
         return points;
     }
 
-    pub fn getBoundsWithPadding(self: Shape, scale: f32) [4]PointUV {
-        const padding = self.getPadding();
+    pub fn getBoundsWithPadding(self: Shape, scale: f32, extra_space: Point) [4]PointUV {
+        var padding = self.getPadding();
+        padding.x += extra_space.x;
+        padding.y += extra_space.y;
+
         var buffer: [4]PointUV = undefined;
         const len = self.bounds.len;
 
@@ -496,8 +489,8 @@ pub const Shape = struct {
         return buffer;
     }
 
-    pub fn getDrawBounds(self: Shape) [6]PointUV {
-        const bounds = self.getBoundsWithPadding(1);
+    pub fn getDrawBounds(self: Shape, extra_space: Point) [6]PointUV {
+        const bounds = self.getBoundsWithPadding(1, extra_space);
         return [_]PointUV{
             // first triangle
             bounds[0],
@@ -511,7 +504,7 @@ pub const Shape = struct {
     }
 
     pub fn getPickBounds(self: Shape) [6]images.PickVertex {
-        const bounds = self.getDrawBounds();
+        const bounds = self.getDrawBounds(Point{ .x = 0, .y = 0 });
         var buffer: [6]images.PickVertex = undefined;
         for (bounds, 0..) |b, i| {
             buffer[i] = .{

@@ -75,8 +75,6 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
 
     const blockDimX = Math.max(1, tileDim - (filterSizePerPassX - 1))
     const blockDimY = Math.max(1, tileDim - (filterSizePerPassY - 1))
-    console.log('filterSizePerPassX', filterSizePerPassX)
-    console.log('filterSizePerPassY', filterSizePerPassY)
 
     const dataViewX = new DataView(new ArrayBuffer(4 * 4))
     dataViewX.setInt32(0, filterSizePerPassX, true)
