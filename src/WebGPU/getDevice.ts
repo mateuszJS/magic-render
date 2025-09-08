@@ -22,9 +22,10 @@ export default async function getDevice() {
     }
   })
 
-  const presentationFormat = hasBGRA8unormStorage
+  const presentationFormat = navigator.gpu.getPreferredCanvasFormat()
+  const storageFormat = hasBGRA8unormStorage
     ? navigator.gpu.getPreferredCanvasFormat()
     : 'rgba8unorm'
 
-  return { device, presentationFormat }
+  return { device, presentationFormat, storageFormat }
 }

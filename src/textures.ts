@@ -31,13 +31,18 @@ let textures: TextureSource[]
 let loadingTexture: GPUTexture
 let updateProcessing: () => void
 let loadingTextures: number
+let presentationFormat: GPUTextureFormat
+let storageFormat: GPUTextureFormat
 
 export function init(
   _device: GPUDevice,
-  presentationFormat: GPUTextureFormat,
+  _presentationFormat: GPUTextureFormat,
+  _storageFormat: GPUTextureFormat,
   _updateProcessing: (loadingTextures: number) => void
 ): void {
   device = _device
+  presentationFormat = _presentationFormat
+  storageFormat = _storageFormat
   textures = []
   loadingTexture = getLoadingTexture(device, presentationFormat)
   updateProcessing = () => _updateProcessing(loadingTextures)
@@ -53,7 +58,6 @@ export interface TextureSource {
 
 export function add(
   url: string,
-  presentationFormat: GPUTextureFormat,
   onLoad?: (width: number, height: number, isNew: boolean) => void
 ): number {
   loadingTextures++
@@ -167,6 +171,32 @@ export function setCacheTexture(id: number, texture: GPUTexture) {
   }
 
   textures[id].texture = texture
+}
+
+export function getTextureCache(id: number, expectWidth: number, expectHeight: number): GPUTexture {
+  const texture = textures[id].texture
+
+  const canReuseTexture =
+    texture &&
+    Math.abs(texture.width - expectWidth) <= Number.EPSILON &&
+    Math.abs(texture.height - expectHeight) <= Number.EPSILON
+
+  if (!canReuseTexture) {
+    texture?.destroy()
+    const newTexture = device.createTexture({
+      label: 'texture cache',
+      format: storageFormat,
+      usage:
+        GPUTextureUsage.RENDER_ATTACHMENT |
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.STORAGE_BINDING,
+      size: [expectWidth, expectHeight],
+    })
+    textures[id].texture = newTexture
+    return newTexture
+  }
+
+  return texture
 }
 
 export function getUrl(textureId: number): string {

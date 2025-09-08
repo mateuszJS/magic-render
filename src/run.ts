@@ -31,7 +31,6 @@ export default function runCreator(
   creatorCanvas: HTMLCanvasElement,
   context: GPUCanvasContext,
   device: GPUDevice,
-  presentationFormat: GPUTextureFormat,
   onEmptyEvents: VoidFunction // call when there is no more events to process
 ) {
   let pickPass: GPURenderPassEncoder
@@ -43,7 +42,7 @@ export default function runCreator(
   Logic.connectCacheCallbacks(
     Textures.createCacheTexture,
     (texture_id: number, box: BoundingBox, width: number, height: number) => {
-      startCache(device, presentationFormat, encoder, texture_id, box, width, height)
+      startCache(device, encoder, texture_id, box, width, height)
     },
     endCache
   )

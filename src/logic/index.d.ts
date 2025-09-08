@@ -137,17 +137,17 @@ declare module '*.zig' {
       curves_data: ArrayPointerDataView,
       width: number,
       height: number,
-      texture_id: number
+      sdf_texture_id: number
     ) => void
     draw_shape: (
       bound_box_data: ArrayPointerDataView,
       uniformData: Uniform,
-      texture_id: number
+      sdf_texture_id: number
     ) => void
     pick_shape: (
       bound_box_data: ArrayPointerDataView,
       strokeWidth: number,
-      texture_id: number
+      sdf_texture_id: number
     ) => void
   }) => void
   export const connectOnAssetUpdateCallback: (cb: (data: ZigAssetOutput[]) => void) => void

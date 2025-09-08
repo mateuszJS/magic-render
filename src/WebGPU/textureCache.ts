@@ -1,4 +1,4 @@
-import { canvasMatrix } from 'WebGPU/programs/initPrograms'
+import { canvasMatrix, delayedDestroy } from 'WebGPU/programs/initPrograms'
 import mat4 from 'utils/mat4'
 import { updateRenderPass } from 'run'
 import * as Textures from 'textures'
@@ -14,7 +14,6 @@ export function endCache() {
 
 export function startCache(
   device: GPUDevice,
-  presentationFormat: GPUTextureFormat,
   encoder: GPUCommandEncoder,
   textureId: number,
   boundingBox: BoundingBox,
@@ -24,34 +23,13 @@ export function startCache(
   const width = boundingBox.max_x - boundingBox.min_x
   const height = boundingBox.max_y - boundingBox.min_y
 
-  let texture = Textures.getOptionTexture(textureId)
-  const canReuseTexture =
-    texture &&
-    Math.abs(texture.width - outputWidth) <= Number.EPSILON &&
-    Math.abs(texture.height - outputHeight) <= Number.EPSILON
-
-  if (!canReuseTexture) {
-    // texture?.destroy()
-    texture = device.createTexture({
-      label: 'texture cache',
-      format: presentationFormat,
-      usage:
-        GPUTextureUsage.RENDER_ATTACHMENT |
-        GPUTextureUsage.TEXTURE_BINDING |
-        GPUTextureUsage.STORAGE_BINDING,
-      size: [outputWidth, outputHeight],
-    })
-  }
-
-  if (!texture) {
-    throw new Error('Failed to create texture for cache')
-  }
+  const texture = Textures.getTextureCache(textureId, outputWidth, outputHeight)
 
   const multisampleTexture = getMultisampleTexture(
     device,
     outputWidth,
     outputHeight,
-    presentationFormat
+    texture.format
   )
   const descriptor: GPURenderPassDescriptor = {
     label: 'texture cache pass',
@@ -89,7 +67,7 @@ export function startCache(
   endCacheCallback = () => {
     pass.end()
     canvasMatrix.buffer = canvasMatrixCopy
-    matrixBuffer.destroy()
+    delayedDestroy(matrixBuffer)
   }
 
   Textures.setCacheTexture(textureId, texture)

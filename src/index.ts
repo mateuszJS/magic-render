@@ -79,8 +79,8 @@ export default async function initCreator(
     onProcessingUpdate(loadingTextures > 0 || isMouseEventProcessing)
   }
 
-  const { device, presentationFormat } = await getDevice()
-  Textures.init(device, presentationFormat, (texLoadings) => {
+  const { device, presentationFormat, storageFormat } = await getDevice()
+  Textures.init(device, presentationFormat, storageFormat, (texLoadings) => {
     loadingTextures = texLoadings
     updateProcessing()
   })
@@ -205,7 +205,7 @@ export default async function initCreator(
   Logic.connectCreateSdfTexture(Textures.createSDF)
 
   const addImage: CreatorAPI['addImage'] = (url) => {
-    const textureId = Textures.add(url, presentationFormat, (width, height, isNew) => {
+    const textureId = Textures.add(url, (width, height, isNew) => {
       const points = getDefaultPoints(width, height, projectWidth, projectHeight)
       Logic.addImage(NO_ASSET_ID /* no id yet, needs to be generated */, points, textureId)
 
@@ -219,7 +219,7 @@ export default async function initCreator(
     })
   }
 
-  Textures.add(IconsPng, presentationFormat, (width, height) => {
+  Textures.add(IconsPng, (width, height) => {
     Logic.importIcons(
       IconsJson.chars.flatMap((char) => [
         char.id,
@@ -233,16 +233,10 @@ export default async function initCreator(
     )
   })
 
-  const { stopRAF, capturePreview } = runCreator(
-    canvas,
-    context,
-    device,
-    presentationFormat,
-    () => {
-      isMouseEventProcessing = false
-      updateProcessing()
-    }
-  )
+  const { stopRAF, capturePreview } = runCreator(canvas, context, device, () => {
+    isMouseEventProcessing = false
+    updateProcessing()
+  })
 
   const resetAssets: CreatorAPI['resetAssets'] = async (assets, withSnapshot = false) => {
     const results = await Promise.allSettled(
@@ -268,35 +262,31 @@ export default async function initCreator(
                 img: {
                   id: asset.id || NO_ASSET_ID,
                   points: asset.points,
-                  texture_id: asset.textureId || Textures.add(asset.url, presentationFormat), // if we got points, so we have url on the server for sure
+                  texture_id: asset.textureId || Textures.add(asset.url), // if we got points, so we have url on the server for sure
                 },
               })
             }
 
-            const textureId = Textures.add(
-              asset.url,
-              presentationFormat,
-              (width, height, isNew) => {
-                // we wait to add image once points are known. The other option was to add image first
-                // with "default" points and then update it once texture is loaded.
-                // However, that would cause issues with undo/redo since we would have history
-                // snapshot with "default" points and then update it to the real points.
-                if (isNew) {
-                  uploadTexture(asset.url, (newUrl) => {
-                    Textures.updateTextureUrl(textureId, newUrl)
-                    newAssetsSnapshot()
-                  })
-                }
-
-                return resolve({
-                  img: {
-                    id: NO_ASSET_ID,
-                    points: getDefaultPoints(width, height, projectWidth, projectHeight), // TODO: do it in zig only liek for shaoes
-                    texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
-                  },
+            const textureId = Textures.add(asset.url, (width, height, isNew) => {
+              // we wait to add image once points are known. The other option was to add image first
+              // with "default" points and then update it once texture is loaded.
+              // However, that would cause issues with undo/redo since we would have history
+              // snapshot with "default" points and then update it to the real points.
+              if (isNew) {
+                uploadTexture(asset.url, (newUrl) => {
+                  Textures.updateTextureUrl(textureId, newUrl)
+                  newAssetsSnapshot()
                 })
               }
-            )
+
+              return resolve({
+                img: {
+                  id: NO_ASSET_ID,
+                  points: getDefaultPoints(width, height, projectWidth, projectHeight), // TODO: do it in zig only liek for shaoes
+                  texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
+                },
+              })
+            })
           })
       )
     )
