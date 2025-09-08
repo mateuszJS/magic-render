@@ -181,7 +181,7 @@ export default async function initCreator(
             sdf_effects: [...shape.props.sdf_effects].map((effect) => ({
               dist_start: effect.dist_start,
               dist_end: effect.dist_end,
-              fill: sanitizeFill(effect.fill), // TODO: correctly filter out zigar added properties
+              fill: sanitizeFill(effect.fill),
             })),
             filter: shape.props.filter?.gaussianBlur
               ? {

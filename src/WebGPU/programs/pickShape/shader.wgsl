@@ -37,7 +37,7 @@ struct VertexOutput {
   let dist = textureLoad(texture, vec2u(in.uv)).r;
 
   if (dist > u.dist_start || dist < u.dist_end) {
-    discard; // outside the outer boundary
+    discard;
   }
 
   return in.id;

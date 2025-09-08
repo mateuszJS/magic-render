@@ -394,7 +394,6 @@ pub const Shape = struct {
                         },
                     };
                 }
-                // const half_stroke_width = self.getStrokeWidth() * 0.5;
                 return DrawUniform{
                     .linear = .{
                         .dist_start = sdf_effect.dist_start * self.sdf_scale,
