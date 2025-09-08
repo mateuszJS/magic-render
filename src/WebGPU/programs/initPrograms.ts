@@ -74,15 +74,16 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
     device,
     presentationFormat,
     solidFS,
-    1 /*stroke width*/ + 4 /*stroke color*/ + 4 /*fill color*/ + /*padding*/ 3
+    1 /*dist_start*/ + 1 /*dist_end*/ + 2 /*padding*/ + 4 /*color*/
   )
   drawLinearGradientShape = getDrawShape(
     device,
     presentationFormat,
     linearGradientFS,
-    1 /*stroke width*/ +
+    1 /*dist_start*/ +
+      1 /*dist_end*/ +
       1 /*stops counts*/ +
-      2 /*padding*/ +
+      1 /*padding*/ +
       2 /*start*/ +
       2 /*end*/ +
       (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/
@@ -91,9 +92,10 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
     device,
     presentationFormat,
     radialGradientFS,
-    1 /*stroke width*/ +
-      1 /*stops counts*/ +
-      2 /*padding*/ +
+    1 /*dist_start*/ +
+      1 /*dist_end*/ +
+      1 /*stops_count*/ +
+      1 /*radius_ratio*/ +
       2 /*start*/ +
       2 /*end*/ +
       (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/

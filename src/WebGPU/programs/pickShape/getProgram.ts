@@ -41,17 +41,17 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
   return function pickShape(
     pass: GPURenderPassEncoder,
     vertexData: DataView,
-    strokeWidth: number,
+    uniformData: DataView,
     sdfTexture: GPUTexture
   ) {
     const numVertices = vertexData.byteLength / STRIDE
 
     const uniformBuffer = device.createBuffer({
       label: 'drawShape uniforms',
-      size: uniformBufferSize,
+      size: uniformData.byteLength,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
-    device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([strokeWidth]))
+    device.queue.writeBuffer(uniformBuffer, 0, uniformData)
     delayedDestroy(uniformBuffer)
 
     const vertexBuffer = device.createBuffer({
@@ -60,6 +60,7 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
+    delayedDestroy(vertexBuffer)
 
     // Get or create bind group for this texture
     const bindGroup = device.createBindGroup({

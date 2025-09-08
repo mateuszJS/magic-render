@@ -41,6 +41,7 @@ export type Def = {
   filter?: AttrValue
   opacity?: AttrValue
   'fill-opacity'?: AttrValue
+  'stroke-width'?: AttrValue
 }
 
 export type Defs = Record<string, Def>

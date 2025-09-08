@@ -7,7 +7,8 @@ struct Vertex {
 };
 
 struct Uniforms {
-  stroke_width: f32,
+  dist_start: f32,
+  dist_end: f32,
 };
 
 @group(0) @binding(0) var<uniform> camera_projection: mat4x4f;
@@ -33,9 +34,10 @@ struct VertexOutput {
 }
 
 @fragment fn fs(in: VertexOutput) -> @location(0) u32 {
-  let sdf = textureLoad(texture, vec2u(in.uv)).r;
-  if (sdf < -u.stroke_width * 0.5) {
-    discard; // r32uint doesn't support blending so only skipping pixels lefts
+  let dist = textureLoad(texture, vec2u(in.uv)).r;
+
+  if (dist > u.dist_start || dist < u.dist_end) {
+    discard;
   }
 
   return in.id;

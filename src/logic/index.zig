@@ -28,11 +28,11 @@ const WebGpuPrograms = struct {
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
     compute_shape: *const fn ([]const types.Point, f32, f32, u32) void,
     draw_blur: *const fn (u32, u32, u32, u32, f32, f32) void,
-    draw_shape: *const fn ([]const types.PointUV, shapes.Uniform, u32) void,
+    draw_shape: *const fn ([]const types.PointUV, shapes.DrawUniform, u32) void,
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
     pick_triangle: *const fn ([]const Triangle.PickInstance) void,
-    pick_shape: *const fn ([]const images.PickVertex, f32, u32) void,
+    pick_shape: *const fn ([]const images.PickVertex, shapes.PickUniform, u32) void,
 };
 var web_gpu_programs: *const WebGpuPrograms = undefined;
 
@@ -229,7 +229,7 @@ fn checkAssetsUpdate(should_notify: bool) !void {
             },
             .shape => |shape| {
                 try new_assets_update.append(AssetSerialized{
-                    .shape = try shape.serialize(),
+                    .shape = try shape.serialize(std.heap.page_allocator),
                 });
             },
         }
@@ -306,10 +306,24 @@ pub fn onPointerDown(x: f32, y: f32) !void {
     if (state.tool == Tool.DrawShape) {
         if (state.selected_asset_id == NO_SELECTION) {
             const props = shapes.SerializedProps{
-                .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
-                .stroke = .{ .solid = .{ 0.0, 0.0, 0.0, 1.0 } },
-                .stroke_width = 1.0,
-                .filter = .{ .gaussianBlur = .{ .x = 30, .y = 1 } },
+                .sdf_effects = &.{
+                    shapes.SerializedSdfEffect{
+                        .dist_start = 2,
+                        .dist_end = -2,
+                        .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
+                    },
+                    shapes.SerializedSdfEffect{
+                        .dist_start = 26,
+                        .dist_end = 24,
+                        .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
+                    },
+                    shapes.SerializedSdfEffect{
+                        .dist_start = -30,
+                        .dist_end = -32,
+                        .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
+                    },
+                },
+                .filter = null, // .{ .gaussianBlur = .{ .x = 30, .y = 1 } },
                 .opacity = 1.0,
             };
             const id = try addShape(
@@ -703,11 +717,13 @@ pub fn updateCache() void {
                         .{ .x = 0, .y = 0, .u = 0, .v = 0 },
                     };
 
-                    web_gpu_programs.draw_shape(
-                        &vertex_bounds,
-                        shape.getUniform(),
-                        shape.sdf_texture_id,
-                    );
+                    for (shape.props.sdf_effects.items) |effect| {
+                        web_gpu_programs.draw_shape(
+                            &vertex_bounds,
+                            shape.getDrawUniform(effect),
+                            shape.sdf_texture_id,
+                        );
+                    }
 
                     end_cache();
 
@@ -765,11 +781,13 @@ pub fn renderDraw() !void {
                         cache_texture_id,
                     );
                 } else {
-                    web_gpu_programs.draw_shape(
-                        &shape.getDrawBounds(true),
-                        shape.getUniform(),
-                        shape.sdf_texture_id,
-                    );
+                    for (shape.props.sdf_effects.items) |effect| {
+                        web_gpu_programs.draw_shape(
+                            &shape.getDrawBounds(true),
+                            shape.getDrawUniform(effect),
+                            shape.sdf_texture_id,
+                        );
+                    }
                 }
             },
         }
@@ -856,11 +874,13 @@ pub fn renderPick() !void {
                 web_gpu_programs.pick_texture(&vertex_data, img.texture_id);
             },
             .shape => |shape| {
-                web_gpu_programs.pick_shape(
-                    &shape.getPickBounds(),
-                    shape.getStrokeWidth(),
-                    shape.sdf_texture_id,
-                );
+                for (shape.props.sdf_effects.items) |effect| {
+                    web_gpu_programs.pick_shape(
+                        &shape.getPickBounds(),
+                        shape.getPickUniform(effect),
+                        shape.sdf_texture_id,
+                    );
+                }
             },
         }
     }

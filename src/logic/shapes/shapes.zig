@@ -47,21 +47,29 @@ fn getSnapThreshold(bounds: [4]PointUV) Point {
     return close_path_threshold;
 }
 
+pub const SdfEffect = struct {
+    dist_start: f32,
+    dist_end: f32,
+    fill: fill.Fill,
+};
+
+pub const SerializedSdfEffect = struct {
+    dist_start: f32,
+    dist_end: f32,
+    fill: fill.SerializedFill,
+};
+
 pub const Filter = struct {
     gaussianBlur: Point,
 };
 
 pub const Props = struct {
-    fill: fill.Fill,
-    stroke: fill.Fill,
-    stroke_width: f32,
+    sdf_effects: std.ArrayList(SdfEffect),
     filter: ?Filter,
     opacity: f32,
 };
 pub const SerializedProps = struct {
-    fill: fill.SerializedFill,
-    stroke: fill.SerializedFill,
-    stroke_width: f32,
+    sdf_effects: []const SerializedSdfEffect,
     filter: ?Filter,
     opacity: f32,
 };
@@ -104,10 +112,17 @@ pub const Shape = struct {
             try paths_list.append(path);
         }
 
+        var effects_list = std.ArrayList(SdfEffect).init(allocator);
+        for (input_props.sdf_effects) |effect| {
+            try effects_list.append(SdfEffect{
+                .dist_start = effect.dist_start,
+                .dist_end = effect.dist_end,
+                .fill = try fill.Fill.new(effect.fill, allocator),
+            });
+        }
+
         const props = Props{
-            .fill = try fill.Fill.new(input_props.fill, allocator),
-            .stroke = try fill.Fill.new(input_props.stroke, allocator),
-            .stroke_width = input_props.stroke_width,
+            .sdf_effects = effects_list,
             .filter = input_props.filter,
             .opacity = input_props.opacity,
         };
@@ -290,12 +305,13 @@ pub const Shape = struct {
         return skeleton_buffer.toOwnedSlice();
     }
 
-    pub fn getSkeletonUniform(self: Shape) Uniform {
-        return Uniform{
+    pub fn getSkeletonUniform(self: Shape) DrawUniform {
+        const stroke_width = PathUtils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.render_scale;
+        return DrawUniform{
             .solid = .{
-                .stroke_width = PathUtils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.render_scale,
-                .fill_color = .{ 0.0, 0.0, 0.0, 0.0 },
-                .stroke_color = .{ 0.0, 0.0, 1.0, 1.0 },
+                .dist_start = stroke_width * 0.5,
+                .dist_end = -stroke_width * 0.5,
+                .color = .{ 0.0, 0.0, 1.0, 1.0 },
             },
         };
     }
@@ -342,23 +358,26 @@ pub const Shape = struct {
         return points.toOwnedSlice();
     }
 
-    pub fn getStrokeWidth(self: Shape) f32 {
-        return self.props.stroke_width * self.sdf_scale;
+    pub fn getPickUniform(self: Shape, sdf_effect: SdfEffect) PickUniform {
+        return PickUniform{
+            .dist_start = sdf_effect.dist_start * self.sdf_scale,
+            .dist_end = sdf_effect.dist_end * self.sdf_scale,
+        };
     }
 
-    pub fn getUniform(self: Shape) Uniform {
-        switch (self.props.fill) {
+    pub fn getDrawUniform(self: Shape, sdf_effect: SdfEffect) DrawUniform {
+        switch (sdf_effect.fill) {
             .solid => |color| {
-                return Uniform{
+                return DrawUniform{
                     .solid = .{
-                        .stroke_width = self.getStrokeWidth(),
-                        .fill_color = .{
+                        .dist_start = sdf_effect.dist_start * self.sdf_scale,
+                        .dist_end = sdf_effect.dist_end * self.sdf_scale,
+                        .color = .{
                             color[0] * self.props.opacity,
                             color[1] * self.props.opacity,
                             color[2] * self.props.opacity,
                             color[3] * self.props.opacity,
                         },
-                        .stroke_color = .{ 0, 0, 0, 0 }, //self.props.stroke_color,
                     },
                 };
             },
@@ -375,10 +394,10 @@ pub const Shape = struct {
                         },
                     };
                 }
-
-                return Uniform{
+                return DrawUniform{
                     .linear = .{
-                        .stroke_width = self.getStrokeWidth(),
+                        .dist_start = sdf_effect.dist_start * self.sdf_scale,
+                        .dist_end = sdf_effect.dist_end * self.sdf_scale,
                         .stops_count = gradient.stops.items.len,
                         .start = gradient.start,
                         .end = gradient.end,
@@ -400,9 +419,10 @@ pub const Shape = struct {
                     };
                 }
 
-                return Uniform{
+                return DrawUniform{
                     .radial = .{
-                        .stroke_width = self.getStrokeWidth(),
+                        .dist_start = sdf_effect.dist_start * self.sdf_scale,
+                        .dist_end = sdf_effect.dist_end * self.sdf_scale,
                         .stops_count = gradient.stops.items.len,
                         .center = gradient.center,
                         .destination = gradient.destination,
@@ -520,22 +540,43 @@ pub const Shape = struct {
     }
 
     fn getSdfPadding(self: Shape) Point {
-        return Point{
-            .x = 1.0 + self.props.stroke_width / 2.0,
-            .y = 1.0 + self.props.stroke_width / 2.0,
-        };
+        var padding = consts.POINT_ZERO;
+        // because of skeleton render, we cannot od less than zero
+
+        for (self.props.sdf_effects.items) |effect| {
+            if (std.math.isInf(effect.dist_end)) {
+                std.debug.print("SDF effect dist_end cannot be infinite!\nShape ID: {d}, effect: {any}\n", .{ self.id, effect });
+                @panic("SDF effect dist_end cannot be infinite!");
+            }
+            padding.x = @max(padding.x, -effect.dist_end);
+            padding.y = @max(padding.y, -effect.dist_end);
+        }
+
+        // we do smoothing in shaders wit fwidth(), so it's 1px to make sure we wont cut it out
+        padding.x += 1.0;
+        padding.y += 1.0;
+
+        return padding;
     }
 
-    pub fn serialize(self: Shape) !Serialized {
-        var paths_list = std.ArrayList([]const Point).init(self.paths.allocator);
+    pub fn serialize(self: Shape, allocator: std.mem.Allocator) !Serialized {
+        var paths_list = std.ArrayList([]const Point).init(allocator);
         for (self.paths.items) |path| {
             const serialized_path = path.serialize();
             try paths_list.append(serialized_path);
         }
+
+        var effects_list = std.ArrayList(SerializedSdfEffect).init(allocator);
+        for (self.props.sdf_effects.items) |effect| {
+            try effects_list.append(SerializedSdfEffect{
+                .dist_start = effect.dist_start,
+                .dist_end = effect.dist_end,
+                .fill = effect.fill.serialize(),
+            });
+        }
+
         const props = SerializedProps{
-            .fill = self.props.fill.serialize(),
-            .stroke = self.props.stroke.serialize(),
-            .stroke_width = self.props.stroke_width,
+            .sdf_effects = try effects_list.toOwnedSlice(),
             .filter = self.props.filter,
             .opacity = self.props.opacity,
         };
@@ -561,10 +602,10 @@ pub const Shape = struct {
 };
 
 const UniformSolid = extern struct {
-    stroke_width: f32,
-    padding: [3]f32 = .{ 0.0, 0.0, 0.0 }, // Padding for alignment
-    fill_color: [4]f32,
-    stroke_color: [4]f32,
+    dist_start: f32,
+    dist_end: f32,
+    padding: [2]u32 = .{ 0, 0 },
+    color: [4]f32,
 };
 
 const UniformGradientStop = extern struct {
@@ -574,28 +615,34 @@ const UniformGradientStop = extern struct {
 };
 
 const UniformLinearGradient = extern struct {
-    stroke_width: f32,
+    dist_start: f32,
+    dist_end: f32,
     stops_count: u32,
-    padding: [2]f32 = .{ 0.0, 0.0 }, // Padding for alignment
+    padding: u32 = 0.0,
     start: Point,
     end: Point,
     stops: [10]UniformGradientStop,
 };
 
 const UniformRadialGradient = extern struct {
-    stroke_width: f32,
+    dist_start: f32,
+    dist_end: f32,
     stops_count: u32,
     radius_ratio: f32,
-    padding: u32 = 0, // Padding for alignment
     center: Point,
     destination: Point, // rx, ry for elliptical gradients
     stops: [10]UniformGradientStop,
 };
 
-pub const Uniform = union(enum) {
+pub const DrawUniform = union(enum) {
     solid: UniformSolid,
     linear: UniformLinearGradient,
     radial: UniformRadialGradient,
+};
+
+pub const PickUniform = struct {
+    dist_start: f32,
+    dist_end: f32,
 };
 
 pub const Serialized = struct {

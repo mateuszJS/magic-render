@@ -178,9 +178,11 @@ export default async function initCreator(
             v: point.v,
           })),
           props: {
-            fill: sanitizeFill(shape.props.fill), // TODO: correctly filter out zigar added properties
-            stroke: sanitizeFill(shape.props.stroke), // TODO: correctly filter out zigar added properties
-            stroke_width: shape.props.stroke_width,
+            sdf_effects: [...shape.props.sdf_effects].map((effect) => ({
+              dist_start: effect.dist_start,
+              dist_end: effect.dist_end,
+              fill: sanitizeFill(effect.fill),
+            })),
             filter: shape.props.filter?.gaussianBlur
               ? {
                   gaussianBlur: {

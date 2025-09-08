@@ -28,7 +28,7 @@ function toRuntimeGradient(
   def: Def,
   boundingBox: BoundingBox,
   overrideAlpha = 1
-): ShapeProps['fill'] | null {
+): SdfEffect['fill'] | null {
   if (def.type !== 'linear-gradient' && def.type !== 'radial-gradient') {
     console.error('toRuntimeGradient receive definition which is not a gradient!')
     return null
@@ -190,10 +190,8 @@ export function createShapes(
       if (paths) {
         const boundingBox = getBoundingBox(paths)
 
-        const serializedProps: Partial<ShapeProps> = {
-          fill: { solid: [0, 0, 0, 1] },
-          stroke: { solid: [0, 0, 0, 1] },
-          stroke_width: 0,
+        const serializedProps: ShapeProps = {
+          sdf_effects: [],
           filter: null,
           opacity: 1,
         }
@@ -202,32 +200,58 @@ export function createShapes(
           const fillOpacity = ensureNumber(props['fill-opacity'], 1)
           const fill = String(props.fill)
           const m = fill.match(/^url\(#([^)]+)\)$/)
+          let serializedFill: SdfEffect['fill'] | null = null
 
           if (m) {
             const def = defs[m[1]]
             if (def) {
               const grad = toRuntimeGradient(def, boundingBox, fillOpacity)
-              if (grad) serializedProps.fill = grad
+              if (grad) {
+                serializedFill = grad
+              }
             }
           } else {
             const rgba = parseColor(fill, fillOpacity)
-            serializedProps.fill = { solid: rgba }
+            serializedFill = { solid: rgba }
+          }
+
+          if (serializedFill) {
+            serializedProps.sdf_effects.push({
+              dist_start: Infinity,
+              dist_end: 0,
+              fill: serializedFill,
+            })
           }
         }
-        if (props.stroke) {
-          const stroke = String(props.stroke)
-          const m = stroke.match(/^url\(#([^)]+)\)$/)
+
+        if (props['stroke-width']) {
+          const color = String(props.stroke) || '#000'
+          const width = ensureNumber(props['stroke-width'], 1)
+          const m = color.match(/^url\(#([^)]+)\)$/)
+          let serializedFill: SdfEffect['fill'] | null = null
+
           if (m) {
             const def = defs[m[1]]
             if (def) {
               const grad = toRuntimeGradient(def, boundingBox)
-              if (grad) serializedProps.stroke = grad
+              if (grad) {
+                serializedFill = grad
+              }
             }
           } else {
-            const rgba = parseColor(stroke)
-            serializedProps.stroke = { solid: rgba }
+            const rgba = parseColor(color)
+            serializedFill = { solid: rgba }
+          }
+
+          if (serializedFill) {
+            serializedProps.sdf_effects.push({
+              dist_start: width / 2,
+              dist_end: -width / 2,
+              fill: serializedFill,
+            })
           }
         }
+
         if (props.filter) {
           const filter = String(props.filter)
           const m = filter.match(/^url\(#([^)]+)\)$/)

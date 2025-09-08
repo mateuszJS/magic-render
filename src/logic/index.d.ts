@@ -37,10 +37,14 @@ type RadialGradient = {
   destination: Point
 }
 
-type ShapeProps = {
-  stroke_width: number
+type SdfEffect = {
+  dist_start: number
+  dist_end: number
   fill: { linear: LinearGradient } | { radial: RadialGradient } | { solid: Color }
-  stroke: { linear: LinearGradient } | { radial: RadialGradient } | { solid: Color }
+}
+
+type ShapeProps = {
+  sdf_effects: SdfEffect[]
   filter: { gaussianBlur: Point } | null
   opacity: number
 }
@@ -57,7 +61,7 @@ type ShapeAssetOutput = {
   props: ShapeProps
   bounds: PointUV[]
   sdf_texture_id: number
-  cache_texture_id: number
+  cache_texture_id: number | null
 }
 type ImageAssetInput = {
   id: number
@@ -84,7 +88,7 @@ type PointerDataView = {
   dataView: DataView
 }
 
-type Uniform =
+type ShapeDrawUniform =
   | { solid: PointerDataView }
   | { linear: PointerDataView }
   | { radial: PointerDataView }
@@ -141,12 +145,12 @@ declare module '*.zig' {
     ) => void
     draw_shape: (
       bound_box_data: ArrayPointerDataView,
-      uniformData: Uniform,
+      uniformData: ShapeDrawUniform,
       sdf_texture_id: number
     ) => void
     pick_shape: (
       bound_box_data: ArrayPointerDataView,
-      strokeWidth: number,
+      uniformData: PointerDataView,
       sdf_texture_id: number
     ) => void
   }) => void
