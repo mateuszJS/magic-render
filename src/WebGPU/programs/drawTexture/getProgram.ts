@@ -1,11 +1,8 @@
+import { canvasMatrix } from '../initPrograms'
 import shaderCode from './shader.wgsl'
 
 const STRIDE = 4
-export default function getProgram(
-  device: GPUDevice,
-  presentationFormat: GPUTextureFormat,
-  matrixBuffer: GPUBuffer
-) {
+export default function getProgram(device: GPUDevice, presentationFormat: GPUTextureFormat) {
   const module = device.createShaderModule({
     label: 'draw texture module',
     code: shaderCode,
@@ -79,7 +76,7 @@ export default function getProgram(
       bindGroup = device.createBindGroup({
         layout: pipeline.getBindGroupLayout(0),
         entries: [
-          { binding: 0, resource: { buffer: matrixBuffer } },
+          { binding: 0, resource: { buffer: canvasMatrix.buffer } },
           { binding: 1, resource: sampler },
           { binding: 2, resource: texture.createView() },
         ],

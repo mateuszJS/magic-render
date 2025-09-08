@@ -1,18 +1,14 @@
-let multisampleTexture: GPUTexture | undefined
-
 export default function getMultisampleTexture(
   device: GPUDevice,
   width: number,
   height: number,
-  format: GPUTextureFormat
+  format: GPUTextureFormat,
+  texture?: GPUTexture
 ) {
-  if (
-    !multisampleTexture ||
-    multisampleTexture.width !== width ||
-    multisampleTexture.height !== height
-  ) {
-    multisampleTexture?.destroy()
-    multisampleTexture = device.createTexture({
+  if (!texture || texture.width !== width || texture.height !== height) {
+    texture?.destroy()
+    texture = device.createTexture({
+      label: 'multisample texture',
       format: format,
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
       size: [width, height],
@@ -20,5 +16,5 @@ export default function getMultisampleTexture(
     })
   }
 
-  return multisampleTexture
+  return texture
 }

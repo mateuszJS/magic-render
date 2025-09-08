@@ -56,8 +56,3 @@ pub const PointUV = extern struct {
         return std.math.hypot(self.x - other.x, self.y - other.y);
     }
 };
-
-pub const TextureSize = struct {
-    w: u32,
-    h: u32,
-};

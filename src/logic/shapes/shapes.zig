@@ -1,7 +1,7 @@
 const Utils = @import("../utils.zig");
 const Point = @import("../types.zig").Point;
 const PointUV = @import("../types.zig").PointUV;
-const TextureSize = @import("../types.zig").TextureSize;
+const TextureSize = @import("../texture_size.zig").TextureSize;
 const std = @import("std");
 const bounding_box = @import("bounding_box.zig");
 const triangles = @import("../triangle.zig");
@@ -11,7 +11,7 @@ const Path = @import("paths.zig").Path;
 const shared = @import("../shared.zig");
 const images = @import("../images.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
-const DEFAULT_BOUNDS = @import("../consts.zig").DEFAULT_BOUNDS;
+const consts = @import("../consts.zig");
 const PackedId = @import("packed_id.zig");
 const PathUtils = @import("path_utils.zig");
 const fill = @import("fill.zig");
@@ -47,15 +47,23 @@ fn getSnapThreshold(bounds: [4]PointUV) Point {
     return close_path_threshold;
 }
 
+pub const Filter = struct {
+    gaussianBlur: Point,
+};
+
 pub const Props = struct {
     fill: fill.Fill,
     stroke: fill.Fill,
     stroke_width: f32,
+    filter: ?Filter,
+    opacity: f32,
 };
 pub const SerializedProps = struct {
     fill: fill.SerializedFill,
     stroke: fill.SerializedFill,
     stroke_width: f32,
+    filter: ?Filter,
+    opacity: f32,
 };
 
 pub const Shape = struct {
@@ -66,7 +74,11 @@ pub const Shape = struct {
 
     sdf_scale: f32 = 1.0,
     outdated_sdf: bool, // if true, we need to recalculate SDF
-    texture_id: u32,
+    sdf_texture_id: u32,
+
+    cache_scale: f32 = 1.0,
+    outdated_cache: bool,
+    cache_texture_id: ?u32,
 
     preview_point: ?Point = null,
 
@@ -78,7 +90,8 @@ pub const Shape = struct {
         input_paths: []const []const Point,
         input_bounds: ?[4]PointUV,
         input_props: SerializedProps,
-        texture_id: u32,
+        sdf_texture_id: u32,
+        cache_texture_id: ?u32,
         allocator: std.mem.Allocator,
     ) !Shape {
         var paths_list = std.ArrayList(Path).init(allocator);
@@ -95,15 +108,19 @@ pub const Shape = struct {
             .fill = try fill.Fill.new(input_props.fill, allocator),
             .stroke = try fill.Fill.new(input_props.stroke, allocator),
             .stroke_width = input_props.stroke_width,
+            .filter = input_props.filter,
+            .opacity = input_props.opacity,
         };
 
         const shape = Shape{
             .id = id,
             .paths = paths_list,
             .props = props,
-            .texture_id = texture_id,
+            .sdf_texture_id = sdf_texture_id,
             .outdated_sdf = true,
-            .bounds = input_bounds orelse DEFAULT_BOUNDS,
+            .bounds = input_bounds orelse consts.DEFAULT_BOUNDS,
+            .cache_texture_id = cache_texture_id,
+            .outdated_cache = true,
         };
 
         return shape;
@@ -117,7 +134,7 @@ pub const Shape = struct {
         is_handle_preview = true;
 
         if (self.paths.items.len == 0) {
-            for (&self.bounds, DEFAULT_BOUNDS) |*b, default| {
+            for (&self.bounds, consts.DEFAULT_BOUNDS) |*b, default| {
                 b.* = default;
                 b.x += absolute_point.x;
                 b.y += absolute_point.y;
@@ -335,8 +352,13 @@ pub const Shape = struct {
                 return Uniform{
                     .solid = .{
                         .stroke_width = self.getStrokeWidth(),
-                        .fill_color = color, //self.props.fill_color,
-                        .stroke_color = .{ 0, 1, 0, 1 }, //self.props.stroke_color,
+                        .fill_color = .{
+                            color[0] * self.props.opacity,
+                            color[1] * self.props.opacity,
+                            color[2] * self.props.opacity,
+                            color[3] * self.props.opacity,
+                        },
+                        .stroke_color = .{ 0, 0, 0, 0 }, //self.props.stroke_color,
                     },
                 };
             },
@@ -345,7 +367,12 @@ pub const Shape = struct {
                 for (gradient.stops.items, 0..) |stop, i| {
                     stops[i] = UniformGradientStop{
                         .offset = stop.offset,
-                        .color = stop.color,
+                        .color = .{
+                            stop.color[0] * self.props.opacity,
+                            stop.color[1] * self.props.opacity,
+                            stop.color[2] * self.props.opacity,
+                            stop.color[3] * self.props.opacity,
+                        },
                     };
                 }
 
@@ -364,7 +391,12 @@ pub const Shape = struct {
                 for (gradient.stops.items, 0..) |stop, i| {
                     stops[i] = UniformGradientStop{
                         .offset = stop.offset,
-                        .color = stop.color,
+                        .color = .{
+                            stop.color[0] * self.props.opacity,
+                            stop.color[1] * self.props.opacity,
+                            stop.color[2] * self.props.opacity,
+                            stop.color[3] * self.props.opacity,
+                        },
                     };
                 }
 
@@ -413,11 +445,11 @@ pub const Shape = struct {
             self.bounds[0].distance(self.bounds[3]),
         );
 
-        const padding = self.props.stroke_width / 2.0;
+        const padding = self.getSdfPadding();
         for (points) |*point| {
             const scaled = scale.get(point);
-            point.x = padding + scaled.x;
-            point.y = padding + scaled.y;
+            point.x = padding.x + scaled.x;
+            point.y = padding.y + scaled.y;
         }
 
         self.outdated_sdf = false;
@@ -425,8 +457,15 @@ pub const Shape = struct {
         return points;
     }
 
-    pub fn getBoundsWithPadding(self: Shape, scale: f32) [4]PointUV {
-        const padding = (self.props.stroke_width / 2.0);
+    pub fn getBoundsWithPadding(self: Shape, scale: f32, include_filter_margin: bool) [4]PointUV {
+        var padding = self.getSdfPadding();
+
+        if (include_filter_margin) {
+            const filter_margin = self.getFilterMargin();
+            padding.x += filter_margin.x;
+            padding.y += filter_margin.y;
+        }
+
         var buffer: [4]PointUV = undefined;
         const len = self.bounds.len;
 
@@ -438,8 +477,8 @@ pub const Shape = struct {
             const angle_prev = b.angleTo(b_prev);
 
             buffer[i] = b;
-            buffer[i].x -= @cos(angle_next) * padding + @cos(angle_prev) * padding;
-            buffer[i].y -= @sin(angle_next) * padding + @sin(angle_prev) * padding;
+            buffer[i].x -= @cos(angle_next) * padding.x + @cos(angle_prev) * padding.x;
+            buffer[i].y -= @sin(angle_next) * padding.y + @sin(angle_prev) * padding.y;
             buffer[i].x *= scale;
             buffer[i].y *= scale;
         }
@@ -447,8 +486,8 @@ pub const Shape = struct {
         return buffer;
     }
 
-    pub fn getDrawBounds(self: Shape) [6]PointUV {
-        const bounds = self.getBoundsWithPadding(1);
+    pub fn getDrawBounds(self: Shape, include_filter_margin: bool) [6]PointUV {
+        const bounds = self.getBoundsWithPadding(1, include_filter_margin);
         return [_]PointUV{
             // first triangle
             bounds[0],
@@ -462,7 +501,7 @@ pub const Shape = struct {
     }
 
     pub fn getPickBounds(self: Shape) [6]images.PickVertex {
-        const bounds = self.getDrawBounds();
+        const bounds = self.getDrawBounds(false);
         var buffer: [6]images.PickVertex = undefined;
         for (bounds, 0..) |b, i| {
             buffer[i] = .{
@@ -471,6 +510,20 @@ pub const Shape = struct {
             };
         }
         return buffer;
+    }
+
+    pub fn getFilterMargin(self: Shape) Point {
+        return if (self.props.filter) |filter| Point{
+            .x = 3 * filter.gaussianBlur.x,
+            .y = 3 * filter.gaussianBlur.y,
+        } else consts.POINT_ZERO;
+    }
+
+    fn getSdfPadding(self: Shape) Point {
+        return Point{
+            .x = 1.0 + self.props.stroke_width / 2.0,
+            .y = 1.0 + self.props.stroke_width / 2.0,
+        };
     }
 
     pub fn serialize(self: Shape) !Serialized {
@@ -483,6 +536,8 @@ pub const Shape = struct {
             .fill = self.props.fill.serialize(),
             .stroke = self.props.stroke.serialize(),
             .stroke_width = self.props.stroke_width,
+            .filter = self.props.filter,
+            .opacity = self.props.opacity,
         };
 
         return Serialized{
@@ -490,7 +545,8 @@ pub const Shape = struct {
             .paths = try paths_list.toOwnedSlice(),
             .props = props,
             .bounds = self.bounds,
-            .texture_id = self.texture_id,
+            .sdf_texture_id = self.sdf_texture_id,
+            .cache_texture_id = self.cache_texture_id,
         };
     }
 
@@ -547,7 +603,8 @@ pub const Serialized = struct {
     paths: []const []const Point,
     props: SerializedProps,
     bounds: [4]PointUV,
-    texture_id: u32,
+    sdf_texture_id: u32,
+    cache_texture_id: ?u32,
 
     // this function returns a lot of false positives because we compare floating point numbers
     pub fn compare(self: Serialized, other: Serialized) bool {

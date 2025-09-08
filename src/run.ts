@@ -5,19 +5,22 @@ import {
   drawMSDF,
   pickTexture,
   pickTriangle,
-  canvasMatrixBuffer,
   pickCanvasMatrixBuffer,
   drawSolidShape,
   drawLinearGradientShape,
   drawRadialGradientShape,
   computeShape,
   pickShape,
+  drawBlur,
+  canvasMatrix,
+  destroyGpuObjects,
 } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
 import * as Logic from 'logic/index.zig'
 import { pointer } from 'WebGPU/pointer'
 import * as Textures from 'textures'
+import { endCache, startCache } from 'WebGPU/textureCache'
 
 let renderPass: GPURenderPassEncoder
 export function updateRenderPass(newRenderPass: GPURenderPassEncoder) {
@@ -28,14 +31,22 @@ export default function runCreator(
   creatorCanvas: HTMLCanvasElement,
   context: GPUCanvasContext,
   device: GPUDevice,
-  cleanupPrograms: VoidFunction,
-  presentationFormat: GPUTextureFormat,
   onEmptyEvents: VoidFunction // call when there is no more events to process
 ) {
   let pickPass: GPURenderPassEncoder
   let computePass: GPUComputePassEncoder
+  let encoder: GPUCommandEncoder
 
   const pickManager = new PickManager(device)
+
+  Logic.connectCacheCallbacks(
+    Textures.createCacheTexture,
+    (texture_id: number, box: BoundingBox, width: number, height: number) => {
+      startCache(device, encoder, texture_id, box, width, height)
+    },
+    endCache
+  )
+
   // let time = 0
   // let total = 0
   // let samplesCount = 0
@@ -63,7 +74,28 @@ export default function runCreator(
       Textures.updateSDF(textureId, width, height)
       computeShape(computePass, curvesDataView, Textures.getTexture(textureId))
     },
+    draw_blur: (
+      textureId,
+      iterations,
+      filterSizePerPassX,
+      filterSizePerPassY,
+      sigmaPerPassX,
+      sigmaPerPassY
+    ) => {
+      drawBlur(
+        encoder,
+        Textures.getTexture(textureId),
+        iterations,
+        filterSizePerPassX,
+        filterSizePerPassY,
+        sigmaPerPassX,
+        sigmaPerPassY
+      )
+    },
     draw_shape: (bound_box_data, uniform_data, textureId) => {
+      const boundBoxDataView = bound_box_data['*'].dataView
+
+      // console.log('boundBoxDataView', boundBoxDataView)
       let program
       let uniform
       if ('linear' in uniform_data && uniform_data.linear) {
@@ -79,7 +111,6 @@ export default function runCreator(
         throw Error('Unsupported shape uniform type')
       }
 
-      const boundBoxDataView = bound_box_data['*'].dataView
       program(renderPass, Textures.getTexture(textureId), boundBoxDataView, uniform.dataView)
     },
     pick_texture: (vertex_data, texture_id) => {
@@ -102,16 +133,21 @@ export default function runCreator(
     now: DOMHighResTimeStamp,
     preview?: { canvas: HTMLCanvasElement; ctx: GPUCanvasContext; onCapture: VoidFunction }
   ) {
-    const encoder = device.createCommandEncoder()
+    encoder = device.createCommandEncoder({
+      label: 'draw canvas main encoder',
+    })
 
     computePass = encoder.beginComputePass()
     Logic.calculateShapesSDF()
     computePass.end()
 
+    Logic.updateCache()
+
     const canvasDescriptor = getCanvasRenderDescriptor(preview?.ctx || context, device)
     renderPass = encoder.beginRenderPass(canvasDescriptor)
-    const canvasMatrix = getCanvasMatrix(preview?.canvas || creatorCanvas)
-    device.queue.writeBuffer(canvasMatrixBuffer, 0, canvasMatrix)
+
+    const matrix = getCanvasMatrix(preview?.canvas || creatorCanvas)
+    device.queue.writeBuffer(canvasMatrix.buffer, 0, matrix)
     // time = performance.now()
     Logic.renderDraw()
     renderPass.end()
@@ -119,7 +155,7 @@ export default function runCreator(
     if (preview) {
       const commandBuffer = encoder.finish()
       device.queue.submit([commandBuffer])
-      cleanupPrograms()
+      destroyGpuObjects()
       preview.onCapture()
       return
     }
@@ -136,7 +172,7 @@ export default function runCreator(
     if (needsUpdatePick) {
       lastPickPointer.x = pointer.x
       lastPickPointer.y = pointer.y
-      const pickMatrix = pickManager.createMatrix(creatorCanvas, canvasMatrix)
+      const pickMatrix = pickManager.createMatrix(creatorCanvas, matrix)
       device.queue.writeBuffer(pickCanvasMatrixBuffer, 0, pickMatrix)
       const pick = pickManager.startPicking(encoder)
       pickPass = pick.pass
@@ -146,7 +182,7 @@ export default function runCreator(
 
     const commandBuffer = encoder.finish()
     device.queue.submit([commandBuffer])
-    cleanupPrograms()
+    destroyGpuObjects()
 
     pickManager.asyncPick()
 

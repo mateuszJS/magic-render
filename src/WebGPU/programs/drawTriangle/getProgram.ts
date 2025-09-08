@@ -1,14 +1,10 @@
+import { delayedDestroy, canvasMatrix } from '../initPrograms'
 import shaderCode from './shader.wgsl'
 
 const INSTANCE_STRIDE =
   4 * 3 /* positon */ + 1 /* color */ + 3 /* value of roudned corner  for each of three positions */
 
-export default function getProgram(
-  device: GPUDevice,
-  presentationFormat: GPUTextureFormat,
-  matrixBuffer: GPUBuffer,
-  buffersToDestroy: GPUBuffer[]
-) {
+export default function getProgram(device: GPUDevice, presentationFormat: GPUTextureFormat) {
   const module = device.createShaderModule({
     label: 'draw triangle module',
     code: shaderCode,
@@ -28,7 +24,7 @@ export default function getProgram(
             { shaderLocation: 0, offset: 0, format: 'float32x4' }, // position 0
             { shaderLocation: 1, offset: 16, format: 'float32x4' }, // position 1
             { shaderLocation: 2, offset: 16 + 16, format: 'float32x4' }, // position 2
-            { shaderLocation: 3, offset: 16 + 16 + 16, format: 'unorm8x4' }, // color 'rgba8unorm'
+            { shaderLocation: 3, offset: 16 + 16 + 16, format: 'unorm8x4' }, // color rgba8unorm/bgra8unorm
             { shaderLocation: 4, offset: 16 + 16 + 16 + 4, format: 'float32x3' }, // rounded corner values
           ] as const,
         },
@@ -61,7 +57,7 @@ export default function getProgram(
   // Cache bind group for this program (no texture needed)
   const cachedBindGroup = device.createBindGroup({
     layout: pipeline.getBindGroupLayout(0),
-    entries: [{ binding: 0, resource: { buffer: matrixBuffer } }],
+    entries: [{ binding: 0, resource: { buffer: canvasMatrix.buffer } }],
   })
 
   return function drawTriangle(pass: GPURenderPassEncoder, vertexData: DataView) {
@@ -73,7 +69,7 @@ export default function getProgram(
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
-    buffersToDestroy.push(vertexBuffer)
+    delayedDestroy(vertexBuffer)
 
     pass.setPipeline(pipeline)
     pass.setVertexBuffer(0, vertexBuffer)

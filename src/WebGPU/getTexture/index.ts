@@ -55,13 +55,14 @@ function createCheckedMipmap(levels: Array<{ size: number; color: string }>) {
 
 export function createTextureArray(
   device: GPUDevice,
+  presentationFormat: GPUTextureFormat,
   width: number,
   height: number,
   slices: number
 ) {
   return device.createTexture({
     label: '2d array texture',
-    format: 'rgba8unorm',
+    format: presentationFormat,
     mipLevelCount: 1 + Math.log2(2048),
     size: [width, height, slices],
     usage:
@@ -109,11 +110,13 @@ export function attachSlice(
 
 export function createTextureFromSource(
   device: GPUDevice,
+  presentationFormat: GPUTextureFormat,
   source: TextureSource,
   options: Options = {}
 ) {
   const texture = device.createTexture({
-    format: 'rgba8unorm',
+    label: 'createTextureFromSource',
+    format: presentationFormat,
     mipLevelCount: options.mips ? numMipLevels(source.width, source.height) : 1,
     size: [source.width, source.height],
     usage:
@@ -154,7 +157,12 @@ export async function loadImageBitmap(url: string) {
   })
 }
 
-export async function createTextureFromImage(device: GPUDevice, url: string, options: Options) {
+export async function createTextureFromImage(
+  device: GPUDevice,
+  presentationFormat: GPUTextureFormat,
+  url: string,
+  options: Options
+) {
   const imgBitmap = await loadImageBitmap(url)
-  return createTextureFromSource(device, imgBitmap, options)
+  return createTextureFromSource(device, presentationFormat, imgBitmap, options)
 }

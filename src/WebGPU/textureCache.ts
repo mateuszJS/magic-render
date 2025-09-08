@@ -1,4 +1,4 @@
-import { canvasMatrixBuffer } from 'WebGPU/programs/initPrograms'
+import { canvasMatrix, delayedDestroy } from 'WebGPU/programs/initPrograms'
 import mat4 from 'utils/mat4'
 import { updateRenderPass } from 'run'
 import * as Textures from 'textures'
@@ -14,7 +14,7 @@ export function endCache() {
 
 export function startCache(
   device: GPUDevice,
-  presentationFormat: GPUTextureFormat,
+  encoder: GPUCommandEncoder,
   textureId: number,
   boundingBox: BoundingBox,
   outputWidth: number,
@@ -23,32 +23,13 @@ export function startCache(
   const width = boundingBox.max_x - boundingBox.min_x
   const height = boundingBox.max_y - boundingBox.min_y
 
-  let texture = Textures.getOptionTexture(textureId)
-  const canReuseTexture =
-    texture &&
-    Math.abs(texture.width - outputWidth) <= Number.EPSILON &&
-    Math.abs(texture.height - outputHeight) <= Number.EPSILON
+  const texture = Textures.getTextureCache(textureId, outputWidth, outputHeight)
 
-  if (!canReuseTexture) {
-    texture?.destroy()
-    texture = device.createTexture({
-      label: 'texture cache',
-      format: presentationFormat,
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-      size: [outputWidth, outputHeight],
-    })
-  }
-
-  if (!texture) {
-    throw new Error('Failed to create texture for cache')
-  }
-
-  const encoder = device.createCommandEncoder()
   const multisampleTexture = getMultisampleTexture(
     device,
     outputWidth,
     outputHeight,
-    presentationFormat
+    texture.format
   )
   const descriptor: GPURenderPassDescriptor = {
     label: 'texture cache pass',
@@ -58,12 +39,17 @@ export function startCache(
         resolveTarget: texture.createView(),
         loadOp: 'clear',
         storeOp: 'store',
+        // clearValue: [0.5, 0, 0.5, 0],
       },
     ],
   }
-
   const pass = encoder.beginRenderPass(descriptor)
   updateRenderPass(pass)
+  const matrixBuffer = device.createBuffer({
+    label: 'texture cache - matrix buffer',
+    size: 16 * 4,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  })
   const matrix = mat4.ortho(
     boundingBox.min_x, // left
     boundingBox.min_x + width, // right
@@ -73,12 +59,15 @@ export function startCache(
     -1 // far
   )
 
-  device.queue.writeBuffer(canvasMatrixBuffer, 0, matrix)
+  device.queue.writeBuffer(matrixBuffer, 0, matrix)
+
+  const canvasMatrixCopy = canvasMatrix.buffer
+  canvasMatrix.buffer = matrixBuffer
 
   endCacheCallback = () => {
     pass.end()
-    const commandBuffer = encoder.finish()
-    device.queue.submit([commandBuffer])
+    canvasMatrix.buffer = canvasMatrixCopy
+    delayedDestroy(matrixBuffer)
   }
 
   Textures.setCacheTexture(textureId, texture)

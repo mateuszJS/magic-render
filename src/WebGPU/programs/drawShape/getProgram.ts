@@ -1,10 +1,9 @@
+import { delayedDestroy, canvasMatrix } from '../initPrograms'
 import baseCode from './base.wgsl'
 
 export default function getDrawShape(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
-  canvasMatrixBuffer: GPUBuffer,
-  buffersToDestroy: GPUBuffer[],
   fragmentShader: string,
   uniformSize: number
 ) {
@@ -70,7 +69,7 @@ export default function getDrawShape(
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(boundBoxBuffer, 0, boundingBoxDataView)
-    buffersToDestroy.push(boundBoxBuffer)
+    delayedDestroy(boundBoxBuffer)
 
     const uniformBuffer = device.createBuffer({
       label: 'drawShape uniforms',
@@ -78,7 +77,7 @@ export default function getDrawShape(
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(uniformBuffer, 0, uniformDataView)
-    buffersToDestroy.push(uniformBuffer)
+    delayedDestroy(uniformBuffer)
 
     passEncoder.setPipeline(pipeline)
 
@@ -88,7 +87,7 @@ export default function getDrawShape(
       entries: [
         { binding: 0, resource: { buffer: uniformBuffer } },
         { binding: 1, resource: sdfTexture.createView() },
-        { binding: 2, resource: { buffer: canvasMatrixBuffer } },
+        { binding: 2, resource: { buffer: canvasMatrix.buffer } },
       ],
     })
 

@@ -10,11 +10,12 @@ const shapes = @import("./shapes/shapes.zig");
 const squares = @import("squares.zig");
 const bounding_box = @import("shapes/bounding_box.zig");
 const shared = @import("shared.zig");
-const get_sdf_texture_size = @import("get_sdf_texture_size.zig").get_sdf_texture_size;
+const texture_size = @import("texture_size.zig");
 const Utils = @import("utils.zig");
 const PackedId = @import("shapes/packed_id.zig");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 const PathUtils = @import("shapes/path_utils.zig");
+const consts = @import("consts.zig");
 
 const FillType = enum(u8) {
     Solid,
@@ -23,9 +24,10 @@ const FillType = enum(u8) {
 };
 
 const WebGpuPrograms = struct {
-    draw_texture: *const fn (images.DrawVertex, u32) void,
+    draw_texture: *const fn ([]const types.PointUV, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
-    compute_shape: *const fn ([]const types.Point, u32, u32, u32) void,
+    compute_shape: *const fn ([]const types.Point, f32, f32, u32) void,
+    draw_blur: *const fn (u32, u32, u32, u32, f32, f32) void,
     draw_shape: *const fn ([]const types.PointUV, shapes.Uniform, u32) void,
     draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
@@ -58,26 +60,18 @@ pub fn connectCreateSdfTexture(cb: *const fn () u32) void {
     create_sdf_texture = cb;
 }
 
-var create_cache_texture_callback: *const fn () u32 = undefined;
-var start_cache_callback: *const fn (u32, bounding_box.BoundingBox, f32, f32) void = undefined;
-var end_cache_callback: *const fn () void = undefined;
+var create_cache_texture: *const fn () u32 = undefined;
+var start_cache: *const fn (u32, bounding_box.BoundingBox, f32, f32) void = undefined;
+var end_cache: *const fn () void = undefined;
 
 pub fn connectCacheCallbacks(
-    create_cache_texture: *const fn () u32,
-    start_cache: *const fn (u32, bounding_box.BoundingBox, f32, f32) void,
-    end_cache: *const fn () void,
+    create_cache_texture_cb: *const fn () u32,
+    start_cache_cb: *const fn (u32, bounding_box.BoundingBox, f32, f32) void,
+    end_cache_cb: *const fn () void,
 ) void {
-    create_cache_texture_callback = create_cache_texture;
-    start_cache_callback = start_cache;
-    end_cache_callback = end_cache;
-
-    // shapes.update_texture_cache = update_texture_cache;
-}
-
-fn update_texture_cache(texture_id: u32, box: bounding_box.BoundingBox, width: f32, height: f32) void {
-    start_cache_callback(texture_id, box, width, height);
-    // web_gpu_programs.compute_shape(vertex_data.curves);
-    end_cache_callback();
+    create_cache_texture = create_cache_texture_cb;
+    start_cache = start_cache_cb;
+    end_cache = end_cache_cb;
 }
 
 pub const ASSET_ID_MIN: u32 = 1000;
@@ -145,8 +139,8 @@ pub fn updateRenderScale(scale: f32) !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                const bounds = shape.getBoundsWithPadding(1 / shared.render_scale);
-                const new_size = get_sdf_texture_size(bounds);
+                const bounds = shape.getBoundsWithPadding(1 / shared.render_scale, false);
+                const new_size = texture_size.get_sdf_size(bounds);
 
                 if (new_size.w > shape.sdf_size.w or new_size.h > shape.sdf_size.h) {
                     shape.outdated_sdf = true;
@@ -179,7 +173,8 @@ pub fn addShape(
     paths: []const []const types.Point,
     bounds: ?[4]types.PointUV,
     props: shapes.SerializedProps,
-    texture_id: u32,
+    sdf_texture_id: u32,
+    cache_texture_id: ?u32,
 ) !u32 {
     const id = if (id_or_zero == 0) generateId() else id_or_zero;
     const shape = try shapes.Shape.new(
@@ -187,7 +182,8 @@ pub fn addShape(
         paths,
         bounds,
         props,
-        texture_id,
+        sdf_texture_id,
+        cache_texture_id,
         std.heap.page_allocator,
     );
     try state.assets.put(id, Asset{ .shape = shape });
@@ -309,16 +305,20 @@ fn updateSelectedAsset(id: u32) !void {
 pub fn onPointerDown(x: f32, y: f32) !void {
     if (state.tool == Tool.DrawShape) {
         if (state.selected_asset_id == NO_SELECTION) {
+            const props = shapes.SerializedProps{
+                .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
+                .stroke = .{ .solid = .{ 0.0, 0.0, 0.0, 1.0 } },
+                .stroke_width = 1.0,
+                .filter = .{ .gaussianBlur = .{ .x = 30, .y = 1 } },
+                .opacity = 1.0,
+            };
             const id = try addShape(
                 0,
                 &.{},
                 null,
-                shapes.SerializedProps{
-                    .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
-                    .stroke = .{ .solid = .{ 0.0, 0.0, 0.0, 1.0 } },
-                    .stroke_width = 1.0,
-                },
+                props,
                 create_sdf_texture(),
+                if (props.filter != null) create_cache_texture() else null,
             );
             try updateSelectedAsset(id);
         }
@@ -477,19 +477,6 @@ pub fn onPointerLeave() !void {
     try checkAssetsUpdate(true);
 }
 
-fn updateShapeCache(shape: *shapes.Shape) !void {
-    _ = shape; // autofix
-    // if (shape.cache.valid) {
-    //     return; // no need to update
-    // }
-
-    // var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    // defer arena.deinit();
-    // const allocator = arena.allocator();
-
-    // try shape.drawTextureCache(allocator);
-}
-
 pub fn commitChanges() !void {
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
@@ -629,26 +616,127 @@ pub fn calculateShapesSDF() !void {
                 if (!shape.outdated_sdf) {
                     continue;
                 }
+
                 const option_points = try shape.getNewSdfPoint(allocator);
                 if (option_points) |points| {
-                    const bounds = shape.getBoundsWithPadding(1 / shared.render_scale);
-                    shape.sdf_size = get_sdf_texture_size(bounds);
-                    const init_width = bounds[0].distance(bounds[1]) * shared.render_scale; // revert to logical scale, nothing screen/camera/zoom related
-                    shape.sdf_scale = @as(f32, @floatFromInt(shape.sdf_size.w)) / init_width;
+                    const bounds = shape.getBoundsWithPadding(1 / shared.render_scale, false);
+                    shape.sdf_size = texture_size.get_sdf_size(bounds);
+
+                    const init_width = bounds[0].distance(bounds[1]) * shared.render_scale;
+                    // * shared.render_scale to revert to logical scale, without impact of camera/zoom
+
+                    shape.sdf_scale = shape.sdf_size.w / init_width;
 
                     for (points) |*point| {
                         point.x *= shape.sdf_scale;
                         point.y *= shape.sdf_scale;
                     }
-                    std.debug.print("New SDF size: {d}x{d}, scale: {d}\n", .{ shape.sdf_size.w, shape.sdf_size.h, shape.sdf_scale });
-                    if (shape.sdf_size.w > 0 and shape.sdf_size.h > 0) {
+
+                    if (shape.sdf_size.w > consts.MIN_TEXTURE_SIZE and shape.sdf_size.h > consts.MIN_TEXTURE_SIZE) {
                         web_gpu_programs.compute_shape(
                             points,
-                            shape.sdf_size.w,
-                            shape.sdf_size.h,
-                            shape.texture_id,
+                            @floor(shape.sdf_size.w),
+                            @floor(shape.sdf_size.h),
+                            shape.sdf_texture_id,
                         );
+
+                        shape.outdated_cache = true;
                     }
+                }
+            },
+        }
+    }
+}
+
+pub fn updateCache() void {
+    var iterator = state.assets.iterator();
+    while (iterator.next()) |asset| {
+        switch (asset.value_ptr.*) {
+            .img => {},
+            .shape => |*shape| {
+                if (shape.props.filter) |filter| {
+                    if (!shape.outdated_cache) continue;
+
+                    const cache_texture_id: u32 = if (shape.cache_texture_id) |id| id else b: {
+                        const id = create_cache_texture();
+                        shape.cache_texture_id = id;
+                        break :b id;
+                    };
+
+                    const bounds = shape.getBoundsWithPadding(
+                        1 / shared.render_scale,
+                        true,
+                    );
+
+                    const size, const sigma, const cache_scale = texture_size.get_safe_blur_dims(
+                        bounds,
+                        filter.gaussianBlur,
+                    );
+
+                    if (size.w < consts.MIN_TEXTURE_SIZE or size.h < consts.MIN_TEXTURE_SIZE) continue;
+                    // just to make sure device.createTexture won't round number down to 0
+
+                    shape.cache_scale = cache_scale;
+
+                    const extra_padding = shape.getFilterMargin();
+                    const scaled_extra_padding = types.Point{
+                        .x = extra_padding.x * cache_scale,
+                        .y = extra_padding.y * cache_scale,
+                    };
+                    const bb = bounding_box.BoundingBox{
+                        .min_x = -scaled_extra_padding.x,
+                        .min_y = -scaled_extra_padding.y,
+                        .max_x = size.w + scaled_extra_padding.x,
+                        .max_y = size.h + scaled_extra_padding.y,
+                    };
+
+                    start_cache(cache_texture_id, bb, size.w, size.h);
+
+                    const vertex_bounds = [_]types.PointUV{
+                        // first triangle
+                        .{ .x = 0, .y = 0, .u = 0, .v = 0 },
+                        .{ .x = 0, .y = size.h, .u = 0, .v = 1 },
+                        .{ .x = size.w, .y = size.h, .u = 1, .v = 1 },
+                        // second triangle
+                        .{ .x = size.w, .y = size.h, .u = 1, .v = 1 },
+                        .{ .x = size.w, .y = 0, .u = 1, .v = 0 },
+                        .{ .x = 0, .y = 0, .u = 0, .v = 0 },
+                    };
+
+                    web_gpu_programs.draw_shape(
+                        &vertex_bounds,
+                        shape.getUniform(),
+                        shape.sdf_texture_id,
+                    );
+
+                    end_cache();
+
+                    // Calculate dynamic iterations based on sigma to maintain consistent blur strength
+                    const maxSigma = @max(sigma.x, sigma.y);
+                    const maxSigmaPerPass = 2.0; // Feel free to increase to 4.0 for betetr quality
+
+                    // Calculate required iterations to achieve target sigma
+                    const iterations = @max(1, @ceil(maxSigma / maxSigmaPerPass));
+
+                    // Calculate per-pass sigma values
+                    const sigma_per_pass_x = sigma.x / @sqrt(iterations);
+                    const sigma_per_pass_y = sigma.y / @sqrt(iterations);
+
+                    // Calculate per-pass filter sizes from per-pass sigma
+                    const factor = 1.5 * maxSigmaPerPass;
+                    const filter_size_per_pass_x = @max(1, @ceil(factor * sigma_per_pass_x));
+                    const filter_size_per_pass_y = @max(1, @ceil(factor * sigma_per_pass_y));
+
+                    web_gpu_programs.draw_blur(
+                        cache_texture_id,
+                        @as(u32, @intFromFloat(iterations)),
+                        @as(u32, @intFromFloat(filter_size_per_pass_x)) | 1, // Ensure odd
+                        @as(u32, @intFromFloat(filter_size_per_pass_y)) | 1,
+                        sigma_per_pass_x,
+                        sigma_per_pass_y,
+                    );
+
+                    shape.outdated_cache = false;
                 }
             },
         }
@@ -666,12 +754,23 @@ pub fn renderDraw() !void {
     while (iterator.next()) |asset| {
         switch (asset.value_ptr.*) {
             .img => |img| {
-                var vertex_data: images.DrawVertex = undefined;
+                var vertex_data: [6]types.PointUV = undefined;
                 img.getRenderVertexData(&vertex_data);
-                web_gpu_programs.draw_texture(vertex_data, img.texture_id);
+                web_gpu_programs.draw_texture(&vertex_data, img.texture_id);
             },
             .shape => |*shape| {
-                web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getUniform(), shape.texture_id);
+                if (shape.cache_texture_id) |cache_texture_id| {
+                    web_gpu_programs.draw_texture(
+                        &shape.getDrawBounds(true),
+                        cache_texture_id,
+                    );
+                } else {
+                    web_gpu_programs.draw_shape(
+                        &shape.getDrawBounds(true),
+                        shape.getUniform(),
+                        shape.sdf_texture_id,
+                    );
+                }
             },
         }
     }
@@ -694,7 +793,11 @@ pub fn renderDraw() !void {
         _ = select_point_id; // autofix
 
         if (getSelectedShape()) |shape| {
-            web_gpu_programs.draw_shape(&shape.getDrawBounds(), shape.getSkeletonUniform(), shape.texture_id);
+            web_gpu_programs.draw_shape(
+                &shape.getDrawBounds(false),
+                shape.getSkeletonUniform(),
+                shape.sdf_texture_id,
+            );
 
             const hover_id = if (shape.id == hover_point_id.shape) hover_point_id else null;
             const vertex_data = try shape.getSkeletonDrawVertexData(
@@ -756,7 +859,7 @@ pub fn renderPick() !void {
                 web_gpu_programs.pick_shape(
                     &shape.getPickBounds(),
                     shape.getStrokeWidth(),
-                    shape.texture_id,
+                    shape.sdf_texture_id,
                 );
             },
         }
@@ -802,7 +905,8 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
                     shape.paths,
                     shape.bounds,
                     shape.props,
-                    shape.texture_id,
+                    shape.sdf_texture_id,
+                    shape.cache_texture_id,
                 );
             },
         }

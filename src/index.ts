@@ -8,7 +8,6 @@ import IconsPng from '../msdf/output/icons.png'
 import IconsJson from '../msdf/output/icons.json'
 import getDefaultPoints from 'utils/getDefaultPoints'
 import * as Textures from 'textures'
-import { startCache, endCache } from 'WebGPU/textureCache'
 import debounce from 'utils/debounce'
 import generatePreview from 'WebGPU/generatePreview'
 import sanitizeFill from 'sanitizeFill'
@@ -24,7 +23,8 @@ export type SerializedInputShape = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   paths: Point[][]
   props: ShapeProps
-  texture_id?: number
+  sdf_texture_id?: number
+  cache_texture_id?: number | null
   bounds?: PointUV[]
 }
 
@@ -42,7 +42,8 @@ export type SerializedOutputShape = {
   paths: Point[][]
   props: ShapeProps
   bounds: PointUV[]
-  texture_id: number
+  sdf_texture_id: number
+  cache_texture_id: number | null
 }
 
 export type SerializedOutputAsset = SerializedOutputImage | SerializedOutputShape
@@ -78,8 +79,8 @@ export default async function initCreator(
     onProcessingUpdate(loadingTextures > 0 || isMouseEventProcessing)
   }
 
-  const device = await getDevice()
-  Textures.init(device, (texLoadings) => {
+  const { device, presentationFormat, storageFormat } = await getDevice()
+  Textures.init(device, presentationFormat, storageFormat, (texLoadings) => {
     loadingTextures = texLoadings
     updateProcessing()
   })
@@ -97,7 +98,6 @@ export default async function initCreator(
   const context = canvas.getContext('webgpu')
   if (!context) throw Error('WebGPU from canvas needs to be always provided')
 
-  const presentationFormat = navigator.gpu.getPreferredCanvasFormat()
   context.configure({
     device,
     format: presentationFormat,
@@ -119,7 +119,7 @@ export default async function initCreator(
     updateRenderScale()
   })
 
-  const cleanupPrograms = initPrograms(device, presentationFormat)
+  initPrograms(device, presentationFormat)
 
   initMouseController(canvas, updateRenderScale, () => {
     isMouseEventProcessing = true
@@ -181,8 +181,18 @@ export default async function initCreator(
             fill: sanitizeFill(shape.props.fill), // TODO: correctly filter out zigar added properties
             stroke: sanitizeFill(shape.props.stroke), // TODO: correctly filter out zigar added properties
             stroke_width: shape.props.stroke_width,
+            filter: shape.props.filter?.gaussianBlur
+              ? {
+                  gaussianBlur: {
+                    x: shape.props.filter.gaussianBlur.x,
+                    y: shape.props.filter.gaussianBlur.y,
+                  },
+                }
+              : null,
+            opacity: shape.props.opacity,
           },
-          texture_id: shape.texture_id,
+          sdf_texture_id: shape.sdf_texture_id,
+          cache_texture_id: shape.cache_texture_id,
         }
       } else {
         throw Error('Unknown asset type')
@@ -192,13 +202,6 @@ export default async function initCreator(
   }
 
   Logic.connectOnAssetSelectionCallback(onAssetSelect)
-
-  Logic.connectCacheCallbacks(
-    Textures.createCacheTexture,
-    startCache.bind(null, device, presentationFormat),
-    endCache
-  )
-
   Logic.connectCreateSdfTexture(Textures.createSDF)
 
   const addImage: CreatorAPI['addImage'] = (url) => {
@@ -230,17 +233,10 @@ export default async function initCreator(
     )
   })
 
-  const { stopRAF, capturePreview } = runCreator(
-    canvas,
-    context,
-    device,
-    cleanupPrograms,
-    presentationFormat,
-    () => {
-      isMouseEventProcessing = false
-      updateProcessing()
-    }
-  )
+  const { stopRAF, capturePreview } = runCreator(canvas, context, device, () => {
+    isMouseEventProcessing = false
+    updateProcessing()
+  })
 
   const resetAssets: CreatorAPI['resetAssets'] = async (assets, withSnapshot = false) => {
     const results = await Promise.allSettled(
@@ -255,7 +251,8 @@ export default async function initCreator(
                   paths: asset.paths,
                   props: asset.props,
                   bounds: asset.bounds || null,
-                  texture_id: asset.texture_id || Textures.createSDF(),
+                  sdf_texture_id: asset.sdf_texture_id || Textures.createSDF(),
+                  cache_texture_id: asset.cache_texture_id || null,
                 },
               })
             } // otherwise it's an image

@@ -17,8 +17,10 @@ interface BoundingBox {
   max_y: number
 }
 
+type Color = [number, number, number, number]
+
 type GradientStop = {
-  color: [number, number, number, number]
+  color: Color
   offset: number // 0..1
 }
 
@@ -37,14 +39,10 @@ type RadialGradient = {
 
 type ShapeProps = {
   stroke_width: number
-  fill:
-    | { linear: LinearGradient }
-    | { radial: RadialGradient }
-    | { solid: [number, number, number, number] }
-  stroke:
-    | { linear: LinearGradient }
-    | { radial: RadialGradient }
-    | { solid: [number, number, number, number] }
+  fill: { linear: LinearGradient } | { radial: RadialGradient } | { solid: Color }
+  stroke: { linear: LinearGradient } | { radial: RadialGradient } | { solid: Color }
+  filter: { gaussianBlur: Point } | null
+  opacity: number
 }
 
 type ImageAssetOutput = {
@@ -58,7 +56,8 @@ type ShapeAssetOutput = {
   paths: Point[][]
   props: ShapeProps
   bounds: PointUV[]
-  texture_id: number
+  sdf_texture_id: number
+  cache_texture_id: number
 }
 type ImageAssetInput = {
   id: number
@@ -71,7 +70,8 @@ type ShapeAssetInput = {
   paths: Point[][]
   props: ShapeProps
   bounds: PointUV[] | null
-  texture_id: number
+  sdf_texture_id: number
+  cache_texture_id: number | null
 }
 
 type ZigAssetOutput = { img: ImageAssetOutput } | { shape: ShapeAssetOutput }
@@ -97,12 +97,14 @@ declare module '*.zig' {
     max_buffer_size: number
   ) => void
   export const addImage: (maybe_asset_id: number, points: PointUV[], texture_id: number) => void
+  export const updateCache: VoidFunction
   export const addShape: (
     maybe_asset_id: number,
     paths: Point[][],
     bounds: PointUV[] | null,
     props: Partial<ShapeProps>,
-    texture_id: number
+    sdf_texture_id: number,
+    cache_texture_id: null | number
   ) => number /* id */
   export const addShapeBegin: VoidFunction
   export const addShapeFinish: VoidFunction
@@ -123,21 +125,29 @@ declare module '*.zig' {
     draw_msdf: (vertex_data: ArrayPointerDataView, texture_id: number) => void
     pick_texture: (vertex_data: ArrayPointerDataView, texture_id: number) => void
     pick_triangle: (vertex_data: ArrayPointerDataView) => void
+    draw_blur: (
+      texture_id: number,
+      iterations: number,
+      filterSizePerPassX: number,
+      filterSizePerPassY: number,
+      sigmaPerPassX: number,
+      sigmaPerPassY: number
+    ) => void
     compute_shape: (
       curves_data: ArrayPointerDataView,
       width: number,
       height: number,
-      texture_id: number
+      sdf_texture_id: number
     ) => void
     draw_shape: (
       bound_box_data: ArrayPointerDataView,
       uniformData: Uniform,
-      texture_id: number
+      sdf_texture_id: number
     ) => void
     pick_shape: (
       bound_box_data: ArrayPointerDataView,
       strokeWidth: number,
-      texture_id: number
+      sdf_texture_id: number
     ) => void
   }) => void
   export const connectOnAssetUpdateCallback: (cb: (data: ZigAssetOutput[]) => void) => void

@@ -1,4 +1,7 @@
-export default function getLoadingTexture(device: GPUDevice): GPUTexture {
+export default function getLoadingTexture(
+  device: GPUDevice,
+  presentationFormat: GPUTextureFormat
+): GPUTexture {
   const textureWidth = 5
   const textureHeight = 7
   const _ = [255, 0, 0, 255] // red
@@ -18,7 +21,7 @@ export default function getLoadingTexture(device: GPUDevice): GPUTexture {
   const texture = device.createTexture({
     label: 'yellow F on red',
     size: [textureWidth, textureHeight],
-    format: 'rgba8unorm',
+    format: presentationFormat,
     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
   })
   device.queue.writeTexture(

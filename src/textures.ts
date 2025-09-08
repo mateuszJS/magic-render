@@ -1,9 +1,9 @@
 import getLoadingTexture from 'loadingTexture'
 import { createTextureFromSource } from 'WebGPU/getTexture'
 import { parse, RootNode, ElementNode } from 'svg-parser'
-import { createShapes } from 'shapes'
-import * as def from 'shapes/definitions'
-import type { Defs } from 'shapes/definitions'
+import { createShapes } from 'svgToShapes'
+import * as def from 'svgToShapes/definitions'
+import type { Defs } from 'svgToShapes/definitions'
 import * as Logic from './logic/index.zig'
 
 function getSvgSize(svgRoot: ElementNode, img: HTMLImageElement) {
@@ -31,14 +31,20 @@ let textures: TextureSource[]
 let loadingTexture: GPUTexture
 let updateProcessing: () => void
 let loadingTextures: number
+let presentationFormat: GPUTextureFormat
+let storageFormat: GPUTextureFormat
 
 export function init(
   _device: GPUDevice,
+  _presentationFormat: GPUTextureFormat,
+  _storageFormat: GPUTextureFormat,
   _updateProcessing: (loadingTextures: number) => void
 ): void {
   device = _device
+  presentationFormat = _presentationFormat
+  storageFormat = _storageFormat
   textures = []
-  loadingTexture = getLoadingTexture(device)
+  loadingTexture = getLoadingTexture(device, presentationFormat)
   updateProcessing = () => _updateProcessing(loadingTextures)
   loadingTextures = 0
 }
@@ -77,6 +83,7 @@ export function add(
       if (!svgWidth || !svgHeight) throw Error('SVG width and height are required')
       const defs: Defs = {}
       def.collect(svgRoot, defs)
+      console.log(defs)
       def.resolveAll(defs)
       Logic.addShapeBegin()
       createShapes(svgRoot, defs, svgWidth, svgHeight)
@@ -96,7 +103,9 @@ export function add(
     if (existingTexture !== null) {
       textures[textureId] = existingTexture
     } else {
-      textures[textureId].texture = createTextureFromSource(device, img, { flipY: true })
+      textures[textureId].texture = createTextureFromSource(device, presentationFormat, img, {
+        flipY: true,
+      })
       textures[textureId].data = data
       textures[textureId].hash = hash
     }
@@ -162,6 +171,32 @@ export function setCacheTexture(id: number, texture: GPUTexture) {
   }
 
   textures[id].texture = texture
+}
+
+export function getTextureCache(id: number, expectWidth: number, expectHeight: number): GPUTexture {
+  const texture = textures[id].texture
+
+  const canReuseTexture =
+    texture &&
+    Math.abs(texture.width - expectWidth) <= Number.EPSILON &&
+    Math.abs(texture.height - expectHeight) <= Number.EPSILON
+
+  if (!canReuseTexture) {
+    texture?.destroy()
+    const newTexture = device.createTexture({
+      label: 'texture cache',
+      format: storageFormat,
+      usage:
+        GPUTextureUsage.RENDER_ATTACHMENT |
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.STORAGE_BINDING,
+      size: [expectWidth, expectHeight],
+    })
+    textures[id].texture = newTexture
+    return newTexture
+  }
+
+  return texture
 }
 
 export function getUrl(textureId: number): string {

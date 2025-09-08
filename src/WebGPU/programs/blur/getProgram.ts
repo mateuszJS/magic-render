@@ -1,12 +1,13 @@
-import shaderCode from "./index.wgsl"
+import { delayedDestroy } from '../initPrograms'
+import shaderCode from './index.wgsl'
 
 const tileDim = 128
 const batch = [4, 4]
 
-export default function getProgram(device: GPUDevice) {
+export default function getProgram(device: GPUDevice, presentationFormat: GPUTextureFormat) {
   const module = device.createShaderModule({
-    label: "blur shader module",
-    code: shaderCode,
+    label: 'blur shader module',
+    code: shaderCode.replace('{presentationFormat}', presentationFormat),
   })
 
   const blurPipeline = device.createComputePipeline({
@@ -17,178 +18,103 @@ export default function getProgram(device: GPUDevice) {
     },
   })
 
+  const sampler = device.createSampler({
+    magFilter: 'linear',
+    minFilter: 'linear',
+  })
+
   return function renderBlur(
+    encoder: GPUCommandEncoder,
     texture: GPUTexture,
-    commandEncoder: GPUCommandEncoder,
-  ): GPUTexture {
-  
-    const textures = [0, 1].map(() => {
-      return device.createTexture({
+    iterations: number,
+    filterSizePerPassX: number,
+    filterSizePerPassY: number,
+    sigmaPerPassX: number,
+    sigmaPerPassY: number
+  ) {
+    const blurParamsBufferX = device.createBuffer({
+      size: 16,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+    })
+    const blurParamsBufferY = device.createBuffer({
+      size: 16,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+    })
+
+    const textures = [
+      device.createTexture({
+        label: 'draw blur swap texture',
         size: {
           width: texture.width,
           height: texture.height,
         },
-        format: 'rgba8unorm',
-        usage:
-          GPUTextureUsage.COPY_DST |
-          GPUTextureUsage.STORAGE_BINDING |
-          GPUTextureUsage.TEXTURE_BINDING,
-      })
-    })
-  
-    const buffer0 = (() => {
-      const buffer = device.createBuffer({
-        size: 4,
-        mappedAtCreation: true,
-        usage: GPUBufferUsage.UNIFORM,
-      })
-      new Uint32Array(buffer.getMappedRange())[0] = 0
-      buffer.unmap()
-      return buffer
-    })()
-  
-    const buffer1 = (() => {
-      const buffer = device.createBuffer({
-        size: 4,
-        mappedAtCreation: true,
-        usage: GPUBufferUsage.UNIFORM,
-      })
-      new Uint32Array(buffer.getMappedRange())[0] = 1
-      buffer.unmap()
-      return buffer
-    })()
-  
-    const blurParamsBuffer = device.createBuffer({
-      size: 8,
-      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-    })
+        format: texture.format,
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+      }),
+      texture,
+    ]
 
-    const sampler = device.createSampler({
-      magFilter: 'linear',
-      minFilter: 'linear',
-    })
-  
-    const computeConstants = device.createBindGroup({
+    const computeConstantsX = device.createBindGroup({
       layout: blurPipeline.getBindGroupLayout(0),
       entries: [
-        {
-          binding: 0,
-          resource: sampler,
-        },
-        {
-          binding: 1,
-          resource: {
-            buffer: blurParamsBuffer,
-          },
-        },
+        { binding: 0, resource: sampler },
+        { binding: 1, resource: { buffer: blurParamsBufferX } },
+        { binding: 2, resource: textures[1].createView() },
+        { binding: 3, resource: textures[0].createView() },
       ],
     })
-  
-    const computeBindGroup0 = device.createBindGroup({
-      layout: blurPipeline.getBindGroupLayout(1),
+    const computeConstantsY = device.createBindGroup({
+      layout: blurPipeline.getBindGroupLayout(0),
       entries: [
-        {
-          binding: 1,
-          resource: texture.createView(),
-        },
-        {
-          binding: 2,
-          resource: textures[0].createView(),
-        },
-        {
-          binding: 3,
-          resource: {
-            buffer: buffer0,
-          },
-        },
+        { binding: 0, resource: sampler },
+        { binding: 1, resource: { buffer: blurParamsBufferY } },
+        { binding: 2, resource: textures[0].createView() },
+        { binding: 3, resource: textures[1].createView() },
       ],
     })
-  
-    const computeBindGroup1 = device.createBindGroup({
-      layout: blurPipeline.getBindGroupLayout(1),
-      entries: [
-        {
-          binding: 1,
-          resource: textures[0].createView(),
-        },
-        {
-          binding: 2,
-          resource: textures[1].createView(),
-        },
-        {
-          binding: 3,
-          resource: {
-            buffer: buffer1,
-          },
-        },
-      ],
-    })
-  
-    const computeBindGroup2 = device.createBindGroup({
-      layout: blurPipeline.getBindGroupLayout(1),
-      entries: [
-        {
-          binding: 1,
-          resource: textures[1].createView(),
-        },
-        {
-          binding: 2,
-          resource: textures[0].createView(),
-        },
-        {
-          binding: 3,
-          resource: {
-            buffer: buffer0,
-          },
-        },
-      ],
-    })
-  
-    const settings = {
-      filterSize: 15,
-      iterations: 2,
-    }
 
-    // const blockDim = 128 - (15 - 1) = 114
-    const blockDim = tileDim - (settings.filterSize - 1)
-    device.queue.writeBuffer(
-      blurParamsBuffer,
-      0,
-      new Uint32Array([settings.filterSize, blockDim])
-    )
+    const blockDimX = Math.max(1, tileDim - (filterSizePerPassX - 1))
+    const blockDimY = Math.max(1, tileDim - (filterSizePerPassY - 1))
 
-    const computePass = commandEncoder.beginComputePass()
+    const dataViewX = new DataView(new ArrayBuffer(4 * 4))
+    dataViewX.setInt32(0, filterSizePerPassX, true)
+    dataViewX.setUint32(4, blockDimX, true)
+    dataViewX.setFloat32(8, sigmaPerPassX, true)
+    dataViewX.setUint32(12, 0, true)
+
+    const dataViewY = new DataView(new ArrayBuffer(4 * 4))
+    dataViewY.setInt32(0, filterSizePerPassY, true)
+    dataViewY.setUint32(4, blockDimY, true)
+    dataViewY.setFloat32(8, sigmaPerPassY, true)
+    dataViewY.setUint32(12, 1, true)
+
+    device.queue.writeBuffer(blurParamsBufferX, 0, dataViewX)
+    device.queue.writeBuffer(blurParamsBufferY, 0, dataViewY)
+
+    const computePass = encoder.beginComputePass({
+      label: 'blur-pass',
+    })
     computePass.setPipeline(blurPipeline)
-    computePass.setBindGroup(0, computeConstants)
 
-    computePass.setBindGroup(1, computeBindGroup0)
-    computePass.dispatchWorkgroups(
-      Math.ceil(texture.width / blockDim),
-      Math.ceil(texture.height / batch[1])
-    )
-
-    computePass.setBindGroup(1, computeBindGroup1)
-    computePass.dispatchWorkgroups(
-      Math.ceil(texture.height / blockDim),
-      Math.ceil(texture.width / batch[1])
-    )
-
-    for (let i = 0; i < settings.iterations - 1; ++i) {
-      computePass.setBindGroup(1, computeBindGroup2)
+    for (let i = 0; i < iterations; ++i) {
+      // Horizontal pass (flip = 0): use X kernel
+      computePass.setBindGroup(0, computeConstantsX)
       computePass.dispatchWorkgroups(
-        Math.ceil(texture.width / blockDim), // 1200 / 114 = 11 ~ 10.52
-        Math.ceil(texture.height / batch[1]) // 800 / 4 = 200
+        Math.ceil(texture.width / blockDimX),
+        Math.ceil(texture.height / batch[1])
       )
       // exchange width with height!
-      computePass.setBindGroup(1, computeBindGroup1)
+      // Vertical pass (flip = 1): use Y kernel
+      computePass.setBindGroup(0, computeConstantsY)
       computePass.dispatchWorkgroups(
-        Math.ceil(texture.height / blockDim),
+        Math.ceil(texture.height / blockDimY),
         Math.ceil(texture.width / batch[1])
       )
     }
 
     computePass.end()
-
-    return textures[1]
+    delayedDestroy(textures[0])
+    delayedDestroy(blurParamsBufferX)
+    delayedDestroy(blurParamsBufferY)
   }
 }

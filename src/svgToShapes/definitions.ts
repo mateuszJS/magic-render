@@ -1,9 +1,9 @@
-import { ElementNode, Node } from 'svg-parser'
+import { Node } from 'svg-parser'
 import { getProps } from './utils'
 
-type DefStop = {
+export type DefStop = {
   offset: number
-  color: [number, number, number, number]
+  color: Color
 }
 
 // TypeScript doesn't have negative types
@@ -16,8 +16,9 @@ export type Def = {
   stops?: DefStop[]
   href?: string
   id?: string
-  type?: 'linear-gradient' | 'radial-gradient'
+  type?: 'linear-gradient' | 'radial-gradient' | 'gaussian-blur'
   gradientTransform?: number[]
+  stdDeviation?: [number, number]
   x1?: AttrValue
   y1?: AttrValue
   x2?: AttrValue
@@ -37,6 +38,9 @@ export type Def = {
   transform?: AttrValue
   fill?: AttrValue
   stroke?: AttrValue
+  filter?: AttrValue
+  opacity?: AttrValue
+  'fill-opacity'?: AttrValue
 }
 
 export type Defs = Record<string, Def>
@@ -79,10 +83,11 @@ export function collect(node: Node, defs: Defs, insideDefs = false): void {
 
   node.children.forEach((child) => {
     if (typeof child === 'string') return
+    if (child.type !== 'element') return
 
-    const props = getProps(child as unknown as ElementNode)
+    const props = getProps(child)
 
-    switch ((child as ElementNode).tagName) {
+    switch (child.tagName) {
       case 'linearGradient': {
         if (!props.id) return
         defs[props.id] = {
@@ -104,6 +109,11 @@ export function collect(node: Node, defs: Defs, insideDefs = false): void {
           if (!props.id) return
           defs[props.id] = props
         }
+        return
+      }
+      case 'filter': {
+        if (!props.id) return
+        defs[props.id] = props
         return
       }
       case 'defs': {

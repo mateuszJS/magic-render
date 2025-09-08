@@ -3,7 +3,7 @@ import * as Logic from 'logic/index.zig'
 import parseRect from './parseRect'
 import parseEllipse from './parseEllipse'
 import * as Textures from 'textures'
-import { getBoundingBox } from './boundingBox'
+import { BoundingBox, getBoundingBox } from './boundingBox'
 import {
   ensureNumber,
   getProps,
@@ -13,7 +13,7 @@ import {
   parseTransform,
 } from './utils'
 import * as radialGradient from './radialGradient'
-import { Def, Defs } from './definitions'
+import { Def, Defs, DefStop } from './definitions'
 
 function applyLinearTransform(x: number, y: number, m: number[]): Point {
   const [a, b, c, d, e, f] = m
@@ -24,7 +24,11 @@ function applyLinearTransform(x: number, y: number, m: number[]): Point {
 }
 
 // Convert stops (apply opacity) and bake transform. Here we assume gradientUnits=userSpaceOnUse.
-function toRuntimeGradient(def: Def, boundingBox: BoundingBox): ShapeProps['fill'] | null {
+function toRuntimeGradient(
+  def: Def,
+  boundingBox: BoundingBox,
+  overrideAlpha = 1
+): ShapeProps['fill'] | null {
   if (def.type !== 'linear-gradient' && def.type !== 'radial-gradient') {
     console.error('toRuntimeGradient receive definition which is not a gradient!')
     return null
@@ -34,6 +38,16 @@ function toRuntimeGradient(def: Def, boundingBox: BoundingBox): ShapeProps['fill
     console.error('Gradient without stops!', def)
     return null
   }
+
+  const stops = def.stops.map<DefStop>((stop) => ({
+    ...stop,
+    color: [
+      stop.color[0] * overrideAlpha,
+      stop.color[1] * overrideAlpha,
+      stop.color[2] * overrideAlpha,
+      stop.color[3] * overrideAlpha,
+    ],
+  }))
 
   // gradient with matrix are treated as absolute in svg, position doesn't depend on shape(owner)
   const tf = def.gradientTransform || IDENTITY_MATRIX
@@ -57,7 +71,7 @@ function toRuntimeGradient(def: Def, boundingBox: BoundingBox): ShapeProps['fill
     p2.x = (p2.x - boundingBox.min_x) / bbWidth
     p2.y = 1 - (p2.y - boundingBox.min_y) / bbHeight
 
-    return { linear: { stops: def.stops, start: p1, end: p2 } }
+    return { linear: { stops, start: p1, end: p2 } }
   } else if (def.type === 'radial-gradient') {
     const cx = ensureNumber(def.cx, 0.5)
     const cy = ensureNumber(def.cy, 0.5)
@@ -85,7 +99,7 @@ function toRuntimeGradient(def: Def, boundingBox: BoundingBox): ShapeProps['fill
 
     return {
       radial: {
-        stops: def.stops,
+        stops,
         center,
         destination,
         radius_ratio: ratio,
@@ -180,21 +194,23 @@ export function createShapes(
           fill: { solid: [0, 0, 0, 1] },
           stroke: { solid: [0, 0, 0, 1] },
           stroke_width: 0,
+          filter: null,
+          opacity: 1,
         }
         // fill/stroke: color or url(#id)
         if (props.fill) {
+          const fillOpacity = ensureNumber(props['fill-opacity'], 1)
           const fill = String(props.fill)
           const m = fill.match(/^url\(#([^)]+)\)$/)
 
           if (m) {
             const def = defs[m[1]]
             if (def) {
-              // if (props.id === 'eyelid_left') debugger
-              const grad = toRuntimeGradient(def, boundingBox)
+              const grad = toRuntimeGradient(def, boundingBox, fillOpacity)
               if (grad) serializedProps.fill = grad
             }
           } else {
-            const rgba = parseColor(fill)
+            const rgba = parseColor(fill, fillOpacity)
             serializedProps.fill = { solid: rgba }
           }
         }
@@ -212,6 +228,26 @@ export function createShapes(
             serializedProps.stroke = { solid: rgba }
           }
         }
+        if (props.filter) {
+          const filter = String(props.filter)
+          const m = filter.match(/^url\(#([^)]+)\)$/)
+
+          if (m) {
+            const def = defs[m[1]]
+            if (def?.stdDeviation) {
+              serializedProps.filter = {
+                gaussianBlur: {
+                  x: def.stdDeviation[0],
+                  y: def.stdDeviation[1],
+                },
+              }
+            }
+          }
+        }
+
+        if (typeof props.opacity === 'number') {
+          serializedProps.opacity = props.opacity
+        }
 
         if (typeof props.transform === 'string') {
           currTransform = parseTransform(props.transform, currTransform)
@@ -226,7 +262,8 @@ export function createShapes(
         const correctedPaths = transformedPaths.map((path) =>
           path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
         )
-        Logic.addShape(0, correctedPaths, null, serializedProps, Textures.createSDF())
+
+        Logic.addShape(0, correctedPaths, null, serializedProps, Textures.createSDF(), null)
       }
     }
     createShapes(child, defs, svgWidth, svgHeight, currTransform)

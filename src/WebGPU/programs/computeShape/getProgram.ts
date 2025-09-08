@@ -1,6 +1,7 @@
+import { delayedDestroy } from '../initPrograms'
 import shaderCode from './shader.wgsl'
 
-export default function getComputeShape(device: GPUDevice, buffersToDestroy: GPUBuffer[]) {
+export default function getComputeShape(device: GPUDevice) {
   const shaderModule = device.createShaderModule({
     label: 'computeShape shader',
     code: shaderCode,
@@ -25,7 +26,7 @@ export default function getComputeShape(device: GPUDevice, buffersToDestroy: GPU
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(curvesBuffer, 0, curvesDataView)
-    buffersToDestroy.push(curvesBuffer)
+    delayedDestroy(curvesBuffer)
 
     passEncoder.setPipeline(pipeline)
 

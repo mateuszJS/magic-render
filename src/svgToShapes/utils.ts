@@ -1,4 +1,4 @@
-import { ElementNode } from 'svg-parser'
+import { ElementNode, Node } from 'svg-parser'
 import { AttrValue, Def } from './definitions'
 import parsePathData from './parsePathData'
 
@@ -9,7 +9,7 @@ export function isStraightHandle(p: Point) {
 }
 
 // we use canvas to support ALL possible way of describing color in CSS
-export function parseColor(cssColor: string): [number, number, number, number] {
+export function parseColor(cssColor: string, overrideAlpha = 1): Color {
   // Create a temporary canvas element
   const canvas = new OffscreenCanvas(1, 1)
   const ctx = canvas.getContext('2d')!
@@ -24,10 +24,10 @@ export function parseColor(cssColor: string): [number, number, number, number] {
 
   // Return normalized RGBA values (0-1 range)
   return [
-    r / 255, // red
-    g / 255, // green
-    b / 255, // blue
-    a / 255, // alpha
+    (r / 255) * overrideAlpha, // red
+    (g / 255) * overrideAlpha, // green
+    (b / 255) * overrideAlpha, // blue
+    (a / 255) * overrideAlpha, // alpha
   ]
 }
 
@@ -62,7 +62,16 @@ export function getProps(node: ElementNode): Def {
     (node.tagName === 'linearGradient' || node.tagName === 'radialGradient') &&
     node.children.length > 0
   ) {
-    def.stops = getGradientStops(node.children as ElementNode[])
+    def.stops = getGradientStops(node.children)
+  }
+
+  if (
+    node.tagName === 'filter' &&
+    node.children.length == 1 &&
+    typeof node.children[0] !== 'string' &&
+    node.children[0]?.type === 'element'
+  ) {
+    addFilterProps(def, node.children[0])
   }
 
   return def
@@ -75,8 +84,10 @@ export function ensureNumber(x: AttrValue, fallback: number = 0): number {
   return n
 }
 
-function getGradientStops(nodes: ElementNode[]) {
+function getGradientStops(nodes: Array<string | Node>) {
   return nodes.map((stop) => {
+    if (typeof stop === 'string' || stop.type !== 'element')
+      return { offset: 0, color: [0, 0, 0, 0] as Color }
     const stopProps = getProps(stop)
     const color = parseColor(String(stopProps['stop-color'] ?? '#000'))
     color[3] = ensureNumber(stopProps['stop-opacity'], 1)
@@ -157,4 +168,28 @@ export function parseTransform(
   }
 
   return currentMatrix
+}
+
+function addFilterProps(def: Def, child: ElementNode) {
+  if (child.tagName === 'feGaussianBlur') {
+    def.type = 'gaussian-blur'
+
+    const v = child.properties?.stdDeviation
+    let sx = 0
+    let sy = 0
+    if (typeof v === 'number') {
+      sx = v
+      sy = v
+    } else if (typeof v === 'string') {
+      const parts = v.trim().split(/[ ,]+/).filter(Boolean)
+      if (parts.length >= 2) {
+        sx = ensureNumber(parts[0], 0)
+        sy = ensureNumber(parts[1], 0)
+      } else if (parts.length === 1) {
+        sx = ensureNumber(parts[0], 0)
+        sy = sx
+      }
+    }
+    def.stdDeviation = [sx, sy]
+  }
 }
