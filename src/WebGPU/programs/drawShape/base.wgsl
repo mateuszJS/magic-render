@@ -49,19 +49,14 @@ fn getSample(pos: vec2f) -> vec4f {
   let sdf = getSample(vsOut.uv);
 
   let dist = sdf.r;
-  let width = fwidth(dist);
+  let width = fwidth(dist) * 0.5;
 
-  let hs = u.stroke_width * 0.5;
+  let inner_alpha = smoothstep(u.dist_start - width, u.dist_start + width, dist);
+  let outer_alpha = smoothstep(u.dist_end - width, u.dist_end + width, dist);
+  let alpha = outer_alpha - inner_alpha;
+  let color = getColor(sdf, vsOut.uv, vsOut.norm_uv);
 
-  let fill_alpha = smoothstep(hs - width, hs + width, dist);
-  let fill_color = getFillColor(sdf, vsOut.uv, vsOut.norm_uv);
-  let stroke_color = getStrokeColor(sdf, vsOut.uv, vsOut.norm_uv);
-  let color = mix(stroke_color, fill_color, fill_alpha);
-
-  let total_alpha = smoothstep(-hs - width, -hs + width, dist);
-
-  // return vec4f(color.rgb, color.a * total_alpha);
-  return vec4f(fill_color.rgb, fill_color.a * fill_alpha);
+  return vec4f(color.rgb, color.a * alpha);
   // let result = vec4f(fill_color.rgb, fill_color.a * fill_alpha);
   // if (result.a < 0.5) {
   //   return vec4f(1, 0, 0, 1);

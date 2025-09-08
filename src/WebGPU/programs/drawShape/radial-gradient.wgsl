@@ -4,10 +4,10 @@ struct Stop {
 }
 
 struct Uniform {
-  stroke_width: f32,
+  dist_start: f32,
+  dist_end: f32,
   stops_count: u32,
   radius_ratio: f32, // vertical radius / horizontal radius (to create ellipse)
-  padding: u32,
   center: vec2f,    // Center point of radial gradient
   destination: vec2f,    // because we have scale, the angle between center an destination is visible in the gradient!
   stops: array<Stop, 10>,
@@ -15,11 +15,7 @@ struct Uniform {
 
 @group(0) @binding(0) var<uniform> u: Uniform;
 
-fn getStrokeColor(sdf: vec4f, uv: vec2f, norm_uv: vec2f) -> vec4f {
-  return vec4f(1, 1, 1, 1);
-}
-
-fn getFillColor(sdf: vec4f, world_uv: vec2f, uv: vec2f) -> vec4f {
+fn getColor(sdf: vec4f, world_uv: vec2f, uv: vec2f) -> vec4f {
   // Fallbacks
   if (u.stops_count == 0u) {
     return vec4f(1.0, 1.0, 1.0, 1.0);
