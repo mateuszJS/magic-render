@@ -24,7 +24,7 @@ const FillType = enum(u8) {
 };
 
 const WebGpuPrograms = struct {
-    draw_texture: *const fn (images.DrawVertex, u32) void,
+    draw_texture: *const fn ([]const types.PointUV, u32) void,
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
     compute_shape: *const fn ([]const types.Point, f32, f32, u32) void,
     draw_blur: *const fn (u32, u32, u32, u32, f32, f32) void,
@@ -754,14 +754,14 @@ pub fn renderDraw() !void {
     while (iterator.next()) |asset| {
         switch (asset.value_ptr.*) {
             .img => |img| {
-                var vertex_data: images.DrawVertex = undefined;
+                var vertex_data: [6]types.PointUV = undefined;
                 img.getRenderVertexData(&vertex_data);
-                web_gpu_programs.draw_texture(vertex_data, img.texture_id);
+                web_gpu_programs.draw_texture(&vertex_data, img.texture_id);
             },
             .shape => |*shape| {
                 if (shape.cache_texture_id) |cache_texture_id| {
                     web_gpu_programs.draw_texture(
-                        shape.getDrawBounds(true),
+                        &shape.getDrawBounds(true),
                         cache_texture_id,
                     );
                 } else {

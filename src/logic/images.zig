@@ -7,7 +7,6 @@ const SHADER_TRIANGLE_INDICES = [_]usize{
     2, 3, 0,
 };
 
-pub const DrawVertex = [6]PointUV;
 pub const PickVertex = extern struct { point: PointUV, id: u32 };
 
 pub const Image = struct {
@@ -23,7 +22,7 @@ pub const Image = struct {
         };
     }
 
-    pub fn getRenderVertexData(self: Image, buffer: *DrawVertex) void {
+    pub fn getRenderVertexData(self: Image, buffer: *[6]PointUV) void {
         var i: usize = 0;
 
         for (SHADER_TRIANGLE_INDICES) |index| {
