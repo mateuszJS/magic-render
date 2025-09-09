@@ -304,7 +304,7 @@ fn updateSelectedAsset(id: u32) !void {
 
 pub fn onPointerDown(x: f32, y: f32) !void {
     if (state.tool == Tool.DrawShape) {
-        if (state.selected_asset_id == NO_SELECTION) {
+        if (getSelectedShape() == null) {
             const props = shapes.SerializedProps{
                 .sdf_effects = &.{
                     shapes.SerializedSdfEffect{
@@ -480,6 +480,12 @@ pub fn onPointerMove(x: f32, y: f32) void {
                 bounds,
                 types.Point{ .x = x, .y = y },
             );
+            switch (asset.*) {
+                .img => {},
+                .shape => |*shape| {
+                    shape.should_update_sdf = true;
+                },
+            }
         },
         .None => {},
     }
@@ -617,7 +623,11 @@ fn drawProjectBoundary() void {
     web_gpu_programs.draw_triangle(&buffer);
 }
 
+var time: u32 = 0;
+
 pub fn calculateShapesSDF() !void {
+    time += 1;
+
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -627,9 +637,11 @@ pub fn calculateShapesSDF() !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                if (!shape.outdated_sdf) {
-                    continue;
-                }
+                const is_throttle_event = time % 5 == 0;
+                // in the future we might do throttle depends on nubmer of seelcted shapes
+                // also instead of time we can do (time + shape.id) to avoid making all updates at once
+                const do_update = shape.outdated_sdf or (shape.should_update_sdf and is_throttle_event);
+                if (!do_update) continue;
 
                 const option_points = try shape.getNewSdfPoint(allocator);
                 if (option_points) |points| {
@@ -657,6 +669,9 @@ pub fn calculateShapesSDF() !void {
                         shape.outdated_cache = true;
                     }
                 }
+
+                shape.outdated_sdf = false;
+                shape.should_update_sdf = false;
             },
         }
     }

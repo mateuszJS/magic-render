@@ -83,6 +83,9 @@ pub const Shape = struct {
     sdf_scale: f32 = 1.0,
     outdated_sdf: bool, // if true, we need to recalculate SDF
     sdf_texture_id: u32,
+    should_update_sdf: bool, // throttled update,
+    // less important than outdated_sdf which triggers instantly
+    // this one triggers update on the next throttle event
 
     cache_scale: f32 = 1.0,
     outdated_cache: bool,
@@ -133,6 +136,7 @@ pub const Shape = struct {
             .props = props,
             .sdf_texture_id = sdf_texture_id,
             .outdated_sdf = true,
+            .should_update_sdf = false,
             .bounds = input_bounds orelse consts.DEFAULT_BOUNDS,
             .cache_texture_id = cache_texture_id,
             .outdated_cache = true,
@@ -436,7 +440,7 @@ pub const Shape = struct {
 
     // function has side effect, marks texture as generated
     pub fn getNewSdfPoint(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
-        if (!self.outdated_sdf) {
+        if (!self.outdated_sdf and !self.should_update_sdf) {
             @panic("getNewSdfPoint was called but the shape sdf was not marked as outdated!");
         }
         const check_points = try self.getAllPoints(
@@ -471,8 +475,6 @@ pub const Shape = struct {
             point.x = padding.x + scaled.x;
             point.y = padding.y + scaled.y;
         }
-
-        self.outdated_sdf = false;
 
         return points;
     }
