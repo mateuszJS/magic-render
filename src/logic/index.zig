@@ -625,7 +625,7 @@ fn drawProjectBoundary() void {
 
 var ticks: u32 = 0; // it's like a time, but always increases by 1
 pub fn calculateShapesSDF() !void {
-    ticks += 1;
+    ticks +%= 1;
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
