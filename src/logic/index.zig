@@ -638,7 +638,7 @@ pub fn calculateShapesSDF() !void {
             .img => {},
             .shape => |*shape| {
                 const is_throttle_event = time % 5 == 0;
-                // in the future we might do throttle depends on nubmer of seelcted shapes
+                // in the future we might do throttle depends on the number of selected shapes
                 // also instead of time we can do (time + shape.id) to avoid making all updates at once
                 const do_update = shape.outdated_sdf or (shape.should_update_sdf and is_throttle_event);
                 if (!do_update) continue;
