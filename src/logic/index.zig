@@ -308,8 +308,8 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             const props = shapes.SerializedProps{
                 .sdf_effects = &.{
                     shapes.SerializedSdfEffect{
-                        .dist_start = 2,
-                        .dist_end = -2,
+                        .dist_start = std.math.inf(f32),
+                        .dist_end = 0,
                         .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
                     },
                     shapes.SerializedSdfEffect{
@@ -323,7 +323,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                         .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
                     },
                 },
-                .filter = null, // .{ .gaussianBlur = .{ .x = 30, .y = 1 } },
+                .filter = .{ .gaussianBlur = .{ .x = 3, .y = 3 } },
                 .opacity = 1.0,
             };
             const id = try addShape(
@@ -623,10 +623,9 @@ fn drawProjectBoundary() void {
     web_gpu_programs.draw_triangle(&buffer);
 }
 
-var time: u32 = 0;
-
+var ticks: u32 = 0; // it's like a time, but always increases by 1
 pub fn calculateShapesSDF() !void {
-    time += 1;
+    ticks += 1;
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -637,9 +636,9 @@ pub fn calculateShapesSDF() !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                const is_throttle_event = time % 5 == 0;
+                const is_throttle_event = ticks % 5 == 0;
                 // in the future we might do throttle depends on the number of selected shapes
-                // also instead of time we can do (time + shape.id) to avoid making all updates at once
+                // also instead of ticks we can do (ticks + shape.id) to avoid making all updates at once
                 const do_update = shape.outdated_sdf or (shape.should_update_sdf and is_throttle_event);
                 if (!do_update) continue;
 
@@ -696,40 +695,39 @@ pub fn updateCache() void {
                         1 / shared.render_scale,
                         true,
                     );
-
+                    const init_width = bounds[0].distance(bounds[1]) * shared.render_scale;
                     const size, const sigma, const cache_scale = texture_size.get_safe_blur_dims(
+                        init_width,
                         bounds,
                         filter.gaussianBlur,
                     );
 
                     if (size.w < consts.MIN_TEXTURE_SIZE or size.h < consts.MIN_TEXTURE_SIZE) continue;
                     // just to make sure device.createTexture won't round number down to 0
-
                     shape.cache_scale = cache_scale;
 
-                    const extra_padding = shape.getFilterMargin();
-                    const scaled_extra_padding = types.Point{
-                        .x = extra_padding.x * cache_scale,
-                        .y = extra_padding.y * cache_scale,
-                    };
                     const bb = bounding_box.BoundingBox{
-                        .min_x = -scaled_extra_padding.x,
-                        .min_y = -scaled_extra_padding.y,
-                        .max_x = size.w + scaled_extra_padding.x,
-                        .max_y = size.h + scaled_extra_padding.y,
+                        .min_x = 0,
+                        .min_y = 0,
+                        .max_x = size.w,
+                        .max_y = size.h,
                     };
-
                     start_cache(cache_texture_id, bb, size.w, size.h);
 
+                    // sigma * 3 -> half of gaussian filter size, does not work in 100% cases but almost
+                    const p = types.Point{
+                        .x = sigma.x * 3,
+                        .y = sigma.y * 3,
+                    };
                     const vertex_bounds = [_]types.PointUV{
                         // first triangle
-                        .{ .x = 0, .y = 0, .u = 0, .v = 0 },
-                        .{ .x = 0, .y = size.h, .u = 0, .v = 1 },
-                        .{ .x = size.w, .y = size.h, .u = 1, .v = 1 },
+                        .{ .x = p.x, .y = p.y, .u = 0, .v = 0 },
+                        .{ .x = p.x, .y = size.h - p.y, .u = 0, .v = 1 },
+                        .{ .x = size.w - p.x, .y = size.h - p.y, .u = 1, .v = 1 },
                         // second triangle
-                        .{ .x = size.w, .y = size.h, .u = 1, .v = 1 },
-                        .{ .x = size.w, .y = 0, .u = 1, .v = 0 },
-                        .{ .x = 0, .y = 0, .u = 0, .v = 0 },
+                        .{ .x = size.w - p.x, .y = size.h - p.y, .u = 1, .v = 1 },
+                        .{ .x = size.w - p.x, .y = p.y, .u = 1, .v = 0 },
+                        .{ .x = p.x, .y = p.y, .u = 0, .v = 0 },
                     };
 
                     for (shape.props.sdf_effects.items) |effect| {
@@ -755,13 +753,13 @@ pub fn updateCache() void {
 
                     // Calculate per-pass filter sizes from per-pass sigma
                     const factor = 1.5 * maxSigmaPerPass;
-                    const filter_size_per_pass_x = @max(1, @ceil(factor * sigma_per_pass_x));
-                    const filter_size_per_pass_y = @max(1, @ceil(factor * sigma_per_pass_y));
+                    const filter_size_per_pass_x = @ceil(factor * sigma_per_pass_x);
+                    const filter_size_per_pass_y = @ceil(factor * sigma_per_pass_y);
 
                     web_gpu_programs.draw_blur(
                         cache_texture_id,
                         @as(u32, @intFromFloat(iterations)),
-                        @as(u32, @intFromFloat(filter_size_per_pass_x)) | 1, // Ensure odd
+                        @as(u32, @intFromFloat(filter_size_per_pass_x)) | 1, // Ensure odd and it's min 1
                         @as(u32, @intFromFloat(filter_size_per_pass_y)) | 1,
                         sigma_per_pass_x,
                         sigma_per_pass_y,

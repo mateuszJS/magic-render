@@ -438,7 +438,6 @@ pub const Shape = struct {
         }
     }
 
-    // function has side effect, marks texture as generated
     pub fn getNewSdfPoint(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
         if (!self.outdated_sdf and !self.should_update_sdf) {
             @panic("getNewSdfPoint was called but the shape sdf was not marked as outdated!");

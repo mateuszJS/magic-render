@@ -33,9 +33,8 @@ pub fn get_size(bounds: [4]PointUV) TextureSize {
 
 const MAX_COST = 90050924; // it's just chosen base on my own preferences
 // returns new safe size, new sigma and cache scale
-pub fn get_safe_blur_dims(bounds: [4]PointUV, gaussianBlur: Point) struct { TextureSize, Point, f32 } {
+pub fn get_safe_blur_dims(init_width: f32, bounds: [4]PointUV, gaussianBlur: Point) struct { TextureSize, Point, f32 } {
     var size = get_size(bounds);
-    const init_width = bounds[0].distance(bounds[1]) * shared.render_scale;
     // * shared.render_scale to revert to logical scale, without impact of camera/zoom
 
     const init_cache_scale = size.w / init_width;
@@ -50,6 +49,7 @@ pub fn get_safe_blur_dims(bounds: [4]PointUV, gaussianBlur: Point) struct { Text
     const cost = 3 * sigma.x * pixels + 3 * sigma.y * pixels;
 
     if (cost > MAX_COST) {
+        std.debug.print("DECREASING BECAUSE OF COST: {d} > {d}\n", .{ cost, MAX_COST });
         const scale_down = std.math.pow(f32, cost / MAX_COST, 1.0 / 3.0); // Cube root
         size.w /= scale_down;
         size.h /= scale_down;
