@@ -296,7 +296,7 @@ export default async function initCreator(
     resetAssets,
     destroy: () => {
       stopRAF()
-      Logic.destroyState()
+      Logic.deinitState()
       context.unconfigure()
       device.destroy()
     },

@@ -593,12 +593,15 @@ pub const Shape = struct {
     }
 
     pub fn deinit(self: *Shape) void {
-        for (self.paths.items) |path| {
+        for (self.paths.items) |*path| {
             path.deinit();
         }
         self.paths.deinit();
-        self.props.stroke.deinit();
-        self.props.fill.deinit();
+
+        for (self.props.sdf_effects.items) |*effect| {
+            effect.fill.deinit();
+        }
+        self.props.sdf_effects.deinit();
     }
 };
 

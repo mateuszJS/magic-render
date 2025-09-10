@@ -944,9 +944,16 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
     try checkAssetsUpdate(with_snapshot);
 }
 
-pub fn destroyState() void {
+pub fn deinitState() void {
+    var it = state.assets.iterator();
+    while (it.next()) |entry| {
+        switch (entry.value_ptr.*) {
+            .img => {},
+            .shape => |*shape| shape.deinit(),
+        }
+    }
     state.assets.clearAndFree();
-    UI.destroy();
+    UI.deinit();
     std.heap.page_allocator.free(last_assets_update);
     last_assets_update = &.{};
     state.selected_asset_id = 0;
@@ -982,7 +989,7 @@ test "reset_assets does not call the real update callback" {
     // Setup initial state
     initState(100, 100);
     // Ensure state is cleaned up after the test
-    defer destroyState();
+    defer deinitState();
 
     // Define a mock callback function locally, with its own static state.
     const MockCallback = struct {

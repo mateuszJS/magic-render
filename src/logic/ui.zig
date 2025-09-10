@@ -102,6 +102,10 @@ pub fn draw(
     }
 }
 
-pub fn destroy() void {
+pub fn deinit() void {
+    var it = elements.iterator();
+    while (it.next()) |entry| {
+        entry.value_ptr.deinit();
+    }
     elements.clearAndFree();
 }

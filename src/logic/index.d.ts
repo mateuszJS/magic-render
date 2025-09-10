@@ -167,7 +167,7 @@ declare module '*.zig' {
   export const calculateShapesSDF: VoidFunction
   export const renderDraw: VoidFunction
   export const renderPick: VoidFunction
-  export const destroyState: VoidFunction
+  export const deinitState: VoidFunction
   export const setTool: (tool: number) => void
 
   export const importUiElement: (
