@@ -32,9 +32,6 @@ pub fn importUiElement(
     try elements.put(id, shape);
 }
 
-// var on_asset_select_cb: *const fn (u32) void = undefined;
-// pub fn connectOnAssetSelectionCallback(cb: *const fn (u32) void) void {
-
 pub fn generateUiElementsSdf(compute_shape: *const fn ([]const Point, f32, f32, u32) void) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
