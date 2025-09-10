@@ -114,7 +114,8 @@ export function createShapes(
   defs: Defs,
   svgWidth: number,
   svgHeight: number,
-  parentTransform: number[] = IDENTITY_MATRIX
+  parentTransform: number[] = IDENTITY_MATRIX,
+  uiElementType?: UiElementType
 ): void {
   if (!('children' in node)) return
 
@@ -286,10 +287,14 @@ export function createShapes(
         const correctedPaths = transformedPaths.map((path) =>
           path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
         )
-
-        Logic.addShape(0, correctedPaths, null, serializedProps, Textures.createSDF(), null)
+        if (uiElementType !== undefined) {
+          Logic.importUiElement(uiElementType, correctedPaths, Textures.createSDF())
+          return // We expect all ui elements to have just one path
+        } else {
+          Logic.addShape(0, correctedPaths, null, serializedProps, Textures.createSDF(), null)
+        }
       }
     }
-    createShapes(child, defs, svgWidth, svgHeight, currTransform)
+    createShapes(child, defs, svgWidth, svgHeight, currTransform, uiElementType)
   })
 }

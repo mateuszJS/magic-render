@@ -14,5 +14,3 @@ crate/wasm-pack.log
 /playwright-report/
 /blob-report/
 /playwright/.cache/
-
-/msdf/output/

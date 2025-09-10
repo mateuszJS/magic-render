@@ -48,8 +48,8 @@ const baseConfig = {
         type: 'asset/source',
       },
       {
-        test: /\.(png|jpg)$/,
-        type: 'asset/resource',
+        test: /\.svg$/,
+        type: 'asset/source',
       },
       {
         test: /\.zig$/,

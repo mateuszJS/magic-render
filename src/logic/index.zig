@@ -5,7 +5,6 @@ const lines = @import("lines.zig");
 const Triangle = @import("triangle.zig");
 const TransformUI = @import("transform_ui.zig");
 const zigar = @import("zigar");
-const Msdf = @import("msdf.zig");
 const shapes = @import("./shapes/shapes.zig");
 const squares = @import("squares.zig");
 const bounding_box = @import("shapes/bounding_box.zig");
@@ -29,7 +28,6 @@ const WebGpuPrograms = struct {
     compute_shape: *const fn ([]const types.Point, f32, f32, u32) void,
     draw_blur: *const fn (u32, u32, u32, u32, f32, f32) void,
     draw_shape: *const fn ([]const types.PointUV, shapes.DrawUniform, u32) void,
-    draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
     pick_triangle: *const fn ([]const Triangle.PickInstance) void,
     pick_shape: *const fn ([]const images.PickVertex, shapes.PickUniform, u32) void,
@@ -104,6 +102,7 @@ const State = struct {
     width: f32,
     height: f32,
     assets: std.AutoArrayHashMap(u32, Asset),
+    ui: std.AutoArrayHashMap(u32, shapes.Shape),
     hovered_asset_id: u32,
     selected_asset_id: u32,
     action: ActionType,
@@ -115,6 +114,7 @@ var state = State{
     .width = 0,
     .height = 0,
     .assets = undefined,
+    .ui = undefined,
     .hovered_asset_id = NO_SELECTION,
     .selected_asset_id = NO_SELECTION,
     .action = ActionType.None,
@@ -128,7 +128,7 @@ pub fn initState(width: f32, height: f32, texture_max_size: f32, max_buffer_size
     state.width = width;
     state.height = height;
     state.assets = std.AutoArrayHashMap(u32, Asset).init(std.heap.page_allocator);
-    // shapes.maxTextureSize = texture_max_size;
+    state.ui = std.AutoArrayHashMap(u32, shapes.Shape).init(std.heap.page_allocator);
 }
 
 pub fn updateRenderScale(scale: f32) !void {
@@ -508,9 +508,9 @@ pub fn commitChanges() !void {
 }
 // TODO: extract to another file and simplify(extract common code)
 // https://github.com/users/mateuszJS/projects/1/views/1?pane=issue&itemId=123400787&issue=mateuszJS%7Cmagic-render%7C122
-fn getBorder(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []Msdf.DrawInstance } {
+fn drawBorder(allocator: std.mem.Allocator) !void {
     var triangle_vertex_data = std.ArrayList(Triangle.DrawInstance).init(allocator);
-    var msdf_vertex_data = std.ArrayList(Msdf.DrawInstance).init(allocator);
+    var ui_vertex_data = std.ArrayList(TransformUI.IconVertex).init(allocator);
 
     const red = [_]u8{ 255, 0, 0, 255 };
     if (state.hovered_asset_id != state.selected_asset_id) {
@@ -533,7 +533,7 @@ fn getBorder(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []M
                     5.0 * shared.render_scale,
                 );
 
-                triangle_vertex_data.appendSlice(&buffer) catch unreachable;
+                try triangle_vertex_data.appendSlice(&buffer);
             }
         }
     }
@@ -558,27 +558,58 @@ fn getBorder(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []M
                 5.0 * shared.render_scale,
             );
 
-            triangle_vertex_data.appendSlice(&buffer) catch unreachable;
+            try triangle_vertex_data.appendSlice(&buffer);
         }
 
         var triangle_buffer: [TransformUI.RENDER_TRIANGLE_INSTANCES]Triangle.DrawInstance = undefined;
-        var msdf_buffer: [2]Msdf.DrawInstance = undefined;
 
-        TransformUI.getDrawVertexData(
+        try TransformUI.getDrawVertexData(
             &triangle_buffer,
-            &msdf_buffer,
+            &ui_vertex_data,
             points,
             state.hovered_asset_id,
         );
 
-        triangle_vertex_data.appendSlice(&triangle_buffer) catch unreachable;
-        msdf_vertex_data.appendSlice(&msdf_buffer) catch unreachable;
+        try triangle_vertex_data.appendSlice(&triangle_buffer);
     }
 
-    return .{
-        triangle_vertex_data.items,
-        msdf_vertex_data.items,
-    };
+    if (triangle_vertex_data.items.len > 0) {
+        web_gpu_programs.draw_triangle(triangle_vertex_data.items);
+    }
+
+    for (ui_vertex_data.items) |data| {
+        if (state.ui.get(@intFromEnum(data.icon))) |shape| {
+            const uniform = shapes.DrawUniform{
+                .solid = .{
+                    .dist_start = std.math.inf(f32),
+                    .dist_end = 0,
+                    .color = data.color,
+                },
+            };
+
+            const p = data.position;
+            const max_sdf_size = @max(shape.sdf_size.w, shape.sdf_size.h);
+            const scale = data.max_size / max_sdf_size;
+
+            const hw = scale * shape.sdf_size.w * 0.5; // half width
+            const hh = scale * shape.sdf_size.h * 0.5; // half height
+
+            const vertex = [6]types.PointUV{
+                .{ .x = p.x - hw, .y = p.y - hh, .u = 0.0, .v = 0.0 },
+                .{ .x = p.x - hw, .y = p.y + hh, .u = 0.0, .v = 1.0 },
+                .{ .x = p.x + hw, .y = p.y + hh, .u = 1.0, .v = 1.0 },
+                .{ .x = p.x + hw, .y = p.y + hh, .u = 1.0, .v = 1.0 },
+                .{ .x = p.x + hw, .y = p.y - hh, .u = 1.0, .v = 0.0 },
+                .{ .x = p.x - hw, .y = p.y - hh, .u = 0.0, .v = 0.0 },
+            };
+
+            web_gpu_programs.draw_shape(
+                &vertex,
+                uniform,
+                shape.sdf_texture_id,
+            );
+        }
+    }
 }
 
 fn drawProjectBackground() void {
@@ -809,13 +840,7 @@ pub fn renderDraw() !void {
     drawProjectBoundary(); // TODO: once we support strokes for Triangles, we should use it here wit transparent fill
 
     if (state.tool == Tool.None) {
-        const triangle_buffer, const msdf_buffer = getBorder(allocator);
-        if (triangle_buffer.len > 0) {
-            web_gpu_programs.draw_triangle(triangle_buffer);
-        }
-        if (msdf_buffer.len > 0) {
-            web_gpu_programs.draw_msdf(msdf_buffer, 0);
-        }
+        try drawBorder(allocator);
     }
 
     if (state.tool == Tool.DrawShape or state.tool == Tool.EditShape) {
@@ -954,9 +979,9 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
 
 pub fn destroyState() void {
     state.assets.clearAndFree();
+    state.ui.clearAndFree();
     std.heap.page_allocator.free(last_assets_update);
     last_assets_update = &.{};
-    Msdf.deinitIcons();
     state.selected_asset_id = 0;
     next_asset_id = ASSET_ID_MIN;
     web_gpu_programs = undefined;
@@ -965,8 +990,59 @@ pub fn destroyState() void {
     // and has no reference to memory to free
 }
 
-pub fn importIcons(data: []const f32) void {
-    Msdf.initIcons(data);
+pub fn importUiElement(
+    id: u32,
+    paths: []const []const types.Point,
+    sdf_texture_id: u32,
+) !void {
+    const props = shapes.SerializedProps{
+        .sdf_effects = &.{
+            shapes.SerializedSdfEffect{ // normal/idle
+                .dist_start = std.math.inf(f32),
+                .dist_end = 0,
+                .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
+            },
+            shapes.SerializedSdfEffect{ // hovered/active
+                .dist_start = std.math.inf(f32),
+                .dist_end = 0,
+                .fill = .{ .solid = .{ 0.0, 0.0, 0.0, 1.0 } },
+            },
+        },
+        .filter = null,
+        .opacity = 1.0,
+    };
+    const shape = try shapes.Shape.new(
+        0,
+        paths,
+        null,
+        props,
+        sdf_texture_id,
+        0,
+        std.heap.page_allocator,
+    );
+    try state.ui.put(id, shape);
+}
+
+pub fn generateUiElementsSdf() !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var iterator = state.ui.iterator();
+    while (iterator.next()) |entry| {
+        var shape = entry.value_ptr;
+        const option_points = try shape.getNewSdfPoint(allocator);
+        if (option_points) |points| {
+            const bounds = shape.getBoundsWithPadding(1, false);
+            shape.sdf_size = texture_size.get_sdf_size(bounds);
+            web_gpu_programs.compute_shape(
+                points,
+                @floor(shape.sdf_size.w),
+                @floor(shape.sdf_size.h),
+                shape.sdf_texture_id,
+            );
+        }
+    }
 }
 
 pub fn setTool(tool: Tool) !void {

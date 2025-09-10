@@ -606,7 +606,7 @@ const UniformSolid = extern struct {
     dist_start: f32,
     dist_end: f32,
     padding: [2]u32 = .{ 0, 0 },
-    color: [4]f32,
+    color: @Vector(4, f32),
 };
 
 const UniformGradientStop = extern struct {
