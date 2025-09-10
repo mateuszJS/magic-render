@@ -7,6 +7,7 @@ const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 const Triangle = @import("triangle.zig");
 const shared = @import("shared.zig");
 const consts = @import("consts.zig");
+const UI = @import("ui.zig");
 
 const white = @Vector(4, u8){ 255, 255, 255, 255 };
 const black = @Vector(4, u8){ 0, 0, 0, 255 };
@@ -160,16 +161,9 @@ fn getPointsOfLine(points: [4]PointUV, t_line: TransformLine) struct { Point, Po
 
 pub const RENDER_TRIANGLE_INSTANCES = UI_VERTICES_COUNT_BORDER * 2 * 2; // two triangle per line, each line has front and back color
 
-pub const IconVertex = struct {
-    position: Point,
-    max_size: f32,
-    icon: consts.IconType,
-    color: @Vector(4, f32),
-};
-
 pub fn getDrawVertexData(
     triangle_buffer: *[RENDER_TRIANGLE_INSTANCES]Triangle.DrawInstance,
-    icon_vertex_data: *std.ArrayList(IconVertex),
+    icon_vertex_data: *std.ArrayList(UI.DrawVertex),
     points: [4]PointUV,
     hovered_elem_id: u32,
 ) !void {
@@ -186,10 +180,10 @@ pub fn getDrawVertexData(
             const icon_size = thickness - 5.0 * shared.render_scale;
             const icon_color = if (hovered_elem_id == t_line.id) black else white;
 
-            try icon_vertex_data.append(IconVertex{
+            try icon_vertex_data.append(UI.DrawVertex{
                 .position = p1,
                 .max_size = icon_size,
-                .icon = consts.IconType.Rotate,
+                .icon = UI.IconType.Rotate,
                 .color = @as(@Vector(4, f32), @floatFromInt(icon_color)) / normalized,
             });
         }

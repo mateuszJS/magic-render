@@ -11,5 +11,3 @@ pub const DEFAULT_BOUNDS = [4]PointUV{
 pub const POINT_ZERO = Point{ .x = 0.0, .y = 0.0 };
 
 pub const MIN_TEXTURE_SIZE: f32 = 1.0001;
-
-pub const IconType = enum(u32) { Rotate = 0 };

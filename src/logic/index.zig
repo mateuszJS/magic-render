@@ -15,6 +15,7 @@ const PackedId = @import("shapes/packed_id.zig");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 const PathUtils = @import("shapes/path_utils.zig");
 const consts = @import("consts.zig");
+const UI = @import("ui.zig");
 
 const FillType = enum(u8) {
     Solid,
@@ -102,7 +103,6 @@ const State = struct {
     width: f32,
     height: f32,
     assets: std.AutoArrayHashMap(u32, Asset),
-    ui: std.AutoArrayHashMap(u32, shapes.Shape),
     hovered_asset_id: u32,
     selected_asset_id: u32,
     action: ActionType,
@@ -114,7 +114,6 @@ var state = State{
     .width = 0,
     .height = 0,
     .assets = undefined,
-    .ui = undefined,
     .hovered_asset_id = NO_SELECTION,
     .selected_asset_id = NO_SELECTION,
     .action = ActionType.None,
@@ -128,7 +127,7 @@ pub fn initState(width: f32, height: f32, texture_max_size: f32, max_buffer_size
     state.width = width;
     state.height = height;
     state.assets = std.AutoArrayHashMap(u32, Asset).init(std.heap.page_allocator);
-    state.ui = std.AutoArrayHashMap(u32, shapes.Shape).init(std.heap.page_allocator);
+    UI.init();
 }
 
 pub fn updateRenderScale(scale: f32) !void {
@@ -510,7 +509,7 @@ pub fn commitChanges() !void {
 // https://github.com/users/mateuszJS/projects/1/views/1?pane=issue&itemId=123400787&issue=mateuszJS%7Cmagic-render%7C122
 fn drawBorder(allocator: std.mem.Allocator) !void {
     var triangle_vertex_data = std.ArrayList(Triangle.DrawInstance).init(allocator);
-    var ui_vertex_data = std.ArrayList(TransformUI.IconVertex).init(allocator);
+    var ui_vertex_data = std.ArrayList(UI.DrawVertex).init(allocator);
 
     const red = [_]u8{ 255, 0, 0, 255 };
     if (state.hovered_asset_id != state.selected_asset_id) {
@@ -577,39 +576,7 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
         web_gpu_programs.draw_triangle(triangle_vertex_data.items);
     }
 
-    for (ui_vertex_data.items) |data| {
-        if (state.ui.get(@intFromEnum(data.icon))) |shape| {
-            const uniform = shapes.DrawUniform{
-                .solid = .{
-                    .dist_start = std.math.inf(f32),
-                    .dist_end = 0,
-                    .color = data.color,
-                },
-            };
-
-            const p = data.position;
-            const max_sdf_size = @max(shape.sdf_size.w, shape.sdf_size.h);
-            const scale = data.max_size / max_sdf_size;
-
-            const hw = scale * shape.sdf_size.w * 0.5; // half width
-            const hh = scale * shape.sdf_size.h * 0.5; // half height
-
-            const vertex = [6]types.PointUV{
-                .{ .x = p.x - hw, .y = p.y - hh, .u = 0.0, .v = 0.0 },
-                .{ .x = p.x - hw, .y = p.y + hh, .u = 0.0, .v = 1.0 },
-                .{ .x = p.x + hw, .y = p.y + hh, .u = 1.0, .v = 1.0 },
-                .{ .x = p.x + hw, .y = p.y + hh, .u = 1.0, .v = 1.0 },
-                .{ .x = p.x + hw, .y = p.y - hh, .u = 1.0, .v = 0.0 },
-                .{ .x = p.x - hw, .y = p.y - hh, .u = 0.0, .v = 0.0 },
-            };
-
-            web_gpu_programs.draw_shape(
-                &vertex,
-                uniform,
-                shape.sdf_texture_id,
-            );
-        }
-    }
+    try UI.draw(ui_vertex_data.items, web_gpu_programs.draw_shape);
 }
 
 fn drawProjectBackground() void {
@@ -979,7 +946,7 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
 
 pub fn destroyState() void {
     state.assets.clearAndFree();
-    state.ui.clearAndFree();
+    UI.destroy();
     std.heap.page_allocator.free(last_assets_update);
     last_assets_update = &.{};
     state.selected_asset_id = 0;
@@ -995,54 +962,11 @@ pub fn importUiElement(
     paths: []const []const types.Point,
     sdf_texture_id: u32,
 ) !void {
-    const props = shapes.SerializedProps{
-        .sdf_effects = &.{
-            shapes.SerializedSdfEffect{ // normal/idle
-                .dist_start = std.math.inf(f32),
-                .dist_end = 0,
-                .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
-            },
-            shapes.SerializedSdfEffect{ // hovered/active
-                .dist_start = std.math.inf(f32),
-                .dist_end = 0,
-                .fill = .{ .solid = .{ 0.0, 0.0, 0.0, 1.0 } },
-            },
-        },
-        .filter = null,
-        .opacity = 1.0,
-    };
-    const shape = try shapes.Shape.new(
-        0,
-        paths,
-        null,
-        props,
-        sdf_texture_id,
-        0,
-        std.heap.page_allocator,
-    );
-    try state.ui.put(id, shape);
+    try UI.importUiElement(id, paths, sdf_texture_id);
 }
 
 pub fn generateUiElementsSdf() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    var iterator = state.ui.iterator();
-    while (iterator.next()) |entry| {
-        var shape = entry.value_ptr;
-        const option_points = try shape.getNewSdfPoint(allocator);
-        if (option_points) |points| {
-            const bounds = shape.getBoundsWithPadding(1, false);
-            shape.sdf_size = texture_size.get_sdf_size(bounds);
-            web_gpu_programs.compute_shape(
-                points,
-                @floor(shape.sdf_size.w),
-                @floor(shape.sdf_size.h),
-                shape.sdf_texture_id,
-            );
-        }
-    }
+    try UI.generateUiElementsSdf(web_gpu_programs.compute_shape);
 }
 
 pub fn setTool(tool: Tool) !void {
