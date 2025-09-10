@@ -133,6 +133,10 @@ export default async function initCreator(
       canvas,
       projectWidth,
       projectHeight,
+      canvas.width / canvas.clientWidth, // only impacted by pixels density
+      // because of that we can use our normal canvas as well
+      // we dont use new canvas(created inside generatePreview), because it's not added to DOM
+      // so clientWidth = 0
       capturePreview,
       onPreviewUpdate
     )

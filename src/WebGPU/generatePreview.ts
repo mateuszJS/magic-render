@@ -7,6 +7,8 @@ export default async function generatePreview(
   creatorCanvas: HTMLCanvasElement,
   projectWidth: number,
   projectHeight: number,
+  scaleFactor: number, // we cannot calcualted it from previewCanvas because it's not added to DOM,
+  // so previewCanvas.clientWidth = 0
   capturePreview: (canvas: HTMLCanvasElement, context: GPUCanvasContext) => Promise<void>,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void
 ) {
@@ -23,13 +25,11 @@ export default async function generatePreview(
 
   // setup viewport for the preview
   const cameraCopy = { ...camera }
-
-  const scale = previewCanvas.width / previewCanvas.clientWidth
   camera.x = (previewCanvas.width - projectWidth) / 2
   camera.y = (previewCanvas.height - projectHeight) / 2
   camera.zoom = 1
 
-  Logic.updateRenderScale(scale)
+  Logic.updateRenderScale(scaleFactor)
 
   capturePreview(previewCanvas, previewContext).then(() => {
     onPreviewUpdate(previewCanvas)
