@@ -59,7 +59,6 @@ function addIcon(id: UiElementType, svg: string) {
   if (!width || !height) throw Error('SVG Icon width and height are required')
   const defs: Defs = {}
   def.collect(svgRoot, defs)
-  console.log(defs)
   def.resolveAll(defs)
   createShapes(svgRoot, defs, width, height, undefined, id)
 }
@@ -98,7 +97,6 @@ export function add(
       if (!svgWidth || !svgHeight) throw Error('SVG width and height are required')
       const defs: Defs = {}
       def.collect(svgRoot, defs)
-      console.log(defs)
       def.resolveAll(defs)
       Logic.addShapeBegin()
       createShapes(svgRoot, defs, svgWidth, svgHeight)
