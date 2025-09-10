@@ -156,11 +156,6 @@ pub const Path = struct {
             try buffer.append(point);
         }
 
-        // std.debug.print("BEFORE==========================\n", .{});
-        // for (buffer.items) |p| {
-        //     std.debug.print("{d}, {d}\n", .{ p.x, p.y });
-        // }
-
         if (!self.closed) {
             if (preview_point) |preview| {
                 if (points.len > 2) {
@@ -180,10 +175,6 @@ pub const Path = struct {
         }
 
         try buffer.append(points[0]);
-        // std.debug.print("AFTER==========================\n", .{});
-        // for (buffer.items) |p| {
-        //     std.debug.print("{d}, {d}\n", .{ p.x, p.y });
-        // }
     }
 
     pub fn updateLastHandle(self: *Path, preview_point: Point) void {

@@ -4,13 +4,14 @@ const lines = @import("lines.zig");
 const PointUV = @import("types.zig").PointUV;
 const std = @import("std");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
-const Msdf = @import("msdf.zig");
 const Triangle = @import("triangle.zig");
 const shared = @import("shared.zig");
-const DEFAULT_BOUNDS = @import("consts.zig").DEFAULT_BOUNDS;
+const consts = @import("consts.zig");
+const UI = @import("ui.zig");
 
-const white = [4]u8{ 255, 255, 255, 255 };
-const black = [4]u8{ 0, 0, 0, 255 };
+const white = @Vector(4, u8){ 255, 255, 255, 255 };
+const black = @Vector(4, u8){ 0, 0, 0, 255 };
+const normalized = @Vector(4, f32){ 255, 255, 255, 255 };
 
 const TransformLine = struct {
     id: u32,
@@ -79,7 +80,7 @@ pub fn transformPoints(ui_component_id: u32, bounds: *[4]PointUV, raw_pointer: P
     const angle_x = bounds[0].angleTo(bounds[1]);
     const angle_y = bounds[0].angleTo(bounds[3]);
 
-    for (bounds, DEFAULT_BOUNDS) |*b, p| {
+    for (bounds, consts.DEFAULT_BOUNDS) |*b, p| {
         const t_p = matrix.get(p);
         b.x = t_p.x;
         b.y = t_p.y;
@@ -162,10 +163,10 @@ pub const RENDER_TRIANGLE_INSTANCES = UI_VERTICES_COUNT_BORDER * 2 * 2; // two t
 
 pub fn getDrawVertexData(
     triangle_buffer: *[RENDER_TRIANGLE_INSTANCES]Triangle.DrawInstance,
-    msdf_vertex_data: *[2]Msdf.DrawInstance,
+    icon_vertex_data: *std.ArrayList(UI.DrawVertex),
     points: [4]PointUV,
     hovered_elem_id: u32,
-) void {
+) !void {
     var i: usize = 0;
     for (resize_lines) |t_line| {
         const color = if (hovered_elem_id == t_line.id) white else black;
@@ -177,14 +178,14 @@ pub fn getDrawVertexData(
             // rotation icon
             thickness = 30.0 * shared.render_scale;
             const icon_size = thickness - 5.0 * shared.render_scale;
-            const msdf_data = Msdf.getDrawVertexData(
-                Msdf.IconId.rotate,
-                p1.x - icon_size * 0.5 - 0.12 * shared.render_scale,
-                p1.y - icon_size * 0.5 + 0.75 * shared.render_scale,
-                icon_size,
-                if (hovered_elem_id == t_line.id) black else white,
-            );
-            msdf_vertex_data.* = msdf_data;
+            const icon_color = if (hovered_elem_id == t_line.id) black else white;
+
+            try icon_vertex_data.append(UI.DrawVertex{
+                .position = p1,
+                .max_size = icon_size,
+                .icon = UI.IconType.Rotate,
+                .color = @as(@Vector(4, f32), @floatFromInt(icon_color)) / normalized,
+            });
         }
 
         const outer_line_width = thickness + 10.0 * shared.render_scale;

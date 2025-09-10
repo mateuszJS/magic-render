@@ -5,15 +5,16 @@ import { createShapes } from 'svgToShapes'
 import * as def from 'svgToShapes/definitions'
 import type { Defs } from 'svgToShapes/definitions'
 import * as Logic from './logic/index.zig'
+import RotateIcon from '../icons/rotate.svg'
 
-function getSvgSize(svgRoot: ElementNode, img: HTMLImageElement) {
+function getSvgSize(svgRoot: ElementNode, img?: HTMLImageElement) {
   const props = svgRoot.properties
   const viewboxSize = props?.viewBox ? extractSizeFromSvgViewbox(props.viewBox as string) : null
 
   const widthAttr = typeof props?.width === 'number' ? (props?.width as number) : undefined
   const heightAttr = typeof props?.height === 'number' ? (props?.height as number) : undefined
-  const svgWidth = widthAttr || img.naturalWidth || viewboxSize?.[0]
-  const svgHeight = heightAttr || img.naturalHeight || viewboxSize?.[1]
+  const svgWidth = widthAttr || img?.naturalWidth || viewboxSize?.[0]
+  const svgHeight = heightAttr || img?.naturalHeight || viewboxSize?.[1]
   return [svgWidth, svgHeight]
 }
 
@@ -47,6 +48,19 @@ export function init(
   loadingTexture = getLoadingTexture(device, presentationFormat)
   updateProcessing = () => _updateProcessing(loadingTextures)
   loadingTextures = 0
+
+  addIcon(0, RotateIcon)
+}
+
+function addIcon(id: UiElementType, svg: string) {
+  const svgTree = parse(svg)
+  const svgRoot = svgTree.children[0] as ElementNode
+  const [width, height] = getSvgSize(svgRoot)
+  if (!width || !height) throw Error('SVG Icon width and height are required')
+  const defs: Defs = {}
+  def.collect(svgRoot, defs)
+  def.resolveAll(defs)
+  createShapes(svgRoot, defs, width, height, undefined, id)
 }
 
 export interface TextureSource {
@@ -83,7 +97,6 @@ export function add(
       if (!svgWidth || !svgHeight) throw Error('SVG width and height are required')
       const defs: Defs = {}
       def.collect(svgRoot, defs)
-      console.log(defs)
       def.resolveAll(defs)
       Logic.addShapeBegin()
       createShapes(svgRoot, defs, svgWidth, svgHeight)

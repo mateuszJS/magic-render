@@ -1,7 +1,7 @@
 import { canvasMatrix } from '../initPrograms'
 import shaderCode from './shader.wgsl'
 
-const STRIDE = 4
+const STRIDE_BYTES = 4 * 4
 export default function getProgram(device: GPUDevice, presentationFormat: GPUTextureFormat) {
   const module = device.createShaderModule({
     label: 'draw texture module',
@@ -21,7 +21,7 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
       entryPoint: 'vs',
       buffers: [
         {
-          arrayStride: STRIDE * 4,
+          arrayStride: STRIDE_BYTES,
           attributes: [
             { shaderLocation: 0, offset: 0, format: 'float32x4' }, // destination(xy) and source (zw) positions
           ] as const,
@@ -60,7 +60,7 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     vertexData: DataView,
     texture: GPUTexture
   ) {
-    const numVertices = vertexData.byteLength / (4 * STRIDE)
+    const numVertices = vertexData.byteLength / STRIDE_BYTES
 
     const vertexBuffer = device.createBuffer({
       label: 'draw texture - vertex buffer',

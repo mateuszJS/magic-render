@@ -19,6 +19,8 @@ interface BoundingBox {
 
 type Color = [number, number, number, number]
 
+type UiElementType = 0
+
 type GradientStop = {
   color: Color
   offset: number // 0..1
@@ -126,7 +128,6 @@ declare module '*.zig' {
   export const connectWebGpuPrograms: (programs: {
     draw_texture: (vertex_data: PointerDataView, texture_id: number) => void
     draw_triangle: (vertex_data: ArrayPointerDataView) => void
-    draw_msdf: (vertex_data: ArrayPointerDataView, texture_id: number) => void
     pick_texture: (vertex_data: ArrayPointerDataView, texture_id: number) => void
     pick_triangle: (vertex_data: ArrayPointerDataView) => void
     draw_blur: (
@@ -166,8 +167,13 @@ declare module '*.zig' {
   export const calculateShapesSDF: VoidFunction
   export const renderDraw: VoidFunction
   export const renderPick: VoidFunction
-  export const destroyState: VoidFunction
+  export const deinitState: VoidFunction
   export const setTool: (tool: number) => void
 
-  export const importIcons: (data: number[]) => void
+  export const importUiElement: (
+    id: UiElementType,
+    paths: Point[][],
+    sdf_texture_id: number
+  ) => void
+  export const generateUiElementsSdf: VoidFunction
 }

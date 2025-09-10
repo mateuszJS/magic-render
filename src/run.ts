@@ -2,7 +2,6 @@ import getCanvasRenderDescriptor from 'getCanvasRenderDescriptor'
 import {
   drawTexture,
   drawTriangle,
-  drawMSDF,
   pickTexture,
   pickTriangle,
   pickCanvasMatrixBuffer,
@@ -54,10 +53,6 @@ export default function runCreator(
     draw_texture: (vertex_data, texture_id) => {
       drawTexture(renderPass, vertex_data.dataView, Textures.getTextureSafe(texture_id))
     },
-    draw_msdf: (vertex_data, texture_id) => {
-      const dataView = vertex_data['*'].dataView
-      drawMSDF(renderPass, dataView, Textures.getTexture(texture_id))
-    },
     draw_triangle: (vertex_data) => {
       const dataView = vertex_data['*'].dataView
       drawTriangle(renderPass, dataView)
@@ -93,9 +88,6 @@ export default function runCreator(
       )
     },
     draw_shape: (bound_box_data, uniform_data, textureId) => {
-      const boundBoxDataView = bound_box_data['*'].dataView
-
-      // console.log('boundBoxDataView', boundBoxDataView)
       let program
       let uniform
       if ('linear' in uniform_data && uniform_data.linear) {
@@ -111,6 +103,7 @@ export default function runCreator(
         throw Error('Unsupported shape uniform type')
       }
 
+      const boundBoxDataView = bound_box_data['*'].dataView
       program(renderPass, Textures.getTexture(textureId), boundBoxDataView, uniform.dataView)
     },
     pick_texture: (vertex_data, texture_id) => {
@@ -134,6 +127,16 @@ export default function runCreator(
   let rafId = 0
   const lastPickPointer: Point = { x: 0, y: 0 }
 
+  /*===========PRERENDER ICONS SDF===============*/
+  encoder = device.createCommandEncoder({
+    label: 'prerender ui elements SDF',
+  })
+  computePass = encoder.beginComputePass()
+  Logic.generateUiElementsSdf()
+  computePass.end()
+  device.queue.submit([encoder.finish()])
+
+  /*===========MAIN LOOP FUNCTION===============*/
   function draw(
     now: DOMHighResTimeStamp,
     preview?: { canvas: HTMLCanvasElement; ctx: GPUCanvasContext; onCapture: VoidFunction }

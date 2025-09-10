@@ -5,7 +5,6 @@ const lines = @import("lines.zig");
 const Triangle = @import("triangle.zig");
 const TransformUI = @import("transform_ui.zig");
 const zigar = @import("zigar");
-const Msdf = @import("msdf.zig");
 const shapes = @import("./shapes/shapes.zig");
 const squares = @import("squares.zig");
 const bounding_box = @import("shapes/bounding_box.zig");
@@ -16,6 +15,7 @@ const PackedId = @import("shapes/packed_id.zig");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 const PathUtils = @import("shapes/path_utils.zig");
 const consts = @import("consts.zig");
+const UI = @import("ui.zig");
 
 const FillType = enum(u8) {
     Solid,
@@ -29,7 +29,6 @@ const WebGpuPrograms = struct {
     compute_shape: *const fn ([]const types.Point, f32, f32, u32) void,
     draw_blur: *const fn (u32, u32, u32, u32, f32, f32) void,
     draw_shape: *const fn ([]const types.PointUV, shapes.DrawUniform, u32) void,
-    draw_msdf: *const fn ([]const Msdf.DrawInstance, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
     pick_triangle: *const fn ([]const Triangle.PickInstance) void,
     pick_shape: *const fn ([]const images.PickVertex, shapes.PickUniform, u32) void,
@@ -128,7 +127,7 @@ pub fn initState(width: f32, height: f32, texture_max_size: f32, max_buffer_size
     state.width = width;
     state.height = height;
     state.assets = std.AutoArrayHashMap(u32, Asset).init(std.heap.page_allocator);
-    // shapes.maxTextureSize = texture_max_size;
+    UI.init();
 }
 
 pub fn updateRenderScale(scale: f32) !void {
@@ -508,9 +507,9 @@ pub fn commitChanges() !void {
 }
 // TODO: extract to another file and simplify(extract common code)
 // https://github.com/users/mateuszJS/projects/1/views/1?pane=issue&itemId=123400787&issue=mateuszJS%7Cmagic-render%7C122
-fn getBorder(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []Msdf.DrawInstance } {
+fn drawBorder(allocator: std.mem.Allocator) !void {
     var triangle_vertex_data = std.ArrayList(Triangle.DrawInstance).init(allocator);
-    var msdf_vertex_data = std.ArrayList(Msdf.DrawInstance).init(allocator);
+    var ui_vertex_data = std.ArrayList(UI.DrawVertex).init(allocator);
 
     const red = [_]u8{ 255, 0, 0, 255 };
     if (state.hovered_asset_id != state.selected_asset_id) {
@@ -533,7 +532,7 @@ fn getBorder(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []M
                     5.0 * shared.render_scale,
                 );
 
-                triangle_vertex_data.appendSlice(&buffer) catch unreachable;
+                try triangle_vertex_data.appendSlice(&buffer);
             }
         }
     }
@@ -558,27 +557,26 @@ fn getBorder(allocator: std.mem.Allocator) struct { []Triangle.DrawInstance, []M
                 5.0 * shared.render_scale,
             );
 
-            triangle_vertex_data.appendSlice(&buffer) catch unreachable;
+            try triangle_vertex_data.appendSlice(&buffer);
         }
 
         var triangle_buffer: [TransformUI.RENDER_TRIANGLE_INSTANCES]Triangle.DrawInstance = undefined;
-        var msdf_buffer: [2]Msdf.DrawInstance = undefined;
 
-        TransformUI.getDrawVertexData(
+        try TransformUI.getDrawVertexData(
             &triangle_buffer,
-            &msdf_buffer,
+            &ui_vertex_data,
             points,
             state.hovered_asset_id,
         );
 
-        triangle_vertex_data.appendSlice(&triangle_buffer) catch unreachable;
-        msdf_vertex_data.appendSlice(&msdf_buffer) catch unreachable;
+        try triangle_vertex_data.appendSlice(&triangle_buffer);
     }
 
-    return .{
-        triangle_vertex_data.items,
-        msdf_vertex_data.items,
-    };
+    if (triangle_vertex_data.items.len > 0) {
+        web_gpu_programs.draw_triangle(triangle_vertex_data.items);
+    }
+
+    try UI.draw(ui_vertex_data.items, web_gpu_programs.draw_shape);
 }
 
 fn drawProjectBackground() void {
@@ -809,13 +807,7 @@ pub fn renderDraw() !void {
     drawProjectBoundary(); // TODO: once we support strokes for Triangles, we should use it here wit transparent fill
 
     if (state.tool == Tool.None) {
-        const triangle_buffer, const msdf_buffer = getBorder(allocator);
-        if (triangle_buffer.len > 0) {
-            web_gpu_programs.draw_triangle(triangle_buffer);
-        }
-        if (msdf_buffer.len > 0) {
-            web_gpu_programs.draw_msdf(msdf_buffer, 0);
-        }
+        try drawBorder(allocator);
     }
 
     if (state.tool == Tool.DrawShape or state.tool == Tool.EditShape) {
@@ -952,11 +944,18 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
     try checkAssetsUpdate(with_snapshot);
 }
 
-pub fn destroyState() void {
+pub fn deinitState() void {
+    var it = state.assets.iterator();
+    while (it.next()) |entry| {
+        switch (entry.value_ptr.*) {
+            .img => {},
+            .shape => |*shape| shape.deinit(),
+        }
+    }
     state.assets.clearAndFree();
+    UI.deinit();
     std.heap.page_allocator.free(last_assets_update);
     last_assets_update = &.{};
-    Msdf.deinitIcons();
     state.selected_asset_id = 0;
     next_asset_id = ASSET_ID_MIN;
     web_gpu_programs = undefined;
@@ -965,8 +964,16 @@ pub fn destroyState() void {
     // and has no reference to memory to free
 }
 
-pub fn importIcons(data: []const f32) void {
-    Msdf.initIcons(data);
+pub fn importUiElement(
+    id: u32,
+    paths: []const []const types.Point,
+    sdf_texture_id: u32,
+) !void {
+    try UI.importUiElement(id, paths, sdf_texture_id);
+}
+
+pub fn generateUiElementsSdf() !void {
+    try UI.generateUiElementsSdf(web_gpu_programs.compute_shape);
 }
 
 pub fn setTool(tool: Tool) !void {
@@ -982,7 +989,7 @@ test "reset_assets does not call the real update callback" {
     // Setup initial state
     initState(100, 100);
     // Ensure state is cleaned up after the test
-    defer destroyState();
+    defer deinitState();
 
     // Define a mock callback function locally, with its own static state.
     const MockCallback = struct {

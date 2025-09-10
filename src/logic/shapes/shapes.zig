@@ -593,12 +593,15 @@ pub const Shape = struct {
     }
 
     pub fn deinit(self: *Shape) void {
-        for (self.paths.items) |path| {
+        for (self.paths.items) |*path| {
             path.deinit();
         }
         self.paths.deinit();
-        self.props.stroke.deinit();
-        self.props.fill.deinit();
+
+        for (self.props.sdf_effects.items) |*effect| {
+            effect.fill.deinit();
+        }
+        self.props.sdf_effects.deinit();
     }
 };
 
@@ -606,7 +609,7 @@ const UniformSolid = extern struct {
     dist_start: f32,
     dist_end: f32,
     padding: [2]u32 = .{ 0, 0 },
-    color: [4]f32,
+    color: @Vector(4, f32),
 };
 
 const UniformGradientStop = extern struct {

@@ -4,8 +4,6 @@ import initPrograms from 'WebGPU/programs/initPrograms'
 import runCreator from 'run'
 import * as Logic from './logic/index.zig'
 import initMouseController, { camera } from 'WebGPU/pointer'
-import IconsPng from '../msdf/output/icons.png'
-import IconsJson from '../msdf/output/icons.json'
 import getDefaultPoints from 'utils/getDefaultPoints'
 import * as Textures from 'textures'
 import debounce from 'utils/debounce'
@@ -80,10 +78,6 @@ export default async function initCreator(
   }
 
   const { device, presentationFormat, storageFormat } = await getDevice()
-  Textures.init(device, presentationFormat, storageFormat, (texLoadings) => {
-    loadingTextures = texLoadings
-    updateProcessing()
-  })
 
   const projectWidth = canvas.clientWidth / 2
   const projectHeight = canvas.clientHeight / 2
@@ -94,6 +88,12 @@ export default async function initCreator(
     device.limits.maxTextureDimension2D,
     device.limits.maxBufferSize
   )
+
+  Textures.init(device, presentationFormat, storageFormat, (texLoadings) => {
+    loadingTextures = texLoadings
+    updateProcessing()
+  })
+
   // rotation doesnt work
   const context = canvas.getContext('webgpu')
   if (!context) throw Error('WebGPU from canvas needs to be always provided')
@@ -133,6 +133,10 @@ export default async function initCreator(
       canvas,
       projectWidth,
       projectHeight,
+      canvas.width / canvas.clientWidth, // only impacted by pixels density
+      // because of that we can use our normal canvas as well
+      // we dont use new canvas(created inside generatePreview), because it's not added to DOM
+      // so clientWidth = 0
       capturePreview,
       onPreviewUpdate
     )
@@ -221,20 +225,6 @@ export default async function initCreator(
     })
   }
 
-  Textures.add(IconsPng, (width, height) => {
-    Logic.importIcons(
-      IconsJson.chars.flatMap((char) => [
-        char.id,
-        char.x / width,
-        char.y / height,
-        char.width / width,
-        char.height / height,
-        char.width,
-        char.height,
-      ])
-    )
-  })
-
   const { stopRAF, capturePreview } = runCreator(canvas, context, device, () => {
     isMouseEventProcessing = false
     updateProcessing()
@@ -306,7 +296,7 @@ export default async function initCreator(
     resetAssets,
     destroy: () => {
       stopRAF()
-      Logic.destroyState()
+      Logic.deinitState()
       context.unconfigure()
       device.destroy()
     },
