@@ -37,6 +37,7 @@ async function loadFont() {
   const svgNode: ElementNode = {
     type: 'element', // pretend it's svg-parser created object
     children: [],
+    tagName: 'path',
     properties: {
       d,
       fill: '#fff',

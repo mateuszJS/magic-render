@@ -1,12 +1,9 @@
 import { Node } from 'svg-parser'
 import * as Logic from 'logic/index.zig'
-import parseRect from './parseRect'
-import parseEllipse from './parseEllipse'
 import * as Textures from 'textures'
 import { BoundingBox, getBoundingBox } from './boundingBox'
 import {
-  ensureNumber,
-  getProps,
+  getNum,
   IDENTITY_MATRIX,
   isElementNode,
   isStraightHandle,
@@ -15,6 +12,7 @@ import {
 } from './utils'
 import * as radialGradient from './radialGradient'
 import { Def, Defs, DefStop } from './definitions'
+import getProps from './getProps'
 
 function applyLinearTransform(x: number, y: number, m: number[]): Point {
   const [a, b, c, d, e, f] = m
@@ -54,10 +52,10 @@ function toRuntimeGradient(
   const tf = def.gradientTransform || IDENTITY_MATRIX
 
   if (def.type === 'linear-gradient') {
-    const x1_rel = ensureNumber(def.x1)
-    const y1_rel = ensureNumber(def.y1)
-    const x2_rel = ensureNumber(def.x2)
-    const y2_rel = ensureNumber(def.y2)
+    const x1_rel = getNum(def.x1)
+    const y1_rel = getNum(def.y1)
+    const x2_rel = getNum(def.x2)
+    const y2_rel = getNum(def.y2)
 
     // if (def.gradientUnits === 'objectBoundingBox') {
     const p1 = applyLinearTransform(x1_rel, y1_rel, tf)
@@ -74,9 +72,9 @@ function toRuntimeGradient(
 
     return { linear: { stops, start: p1, end: p2 } }
   } else if (def.type === 'radial-gradient') {
-    const cx = ensureNumber(def.cx, 0.5)
-    const cy = ensureNumber(def.cy, 0.5)
-    const r = ensureNumber(def.r, 0.5)
+    const cx = getNum(def.cx, 0.5)
+    const cy = getNum(def.cy, 0.5)
+    const r = getNum(def.r, 0.5)
 
     const bbWidth = boundingBox.max_x - boundingBox.min_x
     const bbHeight = boundingBox.max_y - boundingBox.min_y
@@ -127,42 +125,12 @@ export function createShapes(
     let paths: Point[][] | undefined = props.paths
 
     switch (node.tagName) {
-      case 'rect': {
-        if (typeof props?.width !== 'number' || typeof props?.height !== 'number') {
-          throw Error("Rect without 'width' or 'height' property")
-        }
-        const x = typeof props.x === 'number' ? props.x : 0
-        const y = typeof props.y === 'number' ? props.y : 0
-
-        paths = [parseRect(x, y, props.width, props.height)]
-        break
-      }
-      case 'ellipse': {
-        if (typeof props?.rx !== 'number' || typeof props?.ry !== 'number') {
-          throw Error("Ellipse without 'rx' or 'ry' property")
-        }
-        if (typeof props?.cx !== 'number' || typeof props?.cy !== 'number') {
-          throw Error("Ellipse without 'cx' or 'cy' property")
-        }
-        paths = [parseEllipse(props.cx, props.cy, props.rx, props.ry)]
-        break
-      }
-      case 'circle': {
-        if (typeof props?.r !== 'number') {
-          throw Error("Circle without 'r' property")
-        }
-        if (typeof props?.cx !== 'number' || typeof props?.cy !== 'number') {
-          throw Error("Circle without 'cx' or 'cy' property")
-        }
-        paths = [parseEllipse(props.cx, props.cy, props.r, props.r)]
-        break
-      }
       case 'g': {
         currTransform = parseTransform(props.transform as string | undefined, currTransform)
         break
       }
       case 'defs': {
-        return // do not render any content of defs, those were collected already
+        return // do not render content of defs, those are collected prior to this function run
       }
       case 'use': {
         if (props.href) {
@@ -171,7 +139,8 @@ export function createShapes(
             const def = defs[id]
             if (def) {
               if (!def.paths) {
-                throw Error('The resolved definition of <use> has no paths!')
+                console.error('The resolved definition of <use> has no paths!')
+                return
               }
 
               paths = def.paths
@@ -196,7 +165,7 @@ export function createShapes(
       }
       // fill/stroke: color or url(#id)
       if (props.fill) {
-        const fillOpacity = ensureNumber(props['fill-opacity'], 1)
+        const fillOpacity = getNum(props['fill-opacity'], 1)
         const fill = String(props.fill)
         const m = fill.match(/^url\(#([^)]+)\)$/)
         let serializedFill: SdfEffect['fill'] | null = null
@@ -225,7 +194,7 @@ export function createShapes(
 
       if (props['stroke-width']) {
         const color = String(props.stroke) || '#000'
-        const width = ensureNumber(props['stroke-width'], 1)
+        const width = getNum(props['stroke-width'], 1)
         const m = color.match(/^url\(#([^)]+)\)$/)
         let serializedFill: SdfEffect['fill'] | null = null
 

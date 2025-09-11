@@ -1,5 +1,6 @@
 import { Node } from 'svg-parser'
-import { getProps, isElementNode } from './utils'
+import { isElementNode } from './utils'
+import getProps from './getProps'
 
 export type DefStop = {
   offset: number
@@ -26,15 +27,6 @@ export type Def = {
   'stop-color'?: AttrValue
   'stop-opacity'?: AttrValue
   offset?: AttrValue
-  cx?: AttrValue
-  cy?: AttrValue
-  r?: AttrValue
-  rx?: AttrValue
-  ry?: AttrValue
-  x?: AttrValue
-  y?: AttrValue
-  width?: AttrValue
-  height?: AttrValue
   transform?: AttrValue
   fill?: AttrValue
   stroke?: AttrValue
@@ -42,6 +34,16 @@ export type Def = {
   opacity?: AttrValue
   'fill-opacity'?: AttrValue
   'stroke-width'?: AttrValue
+  d?: never
+  cx?: never
+  cy?: never
+  r?: never
+  rx?: never
+  ry?: never
+  x?: never
+  y?: never
+  width?: never
+  height?: never
 }
 
 export type Defs = Record<string, Def>

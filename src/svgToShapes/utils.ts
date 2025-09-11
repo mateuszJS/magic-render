@@ -1,6 +1,5 @@
 import { ElementNode, Node } from 'svg-parser'
-import { AttrValue, Def } from './definitions'
-import parsePathData from './parsePathData'
+import { AttrValue } from './definitions'
 
 const STRAIGHT_LINE_THRESHOLD = 1e10
 
@@ -31,48 +30,7 @@ export function parseColor(cssColor: string, overrideAlpha = 1): Color {
   ]
 }
 
-export function getProps(node: ElementNode): Def {
-  let rawProps = node.properties
-  if (typeof node.properties?.style === 'string') {
-    const styleProps = {} as Record<string, string | number>
-    node.properties.style.split(';').forEach((declaration) => {
-      const [property, value] = declaration.split(':')
-      if (property && value) {
-        styleProps[property.trim()] = value.trim()
-      }
-    })
-    // Direct properties override style properties
-    rawProps = { ...styleProps, ...node.properties }
-  }
-
-  if (!rawProps) return {}
-
-  const def: Def = { ...rawProps }
-
-  if ('d' in def) {
-    def.paths = parsePathData(def.d as string)
-    delete def.d
-  }
-
-  if ('gradientTransform' in rawProps) {
-    def.gradientTransform = parseTransform(String(rawProps.gradientTransform))
-  }
-
-  if (
-    (node.tagName === 'linearGradient' || node.tagName === 'radialGradient') &&
-    node.children.length > 0
-  ) {
-    def.stops = getGradientStops(node.children)
-  }
-
-  if (node.tagName === 'filter' && node.children.length == 1 && isElementNode(node.children[0])) {
-    addFilterProps(def, node.children[0])
-  }
-
-  return def
-}
-
-export function ensureNumber(x: AttrValue, fallback: number = 0): number {
+export function getNum(x: AttrValue, fallback: number = 0): number {
   if (typeof x === 'number') return x
   const n = Number(x)
   if (isNaN(n)) return fallback
@@ -81,22 +39,6 @@ export function ensureNumber(x: AttrValue, fallback: number = 0): number {
 
 export function isElementNode(node: string | Node): node is ElementNode {
   return typeof node !== 'string' && node.type === 'element'
-}
-
-function getGradientStops(nodes: Array<string | Node>) {
-  return nodes.map((stop) => {
-    if (!isElementNode(stop)) {
-      return { offset: 0, color: [0, 0, 0, 0] as Color }
-    }
-    const stopProps = getProps(stop)
-    const color = parseColor(String(stopProps['stop-color'] ?? '#000'))
-    color[3] = ensureNumber(stopProps['stop-opacity'], 1)
-
-    return {
-      offset: Number(stopProps.offset ?? 0),
-      color,
-    }
-  })
 }
 
 export const IDENTITY_MATRIX = [1, 0, 0, 1, 0, 0]
@@ -168,28 +110,4 @@ export function parseTransform(
   }
 
   return currentMatrix
-}
-
-function addFilterProps(def: Def, child: ElementNode) {
-  if (child.tagName === 'feGaussianBlur') {
-    def.type = 'gaussian-blur'
-
-    const v = child.properties?.stdDeviation
-    let sx = 0
-    let sy = 0
-    if (typeof v === 'number') {
-      sx = v
-      sy = v
-    } else if (typeof v === 'string') {
-      const parts = v.trim().split(/[ ,]+/).filter(Boolean)
-      if (parts.length >= 2) {
-        sx = ensureNumber(parts[0], 0)
-        sy = ensureNumber(parts[1], 0)
-      } else if (parts.length === 1) {
-        sx = ensureNumber(parts[0], 0)
-        sy = sx
-      }
-    }
-    def.stdDeviation = [sx, sy]
-  }
 }
