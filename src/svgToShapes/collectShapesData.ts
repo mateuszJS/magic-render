@@ -1,6 +1,4 @@
 import { Node } from 'svg-parser'
-import * as Logic from 'logic/index.zig'
-import * as Textures from 'textures'
 import { BoundingBox, getBoundingBox } from './boundingBox'
 import {
   getNum,
@@ -13,6 +11,12 @@ import {
 import * as radialGradient from './radialGradient'
 import { Def, Defs, DefStop } from './definitions'
 import getProps from './getProps'
+
+export interface ShapeData {
+  paths: Point[][]
+  props: ShapeProps
+  boundingBox: BoundingBox
+}
 
 function applyLinearTransform(x: number, y: number, m: number[]): Point {
   const [a, b, c, d, e, f] = m
@@ -108,15 +112,15 @@ function toRuntimeGradient(
   return null
 }
 
-export function createShapes(
+export default function collectShapesData(
   node: Node | string,
   defs: Defs,
-  svgWidth: number,
-  svgHeight: number,
   parentTransform: number[] = IDENTITY_MATRIX,
   uiElementType?: UiElementType
-): void {
-  if (!isElementNode(node)) return
+): ShapeData[] {
+  const shapes: ShapeData[] = []
+
+  if (!isElementNode(node)) return shapes
 
   let currTransform = parentTransform
 
@@ -130,7 +134,7 @@ export function createShapes(
         break
       }
       case 'defs': {
-        return // do not render content of defs, those are collected prior to this function run
+        return shapes // do not render content of defs, those are collected prior to this function run
       }
       case 'use': {
         if (props.href) {
@@ -140,7 +144,7 @@ export function createShapes(
             if (def) {
               if (!def.paths) {
                 console.error('The resolved definition of <use> has no paths!')
-                return
+                return shapes
               }
 
               paths = def.paths
@@ -251,19 +255,17 @@ export function createShapes(
         })
       )
 
-      const correctedPaths = transformedPaths.map((path) =>
-        path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
-      )
-      if (uiElementType !== undefined) {
-        Logic.importUiElement(uiElementType, correctedPaths, Textures.createSDF())
-        return // We expect all ui elements to have just one path
-      } else {
-        Logic.addShape(0, correctedPaths, null, serializedProps, Textures.createSDF(), null)
-      }
+      shapes.push({
+        paths: transformedPaths,
+        props: serializedProps,
+        boundingBox,
+      })
     }
   }
 
   node.children.forEach((child) => {
-    createShapes(child, defs, svgWidth, svgHeight, currTransform, uiElementType)
+    shapes.push(...collectShapesData(child, defs, currTransform, uiElementType))
   })
+
+  return shapes
 }

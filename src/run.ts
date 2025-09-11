@@ -22,8 +22,9 @@ import * as Textures from 'textures'
 import { endCache, startCache } from 'WebGPU/textureCache'
 import fontFile from '../icons/GoogleSans-Regular.ttf'
 import opentype from 'opentype.js'
-import { createShapes } from 'svgToShapes'
+import createShapes from 'svgToShapes/createShapes'
 import { ElementNode } from 'svg-parser'
+import collectShapesData from 'svgToShapes/collectShapesData'
 
 let renderPass: GPURenderPassEncoder
 export function updateRenderPass(newRenderPass: GPURenderPassEncoder) {
@@ -43,7 +44,8 @@ async function loadFont() {
       fill: '#fff',
     },
   }
-  createShapes(svgNode, {}, 500, 100)
+  const shapesData = collectShapesData(svgNode, {})
+  createShapes(shapesData)
 }
 
 export default function runCreator(
