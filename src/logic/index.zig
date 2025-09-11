@@ -87,6 +87,7 @@ const Tool = enum {
     None,
     DrawShape,
     EditShape,
+    Text,
 };
 
 const Asset = union(enum) {

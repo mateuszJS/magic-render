@@ -8,6 +8,7 @@ import {
   ensureNumber,
   getProps,
   IDENTITY_MATRIX,
+  isElementNode,
   isStraightHandle,
   parseColor,
   parseTransform,
@@ -110,191 +111,190 @@ function toRuntimeGradient(
 }
 
 export function createShapes(
-  node: Node,
+  node: Node | string,
   defs: Defs,
   svgWidth: number,
   svgHeight: number,
   parentTransform: number[] = IDENTITY_MATRIX,
   uiElementType?: UiElementType
 ): void {
-  if (!('children' in node)) return
+  if (!isElementNode(node)) return
 
-  node.children.forEach((child) => {
-    if (typeof child === 'string') return
+  let currTransform = parentTransform
 
-    let currTransform = parentTransform
+  if ('properties' in node && typeof node.properties === 'object') {
+    let props = getProps(node)
+    let paths: Point[][] | undefined = props.paths
 
-    if ('properties' in child && typeof child.properties === 'object') {
-      let props = getProps(child)
-      let paths: Point[][] | undefined = props.paths
+    switch (node.tagName) {
+      case 'rect': {
+        if (typeof props?.width !== 'number' || typeof props?.height !== 'number') {
+          throw Error("Rect without 'width' or 'height' property")
+        }
+        const x = typeof props.x === 'number' ? props.x : 0
+        const y = typeof props.y === 'number' ? props.y : 0
 
-      switch (child.tagName) {
-        case 'rect': {
-          if (typeof props?.width !== 'number' || typeof props?.height !== 'number') {
-            throw Error("Rect without 'width' or 'height' property")
-          }
-          const x = typeof props.x === 'number' ? props.x : 0
-          const y = typeof props.y === 'number' ? props.y : 0
-
-          paths = [parseRect(x, y, props.width, props.height)]
-          break
-        }
-        case 'ellipse': {
-          if (typeof props?.rx !== 'number' || typeof props?.ry !== 'number') {
-            throw Error("Ellipse without 'rx' or 'ry' property")
-          }
-          if (typeof props?.cx !== 'number' || typeof props?.cy !== 'number') {
-            throw Error("Ellipse without 'cx' or 'cy' property")
-          }
-          paths = [parseEllipse(props.cx, props.cy, props.rx, props.ry)]
-          break
-        }
-        case 'circle': {
-          if (typeof props?.r !== 'number') {
-            throw Error("Circle without 'r' property")
-          }
-          if (typeof props?.cx !== 'number' || typeof props?.cy !== 'number') {
-            throw Error("Circle without 'cx' or 'cy' property")
-          }
-          paths = [parseEllipse(props.cx, props.cy, props.r, props.r)]
-          break
-        }
-        case 'g': {
-          currTransform = parseTransform(props.transform as string | undefined, currTransform)
-          break
-        }
-        case 'defs': {
-          return // do not render any content of defs, those were collected already
-        }
-        case 'use': {
-          if (props.href) {
-            const id = (props.href as string).slice(1)
-            if (id) {
-              const def = defs[id]
-              if (def) {
-                if (!def.paths) {
-                  throw Error('The resolved definition of <use> has no paths!')
-                }
-
-                paths = def.paths
-                props = {
-                  ...def,
-                  ...props,
-                }
-              }
-            }
-          }
-          break
-        }
+        paths = [parseRect(x, y, props.width, props.height)]
+        break
       }
-
-      if (paths) {
-        const boundingBox = getBoundingBox(paths)
-
-        const serializedProps: ShapeProps = {
-          sdf_effects: [],
-          filter: null,
-          opacity: 1,
+      case 'ellipse': {
+        if (typeof props?.rx !== 'number' || typeof props?.ry !== 'number') {
+          throw Error("Ellipse without 'rx' or 'ry' property")
         }
-        // fill/stroke: color or url(#id)
-        if (props.fill) {
-          const fillOpacity = ensureNumber(props['fill-opacity'], 1)
-          const fill = String(props.fill)
-          const m = fill.match(/^url\(#([^)]+)\)$/)
-          let serializedFill: SdfEffect['fill'] | null = null
-
-          if (m) {
-            const def = defs[m[1]]
+        if (typeof props?.cx !== 'number' || typeof props?.cy !== 'number') {
+          throw Error("Ellipse without 'cx' or 'cy' property")
+        }
+        paths = [parseEllipse(props.cx, props.cy, props.rx, props.ry)]
+        break
+      }
+      case 'circle': {
+        if (typeof props?.r !== 'number') {
+          throw Error("Circle without 'r' property")
+        }
+        if (typeof props?.cx !== 'number' || typeof props?.cy !== 'number') {
+          throw Error("Circle without 'cx' or 'cy' property")
+        }
+        paths = [parseEllipse(props.cx, props.cy, props.r, props.r)]
+        break
+      }
+      case 'g': {
+        currTransform = parseTransform(props.transform as string | undefined, currTransform)
+        break
+      }
+      case 'defs': {
+        return // do not render any content of defs, those were collected already
+      }
+      case 'use': {
+        if (props.href) {
+          const id = (props.href as string).slice(1)
+          if (id) {
+            const def = defs[id]
             if (def) {
-              const grad = toRuntimeGradient(def, boundingBox, fillOpacity)
-              if (grad) {
-                serializedFill = grad
+              if (!def.paths) {
+                throw Error('The resolved definition of <use> has no paths!')
               }
-            }
-          } else {
-            const rgba = parseColor(fill, fillOpacity)
-            serializedFill = { solid: rgba }
-          }
 
-          if (serializedFill) {
-            serializedProps.sdf_effects.push({
-              dist_start: Infinity,
-              dist_end: 0,
-              fill: serializedFill,
-            })
-          }
-        }
-
-        if (props['stroke-width']) {
-          const color = String(props.stroke) || '#000'
-          const width = ensureNumber(props['stroke-width'], 1)
-          const m = color.match(/^url\(#([^)]+)\)$/)
-          let serializedFill: SdfEffect['fill'] | null = null
-
-          if (m) {
-            const def = defs[m[1]]
-            if (def) {
-              const grad = toRuntimeGradient(def, boundingBox)
-              if (grad) {
-                serializedFill = grad
-              }
-            }
-          } else {
-            const rgba = parseColor(color)
-            serializedFill = { solid: rgba }
-          }
-
-          if (serializedFill) {
-            serializedProps.sdf_effects.push({
-              dist_start: width / 2,
-              dist_end: -width / 2,
-              fill: serializedFill,
-            })
-          }
-        }
-
-        if (props.filter) {
-          const filter = String(props.filter)
-          const m = filter.match(/^url\(#([^)]+)\)$/)
-
-          if (m) {
-            const def = defs[m[1]]
-            if (def?.stdDeviation) {
-              serializedProps.filter = {
-                gaussianBlur: {
-                  x: def.stdDeviation[0],
-                  y: def.stdDeviation[1],
-                },
+              paths = def.paths
+              props = {
+                ...def,
+                ...props,
               }
             }
           }
         }
-
-        if (typeof props.opacity === 'number') {
-          serializedProps.opacity = props.opacity
-        }
-
-        if (typeof props.transform === 'string') {
-          currTransform = parseTransform(props.transform, currTransform)
-        }
-        const transformedPaths = paths.map((path) =>
-          path.map((point) => {
-            if (isStraightHandle(point)) return point
-            return applyLinearTransform(point.x, point.y, currTransform)
-          })
-        )
-
-        const correctedPaths = transformedPaths.map((path) =>
-          path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
-        )
-        if (uiElementType !== undefined) {
-          Logic.importUiElement(uiElementType, correctedPaths, Textures.createSDF())
-          return // We expect all ui elements to have just one path
-        } else {
-          Logic.addShape(0, correctedPaths, null, serializedProps, Textures.createSDF(), null)
-        }
+        break
       }
     }
+
+    if (paths) {
+      const boundingBox = getBoundingBox(paths)
+
+      const serializedProps: ShapeProps = {
+        sdf_effects: [],
+        filter: null,
+        opacity: 1,
+      }
+      // fill/stroke: color or url(#id)
+      if (props.fill) {
+        const fillOpacity = ensureNumber(props['fill-opacity'], 1)
+        const fill = String(props.fill)
+        const m = fill.match(/^url\(#([^)]+)\)$/)
+        let serializedFill: SdfEffect['fill'] | null = null
+
+        if (m) {
+          const def = defs[m[1]]
+          if (def) {
+            const grad = toRuntimeGradient(def, boundingBox, fillOpacity)
+            if (grad) {
+              serializedFill = grad
+            }
+          }
+        } else {
+          const rgba = parseColor(fill, fillOpacity)
+          serializedFill = { solid: rgba }
+        }
+
+        if (serializedFill) {
+          serializedProps.sdf_effects.push({
+            dist_start: Infinity,
+            dist_end: 0,
+            fill: serializedFill,
+          })
+        }
+      }
+
+      if (props['stroke-width']) {
+        const color = String(props.stroke) || '#000'
+        const width = ensureNumber(props['stroke-width'], 1)
+        const m = color.match(/^url\(#([^)]+)\)$/)
+        let serializedFill: SdfEffect['fill'] | null = null
+
+        if (m) {
+          const def = defs[m[1]]
+          if (def) {
+            const grad = toRuntimeGradient(def, boundingBox)
+            if (grad) {
+              serializedFill = grad
+            }
+          }
+        } else {
+          const rgba = parseColor(color)
+          serializedFill = { solid: rgba }
+        }
+
+        if (serializedFill) {
+          serializedProps.sdf_effects.push({
+            dist_start: width / 2,
+            dist_end: -width / 2,
+            fill: serializedFill,
+          })
+        }
+      }
+
+      if (props.filter) {
+        const filter = String(props.filter)
+        const m = filter.match(/^url\(#([^)]+)\)$/)
+
+        if (m) {
+          const def = defs[m[1]]
+          if (def?.stdDeviation) {
+            serializedProps.filter = {
+              gaussianBlur: {
+                x: def.stdDeviation[0],
+                y: def.stdDeviation[1],
+              },
+            }
+          }
+        }
+      }
+
+      if (typeof props.opacity === 'number') {
+        serializedProps.opacity = props.opacity
+      }
+
+      if (typeof props.transform === 'string') {
+        currTransform = parseTransform(props.transform, currTransform)
+      }
+      const transformedPaths = paths.map((path) =>
+        path.map((point) => {
+          if (isStraightHandle(point)) return point
+          return applyLinearTransform(point.x, point.y, currTransform)
+        })
+      )
+
+      const correctedPaths = transformedPaths.map((path) =>
+        path.map((p) => ({ x: p.x, y: svgHeight - p.y }))
+      )
+      if (uiElementType !== undefined) {
+        Logic.importUiElement(uiElementType, correctedPaths, Textures.createSDF())
+        return // We expect all ui elements to have just one path
+      } else {
+        Logic.addShape(0, correctedPaths, null, serializedProps, Textures.createSDF(), null)
+      }
+    }
+  }
+
+  node.children.forEach((child) => {
     createShapes(child, defs, svgWidth, svgHeight, currTransform, uiElementType)
   })
 }

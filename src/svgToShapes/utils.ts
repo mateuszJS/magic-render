@@ -65,12 +65,7 @@ export function getProps(node: ElementNode): Def {
     def.stops = getGradientStops(node.children)
   }
 
-  if (
-    node.tagName === 'filter' &&
-    node.children.length == 1 &&
-    typeof node.children[0] !== 'string' &&
-    node.children[0]?.type === 'element'
-  ) {
+  if (node.tagName === 'filter' && node.children.length == 1 && isElementNode(node.children[0])) {
     addFilterProps(def, node.children[0])
   }
 
@@ -84,10 +79,15 @@ export function ensureNumber(x: AttrValue, fallback: number = 0): number {
   return n
 }
 
+export function isElementNode(node: string | Node): node is ElementNode {
+  return typeof node !== 'string' && node.type === 'element'
+}
+
 function getGradientStops(nodes: Array<string | Node>) {
   return nodes.map((stop) => {
-    if (typeof stop === 'string' || stop.type !== 'element')
+    if (!isElementNode(stop)) {
       return { offset: 0, color: [0, 0, 0, 0] as Color }
+    }
     const stopProps = getProps(stop)
     const color = parseColor(String(stopProps['stop-color'] ?? '#000'))
     color[3] = ensureNumber(stopProps['stop-opacity'], 1)

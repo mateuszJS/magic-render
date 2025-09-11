@@ -20,10 +20,29 @@ import * as Logic from 'logic/index.zig'
 import { pointer } from 'WebGPU/pointer'
 import * as Textures from 'textures'
 import { endCache, startCache } from 'WebGPU/textureCache'
+import fontFile from '../icons/GoogleSans-Regular.ttf'
+import opentype from 'opentype.js'
+import { createShapes } from 'svgToShapes'
+import { ElementNode } from 'svg-parser'
 
 let renderPass: GPURenderPassEncoder
 export function updateRenderPass(newRenderPass: GPURenderPassEncoder) {
   renderPass = newRenderPass
+}
+
+async function loadFont() {
+  const buffer = fetch(fontFile).then((res) => res.arrayBuffer())
+  const font = opentype.parse(await buffer)
+  const d = font.getPath('Hello world', 0, 0, 72).toPathData(2)
+  const svgNode: ElementNode = {
+    type: 'element', // pretend it's svg-parser created object
+    children: [],
+    properties: {
+      d,
+      fill: '#fff',
+    },
+  }
+  createShapes(svgNode, {}, 500, 100)
 }
 
 export default function runCreator(
@@ -35,6 +54,8 @@ export default function runCreator(
   let pickPass: GPURenderPassEncoder
   let computePass: GPUComputePassEncoder
   let encoder: GPUCommandEncoder
+
+  loadFont()
 
   const pickManager = new PickManager(device)
 
