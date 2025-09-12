@@ -17,36 +17,34 @@ import {
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
 import * as Logic from 'logic/index.zig'
-import { pointer } from 'WebGPU/pointer'
+import { pointer } from 'pointer'
 import * as Textures from 'textures'
 import { endCache, startCache } from 'WebGPU/textureCache'
-import fontFile from '../icons/GoogleSans-Regular.ttf'
-import opentype from 'opentype.js'
-import createShapes from 'svgToShapes/createShapes'
-import { ElementNode } from 'svg-parser'
-import collectShapesData from 'svgToShapes/collectShapesData'
 
 let renderPass: GPURenderPassEncoder
 export function updateRenderPass(newRenderPass: GPURenderPassEncoder) {
   renderPass = newRenderPass
 }
 
-async function loadFont() {
-  const buffer = fetch(fontFile).then((res) => res.arrayBuffer())
-  const font = opentype.parse(await buffer)
-  const d = font.getPath('Hello world', 0, 0, 72).toPathData(2)
-  const svgNode: ElementNode = {
-    type: 'element', // pretend it's svg-parser created object
-    children: [],
-    tagName: 'path',
-    properties: {
-      d,
-      fill: '#fff',
-    },
-  }
-  const shapesData = collectShapesData(svgNode, {})
-  createShapes(shapesData)
-}
+// async function loadFont() {
+//   const buffer = fetch(fontFile).then((res) => res.arrayBuffer())
+//   const font = opentype.parse(await buffer)
+//   const d = font.getPath('Hello world', 0, 0, 72).toPathData(2)
+//   const svgNode: ElementNode = {
+//     type: 'element', // pretend it's svg-parser created object
+//     children: [],
+//     tagName: 'path',
+//     properties: {
+//       d,
+//       fill: '#fff',
+//     },
+//   }
+//   const shapesData = collectShapesData(svgNode, {})
+//   createShapes(shapesData)
+
+//   console.log(font.stringToGlyphs('Hello world'))
+//   console.log(font.getKerningValue(font.charToGlyph('w'), font.charToGlyph('o')))
+// }
 
 export default function runCreator(
   creatorCanvas: HTMLCanvasElement,
@@ -57,8 +55,6 @@ export default function runCreator(
   let pickPass: GPURenderPassEncoder
   let computePass: GPUComputePassEncoder
   let encoder: GPUCommandEncoder
-
-  loadFont()
 
   const pickManager = new PickManager(device)
 
@@ -91,6 +87,7 @@ export default function runCreator(
     compute_shape: (curves_data, width, height, textureId) => {
       const curvesDataView = curves_data['*'].dataView
       Textures.updateSDF(textureId, width, height)
+      console.log(curves_data, width, height, textureId)
       computeShape(computePass, curvesDataView, Textures.getTexture(textureId))
     },
     draw_blur: (
@@ -165,6 +162,8 @@ export default function runCreator(
     now: DOMHighResTimeStamp,
     preview?: { canvas: HTMLCanvasElement; ctx: GPUCanvasContext; onCapture: VoidFunction }
   ) {
+    Logic.tick(now)
+
     encoder = device.createCommandEncoder({
       label: 'draw canvas main encoder',
     })

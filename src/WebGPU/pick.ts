@@ -1,5 +1,5 @@
 import mat4 from 'utils/mat4'
-import { pointer } from './pointer'
+import { pointer } from '../pointer'
 import * as Logic from '../logic/index.zig'
 
 const NUM_PIXELS = 1

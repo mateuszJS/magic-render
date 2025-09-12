@@ -3,6 +3,7 @@ const shapes = @import("shapes/shapes.zig");
 const texture_size = @import("texture_size.zig");
 const Point = @import("types.zig").Point;
 const PointUV = @import("types.zig").PointUV;
+const sdf = @import("sdf/sdf.zig");
 
 var elements: std.AutoArrayHashMap(u32, shapes.Shape) = undefined;
 
@@ -65,11 +66,11 @@ pub const DrawVertex = struct {
 
 pub fn draw(
     dataset: []DrawVertex,
-    draw_shape: *const fn ([]const PointUV, shapes.DrawUniform, u32) void,
+    draw_shape: *const fn ([]const PointUV, sdf.DrawUniform, u32) void,
 ) !void {
     for (dataset) |data| {
         if (elements.get(@intFromEnum(data.icon))) |shape| {
-            const uniform = shapes.DrawUniform{
+            const uniform = sdf.DrawUniform{
                 .solid = .{
                     .dist_start = std.math.inf(f32),
                     .dist_end = 0,

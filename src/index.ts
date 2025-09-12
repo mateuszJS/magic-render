@@ -3,12 +3,14 @@ import getDevice from 'WebGPU/getDevice'
 import initPrograms from 'WebGPU/programs/initPrograms'
 import runCreator from 'run'
 import * as Logic from './logic/index.zig'
-import initMouseController, { camera } from 'WebGPU/pointer'
+import initMouseController, { camera } from 'pointer'
 import getDefaultPoints from 'utils/getDefaultPoints'
 import * as Textures from 'textures'
 import debounce from 'utils/debounce'
 import generatePreview from 'WebGPU/generatePreview'
 import sanitizeFill from 'sanitizeFill'
+import * as Typing from 'typing'
+import * as Fonts from 'fonts'
 
 export type SerializedInputImage = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
@@ -26,7 +28,15 @@ export type SerializedInputShape = {
   bounds?: PointUV[]
 }
 
-export type SerializedInputAsset = SerializedInputImage | SerializedInputShape
+export type SerializedInputText = {
+  id?: number // not needed while loading project but useful for undo/redo to maintain selection
+  content: string
+  bounds?: PointUV[]
+  max_width: number
+  font_size: number
+}
+
+export type SerializedInputAsset = SerializedInputImage | SerializedInputShape | SerializedInputText
 
 export type SerializedOutputImage = {
   id: number // not needed while loading project but useful for undo/redo to maintain selection
@@ -44,7 +54,18 @@ export type SerializedOutputShape = {
   cache_texture_id: number | null
 }
 
-export type SerializedOutputAsset = SerializedOutputImage | SerializedOutputShape
+export type SerializedOutputText = {
+  id: number // not needed while loading project but useful for undo/redo to maintain selection
+  content: string
+  bounds: PointUV[]
+  max_width: number
+  font_size: number
+}
+
+export type SerializedOutputAsset =
+  | SerializedOutputImage
+  | SerializedOutputShape
+  | SerializedOutputText
 
 export enum CreatorTool {
   None = 0,
@@ -200,6 +221,19 @@ export default async function initCreator(
           sdf_texture_id: shape.sdf_texture_id,
           cache_texture_id: shape.cache_texture_id,
         }
+      } else if ('text' in asset && asset.text) {
+        return {
+          id: asset.text.id,
+          content: asset.text.content,
+          bounds: [...asset.text.bounds].map((point) => ({
+            x: point.x,
+            y: point.y,
+            u: point.u,
+            v: point.v,
+          })),
+          max_width: asset.text.max_width,
+          font_size: asset.text.font_size,
+        }
       } else {
         throw Error('Unknown asset type')
       }
@@ -207,8 +241,11 @@ export default async function initCreator(
     onAssetsUpdate(serializedAssetsTextureUrl)
   }
 
+  Fonts.loadFont()
+
   Logic.connectOnAssetSelectionCallback(onAssetSelect)
   Logic.connectCreateSdfTexture(Textures.createSDF)
+  Logic.connectTyping(Typing.enable, Typing.disable, Fonts.getCharData)
 
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = Textures.add(url, (width, height, isNew) => {
@@ -247,7 +284,18 @@ export default async function initCreator(
                   cache_texture_id: asset.cache_texture_id || null,
                 },
               })
-            } // otherwise it's an image
+            } else if ('content' in asset) {
+              return resolve({
+                text: {
+                  id: asset.id || NO_ASSET_ID,
+                  content: asset.content,
+                  bounds: asset.bounds || null,
+                  max_width: asset.max_width,
+                  font_size: asset.font_size,
+                },
+              })
+            }
+            // otherwise it's an image
 
             if (asset.points) {
               return resolve({

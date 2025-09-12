@@ -1,5 +1,5 @@
 import mat4 from 'utils/mat4'
-import { camera } from 'WebGPU/pointer'
+import { camera } from 'pointer'
 
 export default function getCanvasMatrix(canvas: HTMLCanvasElement) {
   const ortho = mat4.ortho(

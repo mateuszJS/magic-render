@@ -14,7 +14,8 @@ const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const consts = @import("../consts.zig");
 const PackedId = @import("packed_id.zig");
 const PathUtils = @import("path_utils.zig");
-const fill = @import("fill.zig");
+const fill = @import("../sdf/fill.zig");
+const sdf = @import("../sdf/sdf.zig");
 
 const EPSILON = std.math.floatEps(f32);
 const CREATE_HANDLE_THRESHOLD = 10.0;
@@ -47,12 +48,6 @@ fn getSnapThreshold(bounds: [4]PointUV) Point {
     return close_path_threshold;
 }
 
-pub const SdfEffect = struct {
-    dist_start: f32,
-    dist_end: f32,
-    fill: fill.Fill,
-};
-
 pub const SerializedSdfEffect = struct {
     dist_start: f32,
     dist_end: f32,
@@ -64,7 +59,7 @@ pub const Filter = struct {
 };
 
 pub const Props = struct {
-    sdf_effects: std.ArrayList(SdfEffect),
+    sdf_effects: std.ArrayList(sdf.Effect),
     filter: ?Filter,
     opacity: f32,
 };
@@ -115,9 +110,9 @@ pub const Shape = struct {
             try paths_list.append(path);
         }
 
-        var effects_list = std.ArrayList(SdfEffect).init(allocator);
+        var effects_list = std.ArrayList(sdf.Effect).init(allocator);
         for (input_props.sdf_effects) |effect| {
-            try effects_list.append(SdfEffect{
+            try effects_list.append(sdf.Effect{
                 .dist_start = effect.dist_start,
                 .dist_end = effect.dist_end,
                 .fill = try fill.Fill.new(effect.fill, allocator),
@@ -309,9 +304,9 @@ pub const Shape = struct {
         return skeleton_buffer.toOwnedSlice();
     }
 
-    pub fn getSkeletonUniform(self: Shape) DrawUniform {
+    pub fn getSkeletonUniform(self: Shape) sdf.DrawUniform {
         const stroke_width = PathUtils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.render_scale;
-        return DrawUniform{
+        return sdf.DrawUniform{
             .solid = .{
                 .dist_start = stroke_width * 0.5,
                 .dist_end = -stroke_width * 0.5,
@@ -362,80 +357,19 @@ pub const Shape = struct {
         return points.toOwnedSlice();
     }
 
-    pub fn getPickUniform(self: Shape, sdf_effect: SdfEffect) PickUniform {
+    pub fn getPickUniform(self: Shape, sdf_effect: sdf.Effect) PickUniform {
         return PickUniform{
             .dist_start = sdf_effect.dist_start * self.sdf_scale,
             .dist_end = sdf_effect.dist_end * self.sdf_scale,
         };
     }
 
-    pub fn getDrawUniform(self: Shape, sdf_effect: SdfEffect) DrawUniform {
-        switch (sdf_effect.fill) {
-            .solid => |color| {
-                return DrawUniform{
-                    .solid = .{
-                        .dist_start = sdf_effect.dist_start * self.sdf_scale,
-                        .dist_end = sdf_effect.dist_end * self.sdf_scale,
-                        .color = .{
-                            color[0] * self.props.opacity,
-                            color[1] * self.props.opacity,
-                            color[2] * self.props.opacity,
-                            color[3] * self.props.opacity,
-                        },
-                    },
-                };
-            },
-            .linear => |gradient| {
-                var stops: [10]UniformGradientStop = undefined;
-                for (gradient.stops.items, 0..) |stop, i| {
-                    stops[i] = UniformGradientStop{
-                        .offset = stop.offset,
-                        .color = .{
-                            stop.color[0] * self.props.opacity,
-                            stop.color[1] * self.props.opacity,
-                            stop.color[2] * self.props.opacity,
-                            stop.color[3] * self.props.opacity,
-                        },
-                    };
-                }
-                return DrawUniform{
-                    .linear = .{
-                        .dist_start = sdf_effect.dist_start * self.sdf_scale,
-                        .dist_end = sdf_effect.dist_end * self.sdf_scale,
-                        .stops_count = gradient.stops.items.len,
-                        .start = gradient.start,
-                        .end = gradient.end,
-                        .stops = stops,
-                    },
-                };
-            },
-            .radial => |gradient| {
-                var stops: [10]UniformGradientStop = undefined;
-                for (gradient.stops.items, 0..) |stop, i| {
-                    stops[i] = UniformGradientStop{
-                        .offset = stop.offset,
-                        .color = .{
-                            stop.color[0] * self.props.opacity,
-                            stop.color[1] * self.props.opacity,
-                            stop.color[2] * self.props.opacity,
-                            stop.color[3] * self.props.opacity,
-                        },
-                    };
-                }
-
-                return DrawUniform{
-                    .radial = .{
-                        .dist_start = sdf_effect.dist_start * self.sdf_scale,
-                        .dist_end = sdf_effect.dist_end * self.sdf_scale,
-                        .stops_count = gradient.stops.items.len,
-                        .center = gradient.center,
-                        .destination = gradient.destination,
-                        .stops = stops,
-                        .radius_ratio = gradient.radius_ratio,
-                    },
-                };
-            },
-        }
+    pub fn getDrawUniform(self: Shape, sdf_effect: sdf.Effect) sdf.DrawUniform {
+        return sdf.getDrawUniform(
+            sdf_effect,
+            self.sdf_scale,
+            self.props.opacity,
+        );
     }
 
     pub fn getNewSdfPoint(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
@@ -603,45 +537,6 @@ pub const Shape = struct {
         }
         self.props.sdf_effects.deinit();
     }
-};
-
-const UniformSolid = extern struct {
-    dist_start: f32,
-    dist_end: f32,
-    padding: [2]u32 = .{ 0, 0 },
-    color: @Vector(4, f32),
-};
-
-const UniformGradientStop = extern struct {
-    color: [4]f32 = .{ 0.0, 0.0, 0.0, 0.0 },
-    offset: f32 = 0.0,
-    padding: [3]u32 = .{ 0, 0, 0 },
-};
-
-const UniformLinearGradient = extern struct {
-    dist_start: f32,
-    dist_end: f32,
-    stops_count: u32,
-    padding: u32 = 0.0,
-    start: Point,
-    end: Point,
-    stops: [10]UniformGradientStop,
-};
-
-const UniformRadialGradient = extern struct {
-    dist_start: f32,
-    dist_end: f32,
-    stops_count: u32,
-    radius_ratio: f32,
-    center: Point,
-    destination: Point, // rx, ry for elliptical gradients
-    stops: [10]UniformGradientStop,
-};
-
-pub const DrawUniform = union(enum) {
-    solid: UniformSolid,
-    linear: UniformLinearGradient,
-    radial: UniformRadialGradient,
 };
 
 pub const PickUniform = struct {

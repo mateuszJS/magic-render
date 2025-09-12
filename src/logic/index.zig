@@ -16,6 +16,9 @@ const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 const PathUtils = @import("shapes/path_utils.zig");
 const consts = @import("consts.zig");
 const UI = @import("ui.zig");
+const texts = @import("texts/texts.zig");
+const sdf = @import("sdf/sdf.zig");
+const fonts = @import("texts/fonts.zig");
 
 const FillType = enum(u8) {
     Solid,
@@ -28,7 +31,7 @@ const WebGpuPrograms = struct {
     draw_triangle: *const fn ([]const Triangle.DrawInstance) void,
     compute_shape: *const fn ([]const types.Point, f32, f32, u32) void,
     draw_blur: *const fn (u32, u32, u32, u32, f32, f32) void,
-    draw_shape: *const fn ([]const types.PointUV, shapes.DrawUniform, u32) void,
+    draw_shape: *const fn ([]const types.PointUV, sdf.DrawUniform, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
     pick_triangle: *const fn ([]const Triangle.PickInstance) void,
     pick_shape: *const fn ([]const images.PickVertex, shapes.PickUniform, u32) void,
@@ -57,6 +60,16 @@ pub fn connectOnAssetSelectionCallback(cb: *const fn (u32) void) void {
 var create_sdf_texture: *const fn () u32 = undefined;
 pub fn connectCreateSdfTexture(cb: *const fn () u32) void {
     create_sdf_texture = cb;
+}
+
+pub const SerializedCharDetails = fonts.SerializedCharDetails;
+
+var enable_typing: *const fn () void = undefined;
+var disable_typing: *const fn () void = undefined;
+pub fn connectTyping(enable: *const fn () void, disable: *const fn () void, getCharData: *const fn (u32, u8) fonts.SerializedCharDetails) void {
+    enable_typing = enable;
+    disable_typing = disable;
+    fonts.getCharData = getCharData;
 }
 
 var create_cache_texture: *const fn () u32 = undefined;
@@ -93,11 +106,13 @@ const Tool = enum {
 const Asset = union(enum) {
     img: images.Image,
     shape: shapes.Shape,
+    text: texts.Text,
 };
 
 const AssetSerialized = union(enum) {
     img: images.Serialized,
     shape: shapes.Serialized,
+    text: texts.Serialized,
 };
 
 const State = struct {
@@ -122,13 +137,15 @@ var state = State{
     .last_pointer_coords = types.Point{ .x = 0.0, .y = 0.0 },
 };
 
-pub fn initState(width: f32, height: f32, texture_max_size: f32, max_buffer_size: f32) void {
+pub fn initState(width: f32, height: f32, texture_max_size: f32, max_buffer_size: f32) !void {
     shared.texture_max_size = texture_max_size;
     shared.max_buffer_size = max_buffer_size;
     state.width = width;
     state.height = height;
     state.assets = std.AutoArrayHashMap(u32, Asset).init(std.heap.page_allocator);
     UI.init();
+    fonts.init();
+    try fonts.new(0);
 }
 
 pub fn updateRenderScale(scale: f32) !void {
@@ -146,6 +163,7 @@ pub fn updateRenderScale(scale: f32) !void {
                     shape.outdated_sdf = true;
                 }
             },
+            .text => {},
         }
     }
 }
@@ -192,6 +210,28 @@ pub fn addShape(
     return id;
 }
 
+pub fn addText(
+    id_or_zero: u32,
+    content: []const u8,
+    bounds: ?[4]types.PointUV,
+    start: types.Point,
+    max_width: f32,
+    font_size: f32,
+) !u32 {
+    const id = if (id_or_zero == 0) generateId() else id_or_zero;
+    const text = texts.Text.new(
+        id,
+        content,
+        bounds,
+        start,
+        max_width,
+        font_size,
+    );
+    try state.assets.put(id, Asset{ .text = text });
+    try checkAssetsUpdate(true);
+    return id;
+}
+
 pub fn removeAsset() !void {
     _ = state.assets.orderedRemove(state.selected_asset_id);
     try updateSelectedAsset(NO_SELECTION);
@@ -232,6 +272,11 @@ fn checkAssetsUpdate(should_notify: bool) !void {
                     .shape = try shape.serialize(std.heap.page_allocator),
                 });
             },
+            .text => |text| {
+                try new_assets_update.append(AssetSerialized{
+                    .text = text.serialize(),
+                });
+            },
         }
     }
 
@@ -247,6 +292,12 @@ fn checkAssetsUpdate(should_notify: bool) !void {
                 },
                 .shape => |old_shape| {
                     if (!old_shape.compare(new_asset.shape)) {
+                        all_match = false;
+                        break;
+                    }
+                },
+                .text => |old_text| {
+                    if (!std.meta.eql(new_asset.text, old_text)) {
                         all_match = false;
                         break;
                     }
@@ -278,6 +329,7 @@ fn getSelectedImg() ?*images.Image {
     switch (asset.*) {
         .img => |*img| return img,
         .shape => return null,
+        .text => return null,
     }
 }
 
@@ -286,6 +338,16 @@ fn getSelectedShape() ?*shapes.Shape {
     switch (asset.*) {
         .img => return null,
         .shape => |*shape| return shape,
+        .text => return null,
+    }
+}
+
+fn getSelectedText() ?*texts.Text {
+    const asset = state.assets.getPtr(state.selected_asset_id) orelse return null;
+    switch (asset.*) {
+        .img => return null,
+        .shape => return null,
+        .text => |*text| return text,
     }
 }
 
@@ -302,8 +364,39 @@ fn updateSelectedAsset(id: u32) !void {
     on_asset_select_cb(id);
 }
 
+// pub const @"meta(zigar)" = struct {
+//     pub fn isFieldString(comptime T: type, comptime field_name: []const u8) bool {
+//         _ = field_name;
+//         return switch (T) {
+//             texts.Text => true,
+//             else => false,
+//         };
+//     }
+// };
+
+pub fn updateTextContent(new_content: []const u8) void {
+    const option_text = getSelectedText();
+    if (option_text) |text| {
+        text.updateContent(new_content);
+    } else {
+        @panic("updateTextContent called but no text asset selected");
+    }
+}
+
 pub fn onPointerDown(x: f32, y: f32) !void {
-    if (state.tool == Tool.DrawShape) {
+    if (state.tool == .Text) {
+        const id = generateId();
+        _ = try addText(
+            id,
+            "",
+            null,
+            types.Point{ .x = x, .y = y },
+            200.0,
+            16.0,
+        );
+        state.selected_asset_id = id;
+        enable_typing();
+    } else if (state.tool == Tool.DrawShape) {
         if (getSelectedShape() == null) {
             const props = shapes.SerializedProps{
                 .sdf_effects = &.{
@@ -346,24 +439,22 @@ pub fn onPointerDown(x: f32, y: f32) !void {
         } else {
             @panic("Selected shape asset should be present at this point");
         }
-
-        return;
-    }
-
-    if (state.tool == Tool.EditShape) {
-        // sould not be accessible on mobile, that's why selection happens with pointer down
-        if (state.hovered_asset_id != NO_SELECTION) {
-            try updateSelectedAsset(state.hovered_asset_id);
+    } else {
+        if (state.tool == Tool.EditShape) {
+            // sould not be accessible on mobile, that's why selection happens with pointer down
+            if (state.hovered_asset_id != NO_SELECTION) {
+                try updateSelectedAsset(state.hovered_asset_id);
+            }
         }
-    }
 
-    if (state.selected_asset_id == NO_SELECTION) {
-        // No active asset, do nothing
-    } else if (TransformUI.isTransformUi(state.hovered_asset_id)) {
-        state.action = .Transform;
-    } else if (state.selected_asset_id >= ASSET_ID_MIN and state.selected_asset_id == state.hovered_asset_id) {
-        state.action = .Move;
-        state.last_pointer_coords = types.Point{ .x = x, .y = y };
+        if (state.selected_asset_id == NO_SELECTION) {
+            // No active asset, do nothing
+        } else if (TransformUI.isTransformUi(state.hovered_asset_id)) {
+            state.action = .Transform;
+        } else if (state.selected_asset_id >= ASSET_ID_MIN and state.selected_asset_id == state.hovered_asset_id) {
+            state.action = .Move;
+            state.last_pointer_coords = types.Point{ .x = x, .y = y };
+        }
     }
 }
 
@@ -459,6 +550,7 @@ pub fn onPointerMove(x: f32, y: f32) void {
     const bounds = switch (asset.*) {
         .img => |*img| &img.points,
         .shape => |*shape| &shape.bounds,
+        .text => |*text| &text.bounds,
     };
 
     switch (state.action) {
@@ -485,6 +577,7 @@ pub fn onPointerMove(x: f32, y: f32) void {
                 .shape => |*shape| {
                     shape.should_update_sdf = true;
                 },
+                .text => {},
             }
         },
         .None => {},
@@ -518,6 +611,7 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
             const points = switch (asset) {
                 .img => |img| img.points,
                 .shape => |shape| shape.bounds,
+                .text => |text| text.bounds,
             };
 
             for (points, 0..) |point, i| {
@@ -543,6 +637,7 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
         const points = switch (asset) {
             .img => |img| img.points,
             .shape => |shape| shape.bounds,
+            .text => |text| text.bounds,
         };
 
         for (points, 0..) |point, i| {
@@ -622,10 +717,7 @@ fn drawProjectBoundary() void {
     web_gpu_programs.draw_triangle(&buffer);
 }
 
-var ticks: u32 = 0; // it's like a time, but always increases by 1
 pub fn calculateShapesSDF() !void {
-    ticks +%= 1;
-
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -671,6 +763,49 @@ pub fn calculateShapesSDF() !void {
                 shape.outdated_sdf = false;
                 shape.should_update_sdf = false;
             },
+            .text => {},
+        }
+    }
+
+    var iter = fonts.fonts.iterator();
+    while (iter.next()) |f| {
+        var font = f.value_ptr.*;
+        var char_iter = font.chars.iterator();
+        while (char_iter.next()) |details| {
+            var d = details.value_ptr;
+            if (!d.outdated_sdf) continue;
+            const w = 100.0;
+            const h = 100.0;
+
+            // const bounds = [4]types.PointUV{
+            //     .{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 },
+            //     .{ .x = w, .y = 0.0, .u = 1.0, .v = 0.0 },
+            //     .{ .x = w, .y = h, .u = 1.0, .v = 1.0 },
+            //     .{ .x = 0.0, .y = h, .u = 0.0, .v = 1.0 },
+            // };
+            // const sdf_size = texture_size.get_sdf_size(bounds);
+
+            // const init_width = bounds[0].distance(bounds[1]) * shared.render_scale;
+            // * shared.render_scale to revert to logical scale, without impact of camera/zoom
+
+            // shape.sdf_scale = shape.sdf_size.w / init_width;
+            const ps = try std.heap.page_allocator.dupe(types.Point, d.points);
+            for (ps) |*point| {
+                point.x *= 100.0;
+                point.y *= 100.0;
+                std.debug.print("point: {d} x {d}\n", .{ point.x, point.y });
+            }
+
+            // if (shape.sdf_size.w > consts.MIN_TEXTURE_SIZE and shape.sdf_size.h > consts.MIN_TEXTURE_SIZE) {
+            web_gpu_programs.compute_shape(
+                ps,
+                @floor(w),
+                @floor(h),
+                d.sdf_texture_id,
+            );
+
+            d.outdated_sdf = false;
+            // }
         }
     }
 }
@@ -767,6 +902,7 @@ pub fn updateCache() void {
                     shape.outdated_cache = false;
                 }
             },
+            .text => {},
         }
     }
 }
@@ -799,6 +935,43 @@ pub fn renderDraw() !void {
                             shape.getDrawUniform(effect),
                             shape.sdf_texture_id,
                         );
+                    }
+                }
+            },
+            .text => |text| {
+                if ((time_u32 / 700) % 2 == 0) {
+                    var buffer: [2]Triangle.DrawInstance = undefined;
+                    lines.getDrawVertexData(&buffer, text.start, types.Point{
+                        .x = text.start.x,
+                        .y = text.start.y - text.font_size,
+                    }, 3, .{ 255, 255, 255, 255 }, 1.5);
+                    web_gpu_programs.draw_triangle(&buffer);
+                }
+                // blinking cursor every 700ms
+
+                var next_start = text.start;
+                for (text.content) |c| {
+                    if (c == ' ') {
+                        next_start.x += text.font_size * 0.3;
+                    } else {
+                        const uniform = sdf.DrawUniform{
+                            .solid = .{
+                                .dist_start = std.math.inf(f32),
+                                .dist_end = 0,
+                                .color = .{ 0.9, 0.9, 0, 1 },
+                            },
+                        };
+                        // for (shape.props.sdf_effects.items) |effect| {
+                        const char_details = try fonts.get(0, c);
+
+                        web_gpu_programs.draw_shape(
+                            &text.getDrawBounds(char_details, next_start),
+                            uniform,
+                            char_details.sdf_texture_id,
+                        );
+                        // }
+                        // std.debug.print("char: {c} x: {x}\n", .{ c, next_start.x });
+                        next_start.x += 100;
                     }
                 }
             },
@@ -888,6 +1061,7 @@ pub fn renderPick() !void {
                     );
                 }
             },
+            .text => {},
         }
     }
 
@@ -907,6 +1081,7 @@ pub fn renderPick() !void {
             const points = switch (asset) {
                 .img => |img| img.points,
                 .shape => |shape| shape.bounds,
+                .text => |text| text.bounds,
             };
             var vertex_buffer: [TransformUI.PICK_TRIANGLE_INSTANCES]Triangle.PickInstance = undefined;
             TransformUI.getPickVertexData(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES], points);
@@ -935,6 +1110,16 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
                     shape.cache_texture_id,
                 );
             },
+            .text => |text| {
+                _ = try addText(
+                    text.id,
+                    text.content,
+                    text.bounds,
+                    text.start,
+                    text.max_width,
+                    text.font_size,
+                );
+            },
         }
     }
 
@@ -951,6 +1136,7 @@ pub fn deinitState() void {
         switch (entry.value_ptr.*) {
             .img => {},
             .shape => |*shape| shape.deinit(),
+            .text => {},
         }
     }
     state.assets.clearAndFree();
@@ -982,8 +1168,13 @@ pub fn setTool(tool: Tool) !void {
     state.tool = tool;
 }
 
-pub fn stopDrawingShape() void {
-    state.selected_asset_id = NO_SELECTION;
+var time: f32 = 0.0;
+var time_u32: u32 = 0;
+var ticks: u32 = 0; // it's like a time, but always increases by 1, used for performance optimizations
+pub fn tick(now: f32) void {
+    ticks +%= 1;
+    time = now;
+    time_u32 = @intFromFloat(time);
 }
 
 test "reset_assets does not call the real update callback" {

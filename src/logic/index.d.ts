@@ -65,6 +65,15 @@ type ShapeAssetOutput = {
   sdf_texture_id: number
   cache_texture_id: number | null
 }
+
+type TextAssetOutput = {
+  id: number
+  content: string
+  bounds: PointUV[]
+  max_width: number
+  font_size: number
+}
+
 type ImageAssetInput = {
   id: number
   points: PointUV[]
@@ -80,8 +89,22 @@ type ShapeAssetInput = {
   cache_texture_id: number | null
 }
 
-type ZigAssetOutput = { img: ImageAssetOutput } | { shape: ShapeAssetOutput }
-type ZigAssetInput = { img: ImageAssetInput } | { shape: ShapeAssetInput }
+type TextAssetInput = {
+  id: number
+  content: string
+  bounds: PointUV[] | null
+  max_width: number
+  font_size: number
+}
+
+type ZigAssetOutput =
+  | { img: ImageAssetOutput }
+  | { shape: ShapeAssetOutput }
+  | { text: TextAssetOutput }
+type ZigAssetInput =
+  | { img: ImageAssetInput }
+  | { shape: ShapeAssetInput }
+  | { text: TextAssetInput }
 
 type ArrayPointerDataView = {
   '*': PointerDataView
@@ -124,6 +147,29 @@ declare module '*.zig' {
   export const onPointerLeave: VoidFunction
   export const commitChanges: VoidFunction
   export const updateRenderScale: (render_scale: number) => void
+  export const updateTextContent: (text: string) => void
+
+  // Type definition for SerializedCharDetails as a constructible class
+  export interface SerializedCharDetails {
+    width: number
+    height: number
+    sdf_texture_id: number
+    setPaths(paths: Point[]): void // we have to call std.mem.Allocator.dupe() to allocate permament memory in zig
+  }
+
+  export const SerializedCharDetails: new ({
+    width,
+    height,
+    sdf_texture_id,
+  }: {
+    width: number
+    height: number
+    sdf_texture_id: number
+  }) => SerializedCharDetails
+
+  export const Point: new ({ x, y }: { x: number; y: number }) => Point
+
+  export const PtrI32: new (p: Point[][]) => Point[][]
 
   export const connectWebGpuPrograms: (programs: {
     draw_texture: (vertex_data: PointerDataView, texture_id: number) => void
@@ -163,7 +209,13 @@ declare module '*.zig' {
     start_cache: (texture_id: number, box: BoundingBox, width: number, height: number) => void,
     end_cache: VoidFunction
   ) => void
+  export const connectTyping: (
+    enable: VoidFunction,
+    disable: VoidFunction,
+    getCharData: (font_id: number, char_code: number) => CharDetails
+  ) => void
 
+  export const tick: (time: DOMHighResTimeStamp) => void
   export const calculateShapesSDF: VoidFunction
   export const renderDraw: VoidFunction
   export const renderPick: VoidFunction
@@ -176,4 +228,6 @@ declare module '*.zig' {
     sdf_texture_id: number
   ) => void
   export const generateUiElementsSdf: VoidFunction
+
+  // export const page_allocator:
 }

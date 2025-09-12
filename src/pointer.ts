@@ -1,5 +1,6 @@
-import * as Logic from '../logic/index.zig'
-import clamp from '../utils/clamp'
+import * as Logic from 'logic/index.zig'
+import clamp from './utils/clamp'
+import * as Typing from './typing'
 
 const OUTSIDE_CANVAS = -1
 
@@ -175,6 +176,8 @@ export default function initMouseController(
   // pointer.zoom = clamp(pointer.zoom + event.deltaY * 0.01, 0.1, 100)
 
   document.body.addEventListener('keydown', (event) => {
+    if (Typing.isEnabled()) return
+
     switch (event.code) {
       case 'Space':
         event.preventDefault()
