@@ -1018,12 +1018,7 @@ pub fn renderDraw() !void {
                                         .x = text.start.x,
                                         .y = next_pos.y,
                                     };
-                                    const end_selection = types.Point{
-                                        .x = next_pos.x,
-                                        .y = next_pos.y,
-                                    };
-
-                                    drawTextSelection(begin_selection, end_selection, text.font_size);
+                                    drawTextSelection(begin_selection, next_pos, text.font_size);
                                 }
                             }
                         }
@@ -1031,7 +1026,6 @@ pub fn renderDraw() !void {
                             .x = text.start.x,
                             .y = next_pos.y - (text.font_size * text.line_height),
                         };
-                        continue;
                     }
 
                     if (texts.caret_position == i or texts.selection_end_position == i) {
@@ -1047,7 +1041,9 @@ pub fn renderDraw() !void {
                         }
                     }
 
-                    if (c == ' ') {
+                    if (c == ENTER_CHAR_CODE) {
+                        continue;
+                    } else if (c == ' ') {
                         next_pos.x += text.font_size * 0.3;
                     } else {
                         const uniform = sdf.DrawUniform{
@@ -1069,7 +1065,7 @@ pub fn renderDraw() !void {
                         next_pos.x = bounds[3].x;
                     }
                 }
-                std.debug.print("final caret pos: {d}, content len: {d}\n", .{ next_pos.x, text.content.len });
+
                 if (texts.caret_position == text.content.len) {
                     drawCaret(next_pos, text.font_size);
                 }
@@ -1079,10 +1075,6 @@ pub fn renderDraw() !void {
                         drawTextSelection(start, next_pos, text.font_size);
                     }
                 }
-
-                // else if (texts.selection_end_position == text.content.len) {
-                //     drawTextSelection(start_selection, next_start, text.font_size);
-                // }
             },
         }
     }
