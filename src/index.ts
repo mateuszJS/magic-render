@@ -245,7 +245,7 @@ export default async function initCreator(
 
   Logic.connectOnAssetSelectionCallback(onAssetSelect)
   Logic.connectCreateSdfTexture(Textures.createSDF)
-  Logic.connectTyping(Typing.enable, Typing.disable, Fonts.getCharData)
+  Logic.connectTyping(Typing.enable, Typing.disable, Fonts.getCharData, Fonts.getKerning)
 
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = Textures.add(url, (width, height, isNew) => {

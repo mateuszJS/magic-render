@@ -1,7 +1,7 @@
 const Point = @import("../types.zig").Point;
 const triangles = @import("../triangle.zig");
 const shared = @import("../shared.zig");
-const squares = @import("../squares.zig");
+const rects = @import("../rects.zig");
 const lines = @import("../lines.zig");
 const std = @import("std");
 const PackedId = @import("packed_id.zig");
@@ -67,7 +67,7 @@ pub fn getVertexDrawSkeletonPoint(
     const size = SKELETON_POINT_SIZE * shared.render_scale;
     const radius = if (is_control_point) 0.0 else size / 2.0;
 
-    squares.getDrawVertexData(
+    rects.getDrawVertexData(
         buffer[0..2],
         point.x - size / 2.0,
         point.y - size / 2.0,
@@ -89,7 +89,7 @@ pub fn getVertexPickSkeletonPoint(
     const size = SKELETON_POINT_SIZE * PICK_POINT_SCALE * shared.render_scale;
     const radius = if (is_control_point) 0.0 else size / 2.0;
 
-    squares.getPickVertexData(
+    rects.getPickVertexData(
         buffer[0..2],
         point.x - size / 2.0,
         point.y - size / 2.0,

@@ -5,7 +5,6 @@ const TextureSize = @import("../texture_size.zig").TextureSize;
 const std = @import("std");
 const bounding_box = @import("bounding_box.zig");
 const triangles = @import("../triangle.zig");
-const squares = @import("../squares.zig");
 const lines = @import("../lines.zig");
 const Path = @import("paths.zig").Path;
 const shared = @import("../shared.zig");

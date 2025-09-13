@@ -176,7 +176,8 @@ export default function initMouseController(
   // pointer.zoom = clamp(pointer.zoom + event.deltaY * 0.01, 0.1, 100)
 
   document.body.addEventListener('keydown', (event) => {
-    if (Typing.isEnabled()) return
+    const notTypingKeys = event.ctrlKey || event.code === 'AltLeft' || event.code === 'AltRight'
+    if (Typing.isEnabled() && !notTypingKeys) return
 
     switch (event.code) {
       case 'Space':

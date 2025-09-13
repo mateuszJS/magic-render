@@ -151,6 +151,8 @@ declare module '*.zig' {
 
   // Type definition for SerializedCharDetails as a constructible class
   export interface SerializedCharDetails {
+    x: number
+    y: number
     width: number
     height: number
     sdf_texture_id: number
@@ -158,10 +160,14 @@ declare module '*.zig' {
   }
 
   export const SerializedCharDetails: new ({
+    x,
+    y,
     width,
     height,
     sdf_texture_id,
   }: {
+    x: number
+    y: number
     width: number
     height: number
     sdf_texture_id: number
@@ -212,8 +218,10 @@ declare module '*.zig' {
   export const connectTyping: (
     enable: VoidFunction,
     disable: VoidFunction,
-    getCharData: (font_id: number, char_code: number) => CharDetails
+    getCharData: (font_id: number, char_code: number) => CharDetails,
+    getKerning: (font_id: number, char_code: number) => number
   ) => void
+  export const setCaretPosition: (selection_start: number, selection_end: number) => void
 
   export const tick: (time: DOMHighResTimeStamp) => void
   export const calculateShapesSDF: VoidFunction

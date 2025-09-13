@@ -6,7 +6,7 @@ const Triangle = @import("triangle.zig");
 const TransformUI = @import("transform_ui.zig");
 const zigar = @import("zigar");
 const shapes = @import("./shapes/shapes.zig");
-const squares = @import("squares.zig");
+const rects = @import("rects.zig");
 const bounding_box = @import("shapes/bounding_box.zig");
 const shared = @import("shared.zig");
 const texture_size = @import("texture_size.zig");
@@ -66,10 +66,16 @@ pub const SerializedCharDetails = fonts.SerializedCharDetails;
 
 var enable_typing: *const fn () void = undefined;
 var disable_typing: *const fn () void = undefined;
-pub fn connectTyping(enable: *const fn () void, disable: *const fn () void, getCharData: *const fn (u32, u8) fonts.SerializedCharDetails) void {
+pub fn connectTyping(
+    enable: *const fn () void,
+    disable: *const fn () void,
+    getCharData: *const fn (u32, u8) fonts.SerializedCharDetails,
+    getKerning: *const fn (u8, u8) f32,
+) void {
     enable_typing = enable;
     disable_typing = disable;
     fonts.getCharData = getCharData;
+    fonts.getKerning = getKerning;
 }
 
 var create_cache_texture: *const fn () u32 = undefined;
@@ -677,7 +683,7 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
 
 fn drawProjectBackground() void {
     var buffer: [2]Triangle.DrawInstance = undefined;
-    squares.getDrawVertexData(
+    rects.getDrawVertexData(
         &buffer,
         0.0,
         0.0,
@@ -774,8 +780,9 @@ pub fn calculateShapesSDF() !void {
         while (char_iter.next()) |details| {
             var d = details.value_ptr;
             if (!d.outdated_sdf) continue;
-            const w = 100.0;
-            const h = 100.0;
+
+            const w = 100.0 * d.width;
+            const h = 100.0 * d.height;
 
             // const bounds = [4]types.PointUV{
             //     .{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 },
@@ -791,8 +798,8 @@ pub fn calculateShapesSDF() !void {
             // shape.sdf_scale = shape.sdf_size.w / init_width;
             const ps = try std.heap.page_allocator.dupe(types.Point, d.points);
             for (ps) |*point| {
-                point.x *= 100.0;
-                point.y *= 100.0;
+                point.x = point.x * 100.0;
+                point.y = point.y * 100.0;
                 std.debug.print("point: {d} x {d}\n", .{ point.x, point.y });
             }
 
@@ -907,6 +914,59 @@ pub fn updateCache() void {
     }
 }
 
+var last_start_update: u32 = 0;
+var last_end_update: u32 = 0;
+
+pub fn setCaretPosition(start: u32, end: u32) void {
+    if (start != end) { // selection
+        if (last_end_update != end) { // the end has changed, so move caret there
+            texts.caret_position = end;
+            texts.selection_end_position = start;
+        } else { // otherwise means start has changed, so move caret there
+            texts.caret_position = start;
+            texts.selection_end_position = end;
+        }
+    } else {
+        texts.caret_position = start;
+        texts.selection_end_position = end;
+    }
+    texts.last_caret_update = time_u32;
+
+    last_start_update = start;
+    last_end_update = end;
+}
+
+pub fn drawCaret(position: types.Point, height: f32) void {
+    const blink = (time_u32 / 700) % 2 == 0;
+    const newly_updated = time_u32 - texts.last_caret_update < 1000;
+
+    if (blink or newly_updated) {
+        var buffer: [2]Triangle.DrawInstance = undefined;
+        const width = 3.0 * shared.render_scale;
+        lines.getDrawVertexData(&buffer, position, types.Point{
+            .x = position.x,
+            .y = position.y + height,
+        }, width, .{ 255, 255, 255, 255 }, width / 2);
+        web_gpu_programs.draw_triangle(&buffer);
+    }
+}
+
+fn drawTextSelection(start: types.Point, end: types.Point, height: f32) void {
+    var buffer: [2]Triangle.DrawInstance = undefined;
+    std.debug.print("draw selection: {d} to {d}\n", .{ start.x, end.x });
+    rects.getDrawVertexData(
+        &buffer,
+        start.x,
+        start.y,
+        end.x - start.x,
+        height,
+        0.0,
+        .{ 0, 50, 50, 50 },
+    );
+    web_gpu_programs.draw_triangle(&buffer);
+}
+
+const ENTER_CHAR_CODE = 10;
 pub fn renderDraw() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -939,20 +999,56 @@ pub fn renderDraw() !void {
                 }
             },
             .text => |text| {
-                if ((time_u32 / 700) % 2 == 0) {
-                    var buffer: [2]Triangle.DrawInstance = undefined;
-                    lines.getDrawVertexData(&buffer, text.start, types.Point{
-                        .x = text.start.x,
-                        .y = text.start.y - text.font_size,
-                    }, 3, .{ 255, 255, 255, 255 }, 1.5);
-                    web_gpu_programs.draw_triangle(&buffer);
-                }
-                // blinking cursor every 700ms
+                var next_pos = text.start;
+                var start_selection: ?types.Point = null; // used only to capture caret position to draw selection
 
-                var next_start = text.start;
-                for (text.content) |c| {
+                for (text.content, 0..) |c, i| {
+                    if (texts.caret_position == i) {
+                        drawCaret(next_pos, text.font_size);
+                    }
+
+                    if (c == ENTER_CHAR_CODE) {
+                        const is_selection = texts.caret_position != texts.selection_end_position;
+                        if (is_selection) {
+                            if (start_selection) |start| {
+                                if (Utils.equalF32(start.y, next_pos.y)) {
+                                    drawTextSelection(start, next_pos, text.font_size);
+                                } else if (start.y > next_pos.y - std.math.floatEps(f32)) {
+                                    const begin_selection = types.Point{
+                                        .x = text.start.x,
+                                        .y = next_pos.y,
+                                    };
+                                    const end_selection = types.Point{
+                                        .x = next_pos.x,
+                                        .y = next_pos.y,
+                                    };
+
+                                    drawTextSelection(begin_selection, end_selection, text.font_size);
+                                }
+                            }
+                        }
+                        next_pos = types.Point{
+                            .x = text.start.x,
+                            .y = next_pos.y - (text.font_size * text.line_height),
+                        };
+                        continue;
+                    }
+
+                    if (texts.caret_position == i or texts.selection_end_position == i) {
+                        if (start_selection) |start| {
+                            const begin_selection = types.Point{
+                                .x = if (Utils.equalF32(start.y, next_pos.y)) start.x else text.start.x,
+                                .y = next_pos.y,
+                            };
+                            drawTextSelection(begin_selection, next_pos, text.font_size);
+                            start_selection = null;
+                        } else {
+                            start_selection = next_pos;
+                        }
+                    }
+
                     if (c == ' ') {
-                        next_start.x += text.font_size * 0.3;
+                        next_pos.x += text.font_size * 0.3;
                     } else {
                         const uniform = sdf.DrawUniform{
                             .solid = .{
@@ -963,17 +1059,30 @@ pub fn renderDraw() !void {
                         };
                         // for (shape.props.sdf_effects.items) |effect| {
                         const char_details = try fonts.get(0, c);
-
+                        const bounds = text.getDrawBounds(char_details, next_pos);
                         web_gpu_programs.draw_shape(
-                            &text.getDrawBounds(char_details, next_start),
+                            &bounds,
                             uniform,
                             char_details.sdf_texture_id,
                         );
                         // }
-                        // std.debug.print("char: {c} x: {x}\n", .{ c, next_start.x });
-                        next_start.x += 100;
+                        next_pos.x = bounds[3].x;
                     }
                 }
+                std.debug.print("final caret pos: {d}, content len: {d}\n", .{ next_pos.x, text.content.len });
+                if (texts.caret_position == text.content.len) {
+                    drawCaret(next_pos, text.font_size);
+                }
+
+                if (texts.caret_position == text.content.len or texts.selection_end_position == text.content.len) {
+                    if (start_selection) |start| {
+                        drawTextSelection(start, next_pos, text.font_size);
+                    }
+                }
+
+                // else if (texts.selection_end_position == text.content.len) {
+                //     drawTextSelection(start_selection, next_start, text.font_size);
+                // }
             },
         }
     }

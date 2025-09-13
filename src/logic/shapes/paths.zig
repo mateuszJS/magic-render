@@ -3,7 +3,6 @@ const Point = @import("../types.zig").Point;
 const std = @import("std");
 const bounding_box = @import("bounding_box.zig");
 const triangles = @import("../triangle.zig");
-const squares = @import("../squares.zig");
 const lines = @import("../lines.zig");
 const shared = @import("../shared.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;

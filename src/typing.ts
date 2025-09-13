@@ -1,30 +1,34 @@
 import * as Logic from 'logic/index.zig'
 
-let input: HTMLTextAreaElement | null = null
+let textarea: HTMLTextAreaElement | null = null
 
 export function isEnabled(): boolean {
-  return input !== null
+  return textarea !== null
 }
 
 export function enable(): void {
-  console.log('ENAVBLE TYPING')
-  const newInput = document.createElement('textarea')
-  newInput.style.position = 'fixed'
-  newInput.style.left = '-200px'
-  newInput.style.opacity = '0'
-  document.body.appendChild(newInput)
+  const newEl = document.createElement('textarea')
+  newEl.style.position = 'fixed'
+  newEl.style.left = '-200px'
+  newEl.style.opacity = '0'
+  document.body.appendChild(newEl)
 
-  newInput.addEventListener('input', () => {
-    Logic.updateTextContent(newInput.value)
+  newEl.addEventListener('input', () => {
+    Logic.updateTextContent(newEl.value)
   })
 
-  newInput.focus()
-  input = newInput
+  newEl.addEventListener('selectionchange', () => {
+    Logic.setCaretPosition(newEl.selectionStart, newEl.selectionEnd)
+    console.log(newEl.selectionStart, newEl.selectionEnd)
+  })
+
+  newEl.focus()
+  textarea = newEl
 }
 
 export function disable(): void {
-  if (!input) throw Error('Not typing')
+  if (!textarea) throw Error('Not typing')
 
-  input.blur()
-  document.body.removeChild(input)
+  textarea.blur()
+  document.body.removeChild(textarea)
 }

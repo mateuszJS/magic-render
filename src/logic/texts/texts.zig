@@ -5,6 +5,10 @@ const std = @import("std");
 const fonts = @import("fonts.zig");
 const chars = @import("chars.zig");
 
+pub var caret_position: u32 = 0;
+pub var selection_end_position: u32 = 0; // selection start is indicated by caret_position
+pub var last_caret_update: u32 = 0;
+
 pub const Text = struct {
     id: u32,
     start: Point,
@@ -12,6 +16,7 @@ pub const Text = struct {
     max_width: f32,
     font_size: f32,
     bounds: [4]PointUV,
+    line_height: f32 = 1.2, // line height multiplier
 
     pub fn new(
         id: u32,
@@ -37,17 +42,19 @@ pub const Text = struct {
     }
 
     pub fn getDrawBounds(self: Text, char: chars.Details, position: Point) [6]PointUV {
-        _ = self; // autofix
-        _ = char; // autofix
-        const w = 100.0; //char.width * self.font_size;
-        const h = 100.0; //char.height * self.font_size;
+        const w = char.width * self.font_size;
+        const h = char.height * self.font_size;
+        const p = Point{
+            .x = position.x + char.x * self.font_size,
+            .y = position.y + char.y * self.font_size,
+        };
         return [_]PointUV{
-            .{ .x = position.x, .y = position.y, .u = 0.0, .v = 0.0 },
-            .{ .x = position.x, .y = position.y + h, .u = 0.0, .v = 1.0 },
-            .{ .x = position.x + w, .y = position.y + h, .u = 1.0, .v = 1.0 },
-            .{ .x = position.x + w, .y = position.y + h, .u = 1.0, .v = 1.0 },
-            .{ .x = position.x + w, .y = position.y, .u = 1.0, .v = 0.0 },
-            .{ .x = position.x, .y = position.y, .u = 0.0, .v = 0.0 },
+            .{ .x = p.x, .y = p.y, .u = 0.0, .v = 0.0 },
+            .{ .x = p.x, .y = p.y + h, .u = 0.0, .v = 1.0 },
+            .{ .x = p.x + w, .y = p.y + h, .u = 1.0, .v = 1.0 },
+            .{ .x = p.x + w, .y = p.y + h, .u = 1.0, .v = 1.0 },
+            .{ .x = p.x + w, .y = p.y, .u = 1.0, .v = 0.0 },
+            .{ .x = p.x, .y = p.y, .u = 0.0, .v = 0.0 },
         };
     }
 
