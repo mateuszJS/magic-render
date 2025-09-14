@@ -398,7 +398,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             null,
             types.Point{ .x = x, .y = y },
             200.0,
-            16.0,
+            72.0,
         );
         state.selected_asset_id = id;
         enable_typing();
@@ -951,14 +951,13 @@ pub fn drawCaret(position: types.Point, height: f32) void {
     }
 }
 
-fn drawTextSelection(start: types.Point, end: types.Point, height: f32) void {
+fn drawTextSelection(start: types.Point, width: f32, height: f32) void {
     var buffer: [2]Triangle.DrawInstance = undefined;
-    std.debug.print("draw selection: {d} to {d}\n", .{ start.x, end.x });
     rects.getDrawVertexData(
         &buffer,
         start.x,
         start.y,
-        end.x - start.x,
+        width,
         height,
         0.0,
         .{ 0, 50, 50, 50 },
@@ -998,43 +997,68 @@ pub fn renderDraw() !void {
                     }
                 }
             },
-            .text => |text| {
-                var next_pos = text.start;
+            .text => |*text| {
+                const is_typing_ui = state.tool == .Text and state.selected_asset_id == text.id;
+                const lh = text.font_size * text.line_height;
+                var max_width: f32 = 0.0;
+
+                const origin = types.Point{ // start of the very first char(bottom left corner of the char)
+                    .x = text.start.x,
+                    .y = text.start.y - lh,
+                };
+                var next_pos = origin;
                 var start_selection: ?types.Point = null; // used only to capture caret position to draw selection
 
                 for (text.content, 0..) |c, i| {
-                    if (texts.caret_position == i) {
-                        drawCaret(next_pos, text.font_size);
+                    if (is_typing_ui and texts.caret_position == i) {
+                        drawCaret(next_pos, lh);
                     }
 
+                    // draw selection if it's end of the line
                     if (c == ENTER_CHAR_CODE) {
                         const is_selection = texts.caret_position != texts.selection_end_position;
                         if (is_selection) {
                             if (start_selection) |start| {
-                                if (Utils.equalF32(start.y, next_pos.y)) {
-                                    drawTextSelection(start, next_pos, text.font_size);
-                                } else if (start.y > next_pos.y - std.math.floatEps(f32)) {
+                                const started_this_line = Utils.equalF32(start.y, next_pos.y);
+                                const started_previous_line = start.y > next_pos.y - std.math.floatEps(f32);
+                                if (started_this_line) {
+                                    drawTextSelection(
+                                        start,
+                                        next_pos.x - start.x,
+                                        lh,
+                                    );
+                                } else if (started_previous_line) {
                                     const begin_selection = types.Point{
-                                        .x = text.start.x,
+                                        .x = origin.x,
                                         .y = next_pos.y,
                                     };
-                                    drawTextSelection(begin_selection, next_pos, text.font_size);
+                                    drawTextSelection(
+                                        begin_selection,
+                                        next_pos.x - begin_selection.x,
+                                        lh,
+                                    );
                                 }
                             }
                         }
                         next_pos = types.Point{
-                            .x = text.start.x,
-                            .y = next_pos.y - (text.font_size * text.line_height),
+                            .x = origin.x,
+                            .y = next_pos.y - lh,
                         };
                     }
 
-                    if (texts.caret_position == i or texts.selection_end_position == i) {
+                    // Draw selection if it's jsut the end of selection
+                    if (is_typing_ui and (texts.caret_position == i or texts.selection_end_position == i)) {
                         if (start_selection) |start| {
+                            const started_this_line = Utils.equalF32(start.y, next_pos.y);
                             const begin_selection = types.Point{
-                                .x = if (Utils.equalF32(start.y, next_pos.y)) start.x else text.start.x,
+                                .x = if (started_this_line) start.x else origin.x,
                                 .y = next_pos.y,
                             };
-                            drawTextSelection(begin_selection, next_pos, text.font_size);
+                            drawTextSelection(
+                                begin_selection,
+                                next_pos.x - begin_selection.x,
+                                lh,
+                            );
                             start_selection = null;
                         } else {
                             start_selection = next_pos;
@@ -1053,9 +1077,9 @@ pub fn renderDraw() !void {
                                 .color = .{ 0.9, 0.9, 0, 1 },
                             },
                         };
-                        // for (shape.props.sdf_effects.items) |effect| {
                         const char_details = try fonts.get(0, c);
                         const bounds = text.getDrawBounds(char_details, next_pos);
+                        // for (shape.props.sdf_effects.items) |effect| {
                         web_gpu_programs.draw_shape(
                             &bounds,
                             uniform,
@@ -1063,25 +1087,45 @@ pub fn renderDraw() !void {
                         );
                         // }
                         next_pos.x = bounds[3].x;
+                        max_width = @max(max_width, next_pos.x - origin.x);
                     }
                 }
 
-                if (texts.caret_position == text.content.len) {
-                    drawCaret(next_pos, text.font_size);
-                }
+                // draw selection & caret if those appear at the very end of the text! (includes when there is no text)
+                if (is_typing_ui) {
+                    if (texts.caret_position == text.content.len) {
+                        drawCaret(next_pos, lh);
+                    }
 
-                if (texts.caret_position == text.content.len or texts.selection_end_position == text.content.len) {
-                    if (start_selection) |start| {
-                        drawTextSelection(start, next_pos, text.font_size);
+                    if (texts.caret_position == text.content.len or texts.selection_end_position == text.content.len) {
+                        if (start_selection) |start| {
+                            const begin_selection = types.Point{
+                                .x = if (Utils.equalF32(start.y, next_pos.y)) start.x else origin.x,
+                                .y = next_pos.y,
+                            };
+
+                            drawTextSelection(
+                                begin_selection,
+                                next_pos.x - begin_selection.x,
+                                lh,
+                            );
+                        }
                     }
                 }
+
+                text.bounds = [_]types.PointUV{
+                    .{ .x = text.start.x, .y = text.start.y, .u = 0.0, .v = 1.0 },
+                    .{ .x = text.start.x + max_width, .y = text.start.y, .u = 1.0, .v = 1.0 },
+                    .{ .x = text.start.x + max_width, .y = next_pos.y, .u = 1.0, .v = 0.0 },
+                    .{ .x = text.start.x, .y = next_pos.y, .u = 0.0, .v = 0.0 },
+                };
             },
         }
     }
 
     drawProjectBoundary(); // TODO: once we support strokes for Triangles, we should use it here wit transparent fill
 
-    if (state.tool == Tool.None) {
+    if (state.tool == .None or state.tool == .Text) {
         try drawBorder(allocator);
     }
 

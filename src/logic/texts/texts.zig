@@ -41,12 +41,12 @@ pub const Text = struct {
         self.content = new_content;
     }
 
-    pub fn getDrawBounds(self: Text, char: chars.Details, position: Point) [6]PointUV {
+    pub fn getDrawBounds(self: Text, char: chars.Details, origin: Point) [6]PointUV {
         const w = char.width * self.font_size;
         const h = char.height * self.font_size;
         const p = Point{
-            .x = position.x + char.x * self.font_size,
-            .y = position.y + char.y * self.font_size,
+            .x = origin.x + char.x * self.font_size,
+            .y = origin.y + char.y * self.font_size,
         };
         return [_]PointUV{
             .{ .x = p.x, .y = p.y, .u = 0.0, .v = 0.0 },
