@@ -37,7 +37,6 @@ pub const Text = struct {
     }
 
     pub fn updateContent(self: *Text, new_content: []const u8) void {
-        std.debug.print("Updating text content from '{s}' to '{s}'\n", .{ self.content, new_content });
         self.content = new_content;
     }
 

@@ -87,7 +87,7 @@ export default function runCreator(
     compute_shape: (curves_data, width, height, textureId) => {
       const curvesDataView = curves_data['*'].dataView
       Textures.updateSDF(textureId, width, height)
-      console.log(curves_data, width, height, textureId)
+      // console.log(curves_data, width, height, textureId)
       computeShape(computePass, curvesDataView, Textures.getTexture(textureId))
     },
     draw_blur: (

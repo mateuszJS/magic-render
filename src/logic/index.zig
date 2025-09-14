@@ -65,18 +65,32 @@ pub fn connectCreateSdfTexture(cb: *const fn () u32) void {
 pub const SerializedCharDetails = fonts.SerializedCharDetails;
 
 var enable_typing: *const fn () void = undefined;
+pub const TextCallback = fn (text: []u8) void;
+var update_text_content: *const TextCallback = undefined;
 var disable_typing: *const fn () void = undefined;
 pub fn connectTyping(
     enable: *const fn () void,
     disable: *const fn () void,
+    update: *const fn ([]u8) void,
     getCharData: *const fn (u32, u8) fonts.SerializedCharDetails,
     getKerning: *const fn (u8, u8) f32,
 ) void {
     enable_typing = enable;
     disable_typing = disable;
+    update_text_content = update;
     fonts.getCharData = getCharData;
     fonts.getKerning = getKerning;
 }
+
+pub const @"meta(zigar)" = struct {
+    pub fn isArgumentString(comptime FT: type, comptime arg_index: usize) bool {
+        _ = arg_index;
+        return switch (FT) {
+            TextCallback => true,
+            else => false,
+        };
+    }
+};
 
 var create_cache_texture: *const fn () u32 = undefined;
 var start_cache: *const fn (u32, bounding_box.BoundingBox, f32, f32) void = undefined;
@@ -800,7 +814,6 @@ pub fn calculateShapesSDF() !void {
             for (ps) |*point| {
                 point.x = point.x * 100.0;
                 point.y = point.y * 100.0;
-                std.debug.print("point: {d} x {d}\n", .{ point.x, point.y });
             }
 
             // if (shape.sdf_size.w > consts.MIN_TEXTURE_SIZE and shape.sdf_size.h > consts.MIN_TEXTURE_SIZE) {
@@ -1000,6 +1013,7 @@ pub fn renderDraw() !void {
             .text => |*text| {
                 const is_typing_ui = state.tool == .Text and state.selected_asset_id == text.id;
                 const lh = text.font_size * text.line_height;
+                var new_content = std.ArrayList(u8).init(allocator);
                 var max_width: f32 = 0.0;
 
                 const origin = types.Point{ // start of the very first char(bottom left corner of the char)
@@ -1065,9 +1079,7 @@ pub fn renderDraw() !void {
                         }
                     }
 
-                    if (c == ENTER_CHAR_CODE) {
-                        continue;
-                    } else if (c == ' ') {
+                    if (c == ENTER_CHAR_CODE) {} else if (c == ' ') {
                         next_pos.x += text.font_size * 0.3;
                     } else {
                         const uniform = sdf.DrawUniform{
@@ -1087,7 +1099,23 @@ pub fn renderDraw() !void {
                         );
                         // }
                         next_pos.x = bounds[3].x;
-                        max_width = @max(max_width, next_pos.x - origin.x);
+                    }
+                    max_width = @max(max_width, next_pos.x - origin.x);
+
+                    try new_content.append(c);
+
+                    if (next_pos.x - origin.x > text.max_width) {
+                        next_pos = types.Point{
+                            .x = origin.x,
+                            .y = next_pos.y - lh,
+                        };
+                        if (i != text.content.len - 1) { // do not add soft break if it's the last char
+                            // add zero-width space character before line break so that when user copies the text, they get the same line breaks
+                            try new_content.append(0xE2);
+                            try new_content.append(0x80);
+                            try new_content.append(0x8C);
+                            try new_content.append(ENTER_CHAR_CODE);
+                        }
                     }
                 }
 
@@ -1119,6 +1147,10 @@ pub fn renderDraw() !void {
                     .{ .x = text.start.x + max_width, .y = next_pos.y, .u = 1.0, .v = 0.0 },
                     .{ .x = text.start.x, .y = next_pos.y, .u = 0.0, .v = 0.0 },
                 };
+
+                if (text.id == state.selected_asset_id and !std.meta.eql(text.content, new_content.items)) {
+                    update_text_content(new_content.items);
+                }
             },
         }
     }
