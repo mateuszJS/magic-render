@@ -1028,39 +1028,9 @@ pub fn renderDraw() !void {
                         drawCaret(next_pos, lh);
                     }
 
-                    // draw selection if it's end of the line
-                    if (c == ENTER_CHAR_CODE) {
-                        const is_selection = texts.caret_position != texts.selection_end_position;
-                        if (is_selection) {
-                            if (start_selection) |start| {
-                                const started_this_line = Utils.equalF32(start.y, next_pos.y);
-                                const started_previous_line = start.y > next_pos.y - std.math.floatEps(f32);
-                                if (started_this_line) {
-                                    drawTextSelection(
-                                        start,
-                                        next_pos.x - start.x,
-                                        lh,
-                                    );
-                                } else if (started_previous_line) {
-                                    const begin_selection = types.Point{
-                                        .x = origin.x,
-                                        .y = next_pos.y,
-                                    };
-                                    drawTextSelection(
-                                        begin_selection,
-                                        next_pos.x - begin_selection.x,
-                                        lh,
-                                    );
-                                }
-                            }
-                        }
-                        next_pos = types.Point{
-                            .x = origin.x,
-                            .y = next_pos.y - lh,
-                        };
-                    }
+                    const pos = next_pos;
 
-                    // Draw selection if it's jsut the end of selection
+                    // Draw selection if it's just the end of selection
                     if (is_typing_ui and (texts.caret_position == i or texts.selection_end_position == i)) {
                         if (start_selection) |start| {
                             const started_this_line = Utils.equalF32(start.y, next_pos.y);
@@ -1079,7 +1049,12 @@ pub fn renderDraw() !void {
                         }
                     }
 
-                    if (c == ENTER_CHAR_CODE) {} else if (c == ' ') {
+                    if (c == ENTER_CHAR_CODE) {
+                        next_pos = types.Point{
+                            .x = origin.x,
+                            .y = next_pos.y - lh,
+                        };
+                    } else if (c == ' ') {
                         next_pos.x += text.font_size * 0.3;
                     } else {
                         const uniform = sdf.DrawUniform{
@@ -1090,6 +1065,21 @@ pub fn renderDraw() !void {
                             },
                         };
                         const char_details = try fonts.get(0, c);
+                        const char_width = (char_details.x + char_details.width) * text.font_size;
+
+                        // ensure is within text.max_width
+                        if ((next_pos.x + char_width) - origin.x > text.max_width) {
+                            next_pos = types.Point{
+                                .x = origin.x,
+                                .y = next_pos.y - lh,
+                            };
+                            if (i != text.content.len - 1) { // do not add soft break if it's the last char
+                                // add word joiner character before line break so that when user copies the text, they get the same line breaks
+                                try new_content.appendSlice("\u{2060}");
+                                try new_content.append(ENTER_CHAR_CODE);
+                            }
+                        }
+
                         const bounds = text.getDrawBounds(char_details, next_pos);
                         // for (shape.props.sdf_effects.items) |effect| {
                         web_gpu_programs.draw_shape(
@@ -1098,23 +1088,38 @@ pub fn renderDraw() !void {
                             char_details.sdf_texture_id,
                         );
                         // }
-                        next_pos.x = bounds[3].x;
+
+                        next_pos.x += char_width;
+
+                        max_width = @max(max_width, next_pos.x - origin.x);
                     }
-                    max_width = @max(max_width, next_pos.x - origin.x);
 
                     try new_content.append(c);
 
-                    if (next_pos.x - origin.x > text.max_width) {
-                        next_pos = types.Point{
-                            .x = origin.x,
-                            .y = next_pos.y - lh,
-                        };
-                        if (i != text.content.len - 1) { // do not add soft break if it's the last char
-                            // add zero-width space character before line break so that when user copies the text, they get the same line breaks
-                            try new_content.append(0xE2);
-                            try new_content.append(0x80);
-                            try new_content.append(0x8C);
-                            try new_content.append(ENTER_CHAR_CODE);
+                    if (!Utils.equalF32(pos.y, next_pos.y)) {
+                        const is_selection = texts.caret_position != texts.selection_end_position;
+                        if (is_selection) {
+                            if (start_selection) |start| {
+                                const started_this_line = Utils.equalF32(start.y, pos.y);
+                                const started_previous_line = start.y > pos.y - std.math.floatEps(f32);
+                                if (started_this_line) {
+                                    drawTextSelection(
+                                        start,
+                                        pos.x - start.x,
+                                        lh,
+                                    );
+                                } else if (started_previous_line) {
+                                    const begin_selection = types.Point{
+                                        .x = origin.x,
+                                        .y = pos.y,
+                                    };
+                                    drawTextSelection(
+                                        begin_selection,
+                                        pos.x - begin_selection.x,
+                                        lh,
+                                    );
+                                }
+                            }
                         }
                     }
                 }

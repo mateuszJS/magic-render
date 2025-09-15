@@ -1,6 +1,6 @@
 import * as Logic from 'logic/index.zig'
 
-const SOFT_BREAK_MARKER = '\u200C' // Zero-Width Non-Joiner
+const SOFT_BREAK_MARKER = '\u2060' // Word Joiner - stops navigation but invisible
 
 let textarea: HTMLTextAreaElement | null = null
 
@@ -13,9 +13,23 @@ function cleanText(text: string): string {
   return text.replace(new RegExp(SOFT_BREAK_MARKER + '\n', 'g'), '')
 }
 
+function skipSoftBreakMarkers(
+  text: string,
+  el: HTMLTextAreaElement,
+  field: 'selectionStart' | 'selectionEnd'
+): void {
+  if (text[el[field]] === '\n' && text[el[field] - 1] === SOFT_BREAK_MARKER) {
+    el[field] = el[field] + 2
+  }
+
+  if (text[el[field] - 1] === '\n' && text[el[field] - 2] === SOFT_BREAK_MARKER) {
+    el[field] = el[field] - 2
+  }
+}
+
 export function update(text: string): void {
   if (!textarea) throw Error('Not typing')
-  console.log('UPDATE')
+  // console.log('UPDATE')
   textarea.value = text
 }
 
@@ -34,11 +48,15 @@ export function enable(): void {
   })
 
   newEl.addEventListener('selectionchange', () => {
+    skipSoftBreakMarkers(newEl.value, newEl, 'selectionStart')
+    skipSoftBreakMarkers(newEl.value, newEl, 'selectionEnd')
+
     const beforeStart =
       newEl.value
         .slice(0, newEl.selectionStart)
         .split('')
         .filter((c) => c === SOFT_BREAK_MARKER).length * 2
+
     const beforeEnd =
       newEl.value
         .slice(0, newEl.selectionEnd)
