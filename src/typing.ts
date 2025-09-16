@@ -28,9 +28,23 @@ function skipSoftBreakMarkers(
   }
 }
 
-export function update(text: string): void {
+export function updateContent(text: string): void {
   if (!textarea) throw Error('Not typing')
+
+  const start = textarea.selectionStart
+  const end = textarea.selectionEnd
+
   textarea.value = text
+
+  textarea.selectionStart = start
+  textarea.selectionEnd = end
+}
+
+export function updateSelection(start: number, end: number): void {
+  if (!textarea) throw Error('Not typing')
+
+  textarea.selectionStart = start
+  textarea.selectionEnd = end
 }
 
 export function enable(text: string): void {

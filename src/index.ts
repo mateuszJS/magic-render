@@ -248,7 +248,8 @@ export default async function initCreator(
   Logic.connectTyping(
     Typing.enable,
     Typing.disable,
-    Typing.update,
+    Typing.updateContent,
+    Typing.updateSelection,
     Fonts.getCharData,
     Fonts.getKerning
   )

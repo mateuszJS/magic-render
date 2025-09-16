@@ -26,26 +26,6 @@ export function updateRenderPass(newRenderPass: GPURenderPassEncoder) {
   renderPass = newRenderPass
 }
 
-// async function loadFont() {
-//   const buffer = fetch(fontFile).then((res) => res.arrayBuffer())
-//   const font = opentype.parse(await buffer)
-//   const d = font.getPath('Hello world', 0, 0, 72).toPathData(2)
-//   const svgNode: ElementNode = {
-//     type: 'element', // pretend it's svg-parser created object
-//     children: [],
-//     tagName: 'path',
-//     properties: {
-//       d,
-//       fill: '#fff',
-//     },
-//   }
-//   const shapesData = collectShapesData(svgNode, {})
-//   createShapes(shapesData)
-
-//   console.log(font.stringToGlyphs('Hello world'))
-//   console.log(font.getKerningValue(font.charToGlyph('w'), font.charToGlyph('o')))
-// }
-
 export default function runCreator(
   creatorCanvas: HTMLCanvasElement,
   context: GPUCanvasContext,

@@ -67,19 +67,22 @@ pub const TextCallback = fn (text: []const u8) void;
 var enable_typing: *const TextCallback = undefined;
 var disable_typing: *const fn () void = undefined;
 var update_text_content: *const TextCallback = undefined;
+var update_text_selection: *const fn (start: u32, end: u32) void = undefined;
 
 pub fn connectTyping(
     enable: *const TextCallback,
     disable: *const fn () void,
-    update: *const TextCallback,
-    getCharData: *const fn (u32, u8) fonts.SerializedCharDetails,
-    getKerning: *const fn (u8, u8) f32,
+    update_content: *const TextCallback,
+    update_selection: *const fn (u32, u32) void,
+    get_char_data: *const fn (u32, u8) fonts.SerializedCharDetails,
+    get_kerning: *const fn (u8, u8) f32,
 ) void {
     enable_typing = enable;
     disable_typing = disable;
-    update_text_content = update;
-    fonts.getCharData = getCharData;
-    fonts.getKerning = getKerning;
+    update_text_content = update_content;
+    update_text_selection = update_selection;
+    fonts.getCharData = get_char_data;
+    fonts.getKerning = get_kerning;
 }
 
 pub const @"meta(zigar)" = struct {
@@ -388,14 +391,8 @@ pub fn updateTextContent(new_content: []const u8) !void {
     if (option_text) |text| {
         text.updateContent(new_content);
 
-        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer arena.deinit();
-        const allocator = arena.allocator();
-        var updated_content = std.ArrayList(u8).init(allocator);
-
-        try text.computeText(&updated_content);
-
-        update_text_content(updated_content.items);
+        try text.computeText();
+        update_text_content(text.content);
     } else {
         @panic("updateTextContent called but no text asset selected");
     }
@@ -420,6 +417,10 @@ pub fn onPointerDown(x: f32, y: f32) !void {
         };
 
         enable_typing(text_content);
+        update_text_selection(
+            state.hovered_asset_id[1],
+            state.hovered_asset_id[1],
+        );
     } else if (state.tool == Tool.DrawShape) {
         if (getSelectedShape() == null) {
             const props = shapes.SerializedProps{
@@ -1143,7 +1144,7 @@ pub fn renderPick() !void {
                 }
             },
             .text => |text| {
-                for (text.text_vertex.items) |vertex| {
+                for (text.text_vertex.items, 0..) |vertex, index| {
                     if (vertex.sdf_texture_id) |sdf_texture_id| {
                         const uniform = shapes.PickUniform{
                             .dist_start = std.math.inf(f32),
@@ -1154,7 +1155,7 @@ pub fn renderPick() !void {
                         for (&pick_vertex, 0..) |*v, i| {
                             v.* = images.PickVertex{
                                 .point = vertex.bounds[i],
-                                .id = .{ text.id, 0, 0, 0 },
+                                .id = .{ text.id, index + 1, 0, 0 },
                             };
                         }
 

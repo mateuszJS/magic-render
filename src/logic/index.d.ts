@@ -219,7 +219,8 @@ declare module '*.zig' {
   export const connectTyping: (
     enable: (text: string) => void,
     disable: VoidFunction,
-    update: (text: string) => void,
+    updateContent: (text: string) => void,
+    updateSelection: (start: number, end: number) => void,
     getCharData: (font_id: number, char_code: number) => CharDetails,
     getKerning: (font_id: number, char_code: number) => number
   ) => void

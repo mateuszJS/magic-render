@@ -50,9 +50,7 @@ pub const Text = struct {
             .text_vertex = std.ArrayList(CharVertex).init(std.heap.page_allocator),
         };
 
-        if (bounds == null) {
-            _ = try text.computeText(null);
-        }
+        try text.computeText();
 
         return text;
     }
@@ -78,10 +76,12 @@ pub const Text = struct {
         };
     }
 
-    pub fn computeText(self: *Text, updated_content: ?*std.ArrayList(u8)) !void {
+    pub fn computeText(self: *Text) !void {
+        var updated_content = std.ArrayList(u8).init(std.heap.page_allocator);
+
         self.text_vertex.clearAndFree();
         self.text_vertex.deinit();
-        self.text_vertex = std.ArrayList(CharVertex).init(self.text_vertex.allocator);
+        self.text_vertex = std.ArrayList(CharVertex).init(std.heap.page_allocator);
 
         const lh = self.font_size * self.line_height;
         var longest_line: f32 = 0.0;
@@ -105,18 +105,14 @@ pub const Text = struct {
 
             const exceeded_max_width = (next_pos.x + char_width) - self.start.x > self.max_width;
             if (exceeded_max_width) {
-                if (updated_content) |list| {
-                    try list.appendSlice("\u{2060}");
-                }
+                try updated_content.appendSlice("\u{2060}");
                 try self.text_vertex.append(CharVertex{
                     .bounds = self.getDrawBounds(0, 0, 0, 0, next_pos),
                     .sdf_texture_id = null,
                 });
 
                 // add word joiner character before line break so that when user copies the text, they get the same line breaks
-                if (updated_content) |list| {
-                    try list.append(ENTER_CHAR_CODE);
-                }
+                try updated_content.append(ENTER_CHAR_CODE);
                 try self.text_vertex.append(CharVertex{
                     .bounds = self.getDrawBounds(0, 0, 0.1, 0, next_pos),
                     .sdf_texture_id = null,
@@ -137,9 +133,7 @@ pub const Text = struct {
 
             next_pos.x += char_width;
             longest_line = @max(longest_line, next_pos.x - self.start.x);
-            if (updated_content) |list| {
-                try list.append(c);
-            }
+            try updated_content.append(c);
         }
 
         longest_line = @max(longest_line, self.font_size * BOUNDS_MIX_WIDTH);
@@ -149,6 +143,7 @@ pub const Text = struct {
             .{ .x = self.start.x + longest_line, .y = next_pos.y, .u = 1.0, .v = 0.0 },
             .{ .x = self.start.x, .y = next_pos.y, .u = 0.0, .v = 0.0 },
         };
+        self.content = try updated_content.toOwnedSlice();
     }
 
     pub fn addTextSelectionDrawVertex(
