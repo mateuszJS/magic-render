@@ -37,13 +37,20 @@ export function getCharData(font_id: number, char_code: number): Logic.Serialize
     correctedPaths.splice(-1)
   })
 
+  let width = x2 - x1
+  if (char_code === 32) {
+    // space
+    width = 0.3
+  }
+
   const result = new Logic.SerializedCharDetails({
     x: x1,
     y: -y2,
-    width: x2 - x1,
+    width,
     height: -y1 - -y2,
-    sdf_texture_id: Textures.createSDF(),
+    sdf_texture_id: correctedPaths.length > 0 ? Textures.createSDF() : null,
   })
+
   result.setPaths(correctedPaths)
 
   return result

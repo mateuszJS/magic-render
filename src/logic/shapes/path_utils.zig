@@ -1,5 +1,5 @@
 const Point = @import("../types.zig").Point;
-const triangles = @import("../triangle.zig");
+const triangles = @import("../triangles.zig");
 const shared = @import("../shared.zig");
 const rects = @import("../rects.zig");
 const lines = @import("../lines.zig");

@@ -8,10 +8,14 @@ pub const SerializedCharDetails = struct {
     y: f32,
     width: f32,
     height: f32,
-    sdf_texture_id: u32,
+    sdf_texture_id: ?u32,
 
     pub fn setPaths(self: *SerializedCharDetails, points: []const Point) !void {
-        self.points = try std.heap.page_allocator.dupe(Point, points);
+        self.points =
+            if (points.len > 0)
+                try std.heap.page_allocator.dupe(Point, points)
+            else
+                &.{};
     }
 };
 

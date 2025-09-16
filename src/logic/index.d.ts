@@ -155,7 +155,7 @@ declare module '*.zig' {
     y: number
     width: number
     height: number
-    sdf_texture_id: number
+    sdf_texture_id: number | null
     setPaths(paths: Point[]): void // we have to call std.mem.Allocator.dupe() to allocate permament memory in zig
   }
 
@@ -170,7 +170,7 @@ declare module '*.zig' {
     y: number
     width: number
     height: number
-    sdf_texture_id: number
+    sdf_texture_id: number | null
   }) => SerializedCharDetails
 
   export const Point: new ({ x, y }: { x: number; y: number }) => Point
@@ -216,7 +216,7 @@ declare module '*.zig' {
     end_cache: VoidFunction
   ) => void
   export const connectTyping: (
-    enable: VoidFunction,
+    enable: (text: string) => void,
     disable: VoidFunction,
     update: (text: string) => void,
     getCharData: (font_id: number, char_code: number) => CharDetails,

@@ -2,7 +2,7 @@ const std = @import("std");
 const Point = @import("../types.zig").Point;
 
 pub const Details = struct {
-    sdf_texture_id: u32,
+    sdf_texture_id: ?u32,
     x: f32,
     y: f32,
     width: f32,

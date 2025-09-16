@@ -1,4 +1,6 @@
 const math = @import("std").math;
+const consts = @import("./consts.zig");
+const PointUV = @import("types.zig").PointUV;
 
 pub fn findMidAngle(angle1: f32, angle2: f32) f32 {
     const x = math.cos(angle1) + math.cos(angle2);
@@ -18,4 +20,13 @@ pub fn getNextPowerOfTwo(value: f32) f32 {
 const EPSILON = math.floatEps(f32);
 pub fn equalF32(a: f32, b: f32) bool {
     return @abs(a - b) < EPSILON;
+}
+
+pub fn getBounds(x: f32, y: f32, width: f32, height: f32) [4]PointUV {
+    var bounds = consts.DEFAULT_BOUNDS;
+    for (&bounds) |*b| {
+        b.x = x + width * b.x;
+        b.y = y + height * b.y;
+    }
+    return bounds;
 }

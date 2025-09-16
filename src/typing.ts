@@ -13,6 +13,7 @@ function cleanText(text: string): string {
   return text.replace(new RegExp(SOFT_BREAK_MARKER + '\n', 'g'), '')
 }
 
+/* ensures the selection is not behind a soft break OR enter which follows soft break */
 function skipSoftBreakMarkers(
   text: string,
   el: HTMLTextAreaElement,
@@ -29,21 +30,22 @@ function skipSoftBreakMarkers(
 
 export function update(text: string): void {
   if (!textarea) throw Error('Not typing')
-  // console.log('UPDATE')
   textarea.value = text
 }
 
-export function enable(): void {
+export function enable(text: string): void {
   const newEl = document.createElement('textarea')
   newEl.style.position = 'fixed'
   // newEl.style.left = '-9999px'
   // newEl.style.opacity = '0'
   newEl.style.width = '9999px'
   newEl.style.whiteSpace = 'pre-line'
+  newEl.value = text
   document.body.appendChild(newEl)
 
   newEl.addEventListener('input', () => {
     const cleanedText = cleanText(newEl.value)
+    // in Logic we are goign to reapply all soft breaks in correct places
     Logic.updateTextContent(cleanedText)
   })
 
@@ -51,19 +53,7 @@ export function enable(): void {
     skipSoftBreakMarkers(newEl.value, newEl, 'selectionStart')
     skipSoftBreakMarkers(newEl.value, newEl, 'selectionEnd')
 
-    const beforeStart =
-      newEl.value
-        .slice(0, newEl.selectionStart)
-        .split('')
-        .filter((c) => c === SOFT_BREAK_MARKER).length * 2
-
-    const beforeEnd =
-      newEl.value
-        .slice(0, newEl.selectionEnd)
-        .split('')
-        .filter((c) => c === SOFT_BREAK_MARKER).length * 2
-
-    Logic.setCaretPosition(newEl.selectionStart - beforeStart, newEl.selectionEnd - beforeEnd)
+    Logic.setCaretPosition(newEl.selectionStart, newEl.selectionEnd)
   })
 
   newEl.focus()
