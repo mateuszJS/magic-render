@@ -4,7 +4,6 @@ const shared = @import("../shared.zig");
 const rects = @import("../rects.zig");
 const lines = @import("../lines.zig");
 const std = @import("std");
-const PackedId = @import("packed_id.zig");
 
 const STRAIGHT_LINE_THRESHOLD = 1e+10;
 pub const STRAIGHT_LINE_HANDLE = Point{
@@ -83,7 +82,7 @@ pub fn getVertexDrawSkeletonPoint(
 pub fn getVertexPickSkeletonPoint(
     is_control_point: bool,
     point: Point,
-    id: u32,
+    id: [4]u32,
 ) [2]triangles.PickInstance {
     var buffer: [2]triangles.PickInstance = undefined;
     const size = SKELETON_POINT_SIZE * PICK_POINT_SCALE * shared.render_scale;
@@ -109,7 +108,7 @@ pub fn drawControlPoint(
     cp: Point,
     handles: [2]?Point,
     buffer: *std.ArrayList(triangles.DrawInstance),
-    hover_id: ?PackedId.PointId,
+    hover_id: ?[4]u32,
 ) !void {
     for (handles, 0..) |option_hp, index| {
         if (option_hp) |hp| {
@@ -127,10 +126,11 @@ pub fn drawControlPoint(
             try buffer.appendSlice(&local_buffer);
 
             const id: u32 = if (index == 0) @min(i -% 1, len - 1) else i + 1;
+            const is_hovered = if (hover_id) |h| h[2] == id + 1 else false;
             try buffer.appendSlice(&getVertexDrawSkeletonPoint(
                 false,
                 hp,
-                if (hover_id) |h| h.point == id else false,
+                is_hovered,
             ));
         }
     }
@@ -138,6 +138,6 @@ pub fn drawControlPoint(
     try buffer.appendSlice(&getVertexDrawSkeletonPoint(
         true,
         cp,
-        if (hover_id) |h| h.point == i else false,
+        if (hover_id) |h| h[2] == i + 1 else false,
     ));
 }

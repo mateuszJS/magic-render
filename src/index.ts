@@ -87,7 +87,7 @@ export default async function initCreator(
   canvas: HTMLCanvasElement,
   uploadTexture: (url: string, onNewUrl: (newUrl: string) => void) => void,
   onAssetsUpdate: (assets: SerializedOutputAsset[]) => void,
-  onAssetSelect: (assetId: number) => void,
+  onAssetSelect: (assetId: Id) => void,
   onProcessingUpdate: (inProgress: boolean) => void,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void
 ): Promise<CreatorAPI> {

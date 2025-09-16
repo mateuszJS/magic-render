@@ -18,6 +18,7 @@ interface BoundingBox {
 }
 
 type Color = [number, number, number, number]
+type Id = [number, number, number, number]
 
 type UiElementType = 0
 
@@ -140,7 +141,7 @@ declare module '*.zig' {
   export const removeAsset: () => void
   export const resetAssets: (assets: ZigAssetInput[], with_snapshot: boolean) => void
 
-  export const onUpdatePick: (id: number) => void
+  export const onUpdatePick: (id: Id) => void
   export const onPointerDown: (x: number, y: number) => void
   export const onPointerUp: () => void
   export const onPointerMove: (x: number, y: number) => void
@@ -208,7 +209,7 @@ declare module '*.zig' {
     ) => void
   }) => void
   export const connectOnAssetUpdateCallback: (cb: (data: ZigAssetOutput[]) => void) => void
-  export const connectOnAssetSelectionCallback: (cb: (data: number) => void) => void
+  export const connectOnAssetSelectionCallback: (cb: (data: Id) => void) => void
   export const connectCreateSdfTexture: (cb: () => number) => void
   export const connectCacheCallbacks: (
     create_cache_texture: () => number,

@@ -1,7 +1,7 @@
 import shaderCode from './shader.wgsl'
 
 const INSTANCE_STRIDE =
-  4 * 3 /* positon */ + 1 /* id */ + 3 /* value of roudned corner  for each of three positions */
+  4 * 3 /* positon */ + 4 /* id */ + 3 /* value of roudned corner  for each of three positions */
 
 export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
   const module = device.createShaderModule({
@@ -23,8 +23,8 @@ export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
             { shaderLocation: 0, offset: 0, format: 'float32x4' }, // position 0
             { shaderLocation: 1, offset: 16, format: 'float32x4' }, // position 1
             { shaderLocation: 2, offset: 16 + 16, format: 'float32x4' }, // position 2
-            { shaderLocation: 3, offset: 16 + 16 + 16, format: 'uint32' }, // id'
-            { shaderLocation: 4, offset: 16 + 16 + 16 + 4, format: 'float32x3' }, // rounded corner values
+            { shaderLocation: 3, offset: 16 + 16 + 16, format: 'uint32x4' }, // id
+            { shaderLocation: 4, offset: 16 + 16 + 16 + 16, format: 'float32x3' }, // rounded corner values
           ] as const,
         },
       ],
@@ -34,7 +34,7 @@ export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
       entryPoint: 'fs',
       targets: [
         {
-          format: 'r32uint',
+          format: 'rgba32uint',
         },
       ],
     },

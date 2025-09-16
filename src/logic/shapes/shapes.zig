@@ -11,7 +11,6 @@ const shared = @import("../shared.zig");
 const images = @import("../images.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const consts = @import("../consts.zig");
-const PackedId = @import("packed_id.zig");
 const PathUtils = @import("path_utils.zig");
 const fill = @import("../sdf/fill.zig");
 const sdf = @import("../sdf/sdf.zig");
@@ -25,12 +24,12 @@ const CREATE_HANDLE_THRESHOLD = 10.0;
 // are called only when shape is selected, so only one active shape/path uses them
 var active_path_index: ?usize = null;
 var is_handle_preview: bool = false;
-pub var selected_point_id: ?PackedId.PointId = null;
+// pub var selected_point_id: ?ShapesPackedId.PointId = null;
 
 pub fn resetState() void {
     active_path_index = null;
     is_handle_preview = false;
-    selected_point_id = null;
+    // selected_point_id = null;
 }
 
 pub const Preview = struct {
@@ -276,14 +275,17 @@ pub const Shape = struct {
     pub fn getSkeletonDrawVertexData(
         self: Shape,
         allocator: std.mem.Allocator,
-        input_hover_id: ?PackedId.PointId,
+        option_hover_id: ?[4]u32,
         with_preview: bool,
     ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
         const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
 
         for (self.paths.items, 0..) |path, i| {
-            const hover_id = if (input_hover_id) |h| if (h.path == i) h else null else null;
+            const hover_id = if (option_hover_id) |id| b: {
+                break :b if (id[1] == i + 1) id else null;
+            } else null;
+
             const path_skeleton = try path.getSkeletonDrawVertexData(
                 matrix,
                 allocator,
@@ -460,7 +462,7 @@ pub const Shape = struct {
         for (bounds, 0..) |b, i| {
             buffer[i] = .{
                 .point = b,
-                .id = self.id,
+                .id = .{ self.id, 0, 0, 0 },
             };
         }
         return buffer;

@@ -7,9 +7,7 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
     code: shaderCode,
   })
 
-  const STRIDE = (4 /*position */ + 1) /*id*/ * 4
-
-  const uniformBufferSize = (1 /*stroke width*/ + /*padding*/ 3) * 4
+  const STRIDE = (4 /*position */ + 4) /*id*/ * 4
 
   const pipeline = device.createRenderPipeline({
     label: 'pickShape pipeline',
@@ -22,7 +20,7 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
           arrayStride: STRIDE,
           attributes: [
             { shaderLocation: 0, offset: 0, format: 'float32x4' },
-            { shaderLocation: 1, offset: 16, format: 'uint32' }, // id
+            { shaderLocation: 1, offset: 16, format: 'uint32x3' }, // id
           ],
         },
       ],
@@ -32,7 +30,7 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
       entryPoint: 'fs',
       targets: [
         {
-          format: 'r32uint',
+          format: 'rgba32uint',
         },
       ],
     },

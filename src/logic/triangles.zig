@@ -16,7 +16,7 @@ pub const PickInstance = extern struct {
     p0: PointUV,
     p1: PointUV,
     p2: PointUV,
-    id: u32,
+    id: [4]u32,
     radius: [3]f32,
 };
 
@@ -46,7 +46,7 @@ pub fn getDrawVertexData(buffer: *[1]DrawInstance, p0: RoundCorner, p1: RoundCor
     };
 }
 
-pub fn getPickVertexData(buffer: *[1]PickInstance, p0: RoundCorner, p1: RoundCorner, p2: RoundCorner, id: u32) void {
+pub fn getPickVertexData(buffer: *[1]PickInstance, p0: RoundCorner, p1: RoundCorner, p2: RoundCorner, id: [4]u32) void {
     buffer[0] = PickInstance{
         .p0 = PointUV{
             .x = p0.corner.x,

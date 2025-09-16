@@ -37,7 +37,7 @@ pub fn getDrawVertexData(buffer: *[2]triangles.DrawInstance, start: anytype, end
     triangles.getDrawVertexData(buffer[1..2], points[0], points[2], points[3], color);
 }
 
-pub fn getPickVertexData(buffer: *[2]triangles.PickInstance, start: anytype, end: anytype, width: f32, rounded: f32, id: u32) void {
+pub fn getPickVertexData(buffer: *[2]triangles.PickInstance, start: anytype, end: anytype, width: f32, rounded: f32, id: [4]u32) void {
     const points = getPoints(start, end, width, rounded);
 
     triangles.getPickVertexData(buffer[0..1], points[0], points[1], points[2], id);

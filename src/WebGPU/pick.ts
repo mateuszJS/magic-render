@@ -3,32 +3,34 @@ import { pointer } from '../pointer'
 import * as Logic from '../logic/index.zig'
 
 const NUM_PIXELS = 1
+const BYTES_PER_PIXEL = 4 * 4 // we use rgba32uint format, so 4 channels of 4 bytes each
 
 export default class PickManager {
   private pickBuffer: GPUBuffer
   private pickTexture: GPUTexture
-  private pickDepthTexture: GPUTexture
+  // private pickDepthTexture: GPUTexture
   private isPreviousPickDone = true
 
   constructor(device: GPUDevice) {
     this.pickBuffer = device.createBuffer({
-      size: NUM_PIXELS * 4,
+      label: 'pick id buffer',
+      size: NUM_PIXELS * BYTES_PER_PIXEL,
       usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
     })
 
     this.pickTexture = device.createTexture({
       label: 'picking texture color',
       size: [1, 1],
-      format: 'r32uint',
+      format: 'rgba32uint',
       usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
     })
 
-    this.pickDepthTexture = device.createTexture({
-      label: 'picking texture depth',
-      size: [1, 1],
-      format: 'depth24plus',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT,
-    })
+    // this.pickDepthTexture = device.createTexture({
+    //   label: 'picking texture depth',
+    //   size: [1, 1],
+    //   format: 'depth24plus',
+    //   usage: GPUTextureUsage.RENDER_ATTACHMENT,
+    // })
   }
 
   /**
@@ -106,9 +108,17 @@ export default class PickManager {
     if (!this.isPreviousPickDone) return
     this.isPreviousPickDone = false
     try {
-      await this.pickBuffer.mapAsync(GPUMapMode.READ, 0, 4 * NUM_PIXELS)
-      const [id] = new Uint32Array(this.pickBuffer.getMappedRange(0, 4 * NUM_PIXELS))
-      Logic.onUpdatePick(id)
+      await this.pickBuffer.mapAsync(GPUMapMode.READ, 0, BYTES_PER_PIXEL * NUM_PIXELS)
+      // Some of the elements uses more than one id eg.
+      // id1 - represents shape's id
+      // id2 - representes index of particular path includded in the shape
+      // id3 - representes index of particular point in the path
+      // id4 was not used yet, but there is no rgb32uint(without alpha) texture format
+      const [id1, id2, id3, id4] = new Uint32Array(
+        this.pickBuffer.getMappedRange(0, BYTES_PER_PIXEL * NUM_PIXELS)
+      )
+      console.log('picked ids:', id1, id2, id3, id4)
+      Logic.onUpdatePick([id1, id2, id3, id4])
 
       let i = 0
       while (i < pointer.afterPickEventsQueue.length) {

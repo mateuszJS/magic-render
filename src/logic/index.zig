@@ -11,7 +11,6 @@ const bounding_box = @import("shapes/bounding_box.zig");
 const shared = @import("shared.zig");
 const texture_size = @import("texture_size.zig");
 const Utils = @import("utils.zig");
-const PackedId = @import("shapes/packed_id.zig");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 const PathUtils = @import("shapes/path_utils.zig");
 const consts = @import("consts.zig");
@@ -52,8 +51,8 @@ pub fn connectOnAssetUpdateCallback(cb: *const fn ([]const AssetSerialized) void
     original_on_asset_update_cb = cb;
 }
 
-var on_asset_select_cb: *const fn (u32) void = undefined;
-pub fn connectOnAssetSelectionCallback(cb: *const fn (u32) void) void {
+var on_asset_select_cb: *const fn ([4]u32) void = undefined;
+pub fn connectOnAssetSelectionCallback(cb: *const fn ([4]u32) void) void {
     on_asset_select_cb = cb;
 }
 
@@ -108,7 +107,7 @@ pub fn connectCacheCallbacks(
 }
 
 pub const ASSET_ID_MIN: u32 = 1000;
-const NO_SELECTION = 0;
+const NO_SELECTION = [4]u32{ 0, 0, 0, 0 };
 const MIN_NEW_CONTROL_POINT_DISTANCE = 10.0; // Minimum distance to consider a new control point
 
 const ActionType = enum {
@@ -140,8 +139,8 @@ const State = struct {
     width: f32,
     height: f32,
     assets: std.AutoArrayHashMap(u32, Asset),
-    hovered_asset_id: u32,
-    selected_asset_id: u32,
+    hovered_asset_id: [4]u32,
+    selected_asset_id: [4]u32,
     action: ActionType,
     tool: Tool,
     last_pointer_coords: types.Point,
@@ -193,7 +192,6 @@ var next_asset_id: u32 = ASSET_ID_MIN;
 fn generateId() u32 {
     const id = next_asset_id;
     next_asset_id +%= 1;
-    // TODO: once hits PackedId.ASSET_ID_MAX we should re-indentify all assets
     return id;
 }
 
@@ -254,12 +252,12 @@ pub fn addText(
 }
 
 pub fn removeAsset() !void {
-    _ = state.assets.orderedRemove(state.selected_asset_id);
+    _ = state.assets.orderedRemove(state.selected_asset_id[0]);
     try updateSelectedAsset(NO_SELECTION);
     try checkAssetsUpdate(true);
 }
 
-pub fn onUpdatePick(id: u32) void {
+pub fn onUpdatePick(id: [4]u32) void {
     if (state.action != .Transform) {
         state.hovered_asset_id = id;
         // hovered_asset_id stores id of the ui transform element during transformations
@@ -346,7 +344,7 @@ fn checkAssetsUpdate(should_notify: bool) !void {
 }
 
 fn getSelectedImg() ?*images.Image {
-    const asset = state.assets.getPtr(state.selected_asset_id) orelse return null;
+    const asset = state.assets.getPtr(state.selected_asset_id[0]) orelse return null;
     switch (asset.*) {
         .img => |*img| return img,
         .shape => return null,
@@ -355,7 +353,7 @@ fn getSelectedImg() ?*images.Image {
 }
 
 fn getSelectedShape() ?*shapes.Shape {
-    const asset = state.assets.getPtr(state.selected_asset_id) orelse return null;
+    const asset = state.assets.getPtr(state.selected_asset_id[0]) orelse return null;
     switch (asset.*) {
         .img => return null,
         .shape => |*shape| return shape,
@@ -364,7 +362,7 @@ fn getSelectedShape() ?*shapes.Shape {
 }
 
 fn getSelectedText() ?*texts.Text {
-    const asset = state.assets.getPtr(state.selected_asset_id) orelse return null;
+    const asset = state.assets.getPtr(state.selected_asset_id[0]) orelse return null;
     switch (asset.*) {
         .img => return null,
         .shape => return null,
@@ -372,16 +370,16 @@ fn getSelectedText() ?*texts.Text {
     }
 }
 
-fn updateSelectedAsset(id: u32) !void {
+fn updateSelectedAsset(id: [4]u32) !void {
     try commitChanges();
 
-    if (id >= PackedId.MIN_PACKED_ID) {
-        const point_id = PackedId.decode(id);
-        shapes.selected_point_id = point_id;
-        state.selected_asset_id = point_id.shape;
-    } else {
-        state.selected_asset_id = id;
-    }
+    // if (id >= ShapesPackedId.MIN_PACKED_ID) {
+    //     const point_id = ShapesPackedId.decode(id);
+    //     shapes.selected_point_id = point_id;
+    //     state.selected_asset_id = point_id.shape;
+    // } else {
+    state.selected_asset_id = id;
+    // }
     on_asset_select_cb(id);
 }
 
@@ -417,7 +415,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                 200.0,
                 72.0,
             );
-            try updateSelectedAsset(id);
+            try updateSelectedAsset(.{ id, 0, 0, 0 });
             break :b "";
         };
 
@@ -453,7 +451,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                 create_sdf_texture(),
                 if (props.filter != null) create_cache_texture() else null,
             );
-            try updateSelectedAsset(id);
+            try updateSelectedAsset(.{ id, 0, 0, 0 });
         }
 
         if (getSelectedShape()) |shape| {
@@ -467,17 +465,17 @@ pub fn onPointerDown(x: f32, y: f32) !void {
         }
     } else {
         if (state.tool == Tool.EditShape) {
-            // sould not be accessible on mobile, that's why selection happens with pointer down
-            if (state.hovered_asset_id != NO_SELECTION) {
+            // should not be accessible on mobile, that's why selection happens with pointer down
+            if (state.hovered_asset_id[0] != NO_SELECTION[0]) {
                 try updateSelectedAsset(state.hovered_asset_id);
             }
         }
 
-        if (state.selected_asset_id == NO_SELECTION) {
+        if (state.selected_asset_id[0] == NO_SELECTION[0]) {
             // No active asset, do nothing
-        } else if (TransformUI.isTransformUi(state.hovered_asset_id)) {
+        } else if (TransformUI.isTransformUi(state.hovered_asset_id[0])) {
             state.action = .Transform;
-        } else if (state.selected_asset_id >= ASSET_ID_MIN and state.selected_asset_id == state.hovered_asset_id) {
+        } else if (state.selected_asset_id[0] >= ASSET_ID_MIN and state.selected_asset_id[0] == state.hovered_asset_id[0]) {
             state.action = .Move;
             state.last_pointer_coords = types.Point{ .x = x, .y = y };
         }
@@ -498,7 +496,9 @@ pub fn onPointerUp() !void {
             shape.onReleasePointer();
         }
     } else if (state.tool == Tool.EditShape) {
-        shapes.selected_point_id = null;
+        state.selected_asset_id[1] = 0;
+        state.selected_asset_id[2] = 0;
+        state.selected_asset_id[3] = 0;
     }
 }
 
@@ -511,14 +511,14 @@ pub fn onPointerMove(x: f32, y: f32) void {
     }
 
     if (state.tool == Tool.EditShape) {
-        if (shapes.selected_point_id) |selected_point_id| {
+        if (state.selected_asset_id[2] != 0) {
             if (getSelectedShape()) |shape| {
                 const matrix = Matrix3x3.getMatrixFromRectangle(shape.bounds);
                 const pointer = matrix.inverse().get(types.Point{ .x = x, .y = y });
 
-                const path = shape.paths.items[selected_point_id.path];
+                const path = shape.paths.items[state.selected_asset_id[1] - 1];
                 const points = path.points.items;
-                const i = selected_point_id.point;
+                const i = state.selected_asset_id[2] - 1;
 
                 if (i % 3 == 0) { // it's control point
                     const diff = types.Point{
@@ -572,7 +572,7 @@ pub fn onPointerMove(x: f32, y: f32) void {
         return;
     }
 
-    const asset = state.assets.getPtr(state.selected_asset_id) orelse return;
+    const asset = state.assets.getPtr(state.selected_asset_id[0]) orelse return;
     const bounds = switch (asset.*) {
         .img => |*img| &img.points,
         .shape => |*shape| &shape.bounds,
@@ -594,7 +594,7 @@ pub fn onPointerMove(x: f32, y: f32) void {
         },
         .Transform => {
             TransformUI.transformPoints(
-                state.hovered_asset_id,
+                state.hovered_asset_id[0],
                 bounds,
                 types.Point{ .x = x, .y = y },
             );
@@ -612,7 +612,7 @@ pub fn onPointerMove(x: f32, y: f32) void {
 
 pub fn onPointerLeave() !void {
     state.action = .None;
-    state.hovered_asset_id = 0;
+    state.hovered_asset_id = NO_SELECTION;
     try checkAssetsUpdate(true);
 }
 
@@ -632,8 +632,8 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
     var ui_vertex_data = std.ArrayList(UI.DrawVertex).init(allocator);
 
     const red = [_]u8{ 255, 0, 0, 255 };
-    if (state.hovered_asset_id != state.selected_asset_id) {
-        if (state.assets.get(state.hovered_asset_id)) |asset| {
+    if (state.hovered_asset_id[0] != state.selected_asset_id[0]) {
+        if (state.assets.get(state.hovered_asset_id[0])) |asset| {
             const points = switch (asset) {
                 .img => |img| img.points,
                 .shape => |shape| shape.bounds,
@@ -659,7 +659,7 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
     }
 
     const green = [_]u8{ 0, 255, 0, 255 };
-    if (state.assets.get(state.selected_asset_id)) |asset| {
+    if (state.assets.get(state.selected_asset_id[0])) |asset| {
         const points = switch (asset) {
             .img => |img| img.points,
             .shape => |shape| shape.bounds,
@@ -688,7 +688,7 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
             &triangle_buffer,
             &ui_vertex_data,
             points,
-            state.hovered_asset_id,
+            state.hovered_asset_id[0],
         );
 
         try triangle_vertex_data.appendSlice(&triangle_buffer);
@@ -989,7 +989,7 @@ pub fn renderDraw() !void {
                 }
             },
             .text => |*text| {
-                const is_typing_ui = state.tool == .Text and state.selected_asset_id == text.id;
+                const is_typing_ui = state.tool == .Text and state.selected_asset_id[0] == text.id;
                 const selection_start = @min(texts.caret_position, texts.selection_end_position);
                 const selection_end = @max(texts.caret_position, texts.selection_end_position);
                 var vertex_triangles_buffer =
@@ -1068,9 +1068,7 @@ pub fn renderDraw() !void {
     }
 
     if (state.tool == Tool.DrawShape or state.tool == Tool.EditShape) {
-        const hover_point_id = PackedId.decode(state.hovered_asset_id);
-        const select_point_id = shapes.selected_point_id;
-        _ = select_point_id; // autofix
+        const hover_point_id = state.hovered_asset_id;
 
         if (getSelectedShape()) |shape| {
             web_gpu_programs.draw_shape(
@@ -1079,7 +1077,7 @@ pub fn renderDraw() !void {
                 shape.sdf_texture_id,
             );
 
-            const hover_id = if (shape.id == hover_point_id.shape) hover_point_id else null;
+            const hover_id = if (shape.id == hover_point_id[0]) hover_point_id else null;
             const vertex_data = try shape.getSkeletonDrawVertexData(
                 allocator,
                 hover_id,
@@ -1156,7 +1154,7 @@ pub fn renderPick() !void {
                         for (&pick_vertex, 0..) |*v, i| {
                             v.* = images.PickVertex{
                                 .point = vertex.bounds[i],
-                                .id = text.id,
+                                .id = .{ text.id, 0, 0, 0 },
                             };
                         }
 
@@ -1183,7 +1181,7 @@ pub fn renderPick() !void {
     }
 
     if (state.tool == Tool.None) {
-        if (state.assets.get(state.selected_asset_id)) |asset| {
+        if (state.assets.get(state.selected_asset_id[0])) |asset| {
             const points = switch (asset) {
                 .img => |img| img.points,
                 .shape => |shape| shape.bounds,
@@ -1229,7 +1227,7 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
         }
     }
 
-    if (!state.assets.contains(state.selected_asset_id)) {
+    if (!state.assets.contains(state.selected_asset_id[0])) {
         try updateSelectedAsset(NO_SELECTION);
     }
     on_asset_update_cb = original_on_asset_update_cb;
@@ -1249,7 +1247,7 @@ pub fn deinitState() void {
     UI.deinit();
     std.heap.page_allocator.free(last_assets_update);
     last_assets_update = &.{};
-    state.selected_asset_id = 0;
+    state.selected_asset_id = .{ 0, 0, 0, 0 };
     next_asset_id = ASSET_ID_MIN;
     web_gpu_programs = undefined;
     on_asset_update_cb = undefined;

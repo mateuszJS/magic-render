@@ -223,7 +223,7 @@ pub fn getPickVertexData(buffer: *[PICK_TRIANGLE_INSTANCES]triangles.PickInstanc
             p2,
             thickness + 10.0 * shared.render_scale,
             thickness / 2.0,
-            t_line.id,
+            .{ t_line.id, 0, 0, 0 },
         );
 
         i += 2;
