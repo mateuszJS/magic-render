@@ -518,7 +518,7 @@ pub fn onPointerMove(x: f32, y: f32) void {
 
                 const path = shape.paths.items[state.selected_asset_id[1] - 1];
                 const points = path.points.items;
-                const i = state.selected_asset_id[2] - 1;
+                const i = state.selected_asset_id[2] - 1; // point index
 
                 if (i % 3 == 0) { // it's control point
                     const diff = types.Point{
