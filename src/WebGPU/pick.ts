@@ -117,7 +117,7 @@ export default class PickManager {
       const [id1, id2, id3, id4] = new Uint32Array(
         this.pickBuffer.getMappedRange(0, BYTES_PER_PIXEL * NUM_PIXELS)
       )
-      console.log('picked ids:', id1, id2, id3, id4)
+      // console.log('picked ids:', id1, id2, id3, id4)
       Logic.onUpdatePick([id1, id2, id3, id4])
 
       let i = 0

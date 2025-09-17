@@ -117,6 +117,7 @@ const ActionType = enum {
     Move,
     None,
     Transform,
+    TextSelection,
 };
 
 const Tool = enum {
@@ -400,6 +401,8 @@ pub fn updateTextContent(new_content: []const u8) !void {
 
 pub fn onPointerDown(x: f32, y: f32) !void {
     if (state.tool == .Text) {
+        try updateSelectedAsset(state.hovered_asset_id);
+
         const text: texts.Text = if (getSelectedText()) |text| b: {
             break :b text.*;
         } else b: {
@@ -409,7 +412,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                 "",
                 null,
                 types.Point{ .x = x, .y = y },
-                200.0,
+                300.0,
                 72.0,
             );
             try updateSelectedAsset(.{ id, 0, 0, 0 });
@@ -418,17 +421,14 @@ pub fn onPointerDown(x: f32, y: f32) !void {
 
         enable_typing(text.content);
 
-        var caret_index = state.hovered_asset_id[1];
-        if (caret_index > 1) {
-            const char_details = text.text_vertex.items[caret_index - 1];
-
-            // calculate if the click happened more on left side of the char, in this case put caret before the char, not after
-            const left_side = @abs(x - char_details.bounds[0].x) < @abs(x - char_details.bounds[2].x);
-            if (left_side) {
-                caret_index -= 1;
-            }
+        if (text.getCaretIndex(state.hovered_asset_id, x)) |caret_index| {
+            // correct char id, to be more precise
+            state.selected_asset_id[1] = caret_index;
+            setCaretPosition(caret_index, caret_index);
             update_text_selection(caret_index, caret_index);
         }
+
+        state.action = .TextSelection;
     } else if (state.tool == Tool.DrawShape) {
         if (getSelectedShape() == null) {
             const props = shapes.SerializedProps{
@@ -508,6 +508,8 @@ pub fn onPointerUp() !void {
         state.selected_asset_id[1] = 0;
         state.selected_asset_id[2] = 0;
         state.selected_asset_id[3] = 0;
+    } else if (state.tool == Tool.Text) {
+        state.action = .None;
     }
 }
 
@@ -515,6 +517,21 @@ pub fn onPointerMove(x: f32, y: f32) void {
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
             shape.updatePointPreview(types.Point{ .x = x, .y = y });
+        }
+        return;
+    }
+
+    if (state.tool == Tool.Text and state.action == .TextSelection) {
+        if (getSelectedText()) |text| {
+            if (state.hovered_asset_id[0] == state.selected_asset_id[0]) {
+                if (text.getCaretIndex(state.hovered_asset_id, x)) |caret_index| {
+                    const start = @min(caret_index, state.selected_asset_id[1]);
+                    const end = @max(caret_index, state.selected_asset_id[1]);
+
+                    setCaretPosition(start, end);
+                    update_text_selection(start, end);
+                }
+            }
         }
         return;
     }
@@ -615,6 +632,7 @@ pub fn onPointerMove(x: f32, y: f32) void {
                 .text => {},
             }
         },
+        .TextSelection => {},
         .None => {},
     }
 }
@@ -944,26 +962,9 @@ pub fn updateCache() void {
     }
 }
 
-var last_start_update: u32 = 0;
-var last_end_update: u32 = 0;
-
 pub fn setCaretPosition(start: u32, end: u32) void {
-    if (start != end) { // selection
-        if (last_end_update != end) { // the end has changed, so move caret there
-            texts.caret_position = end;
-            texts.selection_end_position = start;
-        } else { // otherwise means start has changed, so move caret there
-            texts.caret_position = start;
-            texts.selection_end_position = end;
-        }
-    } else {
-        texts.caret_position = start;
-        texts.selection_end_position = end;
-    }
-    texts.last_caret_update = time_u32;
-
-    last_start_update = start;
-    last_end_update = end;
+    texts.caret_position = start;
+    texts.selection_end_position = end;
 }
 
 pub fn renderDraw() !void {

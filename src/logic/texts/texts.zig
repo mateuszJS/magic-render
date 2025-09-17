@@ -184,6 +184,23 @@ pub const Text = struct {
         }
     }
 
+    pub fn getCaretIndex(self: Text, id: [4]u32, x: f32) ?u32 {
+        var caret_index = id[1];
+        if (caret_index > 0) {
+            const char_details = self.text_vertex.items[caret_index - 1];
+
+            // calculate if the click happened more on left side of the char, in this case put caret before the char, not after
+            const left_side = @abs(x - char_details.bounds[0].x) < @abs(x - char_details.bounds[2].x);
+            if (left_side) {
+                caret_index -= 1;
+            }
+
+            return caret_index;
+        }
+
+        return null;
+    }
+
     pub fn serialize(self: Text) Serialized {
         return Serialized{
             .id = self.id,
