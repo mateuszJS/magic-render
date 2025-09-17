@@ -232,14 +232,14 @@ pub fn addShape(
     return id;
 }
 
-pub fn addText(
+fn addText(
     id_or_zero: u32,
     content: []const u8,
     bounds: ?[4]types.PointUV,
     start: types.Point,
     max_width: f32,
     font_size: f32,
-) !u32 {
+) !texts.Text {
     const id = if (id_or_zero == 0) generateId() else id_or_zero;
     const text = try texts.Text.new(
         id,
@@ -251,7 +251,7 @@ pub fn addText(
     );
     try state.assets.put(id, Asset{ .text = text });
     try checkAssetsUpdate(true);
-    return id;
+    return text;
 }
 
 pub fn removeAsset() !void {
@@ -400,11 +400,11 @@ pub fn updateTextContent(new_content: []const u8) !void {
 
 pub fn onPointerDown(x: f32, y: f32) !void {
     if (state.tool == .Text) {
-        const text_content = if (getSelectedText()) |text| b: {
-            break :b text.content;
+        const text: texts.Text = if (getSelectedText()) |text| b: {
+            break :b text.*;
         } else b: {
             const id = generateId();
-            _ = try addText(
+            const new_text = try addText(
                 id,
                 "",
                 null,
@@ -413,14 +413,22 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                 72.0,
             );
             try updateSelectedAsset(.{ id, 0, 0, 0 });
-            break :b "";
+            break :b new_text;
         };
 
-        enable_typing(text_content);
-        update_text_selection(
-            state.hovered_asset_id[1],
-            state.hovered_asset_id[1],
-        );
+        enable_typing(text.content);
+
+        var caret_index = state.hovered_asset_id[1];
+        if (caret_index > 1) {
+            const char_details = text.text_vertex.items[caret_index - 1];
+
+            // calculate if the click happened more on left side of the char, in this case put caret before the char, not after
+            const left_side = @abs(x - char_details.bounds[0].x) < @abs(x - char_details.bounds[2].x);
+            if (left_side) {
+                caret_index -= 1;
+            }
+            update_text_selection(caret_index, caret_index);
+        }
     } else if (state.tool == Tool.DrawShape) {
         if (getSelectedShape() == null) {
             const props = shapes.SerializedProps{

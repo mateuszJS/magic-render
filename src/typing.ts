@@ -48,30 +48,35 @@ export function updateSelection(start: number, end: number): void {
 }
 
 export function enable(text: string): void {
-  const newEl = document.createElement('textarea')
-  newEl.style.position = 'fixed'
-  // newEl.style.left = '-9999px'
-  // newEl.style.opacity = '0'
-  newEl.style.width = '9999px'
-  newEl.style.whiteSpace = 'pre-line'
-  newEl.value = text
-  document.body.appendChild(newEl)
+  if (!textarea) {
+    const newEl = document.createElement('textarea')
+    newEl.style.position = 'fixed'
+    // newEl.style.left = '-9999px'
+    // newEl.style.opacity = '0'
+    newEl.style.width = '9999px'
+    newEl.style.whiteSpace = 'pre-line'
+    document.body.appendChild(newEl)
 
-  newEl.addEventListener('input', () => {
-    const cleanedText = cleanText(newEl.value)
-    // in Logic we are goign to reapply all soft breaks in correct places
-    Logic.updateTextContent(cleanedText)
-  })
+    newEl.addEventListener('input', () => {
+      const cleanedText = cleanText(newEl.value)
+      // in Logic we are going to re-apply all soft breaks in correct places
+      Logic.updateTextContent(cleanedText)
+    })
 
-  newEl.addEventListener('selectionchange', () => {
-    skipSoftBreakMarkers(newEl.value, newEl, 'selectionStart')
-    skipSoftBreakMarkers(newEl.value, newEl, 'selectionEnd')
+    newEl.addEventListener('selectionchange', () => {
+      skipSoftBreakMarkers(newEl.value, newEl, 'selectionStart')
+      skipSoftBreakMarkers(newEl.value, newEl, 'selectionEnd')
 
-    Logic.setCaretPosition(newEl.selectionStart, newEl.selectionEnd)
-  })
+      Logic.setCaretPosition(newEl.selectionStart, newEl.selectionEnd)
+    })
 
-  newEl.focus()
-  textarea = newEl
+    textarea = newEl
+  }
+
+  textarea.focus()
+  if (textarea.value !== text) {
+    updateContent(text)
+  }
 }
 
 export function disable(): void {

@@ -90,8 +90,7 @@ pub const Text = struct {
             .y = self.start.y - lh,
         };
 
-        for (self.content, 0..) |c, i| {
-            _ = i; // autofix
+        for (self.content) |c| {
             const char_width = if (c == ENTER_CHAR_CODE) b: {
                 next_pos = Point{
                     .x = self.start.x,
