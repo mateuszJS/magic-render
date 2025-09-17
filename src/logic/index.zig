@@ -1023,7 +1023,9 @@ pub fn renderDraw() !void {
                     }
 
                     if (is_typing_ui) {
-                        if (texts.caret_position == i) {
+                        const is_selection = selection_start != selection_end;
+
+                        if (!is_selection and texts.caret_position == i) {
                             try texts.Text.addCaretDrawVertex(
                                 &vertex_triangles_buffer,
                                 vertex.bounds[0],
@@ -1032,7 +1034,6 @@ pub fn renderDraw() !void {
                             );
                         }
 
-                        const is_selection = selection_start != selection_end;
                         if (is_selection and i >= selection_start and i < selection_end) {
                             try texts.Text.addTextSelectionDrawVertex(
                                 &vertex_triangles_buffer,
