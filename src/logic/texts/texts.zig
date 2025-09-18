@@ -20,6 +20,8 @@ pub var last_caret_update: u32 = 0;
 pub const CharVertex = struct {
     bounds: [6]PointUV,
     sdf_texture_id: ?u32,
+    origin: Point, // origin of the char (bottom left corner), useful for drawing selection/caret/picking
+    // total_width: f32, // kerning + char.x + char.width
 };
 
 pub const Text = struct {
@@ -59,7 +61,7 @@ pub const Text = struct {
         self.content = new_content;
     }
 
-    pub fn getDrawBounds(self: Text, x: f32, y: f32, width: f32, height: f32, origin: Point) [6]PointUV {
+    fn getDrawBounds(self: Text, x: f32, y: f32, width: f32, height: f32, origin: Point) [6]PointUV {
         const w = width * self.font_size;
         const h = height * self.font_size;
         const p = Point{
@@ -109,6 +111,7 @@ pub const Text = struct {
                 try self.text_vertex.append(CharVertex{
                     .bounds = self.getDrawBounds(0, 0, 0, 0, next_pos),
                     .sdf_texture_id = null,
+                    .origin = next_pos,
                 });
 
                 // add word joiner character before line break so that when user copies the text, they get the same line breaks
@@ -116,6 +119,7 @@ pub const Text = struct {
                 try self.text_vertex.append(CharVertex{
                     .bounds = self.getDrawBounds(0, 0, 0.1, 0, next_pos),
                     .sdf_texture_id = null,
+                    .origin = next_pos,
                 });
 
                 next_pos = Point{
@@ -124,16 +128,20 @@ pub const Text = struct {
                 };
                 space_before = 0.0; // we start with a new line, so no kerning needed
             }
-            next_pos.x += space_before;
+
             const cd = try fonts.get(0, c); // char details
 
-            const bounds = self.getDrawBounds(cd.x, cd.y, cd.width, cd.height, next_pos);
+            const bounds = self.getDrawBounds(cd.x, cd.y, cd.width, cd.height, .{
+                .x = next_pos.x + space_before,
+                .y = next_pos.y,
+            });
             try self.text_vertex.append(CharVertex{
                 .bounds = bounds,
                 .sdf_texture_id = cd.sdf_texture_id,
+                .origin = next_pos,
             });
 
-            next_pos.x += char_width;
+            next_pos.x += space_before + char_width;
             longest_line = @max(longest_line, next_pos.x - self.start.x);
             try updated_content.append(c);
         }
@@ -161,7 +169,7 @@ pub const Text = struct {
 
     pub fn addTextSelectionDrawVertex(
         triangles_buffer: *std.ArrayList(triangles.DrawInstance),
-        start: PointUV,
+        start: Point,
         width: f32,
         height: f32,
     ) !void {

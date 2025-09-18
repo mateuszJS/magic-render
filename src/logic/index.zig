@@ -1037,8 +1037,8 @@ pub fn renderDraw() !void {
                         if (is_selection and i >= selection_start and i < selection_end) {
                             try texts.Text.addTextSelectionDrawVertex(
                                 &vertex_triangles_buffer,
-                                vertex.bounds[0],
-                                vertex.bounds[2].x - vertex.bounds[0].x,
+                                vertex.origin,
+                                vertex.bounds[2].x - vertex.origin.x,
                                 text.font_size * text.line_height,
                             );
                         }
@@ -1154,28 +1154,27 @@ pub fn renderPick() !void {
                 }
             },
             .text => |text| {
+                var triangles_buffer = std.ArrayList(triangles.PickInstance).init(std.heap.page_allocator);
+
                 for (text.text_vertex.items, 0..) |vertex, index| {
-                    if (vertex.sdf_texture_id) |sdf_texture_id| {
-                        const uniform = shapes.PickUniform{
-                            .dist_start = std.math.inf(f32),
-                            .dist_end = -std.math.inf(f32),
-                        };
-
-                        var pick_vertex: [6]images.PickVertex = undefined;
-                        for (&pick_vertex, 0..) |*v, i| {
-                            v.* = images.PickVertex{
-                                .point = vertex.bounds[i],
-                                .id = .{ text.id, index + 1, 0, 0 },
-                            };
-                        }
-
-                        web_gpu_programs.pick_shape(
-                            &pick_vertex,
-                            uniform,
-                            sdf_texture_id,
+                    if (vertex.sdf_texture_id != null) {
+                        var buffer: [2]triangles.PickInstance = undefined;
+                        rects.getPickVertexData(
+                            &buffer,
+                            vertex.origin.x,
+                            vertex.origin.y,
+                            vertex.bounds[2].x - vertex.origin.x,
+                            text.line_height * text.font_size,
+                            0.0,
+                            .{ text.id, index + 1, 0, 0 },
                         );
+                        try triangles_buffer.appendSlice(&buffer);
                     }
                 }
+                if (triangles_buffer.items.len > 0) {
+                    web_gpu_programs.pick_triangle(triangles_buffer.items);
+                }
+                triangles_buffer.deinit();
             },
         }
     }
