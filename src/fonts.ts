@@ -17,7 +17,8 @@ export function getKerning(charA: number, charB: number): number {
   const cb = String.fromCharCode(charB)
   const leftGlyph = font.charToGlyph(ca)
   const rightGlyph = font.charToGlyph(cb)
-  return font.getKerningValue(leftGlyph, rightGlyph)
+  const font_units = font.getKerningValue(leftGlyph, rightGlyph)
+  return font_units / font.unitsPerEm
 }
 
 export function getCharData(font_id: number, char_code: number): Logic.SerializedCharDetails {

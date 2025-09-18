@@ -90,7 +90,7 @@ pub const Text = struct {
             .y = self.start.y - lh,
         };
 
-        for (self.content) |c| {
+        for (self.content, 0..) |c, i| {
             const char_width = if (c == ENTER_CHAR_CODE) b: {
                 next_pos = Point{
                     .x = self.start.x,
@@ -101,8 +101,9 @@ pub const Text = struct {
                 const char_details = try fonts.get(0, c);
                 break :b (char_details.x + char_details.width) * self.font_size;
             };
+            var space_before = try self.getBeforeKerning(i) * self.font_size;
 
-            const exceeded_max_width = (next_pos.x + char_width) - self.start.x > self.max_width;
+            const exceeded_max_width = (next_pos.x + space_before + char_width) - self.start.x > self.max_width;
             if (exceeded_max_width) {
                 try updated_content.appendSlice("\u{2060}");
                 try self.text_vertex.append(CharVertex{
@@ -121,9 +122,11 @@ pub const Text = struct {
                     .x = self.start.x,
                     .y = next_pos.y - lh,
                 };
+                space_before = 0.0; // we start with a new line, so no kerning needed
             }
-
+            next_pos.x += space_before;
             const cd = try fonts.get(0, c); // char details
+
             const bounds = self.getDrawBounds(cd.x, cd.y, cd.width, cd.height, next_pos);
             try self.text_vertex.append(CharVertex{
                 .bounds = bounds,
@@ -143,6 +146,17 @@ pub const Text = struct {
             .{ .x = self.start.x, .y = next_pos.y, .u = 0.0, .v = 0.0 },
         };
         self.content = try updated_content.toOwnedSlice();
+    }
+
+    // returns kerning between the current and the previous char
+    fn getBeforeKerning(self: Text, start_index: usize) !f32 {
+        const kerning =
+            if (start_index > 0)
+                try fonts.get_kerning(0, self.content[start_index - 1], self.content[start_index])
+            else
+                0.0;
+
+        return kerning;
     }
 
     pub fn addTextSelectionDrawVertex(

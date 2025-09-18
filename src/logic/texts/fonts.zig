@@ -50,9 +50,9 @@ pub fn get(font_id: u32, c: u8) !chars.Details {
     }
 }
 
-pub fn get_kerning(font_id: u32, c1: u8, c2: u8) !chars.Details {
-    const f = fonts.getPtr(font_id) orelse @panic("Font ID not found");
-    if (f.get(c1)) |details| {
+pub fn get_kerning(font_id: u32, c1: u8, c2: u8) !f32 {
+    const font = fonts.getPtr(font_id) orelse @panic("Font ID not found");
+    if (font.chars.getPtr(c1)) |details| {
         if (details.kerning.get(c2)) |k| {
             return k;
         } else {
