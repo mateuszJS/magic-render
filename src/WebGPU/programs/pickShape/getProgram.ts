@@ -19,7 +19,7 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
         {
           arrayStride: STRIDE,
           attributes: [
-            { shaderLocation: 0, offset: 0, format: 'float32x4' },
+            { shaderLocation: 0, offset: 0, format: 'float32x4' }, // position
             { shaderLocation: 1, offset: 16, format: 'uint32x4' }, // id
           ],
         },
