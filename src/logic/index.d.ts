@@ -221,8 +221,8 @@ declare module '*.zig' {
     disable: VoidFunction,
     updateContent: (text: string) => void,
     updateSelection: (start: number, end: number) => void,
-    getCharData: (font_id: number, char_code: number) => CharDetails,
-    getKerning: (font_id: number, char_code: number) => number
+    getCharData: (font_id: number, char_code: number) => SerializedCharDetails,
+    getKerning: (font_id: number, char_code_a: number, char_code_b: number) => number
   ) => void
   export const setCaretPosition: (selection_start: number, selection_end: number) => void
 

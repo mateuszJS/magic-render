@@ -37,7 +37,8 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
   let currentPoints: Point[] = []
   let currentPoint: Point = { x: 0, y: 0 }
   let pathStart: Point = { x: 0, y: 0 }
-  let lastHandle: Point | null = null
+  let lastCubicHandle: Point | null = null
+  let lastQuadControl: Point | null = null
 
   const finishCurrentPath = () => {
     if (currentPoints.length > 0) {
@@ -69,7 +70,8 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
           }
           currentPoint = newPoint
         }
-        lastHandle = null
+        lastCubicHandle = null
+        lastQuadControl = null
         break
       }
 
@@ -101,7 +103,8 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
           currentPoints.push(STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE, newPoint)
           currentPoint = newPoint
         }
-        lastHandle = null
+        lastCubicHandle = null
+        lastQuadControl = null
         break
       }
 
@@ -137,7 +140,8 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
               currentPoints.push(STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE, endPoint)
             }
             currentPoint = endPoint
-            lastHandle = null
+            lastCubicHandle = null
+            lastQuadControl = null
           } else {
             for (const curve of curves) {
               currentPoints.push(
@@ -147,8 +151,9 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
               )
               currentPoint = { x: curve.x, y: curve.y }
             }
-            // Arcs do not establish reflection for the next 'S/s' segment
-            lastHandle = null
+            // Arcs do not establish reflection
+            lastCubicHandle = null
+            lastQuadControl = null
           }
         }
         break
@@ -180,7 +185,9 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
 
           currentPoints.push(h1, h2, endPoint)
           currentPoint = endPoint
-          lastHandle = controlPoint // Store quadratic control point for T command
+          // Store quadratic control point for T command; clear cubic context
+          lastQuadControl = controlPoint
+          lastCubicHandle = null
         }
         break
       }
@@ -190,10 +197,10 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
         const isRelative = command === 't'
         for (let i = 0; i < args.length; i += 2) {
           // Reflect the previous quadratic control point
-          const controlPoint: Point = lastHandle
+          const controlPoint: Point = lastQuadControl
             ? {
-                x: 2 * currentPoint.x - lastHandle.x,
-                y: 2 * currentPoint.y - lastHandle.y,
+                x: 2 * currentPoint.x - lastQuadControl.x,
+                y: 2 * currentPoint.y - lastQuadControl.y,
               }
             : { ...currentPoint }
 
@@ -214,7 +221,8 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
 
           currentPoints.push(h1, h2, endPoint)
           currentPoint = endPoint
-          lastHandle = controlPoint
+          lastQuadControl = controlPoint
+          lastCubicHandle = null
         }
         break
       }
@@ -238,7 +246,8 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
 
           currentPoints.push(h1, h2, endPoint)
           currentPoint = endPoint
-          lastHandle = h2
+          lastCubicHandle = h2
+          lastQuadControl = null
         }
         break
       }
@@ -247,10 +256,10 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
         // Smooth Cubic Bezier
         const isRelative = command === 's'
         for (let i = 0; i < args.length; i += 4) {
-          const h1: Point = lastHandle
+          const h1: Point = lastCubicHandle
             ? {
-                x: 2 * currentPoint.x - lastHandle.x,
-                y: 2 * currentPoint.y - lastHandle.y,
+                x: 2 * currentPoint.x - lastCubicHandle.x,
+                y: 2 * currentPoint.y - lastCubicHandle.y,
               }
             : { ...currentPoint }
 
@@ -265,21 +274,24 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
 
           currentPoints.push(h1, h2, endPoint)
           currentPoint = endPoint
-          lastHandle = h2
+          lastCubicHandle = h2
+          lastQuadControl = null
         }
         break
       }
 
       case 'z': {
         currentPoint = pathStart
-        lastHandle = null
+        lastCubicHandle = null
+        lastQuadControl = null
         finishCurrentPath()
         break
       }
 
       default:
         console.warn(`SVG path command '${command}' not supported yet`)
-        lastHandle = null
+        lastCubicHandle = null
+        lastQuadControl = null
     }
   }
 
