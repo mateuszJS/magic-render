@@ -11,6 +11,7 @@ const shared = @import("../shared.zig");
 const lines = @import("../lines.zig");
 
 const ENTER_CHAR_CODE = 10;
+const SOFT_BREAK_MARKER = "\u{2060}";
 const BOUNDS_MIX_WIDTH = 0.3; // will be multiplied by font_size
 
 pub var caret_position: u32 = 0;
@@ -102,7 +103,7 @@ pub const Text = struct {
 
             const exceeded_max_width = (next_pos.x + space_before + char_width) - self.start.x > self.max_width;
             if (exceeded_max_width) {
-                try updated_content.appendSlice("\u{2060}");
+                try updated_content.appendSlice(SOFT_BREAK_MARKER);
                 try self.text_vertex.append(CharVertex{
                     .bounds = self.getDrawBounds(0, 0, 0, 0, next_pos),
                     .sdf_texture_id = null,
@@ -188,7 +189,8 @@ pub const Text = struct {
         height: f32,
         time_u32: u32,
     ) !void {
-        const blink = (time_u32 / 700) % 2 == 0;
+        const CARET_BLINK_INTERVAL_MS = 700;
+        const blink = (time_u32 / CARET_BLINK_INTERVAL_MS) % 2 == 0;
         const newly_updated = time_u32 - last_caret_update < 1000;
 
         if (blink or newly_updated) {
