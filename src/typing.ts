@@ -13,28 +13,53 @@ function cleanText(text: string): string {
   return text.replace(new RegExp(SOFT_BREAK_MARKER + '\n', 'g'), '')
 }
 
-/* ensures the selection is not behind a soft break OR enter which follows soft break */
+function isBetweenSoftBreakMarkers(text: string, position: number): boolean {
+  return text[position - 1] === SOFT_BREAK_MARKER && text[position] === '\n'
+}
+
+function isRightAfterSoftBreakMarkers(text: string, position: number): boolean {
+  return text[position - 2] === SOFT_BREAK_MARKER && text[position - 1] === '\n'
+}
+
+/* ensures the selection is not between a soft break and \n NOR after this pair of special characters  */
+const previous = {
+  selectionStart: 0,
+  selectionEnd: 0,
+}
 function skipSoftBreakMarkers(
   text: string,
   el: HTMLTextAreaElement,
   field: 'selectionStart' | 'selectionEnd'
 ): void {
-  if (text[el[field]] === '\n' && text[el[field] - 1] === SOFT_BREAK_MARKER) {
-    el[field] = el[field] + 2
+  if (isBetweenSoftBreakMarkers(text, el[field])) {
+    const movedByOne = previous[field] == el[field] - 1
+    el[field] = movedByOne ? el[field] + 2 : el[field] - 1
+    // + 2 -> to jump over SOFT_BREAK_MARKER and \n
+    // - 1 -> to come back to position before SOFT_BREAK_MARKER
   }
 
-  if (text[el[field] - 1] === '\n' && text[el[field] - 2] === SOFT_BREAK_MARKER) {
+  if (isRightAfterSoftBreakMarkers(text, el[field])) {
     el[field] = el[field] - 2
   }
+
+  previous[field] = el[field]
 }
 
 export function updateContent(text: string): void {
   if (!textarea) throw Error('Not typing')
 
-  const start = textarea.selectionStart
-  const end = textarea.selectionEnd
+  let start = textarea.selectionStart
+  let end = textarea.selectionEnd
 
   textarea.value = text
+
+  // Those two conditions ensures that selection won't endup between SOFT_BREAK_MARKER and \n
+  if (isBetweenSoftBreakMarkers(text, start)) {
+    start += 2
+  }
+  if (isBetweenSoftBreakMarkers(text, end)) {
+    end += 2
+  }
 
   textarea.selectionStart = start
   textarea.selectionEnd = end

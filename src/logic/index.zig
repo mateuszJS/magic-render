@@ -390,9 +390,9 @@ fn updateSelectedAsset(id: [4]u32) !void {
 pub fn updateTextContent(new_content: []const u8) !void {
     const option_text = getSelectedText();
     if (option_text) |text| {
-        text.updateContent(new_content);
-
+        text.content = new_content;
         try text.computeText();
+
         update_text_content(text.content);
     } else {
         @panic("updateTextContent called but no text asset selected");
@@ -964,6 +964,7 @@ pub fn updateCache() void {
 
 pub fn setCaretPosition(start: u32, end: u32) void {
     texts.caret_position = start;
+    texts.last_caret_update = time_u32;
     texts.selection_end_position = end;
 }
 

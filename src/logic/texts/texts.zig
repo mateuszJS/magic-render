@@ -57,10 +57,6 @@ pub const Text = struct {
         return text;
     }
 
-    pub fn updateContent(self: *Text, new_content: []const u8) void {
-        self.content = new_content;
-    }
-
     fn getDrawBounds(self: Text, x: f32, y: f32, width: f32, height: f32, origin: Point) [6]PointUV {
         const w = width * self.font_size;
         const h = height * self.font_size;
@@ -143,6 +139,7 @@ pub const Text = struct {
 
             next_pos.x += space_before + char_width;
             longest_line = @max(longest_line, next_pos.x - self.start.x);
+
             try updated_content.append(c);
         }
 
