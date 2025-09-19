@@ -5,6 +5,8 @@ import parsePathData from 'svgToShapes/parsePathData'
 import * as Textures from 'textures'
 import * as Logic from 'logic/index.zig'
 
+const DEFAULT_SPACE = 250 // expressed in font units
+
 let font: Font
 
 export async function loadFont() {
@@ -39,9 +41,9 @@ export function getCharData(font_id: number, char_code: number): Logic.Serialize
   })
 
   let width = x2 - x1
-  if (char_code === 32) {
-    // space
-    width = 0.3
+  if (width === 0) {
+    const glyph = font.charToGlyph(' ')
+    width = (glyph.advanceWidth ?? DEFAULT_SPACE) / font.unitsPerEm
   }
 
   const result = new Logic.SerializedCharDetails({
