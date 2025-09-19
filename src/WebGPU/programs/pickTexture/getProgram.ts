@@ -46,7 +46,7 @@ export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
 
   return function pickTexture(
     pass: GPURenderPassEncoder,
-    vertexData: DataView,
+    vertexData: DataView<ArrayBuffer>,
     texture: GPUTexture
   ) {
     const numVertices = vertexData.byteLength / STRIDE

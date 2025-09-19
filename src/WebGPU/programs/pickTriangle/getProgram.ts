@@ -43,7 +43,7 @@ export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
   // Cache bind group for this program (no texture needed)
   let cachedBindGroup: GPUBindGroup | null = null
 
-  return function pickTriangle(pass: GPURenderPassEncoder, vertexData: DataView) {
+  return function pickTriangle(pass: GPURenderPassEncoder, vertexData: DataView<ArrayBuffer>) {
     const numInstances = vertexData.byteLength / (4 * INSTANCE_STRIDE)
 
     const vertexBuffer = device.createBuffer({

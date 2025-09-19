@@ -57,7 +57,7 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
 
   return function drawTexture(
     pass: GPURenderPassEncoder,
-    vertexData: DataView,
+    vertexData: DataView<ArrayBuffer>,
     texture: GPUTexture
   ) {
     const numVertices = vertexData.byteLength / STRIDE_BYTES

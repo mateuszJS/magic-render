@@ -38,8 +38,8 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
 
   return function pickShape(
     pass: GPURenderPassEncoder,
-    vertexData: DataView,
-    uniformData: DataView,
+    vertexData: DataView<ArrayBuffer>,
+    uniformData: DataView<ArrayBuffer>,
     sdfTexture: GPUTexture
   ) {
     const numVertices = vertexData.byteLength / STRIDE

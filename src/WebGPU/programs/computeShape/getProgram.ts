@@ -17,7 +17,7 @@ export default function getComputeShape(device: GPUDevice) {
 
   return function computeShape(
     passEncoder: GPUComputePassEncoder,
-    curvesDataView: DataView,
+    curvesDataView: DataView<ArrayBuffer>,
     texture: GPUTexture
   ) {
     const curvesBuffer = device.createBuffer({

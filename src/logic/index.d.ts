@@ -111,7 +111,7 @@ type ArrayPointerDataView = {
   '*': PointerDataView
 }
 type PointerDataView = {
-  dataView: DataView
+  dataView: DataView<ArrayBuffer>
 }
 
 type ShapeDrawUniform =
