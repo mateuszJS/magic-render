@@ -17,7 +17,7 @@ import {
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
 import * as Logic from 'logic/index.zig'
-import { pointer } from 'WebGPU/pointer'
+import { pointer } from 'pointer'
 import * as Textures from 'textures'
 import { endCache, startCache } from 'WebGPU/textureCache'
 
@@ -67,6 +67,7 @@ export default function runCreator(
     compute_shape: (curves_data, width, height, textureId) => {
       const curvesDataView = curves_data['*'].dataView
       Textures.updateSDF(textureId, width, height)
+      // console.log(curves_data, width, height, textureId)
       computeShape(computePass, curvesDataView, Textures.getTexture(textureId))
     },
     draw_blur: (
@@ -141,6 +142,8 @@ export default function runCreator(
     now: DOMHighResTimeStamp,
     preview?: { canvas: HTMLCanvasElement; ctx: GPUCanvasContext; onCapture: VoidFunction }
   ) {
+    Logic.tick(now)
+
     encoder = device.createCommandEncoder({
       label: 'draw canvas main encoder',
     })

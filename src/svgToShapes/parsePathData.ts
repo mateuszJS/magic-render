@@ -37,7 +37,8 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
   let currentPoints: Point[] = []
   let currentPoint: Point = { x: 0, y: 0 }
   let pathStart: Point = { x: 0, y: 0 }
-  let lastHandle: Point | null = null
+  let lastCubicHandle: Point | null = null
+  let lastQuadControl: Point | null = null
 
   const finishCurrentPath = () => {
     if (currentPoints.length > 0) {
@@ -69,7 +70,8 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
           }
           currentPoint = newPoint
         }
-        lastHandle = null
+        lastCubicHandle = null
+        lastQuadControl = null
         break
       }
 
@@ -101,7 +103,8 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
           currentPoints.push(STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE, newPoint)
           currentPoint = newPoint
         }
-        lastHandle = null
+        lastCubicHandle = null
+        lastQuadControl = null
         break
       }
 
@@ -137,7 +140,8 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
               currentPoints.push(STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE, endPoint)
             }
             currentPoint = endPoint
-            lastHandle = null
+            lastCubicHandle = null
+            lastQuadControl = null
           } else {
             for (const curve of curves) {
               currentPoints.push(
@@ -147,9 +151,78 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
               )
               currentPoint = { x: curve.x, y: curve.y }
             }
-            // Arcs do not establish reflection for the next 'S/s' segment
-            lastHandle = null
+            // Arcs do not establish reflection
+            lastCubicHandle = null
+            lastQuadControl = null
           }
+        }
+        break
+      }
+
+      case 'q': {
+        // Quadratic Bezier
+        const isRelative = command === 'q'
+        for (let i = 0; i < args.length; i += 4) {
+          const controlPoint: Point = {
+            x: args[i] + (isRelative ? currentPoint.x : 0),
+            y: args[i + 1] + (isRelative ? currentPoint.y : 0),
+          }
+          const endPoint: Point = {
+            x: args[i + 2] + (isRelative ? currentPoint.x : 0),
+            y: args[i + 3] + (isRelative ? currentPoint.y : 0),
+          }
+
+          // Convert quadratic to cubic bezier
+          // Cubic control points are at 1/3 and 2/3 along the quadratic control lines
+          const h1: Point = {
+            x: currentPoint.x + (2 / 3) * (controlPoint.x - currentPoint.x),
+            y: currentPoint.y + (2 / 3) * (controlPoint.y - currentPoint.y),
+          }
+          const h2: Point = {
+            x: endPoint.x + (2 / 3) * (controlPoint.x - endPoint.x),
+            y: endPoint.y + (2 / 3) * (controlPoint.y - endPoint.y),
+          }
+
+          currentPoints.push(h1, h2, endPoint)
+          currentPoint = endPoint
+          // Store quadratic control point for T command; clear cubic context
+          lastQuadControl = controlPoint
+          lastCubicHandle = null
+        }
+        break
+      }
+
+      case 't': {
+        // Smooth Quadratic Bezier
+        const isRelative = command === 't'
+        for (let i = 0; i < args.length; i += 2) {
+          // Reflect the previous quadratic control point
+          const controlPoint: Point = lastQuadControl
+            ? {
+                x: 2 * currentPoint.x - lastQuadControl.x,
+                y: 2 * currentPoint.y - lastQuadControl.y,
+              }
+            : { ...currentPoint }
+
+          const endPoint: Point = {
+            x: args[i] + (isRelative ? currentPoint.x : 0),
+            y: args[i + 1] + (isRelative ? currentPoint.y : 0),
+          }
+
+          // Convert quadratic to cubic bezier
+          const h1: Point = {
+            x: currentPoint.x + (2 / 3) * (controlPoint.x - currentPoint.x),
+            y: currentPoint.y + (2 / 3) * (controlPoint.y - currentPoint.y),
+          }
+          const h2: Point = {
+            x: endPoint.x + (2 / 3) * (controlPoint.x - endPoint.x),
+            y: endPoint.y + (2 / 3) * (controlPoint.y - endPoint.y),
+          }
+
+          currentPoints.push(h1, h2, endPoint)
+          currentPoint = endPoint
+          lastQuadControl = controlPoint
+          lastCubicHandle = null
         }
         break
       }
@@ -173,7 +246,8 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
 
           currentPoints.push(h1, h2, endPoint)
           currentPoint = endPoint
-          lastHandle = h2
+          lastCubicHandle = h2
+          lastQuadControl = null
         }
         break
       }
@@ -182,10 +256,10 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
         // Smooth Cubic Bezier
         const isRelative = command === 's'
         for (let i = 0; i < args.length; i += 4) {
-          const h1: Point = lastHandle
+          const h1: Point = lastCubicHandle
             ? {
-                x: 2 * currentPoint.x - lastHandle.x,
-                y: 2 * currentPoint.y - lastHandle.y,
+                x: 2 * currentPoint.x - lastCubicHandle.x,
+                y: 2 * currentPoint.y - lastCubicHandle.y,
               }
             : { ...currentPoint }
 
@@ -200,21 +274,24 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
 
           currentPoints.push(h1, h2, endPoint)
           currentPoint = endPoint
-          lastHandle = h2
+          lastCubicHandle = h2
+          lastQuadControl = null
         }
         break
       }
 
       case 'z': {
         currentPoint = pathStart
-        lastHandle = null
+        lastCubicHandle = null
+        lastQuadControl = null
         finishCurrentPath()
         break
       }
 
       default:
         console.warn(`SVG path command '${command}' not supported yet`)
-        lastHandle = null
+        lastCubicHandle = null
+        lastQuadControl = null
     }
   }
 

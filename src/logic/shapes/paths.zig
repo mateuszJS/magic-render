@@ -2,12 +2,10 @@ const Utils = @import("../utils.zig");
 const Point = @import("../types.zig").Point;
 const std = @import("std");
 const bounding_box = @import("bounding_box.zig");
-const triangles = @import("../triangle.zig");
-const squares = @import("../squares.zig");
+const triangles = @import("../triangles.zig");
 const lines = @import("../lines.zig");
 const shared = @import("../shared.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
-const PackedId = @import("packed_id.zig");
 const PathUtils = @import("path_utils.zig");
 
 pub const Path = struct {
@@ -79,7 +77,7 @@ pub const Path = struct {
         self: Path,
         matrix: Matrix3x3,
         allocator: std.mem.Allocator,
-        hover_id: ?PackedId.PointId,
+        hover_id: ?[4]u32,
         with_preview: bool,
     ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
@@ -130,7 +128,7 @@ pub const Path = struct {
 
             const point = matrix.get(relative_point);
             const is_control_point = i % 3 == 0;
-            const id = PackedId.encode(shape_id, path_index, i);
+            const id = [4]u32{ shape_id, path_index + 1, i + 1, 0 };
             const buffer = PathUtils.getVertexPickSkeletonPoint(is_control_point, point, id);
             try skeleton_buffer.appendSlice(&buffer);
         }

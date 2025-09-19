@@ -1,4 +1,4 @@
-import { camera } from './pointer'
+import { camera } from '../pointer'
 import Logic from 'logic/index.zig'
 
 export default async function generatePreview(

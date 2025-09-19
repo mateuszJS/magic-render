@@ -1,6 +1,6 @@
 struct Vertex {
   @location(0) position: vec4f,
-  @location(1) id: u32,
+  @location(1) id: vec4u,
 };
 
 struct Uniforms {
@@ -10,7 +10,7 @@ struct Uniforms {
 struct VertexOutput {
   @builtin(position) position: vec4f,
   @location(0) texCoord: vec2f,
-  @location(1) @interpolate(flat) id: u32
+  @location(1) @interpolate(flat) id: vec4u
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -28,7 +28,7 @@ struct VertexOutput {
 }
 
 
-@fragment fn fs(in: VertexOutput) -> @location(0) u32 {
+@fragment fn fs(in: VertexOutput) -> @location(0) vec4u {
   let alpha = textureSample(ourTexture, ourSampler, in.texCoord).a;
 
   if (alpha < 0.1) {

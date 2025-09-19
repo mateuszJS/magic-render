@@ -23,7 +23,7 @@ const baseConfig = {
     liveReload: true,
   },
   resolve: {
-    extensions: ['.ts', '.js', '.wgsl', '.jpg', '.png', '.zig'],
+    extensions: ['.ts', '.js', '.wgsl', '.jpg', '.png', '.zig', '.ttf'],
     modules: [path.resolve(__dirname, 'src'), 'node_modules'],
     /* useful with absolute imports, "src" dir now takes precedence over "node_modules" */
   },
@@ -50,6 +50,10 @@ const baseConfig = {
       {
         test: /\.svg$/,
         type: 'asset/source',
+      },
+      {
+        test: /\.ttf$/,
+        type: 'asset/resource',
       },
       {
         test: /\.zig$/,

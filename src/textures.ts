@@ -1,11 +1,12 @@
 import getLoadingTexture from 'loadingTexture'
 import { createTextureFromSource } from 'WebGPU/getTexture'
 import { parse, RootNode, ElementNode } from 'svg-parser'
-import { createShapes } from 'svgToShapes'
+import createShapes from 'svgToShapes/createShapes'
 import * as def from 'svgToShapes/definitions'
 import type { Defs } from 'svgToShapes/definitions'
 import * as Logic from './logic/index.zig'
 import RotateIcon from '../icons/rotate.svg'
+import collectShapesData from 'svgToShapes/collectShapesData'
 
 function getSvgSize(svgRoot: ElementNode, img?: HTMLImageElement) {
   const props = svgRoot.properties
@@ -13,8 +14,8 @@ function getSvgSize(svgRoot: ElementNode, img?: HTMLImageElement) {
 
   const widthAttr = typeof props?.width === 'number' ? (props?.width as number) : undefined
   const heightAttr = typeof props?.height === 'number' ? (props?.height as number) : undefined
-  const svgWidth = widthAttr || img?.naturalWidth || viewboxSize?.[0]
-  const svgHeight = heightAttr || img?.naturalHeight || viewboxSize?.[1]
+  const svgWidth = widthAttr || viewboxSize?.[0] || img?.naturalWidth
+  const svgHeight = heightAttr || viewboxSize?.[1] || img?.naturalHeight
   return [svgWidth, svgHeight]
 }
 
@@ -60,7 +61,8 @@ function addIcon(id: UiElementType, svg: string) {
   const defs: Defs = {}
   def.collect(svgRoot, defs)
   def.resolveAll(defs)
-  createShapes(svgRoot, defs, width, height, undefined, id)
+  const shapesData = collectShapesData(svgRoot, defs)
+  createShapes(shapesData, height, id)
 }
 
 export interface TextureSource {
@@ -99,7 +101,8 @@ export function add(
       def.collect(svgRoot, defs)
       def.resolveAll(defs)
       Logic.addShapeBegin()
-      createShapes(svgRoot, defs, svgWidth, svgHeight)
+      const shapesData = collectShapesData(svgRoot, defs)
+      createShapes(shapesData, svgHeight)
       Logic.addShapeFinish()
 
       // onLoad is not called on purpose, it's unnecessary for shapes

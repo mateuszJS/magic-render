@@ -4,7 +4,7 @@ const lines = @import("lines.zig");
 const PointUV = @import("types.zig").PointUV;
 const std = @import("std");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
-const Triangle = @import("triangle.zig");
+const triangles = @import("triangles.zig");
 const shared = @import("shared.zig");
 const consts = @import("consts.zig");
 const UI = @import("ui.zig");
@@ -162,7 +162,7 @@ fn getPointsOfLine(points: [4]PointUV, t_line: TransformLine) struct { Point, Po
 pub const RENDER_TRIANGLE_INSTANCES = UI_VERTICES_COUNT_BORDER * 2 * 2; // two triangle per line, each line has front and back color
 
 pub fn getDrawVertexData(
-    triangle_buffer: *[RENDER_TRIANGLE_INSTANCES]Triangle.DrawInstance,
+    triangle_buffer: *[RENDER_TRIANGLE_INSTANCES]triangles.DrawInstance,
     icon_vertex_data: *std.ArrayList(UI.DrawVertex),
     points: [4]PointUV,
     hovered_elem_id: u32,
@@ -211,7 +211,7 @@ pub fn getDrawVertexData(
 }
 
 pub const PICK_TRIANGLE_INSTANCES = UI_VERTICES_COUNT_BORDER * 2;
-pub fn getPickVertexData(buffer: *[PICK_TRIANGLE_INSTANCES]Triangle.PickInstance, points: [4]PointUV) void {
+pub fn getPickVertexData(buffer: *[PICK_TRIANGLE_INSTANCES]triangles.PickInstance, points: [4]PointUV) void {
     var i: usize = 0;
     for (resize_lines) |t_line| {
         const p1, const p2 = getPointsOfLine(points, t_line);
@@ -223,7 +223,7 @@ pub fn getPickVertexData(buffer: *[PICK_TRIANGLE_INSTANCES]Triangle.PickInstance
             p2,
             thickness + 10.0 * shared.render_scale,
             thickness / 2.0,
-            t_line.id,
+            .{ t_line.id, 0, 0, 0 },
         );
 
         i += 2;

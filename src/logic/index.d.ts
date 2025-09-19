@@ -18,6 +18,7 @@ interface BoundingBox {
 }
 
 type Color = [number, number, number, number]
+type Id = [number, number, number, number]
 
 type UiElementType = 0
 
@@ -65,6 +66,15 @@ type ShapeAssetOutput = {
   sdf_texture_id: number
   cache_texture_id: number | null
 }
+
+type TextAssetOutput = {
+  id: number
+  content: string
+  bounds: PointUV[]
+  max_width: number
+  font_size: number
+}
+
 type ImageAssetInput = {
   id: number
   points: PointUV[]
@@ -80,14 +90,28 @@ type ShapeAssetInput = {
   cache_texture_id: number | null
 }
 
-type ZigAssetOutput = { img: ImageAssetOutput } | { shape: ShapeAssetOutput }
-type ZigAssetInput = { img: ImageAssetInput } | { shape: ShapeAssetInput }
+type TextAssetInput = {
+  id: number
+  content: string
+  bounds: PointUV[] | null
+  max_width: number
+  font_size: number
+}
+
+type ZigAssetOutput =
+  | { img: ImageAssetOutput }
+  | { shape: ShapeAssetOutput }
+  | { text: TextAssetOutput }
+type ZigAssetInput =
+  | { img: ImageAssetInput }
+  | { shape: ShapeAssetInput }
+  | { text: TextAssetInput }
 
 type ArrayPointerDataView = {
   '*': PointerDataView
 }
 type PointerDataView = {
-  dataView: DataView
+  dataView: DataView<ArrayBuffer>
 }
 
 type ShapeDrawUniform =
@@ -117,13 +141,42 @@ declare module '*.zig' {
   export const removeAsset: () => void
   export const resetAssets: (assets: ZigAssetInput[], with_snapshot: boolean) => void
 
-  export const onUpdatePick: (id: number) => void
+  export const onUpdatePick: (id: Id) => void
   export const onPointerDown: (x: number, y: number) => void
   export const onPointerUp: () => void
   export const onPointerMove: (x: number, y: number) => void
   export const onPointerLeave: VoidFunction
   export const commitChanges: VoidFunction
   export const updateRenderScale: (render_scale: number) => void
+  export const updateTextContent: (text: string) => void
+
+  // Type definition for SerializedCharDetails as a constructible class
+  export interface SerializedCharDetails {
+    x: number
+    y: number
+    width: number
+    height: number
+    sdf_texture_id: number | null
+    setPaths(paths: Point[]): void // we have to call std.mem.Allocator.dupe() to allocate permament memory in zig
+  }
+
+  export const SerializedCharDetails: new ({
+    x,
+    y,
+    width,
+    height,
+    sdf_texture_id,
+  }: {
+    x: number
+    y: number
+    width: number
+    height: number
+    sdf_texture_id: number | null
+  }) => SerializedCharDetails
+
+  export const Point: new ({ x, y }: { x: number; y: number }) => Point
+
+  export const PtrI32: new (p: Point[][]) => Point[][]
 
   export const connectWebGpuPrograms: (programs: {
     draw_texture: (vertex_data: PointerDataView, texture_id: number) => void
@@ -156,14 +209,24 @@ declare module '*.zig' {
     ) => void
   }) => void
   export const connectOnAssetUpdateCallback: (cb: (data: ZigAssetOutput[]) => void) => void
-  export const connectOnAssetSelectionCallback: (cb: (data: number) => void) => void
+  export const connectOnAssetSelectionCallback: (cb: (data: Id) => void) => void
   export const connectCreateSdfTexture: (cb: () => number) => void
   export const connectCacheCallbacks: (
     create_cache_texture: () => number,
     start_cache: (texture_id: number, box: BoundingBox, width: number, height: number) => void,
     end_cache: VoidFunction
   ) => void
+  export const connectTyping: (
+    enable: (text: string) => void,
+    disable: VoidFunction,
+    updateContent: (text: string) => void,
+    updateSelection: (start: number, end: number) => void,
+    getCharData: (font_id: number, char_code: number) => SerializedCharDetails,
+    getKerning: (font_id: number, char_code_a: number, char_code_b: number) => number
+  ) => void
+  export const setCaretPosition: (selection_start: number, selection_end: number) => void
 
+  export const tick: (time: DOMHighResTimeStamp) => void
   export const calculateShapesSDF: VoidFunction
   export const renderDraw: VoidFunction
   export const renderPick: VoidFunction
@@ -176,4 +239,6 @@ declare module '*.zig' {
     sdf_texture_id: number
   ) => void
   export const generateUiElementsSdf: VoidFunction
+
+  // export const page_allocator:
 }

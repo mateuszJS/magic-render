@@ -1,6 +1,5 @@
 const Point = @import("../types.zig").Point;
 const std = @import("std");
-const Path = @import("paths.zig").Path;
 
 pub const GradientStop = extern struct {
     color: [4]f32,

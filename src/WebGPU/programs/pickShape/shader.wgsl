@@ -3,7 +3,7 @@ const EPSILON = 1e-10;
 
 struct Vertex {
   @location(0) position: vec4f,
-  @location(1) id: u32,
+  @location(1) id: vec4u,
 };
 
 struct Uniforms {
@@ -18,7 +18,7 @@ struct Uniforms {
 struct VertexOutput {
   @builtin(position) position: vec4f,
   @location(0) uv: vec2f,
-  @location(1) @interpolate(flat) id: u32
+  @location(1) @interpolate(flat) id: vec4u
 };
 
 @vertex fn vs(vert: Vertex) -> VertexOutput {
@@ -33,7 +33,7 @@ struct VertexOutput {
   return out;
 }
 
-@fragment fn fs(in: VertexOutput) -> @location(0) u32 {
+@fragment fn fs(in: VertexOutput) -> @location(0) vec4u {
   let dist = textureLoad(texture, vec2u(in.uv)).r;
 
   if (dist > u.dist_start || dist < u.dist_end) {

@@ -60,8 +60,8 @@ export default function getDrawShape(
   return function drawShape(
     passEncoder: GPURenderPassEncoder,
     sdfTexture: GPUTexture,
-    boundingBoxDataView: DataView,
-    uniformDataView: DataView
+    boundingBoxDataView: DataView<ArrayBuffer>,
+    uniformDataView: DataView<ArrayBuffer>
   ) {
     const boundBoxBuffer = device.createBuffer({
       label: 'drawShape vertex buffer',

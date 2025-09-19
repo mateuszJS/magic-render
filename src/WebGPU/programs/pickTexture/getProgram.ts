@@ -1,6 +1,6 @@
 import shaderCode from './shader.wgsl'
 
-const STRIDE = (4 /*position*/ + 1) /*id*/ * 4
+const STRIDE = (4 /*position*/ + 4) /*id*/ * 4
 
 export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
   const module = device.createShaderModule({
@@ -24,7 +24,7 @@ export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
           arrayStride: STRIDE,
           attributes: [
             { shaderLocation: 0, offset: 0, format: 'float32x4' }, // destination(xy) and source (zw) positions
-            { shaderLocation: 1, offset: 16, format: 'uint32' }, // id
+            { shaderLocation: 1, offset: 16, format: 'uint32x4' }, // id
           ],
         },
       ],
@@ -35,7 +35,7 @@ export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
       targets: [
         {
           // format: debugPresentationFormat,
-          format: 'r32uint',
+          format: 'rgba32uint',
         },
       ],
     },
@@ -46,7 +46,7 @@ export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
 
   return function pickTexture(
     pass: GPURenderPassEncoder,
-    vertexData: DataView,
+    vertexData: DataView<ArrayBuffer>,
     texture: GPUTexture
   ) {
     const numVertices = vertexData.byteLength / STRIDE

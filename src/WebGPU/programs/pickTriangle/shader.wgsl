@@ -5,7 +5,7 @@ struct Vertex {
   @location(0) p0: vec4f, //xy -> corner position, zw -> circle position
   @location(1) p1: vec4f,
   @location(2) p2: vec4f,
-  @location(3) id: u32,
+  @location(3) id: vec4u,
   @location(4) radius_list: vec3f,
 };
 
@@ -18,7 +18,7 @@ struct VertexOutput {
   @location(0) @interpolate(flat) p0: vec4f,
   @location(1) @interpolate(flat) p1: vec4f,
   @location(2) @interpolate(flat) p2: vec4f,
-  @location(3) @interpolate(flat) id: u32,
+  @location(3) @interpolate(flat) id: vec4u,
   @location(4) pixel: vec2f,
   @location(5) @interpolate(flat) radius_list: vec3f,
   @location(6) @interpolate(flat) threshold_list: vec3f,
@@ -61,7 +61,7 @@ fn threshold_pythagorean_leg(corner: vec4f, radius: f32) -> f32 {
   return out;
 }
 
-@fragment fn fs(in: VertexOutput) -> @location(0) u32 {
+@fragment fn fs(in: VertexOutput) -> @location(0) vec4u {
   let p0_circle_dist = distance(in.p0.xy, in.pixel) - in.threshold_list.x;
   let p1_circle_dist = distance(in.p1.xy, in.pixel) - in.threshold_list.y;
   let p2_circle_dist = distance(in.p2.xy, in.pixel) - in.threshold_list.z;

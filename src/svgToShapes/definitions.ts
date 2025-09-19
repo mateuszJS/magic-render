@@ -1,5 +1,6 @@
 import { Node } from 'svg-parser'
-import { getProps } from './utils'
+import { isElementNode } from './utils'
+import getProps from './getProps'
 
 export type DefStop = {
   offset: number
@@ -26,15 +27,6 @@ export type Def = {
   'stop-color'?: AttrValue
   'stop-opacity'?: AttrValue
   offset?: AttrValue
-  cx?: AttrValue
-  cy?: AttrValue
-  r?: AttrValue
-  rx?: AttrValue
-  ry?: AttrValue
-  x?: AttrValue
-  y?: AttrValue
-  width?: AttrValue
-  height?: AttrValue
   transform?: AttrValue
   fill?: AttrValue
   stroke?: AttrValue
@@ -42,6 +34,16 @@ export type Def = {
   opacity?: AttrValue
   'fill-opacity'?: AttrValue
   'stroke-width'?: AttrValue
+  d?: never
+  cx?: never
+  cy?: never
+  r?: never
+  rx?: never
+  ry?: never
+  x?: never
+  y?: never
+  width?: never
+  height?: never
 }
 
 export type Defs = Record<string, Def>
@@ -79,49 +81,47 @@ function resolveRef(defs: Defs, def: Def, seen = new Set<string>()): Def {
   return def
 }
 
-export function collect(node: Node, defs: Defs, insideDefs = false): void {
-  if (!('children' in node)) return
+export function collect(node: Node | string, defs: Defs, insideDefs = false): void {
+  if (!isElementNode(node)) return
 
-  node.children.forEach((child) => {
-    if (typeof child === 'string') return
-    if (child.type !== 'element') return
+  const props = getProps(node)
 
-    const props = getProps(child)
-
-    switch (child.tagName) {
-      case 'linearGradient': {
-        if (!props.id) return
-        defs[props.id] = {
-          type: 'linear-gradient',
-          ...props,
-        }
-        return
+  switch (node.tagName) {
+    case 'linearGradient': {
+      if (!props.id) return
+      defs[props.id] = {
+        type: 'linear-gradient',
+        ...props,
       }
-      case 'radialGradient': {
-        if (!props.id) return
-        defs[props.id] = {
-          type: 'radial-gradient',
-          ...props,
-        }
-        return
+      return
+    }
+    case 'radialGradient': {
+      if (!props.id) return
+      defs[props.id] = {
+        type: 'radial-gradient',
+        ...props,
       }
-      case 'path': {
-        if (insideDefs) {
-          if (!props.id) return
-          defs[props.id] = props
-        }
-        return
-      }
-      case 'filter': {
+      return
+    }
+    case 'path': {
+      if (insideDefs) {
         if (!props.id) return
         defs[props.id] = props
-        return
       }
-      case 'defs': {
-        insideDefs = true
-        break
-      }
+      return
     }
+    case 'filter': {
+      if (!props.id) return
+      defs[props.id] = props
+      return
+    }
+    case 'defs': {
+      insideDefs = true
+      break
+    }
+  }
+
+  node.children.forEach((child) => {
     collect(child, defs, insideDefs)
   })
 }

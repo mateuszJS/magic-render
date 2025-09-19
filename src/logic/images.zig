@@ -7,7 +7,10 @@ const SHADER_TRIANGLE_INDICES = [_]usize{
     2, 3, 0,
 };
 
-pub const PickVertex = extern struct { point: PointUV, id: u32 };
+pub const PickVertex = extern struct {
+    point: PointUV,
+    id: [4]u32,
+};
 
 pub const Image = struct {
     id: u32,
@@ -33,10 +36,7 @@ pub const Image = struct {
 
     pub fn getPickVertexData(self: Image, buffer: *[6]PickVertex) void {
         for (SHADER_TRIANGLE_INDICES, 0..) |index, i| {
-            buffer[i] = .{
-                .point = self.points[index],
-                .id = self.id,
-            };
+            buffer[i] = .{ .point = self.points[index], .id = .{ self.id, 0, 0, 0 } };
         }
     }
 

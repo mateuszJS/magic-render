@@ -60,7 +60,7 @@ export default function getProgram(device: GPUDevice, presentationFormat: GPUTex
     entries: [{ binding: 0, resource: { buffer: canvasMatrix.buffer } }],
   })
 
-  return function drawTriangle(pass: GPURenderPassEncoder, vertexData: DataView) {
+  return function drawTriangle(pass: GPURenderPassEncoder, vertexData: DataView<ArrayBuffer>) {
     const numInstances = vertexData.byteLength / (4 * INSTANCE_STRIDE)
 
     const vertexBuffer = device.createBuffer({

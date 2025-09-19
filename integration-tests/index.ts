@@ -1,5 +1,5 @@
 import initCreator, { SerializedOutputAsset } from '../src/index'
-import { camera } from '../src/WebGPU/pointer'
+import { camera } from '../src/pointer'
 
 export interface AssetBasics {
   id: number
