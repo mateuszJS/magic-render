@@ -24,12 +24,10 @@ const CREATE_HANDLE_THRESHOLD = 10.0;
 // are called only when shape is selected, so only one active shape/path uses them
 var active_path_index: ?usize = null;
 var is_handle_preview: bool = false;
-// pub var selected_point_id: ?ShapesPackedId.PointId = null;
 
 pub fn resetState() void {
     active_path_index = null;
     is_handle_preview = false;
-    // selected_point_id = null;
 }
 
 pub const Preview = struct {

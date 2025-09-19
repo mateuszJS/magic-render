@@ -12,14 +12,6 @@ pub const Details = struct {
     kerning: std.AutoArrayHashMap(u8, f32), // kerning between current char and next one
 };
 
-// const DEFAULT_DETAILS = Details{
-//     .sdf_texture_id = 0,
-//     .width = 0,
-//     .height = 0,
-//     .paths = &.{},
-//     .is_outdated = false,
-// };
-
 pub const Chars = struct {
     chars: std.AutoArrayHashMap(u8, Details),
 

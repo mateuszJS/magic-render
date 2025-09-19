@@ -21,7 +21,6 @@ pub const CharVertex = struct {
     bounds: [6]PointUV,
     sdf_texture_id: ?u32,
     origin: Point, // origin of the char (bottom left corner), useful for drawing selection/caret/picking
-    // total_width: f32, // kerning + char.x + char.width
 };
 
 pub const Text = struct {
