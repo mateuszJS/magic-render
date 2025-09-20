@@ -51,7 +51,7 @@ pub const Text = struct {
             .text_vertex = std.ArrayList(CharVertex).init(std.heap.page_allocator),
         };
 
-        _ = try text.computeText(content, 0, 0);
+        _ = try text.computeText(0, 0);
 
         return text;
     }
@@ -75,7 +75,6 @@ pub const Text = struct {
 
     pub fn computeText(
         self: *Text,
-        content: []const u8,
         selection_start: usize,
         selection_end: usize,
     ) !ComputeTextResult {
@@ -94,7 +93,7 @@ pub const Text = struct {
         var new_selection_end: usize = 0;
         // start of the very first char(bottom left corner of the char)
 
-        var iter = (try std.unicode.Utf8View.init(content)).iterator();
+        var iter = (try std.unicode.Utf8View.init(self.content)).iterator();
         var i: isize = -1; // we increase i by 1 on the start so it starts with 0 actually
         var option_prev_cp: ?u21 = null;
 

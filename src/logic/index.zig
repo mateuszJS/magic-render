@@ -400,7 +400,7 @@ pub fn updateTextContent(
     const option_text = getSelectedText();
     if (option_text) |text| {
         text.content = content;
-        return try text.computeText(content, selection_start, selection_end);
+        return try text.computeText(selection_start, selection_end);
     } else {
         @panic("updateTextContent called but no text asset selected");
     }
@@ -643,11 +643,15 @@ pub fn onPointerMove(x: f32, y: f32) !void {
                     shape.should_update_sdf = true;
                 },
                 .text => |*text| {
-                    _ = text; // autofix
-                    // try text.computeText();
-                    // if (state.tool == .Text) {
-                    //     update_text_content(text.content);
-                    // }
+                    const result = try text.computeText(
+                        texts.caret_position,
+                        texts.selection_end_position,
+                    );
+
+                    if (state.tool == .Text) {
+                        update_text_content(result.content);
+                        update_text_selection(result.selection_start, result.selection_end);
+                    }
                 },
             }
         },
