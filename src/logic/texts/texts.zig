@@ -105,6 +105,11 @@ pub const Text = struct {
             option_prev_cp = cp;
             if (is_soft_break) continue;
 
+            // i >= selection -> to put caret on a first free position,
+            // because selection_start might be position of SOFT_BREAK_MARKER)
+            if (new_selection_start == 0 and i >= selection_start) new_selection_start = self.text_vertex.items.len;
+            if (new_selection_end == 0 and i >= selection_end) new_selection_end = self.text_vertex.items.len;
+
             const char_width = if (cp == ENTER_CHAR_CODE) b: {
                 next_pos = Point{ .x = 0, .y = next_pos.y - lh };
                 break :b 0.0;
@@ -155,9 +160,6 @@ pub const Text = struct {
 
             // Encode the Unicode codepoint as UTF-8 bytes
             try updated_content.append(cp);
-
-            if (i == selection_start) new_selection_start = self.text_vertex.items.len;
-            if (i == selection_end) new_selection_end = self.text_vertex.items.len;
         }
 
         // handle case when caret is behind the last character
@@ -259,7 +261,8 @@ pub const Text = struct {
 
 pub const Serialized = struct {
     id: u32,
-    content: []const u8,
+    content: ?[]const u8, // it's a null poitner exception if content is empty, that's wy we allow null
+    // to avoid throwing the exception
     bounds: [4]PointUV,
     font_size: f32,
 };

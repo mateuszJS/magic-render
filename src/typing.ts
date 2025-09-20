@@ -8,11 +8,6 @@ export function isEnabled(): boolean {
   return textarea !== null
 }
 
-// function cleanText(text: string): string {
-//   // Remove all instances of SOFT_BREAK_MARKER followed by \n
-//   return text.replace(new RegExp(SOFT_BREAK_MARKER + '\n', 'g'), '')
-// }
-
 function isBetweenSoftBreakMarkers(text: string, position: number): boolean {
   return text[position - 1] === SOFT_BREAK_MARKER && text[position] === '\n'
 }
@@ -26,6 +21,7 @@ const previous = {
   selectionStart: 0,
   selectionEnd: 0,
 }
+
 function skipSoftBreakMarkers(
   text: string,
   el: HTMLTextAreaElement,
@@ -34,6 +30,7 @@ function skipSoftBreakMarkers(
   if (isBetweenSoftBreakMarkers(text, el[field])) {
     const movedByOne = previous[field] == el[field] - 1
     el[field] = movedByOne ? el[field] + 2 : el[field] - 1
+
     // + 2 -> to jump over SOFT_BREAK_MARKER and \n
     // - 1 -> to come back to position before SOFT_BREAK_MARKER
   }
@@ -72,14 +69,16 @@ export function updateSelection(start: number, end: number): void {
   textarea.selectionEnd = end
 }
 
-function onInput(this: HTMLTextAreaElement, e: Event) {
-  console.log('before', this.value, this.selectionStart, this.selectionEnd)
+function onInput(this: HTMLTextAreaElement) {
   const result = Logic.updateTextContent(this.value, this.selectionStart, this.selectionEnd)
   this.value = result.content
-  this.selectionStart = result.selection_start
-  this.selectionEnd = result.selection_end
-  console.log('after', this.value, this.selectionStart, this.selectionEnd)
-  // console.log('onInput', result.content, result.selection_start, result.selection_end)
+  updateSelection(result.selection_start, result.selection_end)
+}
+
+function onSelect(this: HTMLTextAreaElement) {
+  skipSoftBreakMarkers(this.value, this, 'selectionStart')
+  skipSoftBreakMarkers(this.value, this, 'selectionEnd')
+  Logic.setCaretPosition(this.selectionStart, this.selectionEnd)
 }
 
 export function enable(text: string): void {
@@ -93,26 +92,18 @@ export function enable(text: string): void {
     document.body.appendChild(newEl)
 
     newEl.addEventListener('input', onInput)
-
-    newEl.addEventListener('selectionchange', () => {
-      skipSoftBreakMarkers(newEl.value, newEl, 'selectionStart')
-      skipSoftBreakMarkers(newEl.value, newEl, 'selectionEnd')
-
-      Logic.setCaretPosition(newEl.selectionStart, newEl.selectionEnd)
-    })
+    newEl.addEventListener('selectionchange', onSelect)
 
     textarea = newEl
   }
 
   textarea.focus()
-  if (textarea.value !== text) {
-    updateContent(text)
-  }
+  updateContent(text)
 }
 
 export function disable(): void {
-  if (!textarea) throw Error('Not typing')
-
-  textarea.blur()
-  document.body.removeChild(textarea)
+  if (textarea) {
+    textarea.blur()
+    document.body.removeChild(textarea)
+  }
 }

@@ -161,8 +161,8 @@ export default async function initCreator(
     )
   }, 1000 * 5)
 
-  let lastAssetsSnapshot: ZigAssetOutput[] = []
-  Logic.connectOnAssetUpdateCallback((serializedData: ZigAssetOutput[]) => {
+  let lastAssetsSnapshot: ZigAsset[] = []
+  Logic.connectOnAssetUpdateCallback((serializedData: ZigAsset[]) => {
     lastAssetsSnapshot = [...serializedData]
     newAssetsSnapshot()
   })
@@ -186,6 +186,9 @@ export default async function initCreator(
         }
       } else if ('shape' in asset && asset.shape) {
         const shape = asset.shape
+        if (!shape.bounds) {
+          throw Error('Shape bounds are missing in asset with id: ' + shape.id)
+        }
         return {
           id: shape.id,
           paths: [...shape.paths].map((path) =>
@@ -222,7 +225,7 @@ export default async function initCreator(
       } else if ('text' in asset && asset.text) {
         return {
           id: asset.text.id,
-          content: asset.text.content,
+          content: asset.text.content ?? '',
           bounds: [...asset.text.bounds].map((point) => ({
             x: point.x,
             y: point.y,
@@ -273,7 +276,7 @@ export default async function initCreator(
 
   const resetAssets: CreatorAPI['resetAssets'] = async (assets, withSnapshot = false) => {
     const results = await Promise.allSettled(
-      assets.map<Promise<ZigAssetInput>>(
+      assets.map<Promise<ZigAsset>>(
         (asset) =>
           new Promise((resolve, reject) => {
             if ('paths' in asset) {

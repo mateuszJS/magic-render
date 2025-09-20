@@ -399,10 +399,8 @@ pub fn updateTextContent(
 ) !texts.ComputeTextResult {
     const option_text = getSelectedText();
     if (option_text) |text| {
-        // text.content = new_content;
+        text.content = content;
         return try text.computeText(content, selection_start, selection_end);
-
-        // update_text_content(text.content);
     } else {
         @panic("updateTextContent called but no text asset selected");
     }
@@ -1268,7 +1266,7 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
             .text => |text| {
                 _ = try addText(
                     text.id,
-                    text.content,
+                    text.content orelse "",
                     text.bounds,
                     text.font_size,
                 );
