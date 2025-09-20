@@ -31,8 +31,7 @@ export type SerializedInputShape = {
 export type SerializedInputText = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   content: string
-  bounds?: PointUV[]
-  max_width: number
+  bounds: PointUV[]
   font_size: number
 }
 
@@ -58,7 +57,6 @@ export type SerializedOutputText = {
   id: number // not needed while loading project but useful for undo/redo to maintain selection
   content: string
   bounds: PointUV[]
-  max_width: number
   font_size: number
 }
 
@@ -231,7 +229,6 @@ export default async function initCreator(
             u: point.u,
             v: point.v,
           })),
-          max_width: asset.text.max_width,
           font_size: asset.text.font_size,
         }
       } else {
@@ -296,8 +293,7 @@ export default async function initCreator(
                 text: {
                   id: asset.id || NO_ASSET_ID,
                   content: asset.content,
-                  bounds: asset.bounds || null,
-                  max_width: asset.max_width,
+                  bounds: asset.bounds,
                   font_size: asset.font_size,
                 },
               })

@@ -9,23 +9,23 @@ pub const Details = struct {
     height: f32,
     points: []const Point,
     outdated_sdf: bool,
-    kerning: std.AutoArrayHashMap(u8, f32), // kerning between current char and next one
+    kerning: std.AutoArrayHashMap(u21, f32), // kerning between current char and next one
 };
 
 pub const Chars = struct {
-    chars: std.AutoArrayHashMap(u8, Details),
+    chars: std.AutoArrayHashMap(u21, Details),
 
     pub fn new() Chars {
         return Chars{
-            .chars = std.AutoArrayHashMap(u8, Details).init(std.heap.page_allocator),
+            .chars = std.AutoArrayHashMap(u21, Details).init(std.heap.page_allocator),
         };
     }
 
-    pub fn get(self: Chars, c: u8) ?Details {
-        return self.chars.get(c);
+    pub fn get(self: *Chars, c: u21) ?*Details {
+        return self.chars.getPtr(c);
     }
 
-    pub fn set(self: *Chars, c: u8, details: Details) !void {
+    pub fn set(self: *Chars, c: u21, details: Details) !void {
         return try self.chars.put(c, details);
     }
 };

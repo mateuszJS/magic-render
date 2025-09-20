@@ -19,8 +19,8 @@ pub const SerializedCharDetails = struct {
     }
 };
 
-pub var getCharData: *const fn (u32, u8) SerializedCharDetails = undefined;
-pub var getKerning: *const fn (u8, u8) f32 = undefined;
+pub var getCharData: *const fn (u32, u21) SerializedCharDetails = undefined;
+pub var getKerning: *const fn (u21, u21) f32 = undefined;
 
 pub var fonts: std.AutoArrayHashMap(u32, chars.Chars) = undefined;
 
@@ -28,7 +28,7 @@ pub fn init() void {
     fonts = std.AutoArrayHashMap(u32, chars.Chars).init(std.heap.page_allocator);
 }
 
-pub fn get(font_id: u32, c: u8) !chars.Details {
+pub fn get(font_id: u32, c: u21) !*chars.Details {
     const f = fonts.getPtr(font_id) orelse @panic("Font ID not found");
     const details = f.get(c);
     if (details) |d| {
@@ -43,25 +43,22 @@ pub fn get(font_id: u32, c: u8) !chars.Details {
             .height = char.height,
             .points = char.points,
             .outdated_sdf = true,
-            .kerning = std.AutoArrayHashMap(u8, f32).init(std.heap.page_allocator),
+            .kerning = std.AutoArrayHashMap(u21, f32).init(std.heap.page_allocator),
         };
         try f.set(c, d);
-        return d;
+        // Now get the pointer to the stored struct
+        return f.get(c) orelse @panic("Failed to retrieve stored character details");
     }
 }
 
-pub fn get_kerning(font_id: u32, c1: u8, c2: u8) !f32 {
-    const font = fonts.getPtr(font_id) orelse @panic("Font ID not found");
-    if (font.chars.getPtr(c1)) |details| {
-        if (details.kerning.get(c2)) |k| {
-            return k;
-        } else {
-            const k = getKerning(c1, c2);
-            try details.kerning.put(c2, k);
-            return k;
-        }
+pub fn get_kerning(font_id: u32, c1: u21, c2: u21) !f32 {
+    var details = try get(font_id, c1);
+    if (details.kerning.get(c2)) |k| {
+        return k;
     } else {
-        @panic("Character not found in font while requesting kerning");
+        const k = getKerning(c1, c2);
+        try details.kerning.put(c2, k);
+        return k;
     }
 }
 

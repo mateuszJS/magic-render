@@ -8,10 +8,10 @@ export function isEnabled(): boolean {
   return textarea !== null
 }
 
-function cleanText(text: string): string {
-  // Remove all instances of SOFT_BREAK_MARKER followed by \n
-  return text.replace(new RegExp(SOFT_BREAK_MARKER + '\n', 'g'), '')
-}
+// function cleanText(text: string): string {
+//   // Remove all instances of SOFT_BREAK_MARKER followed by \n
+//   return text.replace(new RegExp(SOFT_BREAK_MARKER + '\n', 'g'), '')
+// }
 
 function isBetweenSoftBreakMarkers(text: string, position: number): boolean {
   return text[position - 1] === SOFT_BREAK_MARKER && text[position] === '\n'
@@ -72,6 +72,16 @@ export function updateSelection(start: number, end: number): void {
   textarea.selectionEnd = end
 }
 
+function onInput(this: HTMLTextAreaElement, e: Event) {
+  console.log('before', this.value, this.selectionStart, this.selectionEnd)
+  const result = Logic.updateTextContent(this.value, this.selectionStart, this.selectionEnd)
+  this.value = result.content
+  this.selectionStart = result.selection_start
+  this.selectionEnd = result.selection_end
+  console.log('after', this.value, this.selectionStart, this.selectionEnd)
+  // console.log('onInput', result.content, result.selection_start, result.selection_end)
+}
+
 export function enable(text: string): void {
   if (!textarea) {
     const newEl = document.createElement('textarea')
@@ -82,11 +92,7 @@ export function enable(text: string): void {
     newEl.style.whiteSpace = 'pre-line'
     document.body.appendChild(newEl)
 
-    newEl.addEventListener('input', () => {
-      const cleanedText = cleanText(newEl.value)
-      // in Logic we are going to re-apply all soft breaks in correct places
-      Logic.updateTextContent(cleanedText)
-    })
+    newEl.addEventListener('input', onInput)
 
     newEl.addEventListener('selectionchange', () => {
       skipSoftBreakMarkers(newEl.value, newEl, 'selectionStart')

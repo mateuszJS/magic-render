@@ -71,7 +71,6 @@ type TextAssetOutput = {
   id: number
   content: string
   bounds: PointUV[]
-  max_width: number
   font_size: number
 }
 
@@ -93,8 +92,7 @@ type ShapeAssetInput = {
 type TextAssetInput = {
   id: number
   content: string
-  bounds: PointUV[] | null
-  max_width: number
+  bounds: PointUV[]
   font_size: number
 }
 
@@ -148,7 +146,15 @@ declare module '*.zig' {
   export const onPointerLeave: VoidFunction
   export const commitChanges: VoidFunction
   export const updateRenderScale: (render_scale: number) => void
-  export const updateTextContent: (text: string) => void
+  export const updateTextContent: (
+    text: string,
+    selection_start: number,
+    selection_end: number
+  ) => {
+    content: string
+    selection_start: number
+    selection_end: number
+  }
 
   // Type definition for SerializedCharDetails as a constructible class
   export interface SerializedCharDetails {

@@ -74,8 +74,8 @@ pub fn connectTyping(
     disable: *const fn () void,
     update_content: *const TextCallback,
     update_selection: *const fn (u32, u32) void,
-    get_char_data: *const fn (u32, u8) fonts.SerializedCharDetails,
-    get_kerning: *const fn (u8, u8) f32,
+    get_char_data: *const fn (u32, u21) fonts.SerializedCharDetails,
+    get_kerning: *const fn (u21, u21) f32,
 ) void {
     enable_typing = enable;
     disable_typing = disable;
@@ -90,6 +90,15 @@ pub const @"meta(zigar)" = struct {
         _ = arg_index;
         return switch (FT) {
             TextCallback => true,
+            else => false,
+        };
+    }
+
+    pub fn isFieldString(comptime T: type, comptime field_name: []const u8) bool {
+        _ = field_name;
+        return switch (T) {
+            texts.Serialized => true,
+            texts.ComputeTextResult => true,
             else => false,
         };
     }
@@ -236,9 +245,7 @@ pub fn addShape(
 fn addText(
     id_or_zero: u32,
     content: []const u8,
-    bounds: ?[4]types.PointUV,
-    start: types.Point,
-    max_width: f32,
+    bounds: [4]types.PointUV,
     font_size: f32,
 ) !texts.Text {
     const id = if (id_or_zero == 0) generateId() else id_or_zero;
@@ -246,8 +253,6 @@ fn addText(
         id,
         content,
         bounds,
-        start,
-        max_width,
         font_size,
     );
     try state.assets.put(id, Asset{ .text = text });
@@ -387,13 +392,17 @@ fn updateSelectedAsset(id: [4]u32) !void {
     on_asset_select_cb(id);
 }
 
-pub fn updateTextContent(new_content: []const u8) !void {
+pub fn updateTextContent(
+    content: []const u8,
+    selection_start: usize,
+    selection_end: usize,
+) !texts.ComputeTextResult {
     const option_text = getSelectedText();
     if (option_text) |text| {
-        text.content = new_content;
-        try text.computeText();
+        // text.content = new_content;
+        return try text.computeText(content, selection_start, selection_end);
 
-        update_text_content(text.content);
+        // update_text_content(text.content);
     } else {
         @panic("updateTextContent called but no text asset selected");
     }
@@ -407,12 +416,18 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             break :b text.*;
         } else b: {
             const id = generateId();
+            const max_width = 300.0;
+            const bounds = [4]types.PointUV{
+                .{ .x = x, .y = y, .u = 0.0, .v = 1.0 },
+                .{ .x = x + max_width, .y = y, .u = 1.0, .v = 1.0 },
+                .{ .x = x + max_width, .y = y - 1.0, .u = 1.0, .v = 0.0 },
+                .{ .x = x, .y = y - 1.0, .u = 0.0, .v = 0.0 },
+            };
+
             const new_text = try addText(
                 id,
                 "",
-                null,
-                types.Point{ .x = x, .y = y },
-                300.0,
+                bounds,
                 72.0,
             );
             try updateSelectedAsset(.{ id, 0, 0, 0 });
@@ -421,7 +436,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
 
         enable_typing(text.content);
 
-        if (text.getCaretIndex(state.hovered_asset_id, x)) |caret_index| {
+        if (text.getCaretIndex(state.hovered_asset_id, x - text.bounds[0].x)) |caret_index| {
             // correct char id, to be more precise
             state.selected_asset_id[1] = caret_index;
             setCaretPosition(caret_index, caret_index);
@@ -513,7 +528,7 @@ pub fn onPointerUp() !void {
     }
 }
 
-pub fn onPointerMove(x: f32, y: f32) void {
+pub fn onPointerMove(x: f32, y: f32) !void {
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
             shape.updatePointPreview(types.Point{ .x = x, .y = y });
@@ -524,7 +539,7 @@ pub fn onPointerMove(x: f32, y: f32) void {
     if (state.tool == Tool.Text and state.action == .TextSelection) {
         if (getSelectedText()) |text| {
             if (state.hovered_asset_id[0] == state.selected_asset_id[0]) {
-                if (text.getCaretIndex(state.hovered_asset_id, x)) |caret_index| {
+                if (text.getCaretIndex(state.hovered_asset_id, x - text.bounds[0].x)) |caret_index| {
                     const start = @min(caret_index, state.selected_asset_id[1]);
                     const end = @max(caret_index, state.selected_asset_id[1]);
 
@@ -629,7 +644,13 @@ pub fn onPointerMove(x: f32, y: f32) void {
                 .shape => |*shape| {
                     shape.should_update_sdf = true;
                 },
-                .text => {},
+                .text => |*text| {
+                    _ = text; // autofix
+                    // try text.computeText();
+                    // if (state.tool == .Text) {
+                    //     update_text_content(text.content);
+                    // }
+                },
             }
         },
         .TextSelection => {},
@@ -1016,8 +1037,18 @@ pub fn renderDraw() !void {
                             },
                         };
 
+                        var absolute_vertex: [6]types.PointUV = undefined;
+                        for (vertex.relative_bounds, 0..) |point, j| {
+                            absolute_vertex[j] = types.PointUV{
+                                .x = text.bounds[0].x + point.x,
+                                .y = text.bounds[0].y + point.y,
+                                .u = point.u,
+                                .v = point.v,
+                            };
+                        }
+
                         web_gpu_programs.draw_shape(
-                            &vertex.bounds,
+                            &absolute_vertex,
                             uniform,
                             sdf_texture_id,
                         );
@@ -1027,19 +1058,27 @@ pub fn renderDraw() !void {
                         const is_selection = selection_start != selection_end;
 
                         if (!is_selection and texts.caret_position == i) {
+                            const position = types.Point{
+                                .x = text.bounds[0].x + vertex.relative_bounds[0].x,
+                                .y = text.bounds[0].y + vertex.relative_bounds[0].y,
+                            };
                             try texts.Text.addCaretDrawVertex(
                                 &vertex_triangles_buffer,
-                                vertex.bounds[0],
+                                position,
                                 text.font_size * text.line_height,
                                 time_u32,
                             );
                         }
 
                         if (is_selection and i >= selection_start and i < selection_end) {
+                            const position = types.Point{
+                                .x = text.bounds[0].x + vertex.origin.x,
+                                .y = text.bounds[0].y + vertex.origin.y,
+                            };
                             try texts.Text.addTextSelectionDrawVertex(
                                 &vertex_triangles_buffer,
-                                vertex.origin,
-                                vertex.bounds[2].x - vertex.origin.x,
+                                position,
+                                vertex.relative_bounds[2].x - vertex.origin.x,
                                 text.font_size * text.line_height,
                             );
                         }
@@ -1050,13 +1089,14 @@ pub fn renderDraw() !void {
                 if (texts.caret_position == text.text_vertex.items.len) {
                     const position =
                         if (text.text_vertex.getLastOrNull()) |last_vertex|
-                            last_vertex.bounds[4] // right bottom corner
+                            types.Point{
+                                .x = text.bounds[0].x + last_vertex.relative_bounds[4].x,
+                                .y = text.bounds[0].y + last_vertex.relative_bounds[4].y,
+                            } // right bottom corner
                         else
-                            types.PointUV{
-                                .x = text.start.x,
-                                .y = text.start.y - text.font_size * text.line_height,
-                                .u = 0,
-                                .v = 0,
+                            types.Point{
+                                .x = text.bounds[0].x,
+                                .y = text.bounds[0].y - text.font_size * text.line_height,
                             };
                     try texts.Text.addCaretDrawVertex(
                         &vertex_triangles_buffer,
@@ -1162,9 +1202,9 @@ pub fn renderPick() !void {
                         var buffer: [2]triangles.PickInstance = undefined;
                         rects.getPickVertexData(
                             &buffer,
-                            vertex.origin.x,
-                            vertex.origin.y,
-                            vertex.bounds[2].x - vertex.origin.x,
+                            text.bounds[0].x + vertex.origin.x,
+                            text.bounds[0].y + vertex.origin.y,
+                            vertex.relative_bounds[2].x - vertex.origin.x,
                             text.line_height * text.font_size,
                             0.0,
                             .{ text.id, index + 1, 0, 0 },
@@ -1230,8 +1270,6 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
                     text.id,
                     text.content,
                     text.bounds,
-                    text.start,
-                    text.max_width,
                     text.font_size,
                 );
             },
