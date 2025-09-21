@@ -536,14 +536,24 @@ pub fn onPointerMove(x: f32, y: f32) !void {
 
     if (state.tool == Tool.Text and state.action == .TextSelection) {
         if (getSelectedText()) |text| {
-            if (state.hovered_asset_id[0] == state.selected_asset_id[0]) {
+            const option_caret_index = if (state.hovered_asset_id[0] == state.selected_asset_id[0]) b: {
                 if (text.getCaretIndex(state.hovered_asset_id, x - text.bounds[0].x)) |caret_index| {
-                    const start = @min(caret_index, state.selected_asset_id[1]);
-                    const end = @max(caret_index, state.selected_asset_id[1]);
+                    break :b caret_index;
+                } else break :b null;
+            } else b: {
+                break :b if (y > text.bounds[0].y)
+                    0
+                else if (y < text.bounds[3].y)
+                    text.text_vertex.items.len
+                else
+                    null;
+            };
 
-                    setCaretPosition(start, end);
-                    update_text_selection(start, end);
-                }
+            if (option_caret_index) |caret_index| {
+                const start = @min(caret_index, state.selected_asset_id[1]);
+                const end = @max(caret_index, state.selected_asset_id[1]);
+                setCaretPosition(start, end);
+                update_text_selection(start, end);
             }
         }
         return;
