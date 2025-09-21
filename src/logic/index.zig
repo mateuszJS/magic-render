@@ -1038,6 +1038,7 @@ pub fn renderDraw() !void {
                 const selection_end = @max(texts.caret_position, texts.selection_end_position);
                 var vertex_triangles_buffer =
                     std.ArrayList(triangles.DrawInstance).init(allocator);
+                const matrix = Matrix3x3.getMatrixFromRectangleNoScale(text.bounds);
 
                 for (text.text_vertex.items, 0..) |vertex, i| {
                     if (vertex.sdf_texture_id) |sdf_texture_id| {
@@ -1051,9 +1052,10 @@ pub fn renderDraw() !void {
 
                         var absolute_vertex: [6]types.PointUV = undefined;
                         for (vertex.relative_bounds, 0..) |point, j| {
+                            const transformed_point = matrix.get(point);
                             absolute_vertex[j] = types.PointUV{
-                                .x = text.bounds[0].x + point.x,
-                                .y = text.bounds[0].y + point.y,
+                                .x = transformed_point.x,
+                                .y = transformed_point.y,
                                 .u = point.u,
                                 .v = point.v,
                             };

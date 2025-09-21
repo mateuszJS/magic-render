@@ -9,6 +9,7 @@ const triangles = @import("../triangles.zig");
 const rects = @import("../rects.zig");
 const shared = @import("../shared.zig");
 const lines = @import("../lines.zig");
+const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 
 const ENTER_CHAR_CODE: u21 = 0xa;
 const SOFT_BREAK_MARKER: u21 = 0x2060;
@@ -169,13 +170,20 @@ pub const Text = struct {
             new_selection_end = self.text_vertex.items.len;
 
         const text_width = @max(max_text_width, longest_line);
-        const start = self.bounds[0];
+        // const start = self.bounds[0];
+        const matrix = Matrix3x3.getMatrixFromRectangleNoScale(self.bounds);
         self.bounds = [_]PointUV{
-            .{ .x = start.x, .y = start.y, .u = 0.0, .v = 1.0 },
-            .{ .x = start.x + text_width, .y = start.y, .u = 1.0, .v = 1.0 },
-            .{ .x = start.x + text_width, .y = start.y + next_pos.y, .u = 1.0, .v = 0.0 },
-            .{ .x = start.x, .y = start.y + next_pos.y, .u = 0.0, .v = 0.0 },
+            .{ .x = 0, .y = 0, .u = 0.0, .v = 1.0 },
+            .{ .x = text_width, .y = 0, .u = 1.0, .v = 1.0 },
+            .{ .x = text_width, .y = next_pos.y, .u = 1.0, .v = 0.0 },
+            .{ .x = 0, .y = next_pos.y, .u = 0.0, .v = 0.0 },
         };
+
+        for (&self.bounds) |*b| {
+            const transformed_b = matrix.get(b);
+            b.x = transformed_b.x;
+            b.y = transformed_b.y;
+        }
 
         var serialized_updated_content = std.ArrayList(u8).init(std.heap.page_allocator);
         for (try updated_content.toOwnedSlice()) |cp| {
