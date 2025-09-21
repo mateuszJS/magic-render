@@ -226,27 +226,12 @@ pub const Matrix3x3 = struct {
         const top_edge = Point{ .x = p_tr.x - p_tl.x, .y = p_tr.y - p_tl.y };
         const rotation_angle = std.math.atan2(top_edge.y, top_edge.x);
 
-        // For a unit square, we want to create a simple transformation that:
-        // 1. Rotates the unit square by the rectangle's angle
-        // 2. Positions it so the top-left of the unit square aligns with the rectangle's top-left
-
-        // Calculate where the unit square's top-left (0,1) would be after rotation
-        const cos_a = std.math.cos(rotation_angle);
-        const sin_a = std.math.sin(rotation_angle);
-
-        // After rotation, the unit square's top-left (0,1) becomes:
-        const rotated_top_left_x = -sin_a; // 0*cos - 1*sin = -sin
-        const rotated_top_left_y = cos_a; // 0*sin + 1*cos = cos
-
-        // To align this with the target top-left, we need to translate by the difference
-        const final_translation_x = p_tl.x - rotated_top_left_x;
-        const final_translation_y = p_tl.y - rotated_top_left_y;
-
-        // Build the final matrix: translation * rotation
+        // Simple approach: just translate to top-left and rotate
+        // This should be completely stable with no accumulation
         return Matrix3x3.from([_]f32{
-            cos_a, -sin_a, final_translation_x,
-            sin_a, cos_a,  final_translation_y,
-            0.0,   0.0,    1.0,
+            std.math.cos(rotation_angle), -std.math.sin(rotation_angle), p_tl.x,
+            std.math.sin(rotation_angle), std.math.cos(rotation_angle),  p_tl.y,
+            0.0,                          0.0,                           1.0,
         });
     } // scales the matrix around a pivot point (px, py
     pub fn pivotScale(self: *Matrix3x3, sx: f32, sy: f32, px: f32, py: f32) void {
