@@ -226,12 +226,16 @@ pub const Matrix3x3 = struct {
         const top_edge = Point{ .x = p_tr.x - p_tl.x, .y = p_tr.y - p_tl.y };
         const rotation_angle = std.math.atan2(top_edge.y, top_edge.x);
 
+        // Calculate cos and sin once
+        const cos_a = std.math.cos(rotation_angle);
+        const sin_a = std.math.sin(rotation_angle);
+
         // Simple approach: just translate to top-left and rotate
         // This should be completely stable with no accumulation
         return Matrix3x3.from([_]f32{
-            std.math.cos(rotation_angle), -std.math.sin(rotation_angle), p_tl.x,
-            std.math.sin(rotation_angle), std.math.cos(rotation_angle),  p_tl.y,
-            0.0,                          0.0,                           1.0,
+            cos_a, -sin_a, p_tl.x,
+            sin_a, cos_a,  p_tl.y,
+            0.0,   0.0,    1.0,
         });
     } // scales the matrix around a pivot point (px, py
     pub fn pivotScale(self: *Matrix3x3, sx: f32, sy: f32, px: f32, py: f32) void {
