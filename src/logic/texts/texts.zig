@@ -22,6 +22,7 @@ pub const CharVertex = struct {
     relative_bounds: [6]PointUV,
     sdf_texture_id: ?u32,
     origin: Point, // origin of the char (bottom left corner), useful for drawing selection/caret/picking
+    last_in_line: bool = false,
 };
 
 pub const ComputeTextResult = struct {
@@ -112,13 +113,8 @@ pub const Text = struct {
             if (new_selection_start == 0 and i >= selection_start) new_selection_start = self.text_vertex.items.len;
             if (new_selection_end == 0 and i >= selection_end) new_selection_end = self.text_vertex.items.len;
 
-            const char_width = if (cp == ENTER_CHAR_CODE) b: {
-                next_pos = Point{ .x = 0, .y = next_pos.y - lh };
-                break :b 0.0;
-            } else b: {
-                const char_details = try fonts.get(0, cp);
-                break :b (char_details.x + char_details.width) * self.font_size;
-            };
+            const char_details = try fonts.get(0, cp);
+            const char_width = (char_details.x + char_details.width) * self.font_size;
 
             var space_before = if (option_prev_cp) |prev_cp| b: {
                 const kerning = try fonts.get_kerning(0, prev_cp, cp);
@@ -127,6 +123,11 @@ pub const Text = struct {
 
             const exceeded_max_width = (next_pos.x + space_before + char_width) > max_text_width;
             if (exceeded_max_width) {
+                if (self.text_vertex.items.len > 0) {
+                    var previous = &self.text_vertex.items[self.text_vertex.items.len - 1];
+                    previous.last_in_line = true;
+                }
+
                 try updated_content.append(SOFT_BREAK_MARKER);
                 try self.text_vertex.append(CharVertex{
                     .relative_bounds = self.getDrawRelativeBounds(0, 0, 0, 0, next_pos),
@@ -152,17 +153,27 @@ pub const Text = struct {
                 .x = next_pos.x + space_before,
                 .y = next_pos.y,
             });
+
+            // Encode the Unicode codepoint as UTF-8 bytes
+            try updated_content.append(cp);
             try self.text_vertex.append(CharVertex{
                 .relative_bounds = relative_bounds,
                 .sdf_texture_id = cd.sdf_texture_id,
                 .origin = next_pos,
+                .last_in_line = cp == ENTER_CHAR_CODE,
             });
+
+            if (cp == ENTER_CHAR_CODE) {
+                next_pos = Point{ .x = 0, .y = next_pos.y - lh };
+            }
 
             next_pos.x += space_before + char_width;
             longest_line = @max(longest_line, next_pos.x);
+        }
 
-            // Encode the Unicode codepoint as UTF-8 bytes
-            try updated_content.append(cp);
+        if (self.text_vertex.items.len > 0) {
+            var previous = &self.text_vertex.items[self.text_vertex.items.len - 1];
+            previous.last_in_line = true;
         }
 
         // handle case when caret is behind the last character

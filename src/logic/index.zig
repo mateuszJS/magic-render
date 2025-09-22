@@ -1187,12 +1187,13 @@ pub fn renderPick() !void {
                 const text_height = text.bounds[3].distance(text.bounds[0]);
 
                 // above text area
+                const overflow_size = 300 * shared.render_scale;
                 const area_above_text_buffer = rects.getPickVertexData(
                     matrix,
+                    -overflow_size,
                     0,
-                    0,
-                    text_width,
-                    100,
+                    text_width + 2 * overflow_size,
+                    overflow_size,
                     0.0,
                     .{ text.id, 1, 0, 0 },
                 );
@@ -1201,40 +1202,45 @@ pub fn renderPick() !void {
                 // below text area
                 const area_below_text_buffer = rects.getPickVertexData(
                     matrix,
-                    0,
+                    -overflow_size,
                     -text_height,
-                    text_width,
-                    -100,
+                    text_width + 2 * overflow_size,
+                    -overflow_size,
                     0.0,
                     .{ text.id, text.text_vertex.items.len + 1, 0, 0 },
                 );
                 try triangles_buffer.appendSlice(&area_below_text_buffer);
 
+                var next_char_is_first_in_line = true;
                 for (text.text_vertex.items, 0..) |vertex, index| {
                     const half_width = (vertex.relative_bounds[2].x - vertex.origin.x) / 2;
                     if (half_width > consts.EPSILON) {
                         const valid_pick_index = index + 1; // pick = 0 -> no selection
                         // left part of the char
+                        const left_additional_offset = if (next_char_is_first_in_line) overflow_size else 0.0;
                         try triangles_buffer.appendSlice(&rects.getPickVertexData(
                             matrix,
-                            vertex.origin.x,
+                            vertex.origin.x - left_additional_offset,
                             vertex.origin.y,
-                            half_width,
+                            half_width + left_additional_offset,
                             text.line_height * text.font_size,
                             0.0,
                             .{ text.id, valid_pick_index, 0, 0 },
                         ));
 
                         // right part of the char
+                        const right_additional_offset = if (vertex.last_in_line) overflow_size else 0.0;
                         try triangles_buffer.appendSlice(&rects.getPickVertexData(
                             matrix,
                             vertex.origin.x + half_width,
                             vertex.origin.y,
-                            half_width,
+                            half_width + right_additional_offset,
                             text.line_height * text.font_size,
                             0.0,
                             .{ text.id, valid_pick_index + 1, 0, 0 },
                         ));
+
+                        next_char_is_first_in_line = vertex.last_in_line;
                     }
                 }
 
