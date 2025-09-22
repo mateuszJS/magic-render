@@ -424,7 +424,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
 
             const new_text = try addText(
                 id,
-                "",
+                "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
                 bounds,
                 72.0,
             );
@@ -432,11 +432,12 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             break :b new_text;
         };
 
-        enable_typing(text.content);
+        enable_typing(text.serialized_updated_content);
 
-        if (text.getCaretIndex(state.hovered_asset_id, x - text.bounds[0].x)) |caret_index| {
-            // correct char id, to be more precise
-            state.selected_asset_id[1] = caret_index;
+        if (state.hovered_asset_id[1] > 0) {
+            state.selected_asset_id[1] = state.hovered_asset_id[1];
+
+            const caret_index = state.hovered_asset_id[1] - 1;
             setCaretPosition(caret_index, caret_index);
             update_text_selection(caret_index, caret_index);
         }
@@ -535,25 +536,17 @@ pub fn onPointerMove(x: f32, y: f32) !void {
     }
 
     if (state.tool == Tool.Text and state.action == .TextSelection) {
-        if (getSelectedText()) |text| {
-            const option_caret_index = if (state.hovered_asset_id[0] == state.selected_asset_id[0]) b: {
-                if (text.getCaretIndex(state.hovered_asset_id, x - text.bounds[0].x)) |caret_index| {
-                    break :b caret_index;
-                } else break :b null;
-            } else b: {
-                break :b if (y > text.bounds[0].y)
-                    0
-                else if (y < text.bounds[3].y)
-                    text.text_vertex.items.len
-                else
-                    null;
-            };
+        if (getSelectedText() != null) {
+            if (state.hovered_asset_id[0] == state.selected_asset_id[0]) {
+                const new_caret_index = state.hovered_asset_id[1];
+                const curr_caret_index = state.selected_asset_id[1];
 
-            if (option_caret_index) |caret_index| {
-                const start = @min(caret_index, state.selected_asset_id[1]);
-                const end = @max(caret_index, state.selected_asset_id[1]);
-                setCaretPosition(start, end);
-                update_text_selection(start, end);
+                if (new_caret_index > 0 and curr_caret_index > 0) {
+                    const start = @min(new_caret_index, state.selected_asset_id[1]) - 1;
+                    const end = @max(new_caret_index, state.selected_asset_id[1]) - 1;
+                    setCaretPosition(start, end);
+                    update_text_selection(start, end);
+                }
             }
         }
         return;
@@ -765,6 +758,7 @@ fn drawProjectBackground() void {
     var buffer: [2]triangles.DrawInstance = undefined;
     rects.getDrawVertexData(
         &buffer,
+        null,
         0.0,
         0.0,
         state.width,
@@ -1052,13 +1046,7 @@ pub fn renderDraw() !void {
 
                         var absolute_vertex: [6]types.PointUV = undefined;
                         for (vertex.relative_bounds, 0..) |point, j| {
-                            const transformed_point = matrix.get(point);
-                            absolute_vertex[j] = types.PointUV{
-                                .x = transformed_point.x,
-                                .y = transformed_point.y,
-                                .u = point.u,
-                                .v = point.v,
-                            };
+                            absolute_vertex[j] = matrix.getUV(point);
                         }
 
                         web_gpu_programs.draw_shape(
@@ -1072,10 +1060,7 @@ pub fn renderDraw() !void {
                         const is_selection = selection_start != selection_end;
 
                         if (!is_selection and texts.caret_position == i) {
-                            const position = types.Point{
-                                .x = text.bounds[0].x + vertex.relative_bounds[0].x,
-                                .y = text.bounds[0].y + vertex.relative_bounds[0].y,
-                            };
+                            const position = matrix.get(vertex.relative_bounds[0]);
                             try texts.Text.addCaretDrawVertex(
                                 &vertex_triangles_buffer,
                                 position,
@@ -1085,13 +1070,10 @@ pub fn renderDraw() !void {
                         }
 
                         if (is_selection and i >= selection_start and i < selection_end) {
-                            const position = types.Point{
-                                .x = text.bounds[0].x + vertex.origin.x,
-                                .y = text.bounds[0].y + vertex.origin.y,
-                            };
                             try texts.Text.addTextSelectionDrawVertex(
                                 &vertex_triangles_buffer,
-                                position,
+                                matrix,
+                                vertex.origin,
                                 vertex.relative_bounds[2].x - vertex.origin.x,
                                 text.font_size * text.line_height,
                             );
@@ -1103,15 +1085,12 @@ pub fn renderDraw() !void {
                 if (texts.caret_position == text.text_vertex.items.len) {
                     const position =
                         if (text.text_vertex.getLastOrNull()) |last_vertex|
-                            types.Point{
-                                .x = text.bounds[0].x + last_vertex.relative_bounds[4].x,
-                                .y = text.bounds[0].y + last_vertex.relative_bounds[4].y,
-                            } // right bottom corner
+                            matrix.get(last_vertex.relative_bounds[4])
                         else
-                            types.Point{
-                                .x = text.bounds[0].x,
-                                .y = text.bounds[0].y - text.font_size * text.line_height,
-                            };
+                            matrix.get(types.Point{
+                                .x = 0,
+                                .y = -text.font_size * text.line_height,
+                            });
                     try texts.Text.addCaretDrawVertex(
                         &vertex_triangles_buffer,
                         position,
@@ -1210,22 +1189,63 @@ pub fn renderPick() !void {
             },
             .text => |text| {
                 var triangles_buffer = std.ArrayList(triangles.PickInstance).init(std.heap.page_allocator);
+                const matrix = Matrix3x3.getMatrixFromRectangleNoScale(text.bounds);
+
+                const text_width = text.bounds[1].distance(text.bounds[0]);
+                const text_height = text.bounds[3].distance(text.bounds[0]);
+
+                // above text area
+                const area_above_text_buffer = rects.getPickVertexData(
+                    matrix,
+                    0,
+                    0,
+                    text_width,
+                    100,
+                    0.0,
+                    .{ text.id, 1, 0, 0 },
+                );
+                try triangles_buffer.appendSlice(&area_above_text_buffer);
+
+                // below text area
+                const area_below_text_buffer = rects.getPickVertexData(
+                    matrix,
+                    0,
+                    -text_height,
+                    text_width,
+                    -100,
+                    0.0,
+                    .{ text.id, text.text_vertex.items.len + 1, 0, 0 },
+                );
+                try triangles_buffer.appendSlice(&area_below_text_buffer);
 
                 for (text.text_vertex.items, 0..) |vertex, index| {
-                    if (vertex.sdf_texture_id != null) {
-                        var buffer: [2]triangles.PickInstance = undefined;
-                        rects.getPickVertexData(
-                            &buffer,
-                            text.bounds[0].x + vertex.origin.x,
-                            text.bounds[0].y + vertex.origin.y,
-                            vertex.relative_bounds[2].x - vertex.origin.x,
+                    const half_width = (vertex.relative_bounds[2].x - vertex.origin.x) / 2;
+                    if (half_width > consts.EPSILON) {
+                        const valid_pick_index = index + 1; // pick = 0 -> no selection
+                        // left part of the char
+                        try triangles_buffer.appendSlice(&rects.getPickVertexData(
+                            matrix,
+                            vertex.origin.x,
+                            vertex.origin.y,
+                            half_width,
                             text.line_height * text.font_size,
                             0.0,
-                            .{ text.id, index + 1, 0, 0 },
-                        );
-                        try triangles_buffer.appendSlice(&buffer);
+                            .{ text.id, valid_pick_index, 0, 0 },
+                        ));
+
+                        // right part of the char
+                        try triangles_buffer.appendSlice(&rects.getPickVertexData(
+                            matrix,
+                            vertex.origin.x + half_width,
+                            vertex.origin.y,
+                            half_width,
+                            text.line_height * text.font_size,
+                            0.0,
+                            .{ text.id, valid_pick_index + 1, 0, 0 },
+                        ));
                     }
                 }
+
                 if (triangles_buffer.items.len > 0) {
                     web_gpu_programs.pick_triangle(triangles_buffer.items);
                 }

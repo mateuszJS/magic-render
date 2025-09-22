@@ -17,9 +17,8 @@ pub fn getNextPowerOfTwo(value: f32) f32 {
     return @exp2(@ceil(@log2(value)));
 }
 
-const EPSILON = math.floatEps(f32);
 pub fn equalF32(a: f32, b: f32) bool {
-    return @abs(a - b) < EPSILON;
+    return @abs(a - b) < consts.EPSILON;
 }
 
 pub fn getBounds(x: f32, y: f32, width: f32, height: f32) [4]PointUV {

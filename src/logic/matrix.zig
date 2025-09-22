@@ -211,7 +211,7 @@ pub const Matrix3x3 = struct {
 
     // Creates a transformation matrix with position and rotation but no scale (scale = 1).
     // This function extracts the rotation angle from the rectangle's orientation and
-    // positions the unit square at the rectangle's top-left corner.
+    // rotates around the center of the rectangle.
     //
     // The input points for the target rectangle must be in the following order:
     // rect_points[0]: top-left corner
@@ -219,24 +219,9 @@ pub const Matrix3x3 = struct {
     // rect_points[2]: bottom-right corner
     // rect_points[3]: bottom-left corner
     pub fn getMatrixFromRectangleNoScale(rect_points: [4]PointUV) Matrix3x3 {
-        const p_tl = rect_points[0];
-        const p_tr = rect_points[1];
-
-        // Calculate rotation angle from the top edge vector
-        const top_edge = Point{ .x = p_tr.x - p_tl.x, .y = p_tr.y - p_tl.y };
-        const rotation_angle = std.math.atan2(top_edge.y, top_edge.x);
-
-        // Calculate cos and sin once
-        const cos_a = std.math.cos(rotation_angle);
-        const sin_a = std.math.sin(rotation_angle);
-
-        // Simple approach: just translate to top-left and rotate
-        // This should be completely stable with no accumulation
-        return Matrix3x3.from([_]f32{
-            cos_a, -sin_a, p_tl.x,
-            sin_a, cos_a,  p_tl.y,
-            0.0,   0.0,    1.0,
-        });
+        var matrix = Matrix3x3.translation(rect_points[0].x, rect_points[0].y);
+        matrix.rotate(rect_points[0].angleTo(rect_points[1]));
+        return matrix;
     } // scales the matrix around a pivot point (px, py
     pub fn pivotScale(self: *Matrix3x3, sx: f32, sy: f32, px: f32, py: f32) void {
         self.* = Matrix3x3.multiply(self.*, Matrix3x3.from([_]f32{

@@ -68,6 +68,7 @@ pub fn getVertexDrawSkeletonPoint(
 
     rects.getDrawVertexData(
         buffer[0..2],
+        null,
         point.x - size / 2.0,
         point.y - size / 2.0,
         size,
@@ -84,12 +85,11 @@ pub fn getVertexPickSkeletonPoint(
     point: Point,
     id: [4]u32,
 ) [2]triangles.PickInstance {
-    var buffer: [2]triangles.PickInstance = undefined;
     const size = SKELETON_POINT_SIZE * PICK_POINT_SCALE * shared.render_scale;
     const radius = if (is_control_point) 0.0 else size / 2.0;
 
-    rects.getPickVertexData(
-        buffer[0..2],
+    return rects.getPickVertexData(
+        null,
         point.x - size / 2.0,
         point.y - size / 2.0,
         size,
@@ -97,8 +97,6 @@ pub fn getVertexPickSkeletonPoint(
         radius,
         id,
     );
-
-    return buffer;
 }
 
 // draw control point and handles around

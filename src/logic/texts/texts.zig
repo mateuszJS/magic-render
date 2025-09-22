@@ -25,7 +25,7 @@ pub const CharVertex = struct {
 };
 
 pub const ComputeTextResult = struct {
-    content: []u8,
+    content: []const u8,
     selection_start: usize,
     selection_end: usize,
 };
@@ -37,6 +37,8 @@ pub const Text = struct {
     bounds: [4]PointUV,
     line_height: f32 = 1.2, // line height multiplier
     text_vertex: std.ArrayList(CharVertex),
+    serialized_updated_content: []const u8 = &.{}, // to cache results of computeText
+    // useful when user clicks on text again in the future to be used as input for HTMLTextAreaElement
 
     pub fn new(
         id: u32,
@@ -86,7 +88,7 @@ pub const Text = struct {
         self.text_vertex = std.ArrayList(CharVertex).init(std.heap.page_allocator);
 
         const lh = self.font_size * self.line_height;
-        const max_text_width = self.bounds[1].x - self.bounds[0].x;
+        const max_text_width = self.bounds[0].distance(self.bounds[1]);
         var longest_line: f32 = 0.0;
         var next_pos = Point{ .x = 0, .y = -lh };
 
@@ -117,6 +119,7 @@ pub const Text = struct {
                 const char_details = try fonts.get(0, cp);
                 break :b (char_details.x + char_details.width) * self.font_size;
             };
+
             var space_before = if (option_prev_cp) |prev_cp| b: {
                 const kerning = try fonts.get_kerning(0, prev_cp, cp);
                 break :b kerning * self.font_size;
@@ -134,7 +137,7 @@ pub const Text = struct {
                 // add word joiner character before line break so that when user copies the text, they get the same line breaks
                 try updated_content.append(ENTER_CHAR_CODE);
                 try self.text_vertex.append(CharVertex{
-                    .relative_bounds = self.getDrawRelativeBounds(0, 0, 0.1, 0, next_pos),
+                    .relative_bounds = self.getDrawRelativeBounds(0, 0, 0, 0, next_pos),
                     .sdf_texture_id = null,
                     .origin = next_pos,
                 });
@@ -170,20 +173,14 @@ pub const Text = struct {
             new_selection_end = self.text_vertex.items.len;
 
         const text_width = @max(max_text_width, longest_line);
-        // const start = self.bounds[0];
         const matrix = Matrix3x3.getMatrixFromRectangleNoScale(self.bounds);
-        self.bounds = [_]PointUV{
-            .{ .x = 0, .y = 0, .u = 0.0, .v = 1.0 },
-            .{ .x = text_width, .y = 0, .u = 1.0, .v = 1.0 },
-            .{ .x = text_width, .y = next_pos.y, .u = 1.0, .v = 0.0 },
-            .{ .x = 0, .y = next_pos.y, .u = 0.0, .v = 0.0 },
-        };
 
-        for (&self.bounds) |*b| {
-            const transformed_b = matrix.get(b);
-            b.x = transformed_b.x;
-            b.y = transformed_b.y;
-        }
+        self.bounds = [_]PointUV{
+            matrix.getUV(.{ .x = 0, .y = 0, .u = 0.0, .v = 1.0 }),
+            matrix.getUV(.{ .x = text_width, .y = 0, .u = 1.0, .v = 1.0 }),
+            matrix.getUV(.{ .x = text_width, .y = next_pos.y, .u = 1.0, .v = 0.0 }),
+            matrix.getUV(.{ .x = 0, .y = next_pos.y, .u = 0.0, .v = 0.0 }),
+        };
 
         var serialized_updated_content = std.ArrayList(u8).init(std.heap.page_allocator);
         for (try updated_content.toOwnedSlice()) |cp| {
@@ -192,8 +189,10 @@ pub const Text = struct {
             try serialized_updated_content.appendSlice(utf8_buffer[0..utf8_len]);
         }
 
+        self.serialized_updated_content = try serialized_updated_content.toOwnedSlice();
+
         return .{
-            .content = try serialized_updated_content.toOwnedSlice(),
+            .content = self.serialized_updated_content,
             .selection_start = new_selection_start,
             .selection_end = new_selection_end,
         };
@@ -201,6 +200,7 @@ pub const Text = struct {
 
     pub fn addTextSelectionDrawVertex(
         triangles_buffer: *std.ArrayList(triangles.DrawInstance),
+        matrix: Matrix3x3,
         start: Point,
         width: f32,
         height: f32,
@@ -208,6 +208,7 @@ pub const Text = struct {
         var buffer: [2]triangles.DrawInstance = undefined;
         rects.getDrawVertexData(
             &buffer,
+            matrix,
             start.x,
             start.y,
             width,

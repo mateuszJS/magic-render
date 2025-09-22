@@ -15,7 +15,6 @@ const PathUtils = @import("path_utils.zig");
 const fill = @import("../sdf/fill.zig");
 const sdf = @import("../sdf/sdf.zig");
 
-const EPSILON = std.math.floatEps(f32);
 const CREATE_HANDLE_THRESHOLD = 10.0;
 // above this distance two handles are created around control point
 // below that distance, handle is a straight line handle
