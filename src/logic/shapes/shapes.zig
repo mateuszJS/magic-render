@@ -14,6 +14,7 @@ const consts = @import("../consts.zig");
 const PathUtils = @import("path_utils.zig");
 const fill = @import("../sdf/fill.zig");
 const sdf = @import("../sdf/sdf.zig");
+const AssetId = @import("../asset_id.zig").AssetId;
 
 const CREATE_HANDLE_THRESHOLD = 10.0;
 // above this distance two handles are created around control point
@@ -272,7 +273,7 @@ pub const Shape = struct {
     pub fn getSkeletonDrawVertexData(
         self: Shape,
         allocator: std.mem.Allocator,
-        option_hover_id: ?[4]u32,
+        option_hover_id: ?AssetId,
         with_preview: bool,
     ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);
@@ -280,7 +281,7 @@ pub const Shape = struct {
 
         for (self.paths.items, 0..) |path, i| {
             const hover_id = if (option_hover_id) |id| b: {
-                break :b if (id[1] == i + 1) id else null;
+                break :b if (id.isSec() and id.getSec() == i) id else null;
             } else null;
 
             const path_skeleton = try path.getSkeletonDrawVertexData(

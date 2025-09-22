@@ -4,6 +4,7 @@ const shared = @import("../shared.zig");
 const rects = @import("../rects.zig");
 const lines = @import("../lines.zig");
 const std = @import("std");
+const AssetId = @import("../asset_id.zig").AssetId;
 
 const STRAIGHT_LINE_THRESHOLD = 1e+10;
 pub const STRAIGHT_LINE_HANDLE = Point{
@@ -106,7 +107,7 @@ pub fn drawControlPoint(
     cp: Point,
     handles: [2]?Point,
     buffer: *std.ArrayList(triangles.DrawInstance),
-    hover_id: ?[4]u32,
+    hover_id: ?AssetId,
 ) !void {
     for (handles, 0..) |option_hp, index| {
         if (option_hp) |hp| {
@@ -123,8 +124,8 @@ pub fn drawControlPoint(
             );
             try buffer.appendSlice(&local_buffer);
 
-            const id: u32 = if (index == 0) @min(i -% 1, len - 1) else i + 1;
-            const is_hovered = if (hover_id) |h| h[2] == id + 1 else false;
+            const point_id: u32 = if (index == 0) @min(i -% 1, len - 1) else i + 1;
+            const is_hovered = if (hover_id) |id| id.getTert() == point_id else false;
             try buffer.appendSlice(&getVertexDrawSkeletonPoint(
                 false,
                 hp,
@@ -136,6 +137,6 @@ pub fn drawControlPoint(
     try buffer.appendSlice(&getVertexDrawSkeletonPoint(
         true,
         cp,
-        if (hover_id) |h| h[2] == i + 1 else false,
+        if (hover_id) |id| id.getTert() == i else false,
     ));
 }
