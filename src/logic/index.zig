@@ -669,6 +669,12 @@ pub fn commitChanges() !void {
 
         shapes.resetState();
     }
+
+    if (state.tool == Tool.Text) {
+        disable_typing();
+        texts.caret_position = 0;
+        texts.selection_end_position = 0;
+    }
 }
 // TODO: extract to another file and simplify(extract common code)
 // https://github.com/users/mateuszJS/projects/1/views/1?pane=issue&itemId=123400787&issue=mateuszJS%7Cmagic-render%7C122

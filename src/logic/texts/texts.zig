@@ -201,7 +201,10 @@ pub const Text = struct {
         };
 
         var serialized_updated_content = std.ArrayList(u8).init(std.heap.page_allocator);
-        for (try updated_content.toOwnedSlice()) |cp| {
+        const codepoints_slice = try updated_content.toOwnedSlice();
+        defer std.heap.page_allocator.free(codepoints_slice);
+
+        for (codepoints_slice) |cp| {
             var utf8_buffer: [4]u8 = undefined;
             const utf8_len = try std.unicode.utf8Encode(cp, &utf8_buffer);
             try serialized_updated_content.appendSlice(utf8_buffer[0..utf8_len]);
