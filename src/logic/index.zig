@@ -1180,14 +1180,21 @@ pub fn renderPick() !void {
                 }
             },
             .text => |text| {
+                // if text selection is activ,e then render only selected text
+                if (state.action == .TextSelection and state.selected_asset_id.getPrim() != text.id) continue;
+
                 var triangles_buffer = std.ArrayList(triangles.PickInstance).init(std.heap.page_allocator);
                 const matrix = Matrix3x3.getMatrixFromRectangleNoScale(text.bounds);
+                const overflow_size =
+                    if (state.action == .TextSelection)
+                        300 * shared.render_scale
+                    else
+                        0.0;
 
                 const text_width = text.bounds[1].distance(text.bounds[0]);
                 const text_height = text.bounds[3].distance(text.bounds[0]);
 
                 // above text area
-                const overflow_size = 300 * shared.render_scale;
                 const area_above_text_buffer = rects.getPickVertexData(
                     matrix,
                     -overflow_size,
@@ -1217,7 +1224,8 @@ pub fn renderPick() !void {
                     if (half_width > consts.EPSILON) {
                         const valid_pick_index = index + 1; // pick = 0 -> no selection
                         // left part of the char
-                        const left_additional_offset = if (next_char_is_first_in_line) overflow_size else 0.0;
+                        const left_additional_offset =
+                            if (next_char_is_first_in_line) overflow_size else 0.0;
                         try triangles_buffer.appendSlice(&rects.getPickVertexData(
                             matrix,
                             vertex.origin.x - left_additional_offset,
@@ -1229,7 +1237,8 @@ pub fn renderPick() !void {
                         ));
 
                         // right part of the char
-                        const right_additional_offset = if (vertex.last_in_line) overflow_size else 0.0;
+                        const right_additional_offset =
+                            if (vertex.last_in_line) overflow_size else 0.0;
                         try triangles_buffer.appendSlice(&rects.getPickVertexData(
                             matrix,
                             vertex.origin.x + half_width,
