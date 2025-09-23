@@ -18,6 +18,7 @@ const UI = @import("ui.zig");
 const texts = @import("texts/texts.zig");
 const sdf = @import("sdf/sdf.zig");
 const fonts = @import("texts/fonts.zig");
+const AssetId = @import("asset_id.zig").AssetId;
 
 const FillType = enum(u8) {
     Solid,
@@ -74,8 +75,8 @@ pub fn connectTyping(
     disable: *const fn () void,
     update_content: *const TextCallback,
     update_selection: *const fn (u32, u32) void,
-    get_char_data: *const fn (u32, u8) fonts.SerializedCharDetails,
-    get_kerning: *const fn (u8, u8) f32,
+    get_char_data: *const fn (u32, u21) fonts.SerializedCharDetails,
+    get_kerning: *const fn (u21, u21) f32,
 ) void {
     enable_typing = enable;
     disable_typing = disable;
@@ -90,6 +91,15 @@ pub const @"meta(zigar)" = struct {
         _ = arg_index;
         return switch (FT) {
             TextCallback => true,
+            else => false,
+        };
+    }
+
+    pub fn isFieldString(comptime T: type, comptime field_name: []const u8) bool {
+        _ = field_name;
+        return switch (T) {
+            texts.Serialized => true,
+            texts.ComputeTextResult => true,
             else => false,
         };
     }
@@ -110,7 +120,6 @@ pub fn connectCacheCallbacks(
 }
 
 pub const ASSET_ID_MIN: u32 = 1000;
-const NO_SELECTION = [4]u32{ 0, 0, 0, 0 };
 const MIN_NEW_CONTROL_POINT_DISTANCE = 10.0; // Minimum distance to consider a new control point
 
 const ActionType = enum {
@@ -143,8 +152,8 @@ const State = struct {
     width: f32,
     height: f32,
     assets: std.AutoArrayHashMap(u32, Asset),
-    hovered_asset_id: [4]u32,
-    selected_asset_id: [4]u32,
+    hovered_asset_id: AssetId,
+    selected_asset_id: AssetId,
     action: ActionType,
     tool: Tool,
     last_pointer_coords: types.Point,
@@ -154,8 +163,8 @@ var state = State{
     .width = 0,
     .height = 0,
     .assets = undefined,
-    .hovered_asset_id = NO_SELECTION,
-    .selected_asset_id = NO_SELECTION,
+    .hovered_asset_id = AssetId{},
+    .selected_asset_id = AssetId{},
     .action = ActionType.None,
     .tool = Tool.None,
     .last_pointer_coords = types.Point{ .x = 0.0, .y = 0.0 },
@@ -236,9 +245,7 @@ pub fn addShape(
 fn addText(
     id_or_zero: u32,
     content: []const u8,
-    bounds: ?[4]types.PointUV,
-    start: types.Point,
-    max_width: f32,
+    bounds: [4]types.PointUV,
     font_size: f32,
 ) !texts.Text {
     const id = if (id_or_zero == 0) generateId() else id_or_zero;
@@ -246,8 +253,6 @@ fn addText(
         id,
         content,
         bounds,
-        start,
-        max_width,
         font_size,
     );
     try state.assets.put(id, Asset{ .text = text });
@@ -256,14 +261,14 @@ fn addText(
 }
 
 pub fn removeAsset() !void {
-    _ = state.assets.orderedRemove(state.selected_asset_id[0]);
-    try updateSelectedAsset(NO_SELECTION);
+    _ = state.assets.orderedRemove(state.selected_asset_id.getPrim());
+    try updateSelectedAsset(AssetId{});
     try checkAssetsUpdate(true);
 }
 
 pub fn onUpdatePick(id: [4]u32) void {
     if (state.action != .Transform) {
-        state.hovered_asset_id = id;
+        state.hovered_asset_id = AssetId.fromArray(id);
         // hovered_asset_id stores id of the ui transform element during transformations
     }
 }
@@ -348,7 +353,7 @@ fn checkAssetsUpdate(should_notify: bool) !void {
 }
 
 fn getSelectedImg() ?*images.Image {
-    const asset = state.assets.getPtr(state.selected_asset_id[0]) orelse return null;
+    const asset = state.assets.getPtr(state.selected_asset_id.getPrim()) orelse return null;
     switch (asset.*) {
         .img => |*img| return img,
         .shape => return null,
@@ -357,7 +362,7 @@ fn getSelectedImg() ?*images.Image {
 }
 
 fn getSelectedShape() ?*shapes.Shape {
-    const asset = state.assets.getPtr(state.selected_asset_id[0]) orelse return null;
+    const asset = state.assets.getPtr(state.selected_asset_id.getPrim()) orelse return null;
     switch (asset.*) {
         .img => return null,
         .shape => |*shape| return shape,
@@ -366,7 +371,7 @@ fn getSelectedShape() ?*shapes.Shape {
 }
 
 fn getSelectedText() ?*texts.Text {
-    const asset = state.assets.getPtr(state.selected_asset_id[0]) orelse return null;
+    const asset = state.assets.getPtr(state.selected_asset_id.getPrim()) orelse return null;
     switch (asset.*) {
         .img => return null,
         .shape => return null,
@@ -374,26 +379,21 @@ fn getSelectedText() ?*texts.Text {
     }
 }
 
-fn updateSelectedAsset(id: [4]u32) !void {
+fn updateSelectedAsset(id: AssetId) !void {
     try commitChanges();
-
-    // if (id >= ShapesPackedId.MIN_PACKED_ID) {
-    //     const point_id = ShapesPackedId.decode(id);
-    //     shapes.selected_point_id = point_id;
-    //     state.selected_asset_id = point_id.shape;
-    // } else {
     state.selected_asset_id = id;
-    // }
-    on_asset_select_cb(id);
+    on_asset_select_cb(id.serialize());
 }
 
-pub fn updateTextContent(new_content: []const u8) !void {
+pub fn updateTextContent(
+    content: []const u8,
+    selection_start: usize,
+    selection_end: usize,
+) !texts.ComputeTextResult {
     const option_text = getSelectedText();
     if (option_text) |text| {
-        text.content = new_content;
-        try text.computeText();
-
-        update_text_content(text.content);
+        text.content = content;
+        return try text.computeText(selection_start, selection_end);
     } else {
         @panic("updateTextContent called but no text asset selected");
     }
@@ -407,23 +407,30 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             break :b text.*;
         } else b: {
             const id = generateId();
+            const max_width = 300.0;
+            const bounds = [4]types.PointUV{
+                .{ .x = x, .y = y, .u = 0.0, .v = 1.0 },
+                .{ .x = x + max_width, .y = y, .u = 1.0, .v = 1.0 },
+                .{ .x = x + max_width, .y = y - 1.0, .u = 1.0, .v = 0.0 },
+                .{ .x = x, .y = y - 1.0, .u = 0.0, .v = 0.0 },
+            };
+
             const new_text = try addText(
                 id,
-                "",
-                null,
-                types.Point{ .x = x, .y = y },
-                300.0,
+                "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+                bounds,
                 72.0,
             );
-            try updateSelectedAsset(.{ id, 0, 0, 0 });
+            try updateSelectedAsset(AssetId{ ._prim = id });
             break :b new_text;
         };
 
-        enable_typing(text.content);
+        enable_typing(text.serialized_updated_content);
 
-        if (text.getCaretIndex(state.hovered_asset_id, x)) |caret_index| {
-            // correct char id, to be more precise
-            state.selected_asset_id[1] = caret_index;
+        if (state.hovered_asset_id.isSec()) {
+            state.selected_asset_id.setSec(state.hovered_asset_id.getSec());
+
+            const caret_index = state.hovered_asset_id.getSec();
             setCaretPosition(caret_index, caret_index);
             update_text_selection(caret_index, caret_index);
         }
@@ -460,7 +467,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                 create_sdf_texture(),
                 if (props.filter != null) create_cache_texture() else null,
             );
-            try updateSelectedAsset(.{ id, 0, 0, 0 });
+            try updateSelectedAsset(AssetId{ ._prim = id });
         }
 
         if (getSelectedShape()) |shape| {
@@ -475,16 +482,16 @@ pub fn onPointerDown(x: f32, y: f32) !void {
     } else {
         if (state.tool == Tool.EditShape) {
             // should not be accessible on mobile, that's why selection happens with pointer down
-            if (state.hovered_asset_id[0] != NO_SELECTION[0]) {
+            if (state.hovered_asset_id.isPrim()) {
                 try updateSelectedAsset(state.hovered_asset_id);
             }
         }
 
-        if (state.selected_asset_id[0] == NO_SELECTION[0]) {
+        if (!state.selected_asset_id.isPrim()) {
             // No active asset, do nothing
-        } else if (TransformUI.isTransformUi(state.hovered_asset_id[0])) {
+        } else if (TransformUI.isTransformUi(state.hovered_asset_id.getPrim())) {
             state.action = .Transform;
-        } else if (state.selected_asset_id[0] >= ASSET_ID_MIN and state.selected_asset_id[0] == state.hovered_asset_id[0]) {
+        } else if (state.selected_asset_id.getPrim() >= ASSET_ID_MIN and state.selected_asset_id.getPrim() == state.hovered_asset_id.getPrim()) {
             state.action = .Move;
             state.last_pointer_coords = types.Point{ .x = x, .y = y };
         }
@@ -505,15 +512,14 @@ pub fn onPointerUp() !void {
             shape.onReleasePointer();
         }
     } else if (state.tool == Tool.EditShape) {
-        state.selected_asset_id[1] = 0;
-        state.selected_asset_id[2] = 0;
-        state.selected_asset_id[3] = 0;
+        // to remove sec, third, quat fields
+        state.selected_asset_id = AssetId{ ._prim = state.selected_asset_id.getPrim() };
     } else if (state.tool == Tool.Text) {
         state.action = .None;
     }
 }
 
-pub fn onPointerMove(x: f32, y: f32) void {
+pub fn onPointerMove(x: f32, y: f32) !void {
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
             shape.updatePointPreview(types.Point{ .x = x, .y = y });
@@ -522,12 +528,14 @@ pub fn onPointerMove(x: f32, y: f32) void {
     }
 
     if (state.tool == Tool.Text and state.action == .TextSelection) {
-        if (getSelectedText()) |text| {
-            if (state.hovered_asset_id[0] == state.selected_asset_id[0]) {
-                if (text.getCaretIndex(state.hovered_asset_id, x)) |caret_index| {
-                    const start = @min(caret_index, state.selected_asset_id[1]);
-                    const end = @max(caret_index, state.selected_asset_id[1]);
+        if (getSelectedText() != null) {
+            if (state.hovered_asset_id.getPrim() == state.selected_asset_id.getPrim()) {
+                if (state.hovered_asset_id.isSec() and state.selected_asset_id.isSec()) {
+                    const new_caret_index = state.hovered_asset_id.getSec();
+                    const curr_caret_index = state.selected_asset_id.getSec();
 
+                    const start = @min(new_caret_index, curr_caret_index);
+                    const end = @max(new_caret_index, curr_caret_index);
                     setCaretPosition(start, end);
                     update_text_selection(start, end);
                 }
@@ -537,14 +545,14 @@ pub fn onPointerMove(x: f32, y: f32) void {
     }
 
     if (state.tool == Tool.EditShape) {
-        if (state.selected_asset_id[2] != 0) {
+        if (state.selected_asset_id.isTert()) {
             if (getSelectedShape()) |shape| {
                 const matrix = Matrix3x3.getMatrixFromRectangle(shape.bounds);
                 const pointer = matrix.inverse().get(types.Point{ .x = x, .y = y });
 
-                const path = shape.paths.items[state.selected_asset_id[1] - 1];
+                const path = shape.paths.items[state.selected_asset_id.getSec()];
                 const points = path.points.items;
-                const i = state.selected_asset_id[2] - 1; // point index
+                const i = state.selected_asset_id.getTert(); // point index
 
                 if (i % 3 == 0) { // it's control point
                     const diff = types.Point{
@@ -598,7 +606,7 @@ pub fn onPointerMove(x: f32, y: f32) void {
         return;
     }
 
-    const asset = state.assets.getPtr(state.selected_asset_id[0]) orelse return;
+    const asset = state.assets.getPtr(state.selected_asset_id.getPrim()) orelse return;
     const bounds = switch (asset.*) {
         .img => |*img| &img.points,
         .shape => |*shape| &shape.bounds,
@@ -620,7 +628,7 @@ pub fn onPointerMove(x: f32, y: f32) void {
         },
         .Transform => {
             TransformUI.transformPoints(
-                state.hovered_asset_id[0],
+                state.hovered_asset_id.getPrim(),
                 bounds,
                 types.Point{ .x = x, .y = y },
             );
@@ -629,7 +637,17 @@ pub fn onPointerMove(x: f32, y: f32) void {
                 .shape => |*shape| {
                     shape.should_update_sdf = true;
                 },
-                .text => {},
+                .text => |*text| {
+                    const result = try text.computeText(
+                        texts.caret_position,
+                        texts.selection_end_position,
+                    );
+
+                    if (state.tool == .Text) {
+                        update_text_content(result.content);
+                        update_text_selection(result.selection_start, result.selection_end);
+                    }
+                },
             }
         },
         .TextSelection => {},
@@ -639,7 +657,7 @@ pub fn onPointerMove(x: f32, y: f32) void {
 
 pub fn onPointerLeave() !void {
     state.action = .None;
-    state.hovered_asset_id = NO_SELECTION;
+    state.hovered_asset_id = AssetId{};
     try checkAssetsUpdate(true);
 }
 
@@ -651,6 +669,12 @@ pub fn commitChanges() !void {
 
         shapes.resetState();
     }
+
+    if (state.tool == Tool.Text) {
+        disable_typing();
+        texts.caret_position = 0;
+        texts.selection_end_position = 0;
+    }
 }
 // TODO: extract to another file and simplify(extract common code)
 // https://github.com/users/mateuszJS/projects/1/views/1?pane=issue&itemId=123400787&issue=mateuszJS%7Cmagic-render%7C122
@@ -659,8 +683,8 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
     var ui_vertex_data = std.ArrayList(UI.DrawVertex).init(allocator);
 
     const red = [_]u8{ 255, 0, 0, 255 };
-    if (state.hovered_asset_id[0] != state.selected_asset_id[0]) {
-        if (state.assets.get(state.hovered_asset_id[0])) |asset| {
+    if (state.hovered_asset_id.getPrim() != state.selected_asset_id.getPrim()) {
+        if (state.assets.get(state.hovered_asset_id.getPrim())) |asset| {
             const points = switch (asset) {
                 .img => |img| img.points,
                 .shape => |shape| shape.bounds,
@@ -686,7 +710,7 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
     }
 
     const green = [_]u8{ 0, 255, 0, 255 };
-    if (state.assets.get(state.selected_asset_id[0])) |asset| {
+    if (state.assets.get(state.selected_asset_id.getPrim())) |asset| {
         const points = switch (asset) {
             .img => |img| img.points,
             .shape => |shape| shape.bounds,
@@ -715,7 +739,7 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
             &triangle_buffer,
             &ui_vertex_data,
             points,
-            state.hovered_asset_id[0],
+            state.hovered_asset_id.getPrim(),
         );
 
         try triangle_vertex_data.appendSlice(&triangle_buffer);
@@ -732,6 +756,7 @@ fn drawProjectBackground() void {
     var buffer: [2]triangles.DrawInstance = undefined;
     rects.getDrawVertexData(
         &buffer,
+        null,
         0.0,
         0.0,
         state.width,
@@ -788,7 +813,10 @@ pub fn calculateShapesSDF() !void {
 
                 const option_points = try shape.getNewSdfPoint(allocator);
                 if (option_points) |points| {
-                    const bounds = shape.getBoundsWithPadding(1 / shared.render_scale, false);
+                    const bounds = shape.getBoundsWithPadding(
+                        1 / shared.render_scale,
+                        false,
+                    );
                     shape.sdf_size = texture_size.get_sdf_size(bounds);
 
                     const init_width = bounds[0].distance(bounds[1]) * shared.render_scale;
@@ -964,7 +992,7 @@ pub fn updateCache() void {
 
 pub fn setCaretPosition(start: u32, end: u32) void {
     texts.caret_position = start;
-    texts.last_caret_update = time_u32;
+    texts.last_caret_update = shared.time_u32;
     texts.selection_end_position = end;
 }
 
@@ -1000,11 +1028,12 @@ pub fn renderDraw() !void {
                 }
             },
             .text => |*text| {
-                const is_typing_ui = state.tool == .Text and state.selected_asset_id[0] == text.id;
+                const is_typing_ui = state.tool == .Text and state.selected_asset_id.getPrim() == text.id;
                 const selection_start = @min(texts.caret_position, texts.selection_end_position);
                 const selection_end = @max(texts.caret_position, texts.selection_end_position);
                 var vertex_triangles_buffer =
                     std.ArrayList(triangles.DrawInstance).init(allocator);
+                const matrix = Matrix3x3.getMatrixFromRectangleNoScale(text.bounds);
 
                 for (text.text_vertex.items, 0..) |vertex, i| {
                     if (vertex.sdf_texture_id) |sdf_texture_id| {
@@ -1016,8 +1045,13 @@ pub fn renderDraw() !void {
                             },
                         };
 
+                        var absolute_vertex: [6]types.PointUV = undefined;
+                        for (vertex.relative_bounds, 0..) |point, j| {
+                            absolute_vertex[j] = matrix.getUV(point);
+                        }
+
                         web_gpu_programs.draw_shape(
-                            &vertex.bounds,
+                            &absolute_vertex,
                             uniform,
                             sdf_texture_id,
                         );
@@ -1027,20 +1061,17 @@ pub fn renderDraw() !void {
                         const is_selection = selection_start != selection_end;
 
                         if (!is_selection and texts.caret_position == i) {
-                            try texts.Text.addCaretDrawVertex(
-                                &vertex_triangles_buffer,
-                                vertex.bounds[0],
-                                text.font_size * text.line_height,
-                                time_u32,
+                            const caret_buffer = text.addCaretDrawVertex(
+                                vertex.relative_bounds[0].toPoint(),
                             );
+                            if (caret_buffer) |buffer| {
+                                try vertex_triangles_buffer.appendSlice(&buffer);
+                            }
                         }
 
                         if (is_selection and i >= selection_start and i < selection_end) {
-                            try texts.Text.addTextSelectionDrawVertex(
-                                &vertex_triangles_buffer,
-                                vertex.origin,
-                                vertex.bounds[2].x - vertex.origin.x,
-                                text.font_size * text.line_height,
+                            try vertex_triangles_buffer.appendSlice(
+                                &text.addTextSelectionDrawVertex(vertex),
                             );
                         }
                     }
@@ -1050,20 +1081,18 @@ pub fn renderDraw() !void {
                 if (texts.caret_position == text.text_vertex.items.len) {
                     const position =
                         if (text.text_vertex.getLastOrNull()) |last_vertex|
-                            last_vertex.bounds[4] // right bottom corner
+                            last_vertex.relative_bounds[4].toPoint()
                         else
-                            types.PointUV{
-                                .x = text.start.x,
-                                .y = text.start.y - text.font_size * text.line_height,
-                                .u = 0,
-                                .v = 0,
+                            types.Point{
+                                .x = 0,
+                                .y = -text.font_size * text.line_height,
                             };
-                    try texts.Text.addCaretDrawVertex(
-                        &vertex_triangles_buffer,
+                    const caret_buffer = text.addCaretDrawVertex(
                         position,
-                        text.font_size * text.line_height,
-                        time_u32,
                     );
+                    if (caret_buffer) |buffer| {
+                        try vertex_triangles_buffer.appendSlice(&buffer);
+                    }
                 }
 
                 if (is_typing_ui and vertex_triangles_buffer.items.len > 0) {
@@ -1089,7 +1118,7 @@ pub fn renderDraw() !void {
                 shape.sdf_texture_id,
             );
 
-            const hover_id = if (shape.id == hover_point_id[0]) hover_point_id else null;
+            const hover_id = if (shape.id == hover_point_id.getPrim()) hover_point_id else null;
             const vertex_data = try shape.getSkeletonDrawVertexData(
                 allocator,
                 hover_id,
@@ -1155,23 +1184,79 @@ pub fn renderPick() !void {
                 }
             },
             .text => |text| {
-                var triangles_buffer = std.ArrayList(triangles.PickInstance).init(std.heap.page_allocator);
+                // if text selection is activ,e then render only selected text
+                if (state.action == .TextSelection and state.selected_asset_id.getPrim() != text.id) continue;
 
+                var triangles_buffer = std.ArrayList(triangles.PickInstance).init(std.heap.page_allocator);
+                const matrix = Matrix3x3.getMatrixFromRectangleNoScale(text.bounds);
+                const overflow_size =
+                    if (state.action == .TextSelection)
+                        300 * shared.render_scale
+                    else
+                        0.0;
+
+                const text_width = text.bounds[1].distance(text.bounds[0]);
+                const text_height = text.bounds[3].distance(text.bounds[0]);
+
+                // above text area
+                const area_above_text_buffer = rects.getPickVertexData(
+                    matrix,
+                    -overflow_size,
+                    0,
+                    text_width + 2 * overflow_size,
+                    overflow_size,
+                    0.0,
+                    .{ text.id, 1, 0, 0 },
+                );
+                try triangles_buffer.appendSlice(&area_above_text_buffer);
+
+                // below text area
+                const area_below_text_buffer = rects.getPickVertexData(
+                    matrix,
+                    -overflow_size,
+                    -text_height,
+                    text_width + 2 * overflow_size,
+                    -overflow_size,
+                    0.0,
+                    .{ text.id, text.text_vertex.items.len + 1, 0, 0 },
+                );
+                try triangles_buffer.appendSlice(&area_below_text_buffer);
+
+                var next_char_is_first_in_line = true;
                 for (text.text_vertex.items, 0..) |vertex, index| {
-                    if (vertex.sdf_texture_id != null) {
-                        var buffer: [2]triangles.PickInstance = undefined;
-                        rects.getPickVertexData(
-                            &buffer,
-                            vertex.origin.x,
+                    const half_width = (vertex.relative_bounds[2].x - vertex.origin.x) / 2;
+                    if (half_width > consts.EPSILON) {
+                        const valid_pick_index = index + 1; // pick = 0 -> no selection
+                        // left part of the char
+                        const left_additional_offset =
+                            if (next_char_is_first_in_line) overflow_size else 0.0;
+                        try triangles_buffer.appendSlice(&rects.getPickVertexData(
+                            matrix,
+                            vertex.origin.x - left_additional_offset,
                             vertex.origin.y,
-                            vertex.bounds[2].x - vertex.origin.x,
+                            half_width + left_additional_offset,
                             text.line_height * text.font_size,
                             0.0,
-                            .{ text.id, index + 1, 0, 0 },
-                        );
-                        try triangles_buffer.appendSlice(&buffer);
+                            .{ text.id, valid_pick_index, 0, 0 },
+                        ));
+
+                        // right part of the char
+                        const right_additional_offset =
+                            if (vertex.last_in_line) overflow_size else 0.0;
+                        try triangles_buffer.appendSlice(&rects.getPickVertexData(
+                            matrix,
+                            vertex.origin.x + half_width,
+                            vertex.origin.y,
+                            half_width + right_additional_offset,
+                            text.line_height * text.font_size,
+                            0.0,
+                            .{ text.id, valid_pick_index + 1, 0, 0 },
+                        ));
+
+                        next_char_is_first_in_line = vertex.last_in_line;
                     }
                 }
+
                 if (triangles_buffer.items.len > 0) {
                     web_gpu_programs.pick_triangle(triangles_buffer.items);
                 }
@@ -1192,7 +1277,7 @@ pub fn renderPick() !void {
     }
 
     if (state.tool == Tool.None) {
-        if (state.assets.get(state.selected_asset_id[0])) |asset| {
+        if (state.assets.get(state.selected_asset_id.getPrim())) |asset| {
             const points = switch (asset) {
                 .img => |img| img.points,
                 .shape => |shape| shape.bounds,
@@ -1228,18 +1313,16 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
             .text => |text| {
                 _ = try addText(
                     text.id,
-                    text.content,
+                    text.content orelse "",
                     text.bounds,
-                    text.start,
-                    text.max_width,
                     text.font_size,
                 );
             },
         }
     }
 
-    if (!state.assets.contains(state.selected_asset_id[0])) {
-        try updateSelectedAsset(NO_SELECTION);
+    if (!state.assets.contains(state.selected_asset_id.getPrim())) {
+        try updateSelectedAsset(AssetId{});
     }
     on_asset_update_cb = original_on_asset_update_cb;
     try checkAssetsUpdate(with_snapshot);
@@ -1258,7 +1341,8 @@ pub fn deinitState() void {
     UI.deinit();
     std.heap.page_allocator.free(last_assets_update);
     last_assets_update = &.{};
-    state.selected_asset_id = .{ 0, 0, 0, 0 };
+    state.selected_asset_id = AssetId{};
+    state.hovered_asset_id = AssetId{};
     next_asset_id = ASSET_ID_MIN;
     web_gpu_programs = undefined;
     on_asset_update_cb = undefined;
@@ -1289,13 +1373,10 @@ pub fn setTool(tool: Tool) !void {
     }
 }
 
-var time: f32 = 0.0;
-var time_u32: u32 = 0;
 var ticks: u32 = 0; // it's like a time, but always increases by 1, used for performance optimizations
 pub fn tick(now: f32) void {
     ticks +%= 1;
-    time = now;
-    time_u32 = @intFromFloat(time);
+    shared.setTime(now);
 }
 
 test "reset_assets does not call the real update callback" {

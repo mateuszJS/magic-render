@@ -209,7 +209,20 @@ pub const Matrix3x3 = struct {
         });
     }
 
-    // scales the matrix around a pivot point (px, py
+    // Creates a transformation matrix with position and rotation but no scale (scale = 1).
+    // This function extracts the rotation angle from the rectangle's orientation and
+    // rotates around the center of the rectangle.
+    //
+    // The input points for the target rectangle must be in the following order:
+    // rect_points[0]: top-left corner
+    // rect_points[1]: top-right corner
+    // rect_points[2]: bottom-right corner
+    // rect_points[3]: bottom-left corner
+    pub fn getMatrixFromRectangleNoScale(rect_points: [4]PointUV) Matrix3x3 {
+        var matrix = Matrix3x3.translation(rect_points[0].x, rect_points[0].y);
+        matrix.rotate(rect_points[0].angleTo(rect_points[1]));
+        return matrix;
+    } // scales the matrix around a pivot point (px, py
     pub fn pivotScale(self: *Matrix3x3, sx: f32, sy: f32, px: f32, py: f32) void {
         self.* = Matrix3x3.multiply(self.*, Matrix3x3.from([_]f32{
             sx, 0,  px * (1 - sx),

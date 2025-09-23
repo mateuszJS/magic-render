@@ -52,36 +52,20 @@ type ShapeProps = {
   opacity: number
 }
 
-type ImageAssetOutput = {
+type ImageAsset = {
   id: number
   points: PointUV[]
   texture_id: number
 }
 
-type ShapeAssetOutput = {
+type TextAsset = {
   id: number
-  paths: Point[][]
-  props: ShapeProps
+  content: string | null
   bounds: PointUV[]
-  sdf_texture_id: number
-  cache_texture_id: number | null
-}
-
-type TextAssetOutput = {
-  id: number
-  content: string
-  bounds: PointUV[]
-  max_width: number
   font_size: number
 }
 
-type ImageAssetInput = {
-  id: number
-  points: PointUV[]
-  texture_id: number
-}
-
-type ShapeAssetInput = {
+type ShapeAsset = {
   id: number
   paths: Point[][]
   props: ShapeProps
@@ -90,22 +74,7 @@ type ShapeAssetInput = {
   cache_texture_id: number | null
 }
 
-type TextAssetInput = {
-  id: number
-  content: string
-  bounds: PointUV[] | null
-  max_width: number
-  font_size: number
-}
-
-type ZigAssetOutput =
-  | { img: ImageAssetOutput }
-  | { shape: ShapeAssetOutput }
-  | { text: TextAssetOutput }
-type ZigAssetInput =
-  | { img: ImageAssetInput }
-  | { shape: ShapeAssetInput }
-  | { text: TextAssetInput }
+type ZigAsset = { img: ImageAsset } | { shape: ShapeAsset } | { text: TextAsset }
 
 type ArrayPointerDataView = {
   '*': PointerDataView
@@ -139,7 +108,7 @@ declare module '*.zig' {
   export const addShapeBegin: VoidFunction
   export const addShapeFinish: VoidFunction
   export const removeAsset: () => void
-  export const resetAssets: (assets: ZigAssetInput[], with_snapshot: boolean) => void
+  export const resetAssets: (assets: ZigAsset[], with_snapshot: boolean) => void
 
   export const onUpdatePick: (id: Id) => void
   export const onPointerDown: (x: number, y: number) => void
@@ -148,7 +117,15 @@ declare module '*.zig' {
   export const onPointerLeave: VoidFunction
   export const commitChanges: VoidFunction
   export const updateRenderScale: (render_scale: number) => void
-  export const updateTextContent: (text: string) => void
+  export const updateTextContent: (
+    text: string,
+    selection_start: number,
+    selection_end: number
+  ) => {
+    content: string
+    selection_start: number
+    selection_end: number
+  }
 
   // Type definition for SerializedCharDetails as a constructible class
   export interface SerializedCharDetails {
@@ -208,7 +185,7 @@ declare module '*.zig' {
       sdf_texture_id: number
     ) => void
   }) => void
-  export const connectOnAssetUpdateCallback: (cb: (data: ZigAssetOutput[]) => void) => void
+  export const connectOnAssetUpdateCallback: (cb: (data: ZigAsset[]) => void) => void
   export const connectOnAssetSelectionCallback: (cb: (data: Id) => void) => void
   export const connectCreateSdfTexture: (cb: () => number) => void
   export const connectCacheCallbacks: (

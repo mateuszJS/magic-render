@@ -55,4 +55,11 @@ pub const PointUV = extern struct {
     pub fn distance(self: PointUV, other: PointUV) f32 {
         return std.math.hypot(self.x - other.x, self.y - other.y);
     }
+
+    pub fn toPoint(self: PointUV) Point {
+        return Point{
+            .x = self.x,
+            .y = self.y,
+        };
+    }
 };

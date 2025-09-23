@@ -7,6 +7,7 @@ const lines = @import("../lines.zig");
 const shared = @import("../shared.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const PathUtils = @import("path_utils.zig");
+const AssetId = @import("../asset_id.zig").AssetId;
 
 pub const Path = struct {
     points: std.ArrayList(Point),
@@ -77,7 +78,7 @@ pub const Path = struct {
         self: Path,
         matrix: Matrix3x3,
         allocator: std.mem.Allocator,
-        hover_id: ?[4]u32,
+        hover_id: ?AssetId,
         with_preview: bool,
     ) ![]triangles.DrawInstance {
         var skeleton_buffer = std.ArrayList(triangles.DrawInstance).init(allocator);

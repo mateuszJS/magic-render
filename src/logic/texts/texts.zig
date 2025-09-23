@@ -9,55 +9,61 @@ const triangles = @import("../triangles.zig");
 const rects = @import("../rects.zig");
 const shared = @import("../shared.zig");
 const lines = @import("../lines.zig");
+const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 
-const ENTER_CHAR_CODE = 10;
-const SOFT_BREAK_MARKER = "\u{2060}";
-const BOUNDS_MIX_WIDTH = 0.3; // will be multiplied by font_size
+const ENTER_CHAR_CODE: u21 = 0xa;
+const SOFT_BREAK_MARKER: u21 = 0x2060;
 
+// Global text state, modified mainly in index.zig
+// do NOT include this in Text struct! Otherwise we would need to keep looping over all texts
+// to make sure we clear all startes when user select/clicks on a text
 pub var caret_position: u32 = 0;
 pub var selection_end_position: u32 = 0; // selection start is indicated by caret_position
 pub var last_caret_update: u32 = 0;
 
 pub const CharVertex = struct {
-    bounds: [6]PointUV,
+    relative_bounds: [6]PointUV,
     sdf_texture_id: ?u32,
     origin: Point, // origin of the char (bottom left corner), useful for drawing selection/caret/picking
+    last_in_line: bool = false,
+};
+
+pub const ComputeTextResult = struct {
+    content: []const u8,
+    selection_start: usize,
+    selection_end: usize,
 };
 
 pub const Text = struct {
     id: u32,
-    start: Point,
     content: []const u8,
-    max_width: f32,
     font_size: f32,
     bounds: [4]PointUV,
     line_height: f32 = 1.2, // line height multiplier
     text_vertex: std.ArrayList(CharVertex),
+    serialized_updated_content: []const u8 = &.{}, // to cache results of computeText
+    // useful when user clicks on text again in the future to be used as input for HTMLTextAreaElement
 
     pub fn new(
         id: u32,
         content: []const u8,
-        bounds: ?[4]PointUV,
-        start: Point,
-        max_width: f32,
+        bounds: [4]PointUV,
         font_size: f32,
     ) !Text {
         var text = Text{
             .id = id,
-            .start = start,
             .content = content,
-            .max_width = max_width,
             .font_size = font_size,
-            .bounds = bounds orelse consts.DEFAULT_BOUNDS,
+            .bounds = bounds,
             .text_vertex = std.ArrayList(CharVertex).init(std.heap.page_allocator),
         };
 
-        try text.computeText();
+        _ = try text.computeText(0, 0);
 
         return text;
     }
 
-    fn getDrawBounds(self: Text, x: f32, y: f32, width: f32, height: f32, origin: Point) [6]PointUV {
+    fn getDrawRelativeBounds(self: Text, x: f32, y: f32, width: f32, height: f32, origin: Point) [6]PointUV {
         const w = width * self.font_size;
         const h = height * self.font_size;
         const p = Point{
@@ -74,38 +80,58 @@ pub const Text = struct {
         };
     }
 
-    pub fn computeText(self: *Text) !void {
-        var updated_content = std.ArrayList(u8).init(std.heap.page_allocator);
+    pub fn computeText(
+        self: *Text,
+        selection_start: usize,
+        selection_end: usize,
+    ) !ComputeTextResult {
+        var updated_content = std.ArrayList(u21).init(std.heap.page_allocator);
 
         self.text_vertex.clearAndFree();
-        self.text_vertex.deinit();
-        self.text_vertex = std.ArrayList(CharVertex).init(std.heap.page_allocator);
 
         const lh = self.font_size * self.line_height;
+        const max_text_width = self.bounds[0].distance(self.bounds[1]);
         var longest_line: f32 = 0.0;
-        var next_pos = Point{ // start of the very first char(bottom left corner of the char)
-            .x = self.start.x,
-            .y = self.start.y - lh,
-        };
+        var next_pos = Point{ .x = 0, .y = -lh };
 
-        for (self.content, 0..) |c, i| {
-            const char_width = if (c == ENTER_CHAR_CODE) b: {
-                next_pos = Point{
-                    .x = self.start.x,
-                    .y = next_pos.y - lh,
-                };
-                break :b 0.0;
-            } else b: {
-                const char_details = try fonts.get(0, c);
-                break :b (char_details.x + char_details.width) * self.font_size;
-            };
-            var space_before = try self.getBeforeKerning(i) * self.font_size;
+        var new_selection_start: usize = 0;
+        var new_selection_end: usize = 0;
+        // start of the very first char(bottom left corner of the char)
 
-            const exceeded_max_width = (next_pos.x + space_before + char_width) - self.start.x > self.max_width;
+        var iter = (try std.unicode.Utf8View.init(self.content)).iterator();
+        var cp_index: usize = 0;
+        var option_prev_cp: ?u21 = null;
+
+        while (iter.nextCodepoint()) |cp| { // code point
+            defer cp_index += 1;
+
+            const is_soft_break = cp == SOFT_BREAK_MARKER or (option_prev_cp == SOFT_BREAK_MARKER and cp == ENTER_CHAR_CODE);
+            option_prev_cp = cp;
+            if (is_soft_break) continue;
+
+            // cp_index >= selection -> to put caret on a first free position,
+            // because selection_start might be position of SOFT_BREAK_MARKER)
+            if (new_selection_start == 0 and cp_index >= selection_start) new_selection_start = self.text_vertex.items.len;
+            if (new_selection_end == 0 and cp_index >= selection_end) new_selection_end = self.text_vertex.items.len;
+
+            const char_details = try fonts.get(0, cp);
+            const char_width = (char_details.x + char_details.width) * self.font_size;
+
+            var space_before = if (option_prev_cp) |prev_cp| b: {
+                const kerning = try fonts.get_kerning(0, prev_cp, cp);
+                break :b kerning * self.font_size;
+            } else 0.0;
+
+            const exceeded_max_width = (next_pos.x + space_before + char_width) > max_text_width;
             if (exceeded_max_width) {
-                try updated_content.appendSlice(SOFT_BREAK_MARKER);
+                if (self.text_vertex.items.len > 0) {
+                    var previous = &self.text_vertex.items[self.text_vertex.items.len - 1];
+                    previous.last_in_line = true;
+                }
+
+                try updated_content.append(SOFT_BREAK_MARKER);
                 try self.text_vertex.append(CharVertex{
-                    .bounds = self.getDrawBounds(0, 0, 0, 0, next_pos),
+                    .relative_bounds = self.getDrawRelativeBounds(0, 0, 0, 0, next_pos),
                     .sdf_texture_id = null,
                     .origin = next_pos,
                 });
@@ -113,104 +139,143 @@ pub const Text = struct {
                 // add word joiner character before line break so that when user copies the text, they get the same line breaks
                 try updated_content.append(ENTER_CHAR_CODE);
                 try self.text_vertex.append(CharVertex{
-                    .bounds = self.getDrawBounds(0, 0, 0.1, 0, next_pos),
+                    .relative_bounds = self.getDrawRelativeBounds(0, 0, 0, 0, next_pos),
                     .sdf_texture_id = null,
                     .origin = next_pos,
                 });
 
-                next_pos = Point{
-                    .x = self.start.x,
-                    .y = next_pos.y - lh,
-                };
+                next_pos = Point{ .x = 0, .y = next_pos.y - lh };
                 space_before = 0.0; // we start with a new line, so no kerning needed
             }
 
-            const cd = try fonts.get(0, c); // char details
+            const relative_bounds = self.getDrawRelativeBounds(
+                char_details.x,
+                char_details.y,
+                char_details.width,
+                char_details.height,
+                .{
+                    .x = next_pos.x + space_before,
+                    .y = next_pos.y,
+                },
+            );
 
-            const bounds = self.getDrawBounds(cd.x, cd.y, cd.width, cd.height, .{
-                .x = next_pos.x + space_before,
-                .y = next_pos.y,
-            });
+            // Encode the Unicode codepoint as UTF-8 bytes
+            try updated_content.append(cp);
             try self.text_vertex.append(CharVertex{
-                .bounds = bounds,
-                .sdf_texture_id = cd.sdf_texture_id,
+                .relative_bounds = relative_bounds,
+                .sdf_texture_id = char_details.sdf_texture_id,
                 .origin = next_pos,
+                .last_in_line = cp == ENTER_CHAR_CODE,
             });
+
+            // so enter is located in same line(self.text_vertex already appended),
+            // and makes new character starting from a new line
+            if (cp == ENTER_CHAR_CODE) {
+                next_pos = Point{ .x = 0, .y = next_pos.y - lh };
+            }
 
             next_pos.x += space_before + char_width;
-            longest_line = @max(longest_line, next_pos.x - self.start.x);
-
-            try updated_content.append(c);
+            longest_line = @max(longest_line, next_pos.x);
         }
 
-        longest_line = @max(longest_line, self.font_size * BOUNDS_MIX_WIDTH);
+        if (self.text_vertex.items.len > 0) {
+            var previous = &self.text_vertex.items[self.text_vertex.items.len - 1];
+            previous.last_in_line = true;
+        }
+
+        // handle case when caret is behind the last character
+        if (cp_index == selection_start)
+            new_selection_start = self.text_vertex.items.len;
+
+        if (cp_index == selection_end)
+            new_selection_end = self.text_vertex.items.len;
+
+        const text_width = @max(max_text_width, longest_line);
+        const matrix = Matrix3x3.getMatrixFromRectangleNoScale(self.bounds);
+
         self.bounds = [_]PointUV{
-            .{ .x = self.start.x, .y = self.start.y, .u = 0.0, .v = 1.0 },
-            .{ .x = self.start.x + longest_line, .y = self.start.y, .u = 1.0, .v = 1.0 },
-            .{ .x = self.start.x + longest_line, .y = next_pos.y, .u = 1.0, .v = 0.0 },
-            .{ .x = self.start.x, .y = next_pos.y, .u = 0.0, .v = 0.0 },
+            matrix.getUV(.{ .x = 0, .y = 0, .u = 0.0, .v = 1.0 }),
+            matrix.getUV(.{ .x = text_width, .y = 0, .u = 1.0, .v = 1.0 }),
+            matrix.getUV(.{ .x = text_width, .y = next_pos.y, .u = 1.0, .v = 0.0 }),
+            matrix.getUV(.{ .x = 0, .y = next_pos.y, .u = 0.0, .v = 0.0 }),
         };
-        self.content = try updated_content.toOwnedSlice();
-    }
 
-    // returns kerning between the current and the previous char
-    fn getBeforeKerning(self: Text, start_index: usize) !f32 {
-        const kerning =
-            if (start_index > 0)
-                try fonts.get_kerning(0, self.content[start_index - 1], self.content[start_index])
-            else
-                0.0;
+        var serialized_updated_content = std.ArrayList(u8).init(std.heap.page_allocator);
+        const codepoints_slice = try updated_content.toOwnedSlice();
+        defer std.heap.page_allocator.free(codepoints_slice);
 
-        return kerning;
+        for (codepoints_slice) |cp| {
+            var utf8_buffer: [4]u8 = undefined;
+            const utf8_len = try std.unicode.utf8Encode(cp, &utf8_buffer);
+            try serialized_updated_content.appendSlice(utf8_buffer[0..utf8_len]);
+        }
+
+        std.heap.page_allocator.free(self.serialized_updated_content); // free previous content
+        self.serialized_updated_content = try serialized_updated_content.toOwnedSlice();
+
+        return .{
+            .content = self.serialized_updated_content,
+            .selection_start = new_selection_start,
+            .selection_end = new_selection_end,
+        };
     }
 
     pub fn addTextSelectionDrawVertex(
-        triangles_buffer: *std.ArrayList(triangles.DrawInstance),
-        start: Point,
-        width: f32,
-        height: f32,
-    ) !void {
+        self: Text,
+        ch_vertex: CharVertex,
+    ) [2]triangles.DrawInstance {
+        const matrix = Matrix3x3.getMatrixFromRectangleNoScale(self.bounds);
         var buffer: [2]triangles.DrawInstance = undefined;
         rects.getDrawVertexData(
             &buffer,
-            start.x,
-            start.y,
-            width,
-            height,
+            matrix,
+            ch_vertex.origin.x,
+            ch_vertex.origin.y,
+            ch_vertex.relative_bounds[2].x - ch_vertex.origin.x,
+            self.font_size * self.line_height,
             0.0,
             .{ 0, 50, 50, 50 },
         );
-        try triangles_buffer.appendSlice(&buffer);
+        return buffer;
     }
 
     pub fn addCaretDrawVertex(
-        triangles_buffer: *std.ArrayList(triangles.DrawInstance),
-        position: PointUV,
-        height: f32,
-        time_u32: u32,
-    ) !void {
+        self: Text,
+        relative_start: Point,
+    ) ?[2]triangles.DrawInstance {
+        const matrix = Matrix3x3.getMatrixFromRectangleNoScale(self.bounds);
+        const relative_end = Point{
+            .x = relative_start.x,
+            .y = relative_start.y + self.font_size * self.line_height,
+        };
+
         const CARET_BLINK_INTERVAL_MS = 700;
-        const blink = (time_u32 / CARET_BLINK_INTERVAL_MS) % 2 == 0;
-        const newly_updated = time_u32 - last_caret_update < 1000;
+        const blink = (shared.time_u32 / CARET_BLINK_INTERVAL_MS) % 2 == 0;
+        const newly_updated = shared.time_u32 - last_caret_update < 1000;
 
         if (blink or newly_updated) {
             var buffer: [2]triangles.DrawInstance = undefined;
             const width = 3.0 * shared.render_scale;
-            lines.getDrawVertexData(&buffer, position, Point{
-                .x = position.x,
-                .y = position.y + height,
-            }, width, .{ 255, 255, 255, 255 }, width / 2);
-            try triangles_buffer.appendSlice(&buffer);
+            lines.getDrawVertexData(
+                &buffer,
+                matrix.get(relative_start),
+                matrix.get(relative_end),
+                width,
+                .{ 255, 255, 255, 255 },
+                width / 2,
+            );
+            return buffer;
         }
+        return null;
     }
 
-    pub fn getCaretIndex(self: Text, id: [4]u32, x: f32) ?u32 {
+    pub fn getCaretIndex(self: Text, id: [4]u32, relative_x: f32) ?u32 {
         var caret_index = id[1];
         if (caret_index > 0) {
             const char_details = self.text_vertex.items[caret_index - 1];
 
             // calculate if the click happened more on left side of the char, in this case put caret before the char, not after
-            const left_side = @abs(x - char_details.bounds[0].x) < @abs(x - char_details.bounds[2].x);
+            const left_side = @abs(relative_x - char_details.relative_bounds[0].x) < @abs(relative_x - char_details.relative_bounds[2].x);
             if (left_side) {
                 caret_index -= 1;
             }
@@ -224,9 +289,7 @@ pub const Text = struct {
     pub fn serialize(self: Text) Serialized {
         return Serialized{
             .id = self.id,
-            .start = self.start,
             .content = self.content,
-            .max_width = self.max_width,
             .font_size = self.font_size,
             .bounds = self.bounds,
         };
@@ -235,9 +298,8 @@ pub const Text = struct {
 
 pub const Serialized = struct {
     id: u32,
-    start: Point,
-    content: []const u8,
-    max_width: f32,
-    font_size: f32,
+    content: ?[]const u8, // it's a null pointer exception if content is empty, that's why we allow null
+    // to avoid throwing the exception
     bounds: [4]PointUV,
+    font_size: f32,
 };

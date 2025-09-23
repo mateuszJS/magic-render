@@ -4,6 +4,7 @@ const shared = @import("../shared.zig");
 const rects = @import("../rects.zig");
 const lines = @import("../lines.zig");
 const std = @import("std");
+const AssetId = @import("../asset_id.zig").AssetId;
 
 const STRAIGHT_LINE_THRESHOLD = 1e+10;
 pub const STRAIGHT_LINE_HANDLE = Point{
@@ -68,6 +69,7 @@ pub fn getVertexDrawSkeletonPoint(
 
     rects.getDrawVertexData(
         buffer[0..2],
+        null,
         point.x - size / 2.0,
         point.y - size / 2.0,
         size,
@@ -84,12 +86,11 @@ pub fn getVertexPickSkeletonPoint(
     point: Point,
     id: [4]u32,
 ) [2]triangles.PickInstance {
-    var buffer: [2]triangles.PickInstance = undefined;
     const size = SKELETON_POINT_SIZE * PICK_POINT_SCALE * shared.render_scale;
     const radius = if (is_control_point) 0.0 else size / 2.0;
 
-    rects.getPickVertexData(
-        buffer[0..2],
+    return rects.getPickVertexData(
+        null,
         point.x - size / 2.0,
         point.y - size / 2.0,
         size,
@@ -97,8 +98,6 @@ pub fn getVertexPickSkeletonPoint(
         radius,
         id,
     );
-
-    return buffer;
 }
 
 // draw control point and handles around
@@ -108,7 +107,7 @@ pub fn drawControlPoint(
     cp: Point,
     handles: [2]?Point,
     buffer: *std.ArrayList(triangles.DrawInstance),
-    hover_id: ?[4]u32,
+    hover_id: ?AssetId,
 ) !void {
     for (handles, 0..) |option_hp, index| {
         if (option_hp) |hp| {
@@ -125,8 +124,8 @@ pub fn drawControlPoint(
             );
             try buffer.appendSlice(&local_buffer);
 
-            const id: u32 = if (index == 0) @min(i -% 1, len - 1) else i + 1;
-            const is_hovered = if (hover_id) |h| h[2] == id + 1 else false;
+            const point_id: u32 = if (index == 0) @min(i -% 1, len - 1) else i + 1;
+            const is_hovered = if (hover_id) |id| id.getTert() == point_id else false;
             try buffer.appendSlice(&getVertexDrawSkeletonPoint(
                 false,
                 hp,
@@ -138,6 +137,6 @@ pub fn drawControlPoint(
     try buffer.appendSlice(&getVertexDrawSkeletonPoint(
         true,
         cp,
-        if (hover_id) |h| h[2] == i + 1 else false,
+        if (hover_id) |id| id.getTert() == i else false,
     ));
 }
