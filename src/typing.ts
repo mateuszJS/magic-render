@@ -102,7 +102,6 @@ export function enable(text: string): void {
 
 export function disable(): void {
   if (textarea) {
-    textarea.blur()
     document.body.removeChild(textarea)
     textarea = null
   }
