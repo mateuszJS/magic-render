@@ -17,7 +17,7 @@ pub const AssetId = struct {
         return self._sec != 0;
     }
 
-    // make sure secondary is valid before calling this function
+    // make sure secondary is valid before calling this method
     pub fn getSec(self: AssetId) u32 {
         return self._sec - 1;
     }
@@ -30,6 +30,7 @@ pub const AssetId = struct {
         return self._tert != 0;
     }
 
+    // make sure tertiary is valid before calling this method
     pub fn getTert(self: AssetId) u32 {
         return self._tert - 1;
     }

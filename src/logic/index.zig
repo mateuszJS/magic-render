@@ -807,7 +807,10 @@ pub fn calculateShapesSDF() !void {
 
                 const option_points = try shape.getNewSdfPoint(allocator);
                 if (option_points) |points| {
-                    const bounds = shape.getBoundsWithPadding(1 / shared.render_scale, false);
+                    const bounds = shape.getBoundsWithPadding(
+                        1 / shared.render_scale,
+                        false,
+                    );
                     shape.sdf_size = texture_size.get_sdf_size(bounds);
 
                     const init_width = bounds[0].distance(bounds[1]) * shared.render_scale;
@@ -1072,12 +1075,12 @@ pub fn renderDraw() !void {
                 if (texts.caret_position == text.text_vertex.items.len) {
                     const position =
                         if (text.text_vertex.getLastOrNull()) |last_vertex|
-                            matrix.get(last_vertex.relative_bounds[4])
+                            last_vertex.relative_bounds[4].toPoint()
                         else
-                            matrix.get(types.Point{
+                            types.Point{
                                 .x = 0,
                                 .y = -text.font_size * text.line_height,
-                            });
+                            };
                     const caret_buffer = text.addCaretDrawVertex(
                         position,
                     );

@@ -14,6 +14,9 @@ const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const ENTER_CHAR_CODE: u21 = 0xa;
 const SOFT_BREAK_MARKER: u21 = 0x2060;
 
+// Global text state, modified mainly in index.zig
+// do NOT include this in Text struct! Otherwise we would need to keep looping over all texts
+// to make sure we clear all startes when user select/clicks on a text
 pub var caret_position: u32 = 0;
 pub var selection_end_position: u32 = 0; // selection start is indicated by caret_position
 pub var last_caret_update: u32 = 0;
@@ -85,8 +88,6 @@ pub const Text = struct {
         var updated_content = std.ArrayList(u21).init(std.heap.page_allocator);
 
         self.text_vertex.clearAndFree();
-        self.text_vertex.deinit();
-        self.text_vertex = std.ArrayList(CharVertex).init(std.heap.page_allocator);
 
         const lh = self.font_size * self.line_height;
         const max_text_width = self.bounds[0].distance(self.bounds[1]);
@@ -98,20 +99,20 @@ pub const Text = struct {
         // start of the very first char(bottom left corner of the char)
 
         var iter = (try std.unicode.Utf8View.init(self.content)).iterator();
-        var i: isize = -1; // we increase i by 1 on the start so it starts with 0 actually
+        var cp_index: usize = 0;
         var option_prev_cp: ?u21 = null;
 
         while (iter.nextCodepoint()) |cp| { // code point
-            i += 1;
+            defer cp_index += 1;
 
             const is_soft_break = cp == SOFT_BREAK_MARKER or (option_prev_cp == SOFT_BREAK_MARKER and cp == ENTER_CHAR_CODE);
             option_prev_cp = cp;
             if (is_soft_break) continue;
 
-            // i >= selection -> to put caret on a first free position,
+            // cp_index >= selection -> to put caret on a first free position,
             // because selection_start might be position of SOFT_BREAK_MARKER)
-            if (new_selection_start == 0 and i >= selection_start) new_selection_start = self.text_vertex.items.len;
-            if (new_selection_end == 0 and i >= selection_end) new_selection_end = self.text_vertex.items.len;
+            if (new_selection_start == 0 and cp_index >= selection_start) new_selection_start = self.text_vertex.items.len;
+            if (new_selection_end == 0 and cp_index >= selection_end) new_selection_end = self.text_vertex.items.len;
 
             const char_details = try fonts.get(0, cp);
             const char_width = (char_details.x + char_details.width) * self.font_size;
@@ -147,22 +148,28 @@ pub const Text = struct {
                 space_before = 0.0; // we start with a new line, so no kerning needed
             }
 
-            const cd = try fonts.get(0, cp); // char details
-
-            const relative_bounds = self.getDrawRelativeBounds(cd.x, cd.y, cd.width, cd.height, .{
-                .x = next_pos.x + space_before,
-                .y = next_pos.y,
-            });
+            const relative_bounds = self.getDrawRelativeBounds(
+                char_details.x,
+                char_details.y,
+                char_details.width,
+                char_details.height,
+                .{
+                    .x = next_pos.x + space_before,
+                    .y = next_pos.y,
+                },
+            );
 
             // Encode the Unicode codepoint as UTF-8 bytes
             try updated_content.append(cp);
             try self.text_vertex.append(CharVertex{
                 .relative_bounds = relative_bounds,
-                .sdf_texture_id = cd.sdf_texture_id,
+                .sdf_texture_id = char_details.sdf_texture_id,
                 .origin = next_pos,
                 .last_in_line = cp == ENTER_CHAR_CODE,
             });
 
+            // so enter is located in same line(self.text_vertex already appended),
+            // and makes new character starting from a new line
             if (cp == ENTER_CHAR_CODE) {
                 next_pos = Point{ .x = 0, .y = next_pos.y - lh };
             }
@@ -177,10 +184,10 @@ pub const Text = struct {
         }
 
         // handle case when caret is behind the last character
-        if (i + 1 == selection_start)
+        if (cp_index == selection_start)
             new_selection_start = self.text_vertex.items.len;
 
-        if (i + 1 == selection_end)
+        if (cp_index == selection_end)
             new_selection_end = self.text_vertex.items.len;
 
         const text_width = @max(max_text_width, longest_line);
@@ -200,6 +207,7 @@ pub const Text = struct {
             try serialized_updated_content.appendSlice(utf8_buffer[0..utf8_len]);
         }
 
+        std.heap.page_allocator.free(self.serialized_updated_content); // free previous content
         self.serialized_updated_content = try serialized_updated_content.toOwnedSlice();
 
         return .{
@@ -287,7 +295,7 @@ pub const Text = struct {
 
 pub const Serialized = struct {
     id: u32,
-    content: ?[]const u8, // it's a null poitner exception if content is empty, that's wy we allow null
+    content: ?[]const u8, // it's a null pointer exception if content is empty, that's why we allow null
     // to avoid throwing the exception
     bounds: [4]PointUV,
     font_size: f32,

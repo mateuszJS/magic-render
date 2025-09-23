@@ -30,7 +30,6 @@ function skipSoftBreakMarkers(
   if (isBetweenSoftBreakMarkers(text, el[field])) {
     const movedByOne = previous[field] == el[field] - 1
     el[field] = movedByOne ? el[field] + 2 : el[field] - 1
-
     // + 2 -> to jump over SOFT_BREAK_MARKER and \n
     // - 1 -> to come back to position before SOFT_BREAK_MARKER
   }
