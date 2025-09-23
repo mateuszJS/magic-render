@@ -983,7 +983,7 @@ pub fn updateCache() void {
 
 pub fn setCaretPosition(start: u32, end: u32) void {
     texts.caret_position = start;
-    texts.last_caret_update = time_u32;
+    texts.last_caret_update = shared.time_u32;
     texts.selection_end_position = end;
 }
 
@@ -1052,22 +1052,17 @@ pub fn renderDraw() !void {
                         const is_selection = selection_start != selection_end;
 
                         if (!is_selection and texts.caret_position == i) {
-                            const position = matrix.get(vertex.relative_bounds[0]);
-                            try texts.Text.addCaretDrawVertex(
-                                &vertex_triangles_buffer,
-                                position,
-                                text.font_size * text.line_height,
-                                time_u32,
+                            const caret_buffer = text.addCaretDrawVertex(
+                                vertex.relative_bounds[0].toPoint(),
                             );
+                            if (caret_buffer) |buffer| {
+                                try vertex_triangles_buffer.appendSlice(&buffer);
+                            }
                         }
 
                         if (is_selection and i >= selection_start and i < selection_end) {
-                            try texts.Text.addTextSelectionDrawVertex(
-                                &vertex_triangles_buffer,
-                                matrix,
-                                vertex.origin,
-                                vertex.relative_bounds[2].x - vertex.origin.x,
-                                text.font_size * text.line_height,
+                            try vertex_triangles_buffer.appendSlice(
+                                &text.addTextSelectionDrawVertex(vertex),
                             );
                         }
                     }
@@ -1083,12 +1078,12 @@ pub fn renderDraw() !void {
                                 .x = 0,
                                 .y = -text.font_size * text.line_height,
                             });
-                    try texts.Text.addCaretDrawVertex(
-                        &vertex_triangles_buffer,
+                    const caret_buffer = text.addCaretDrawVertex(
                         position,
-                        text.font_size * text.line_height,
-                        time_u32,
                     );
+                    if (caret_buffer) |buffer| {
+                        try vertex_triangles_buffer.appendSlice(&buffer);
+                    }
                 }
 
                 if (is_typing_ui and vertex_triangles_buffer.items.len > 0) {
@@ -1369,13 +1364,10 @@ pub fn setTool(tool: Tool) !void {
     }
 }
 
-var time: f32 = 0.0;
-var time_u32: u32 = 0;
 var ticks: u32 = 0; // it's like a time, but always increases by 1, used for performance optimizations
 pub fn tick(now: f32) void {
     ticks +%= 1;
-    time = now;
-    time_u32 = @intFromFloat(time);
+    shared.setTime(now);
 }
 
 test "reset_assets does not call the real update callback" {

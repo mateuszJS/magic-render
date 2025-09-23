@@ -210,45 +210,52 @@ pub const Text = struct {
     }
 
     pub fn addTextSelectionDrawVertex(
-        triangles_buffer: *std.ArrayList(triangles.DrawInstance),
-        matrix: Matrix3x3,
-        start: Point,
-        width: f32,
-        height: f32,
-    ) !void {
+        self: Text,
+        ch_vertex: CharVertex,
+    ) [2]triangles.DrawInstance {
+        const matrix = Matrix3x3.getMatrixFromRectangleNoScale(self.bounds);
         var buffer: [2]triangles.DrawInstance = undefined;
         rects.getDrawVertexData(
             &buffer,
             matrix,
-            start.x,
-            start.y,
-            width,
-            height,
+            ch_vertex.origin.x,
+            ch_vertex.origin.y,
+            ch_vertex.relative_bounds[2].x - ch_vertex.origin.x,
+            self.font_size * self.line_height,
             0.0,
             .{ 0, 50, 50, 50 },
         );
-        try triangles_buffer.appendSlice(&buffer);
+        return buffer;
     }
 
     pub fn addCaretDrawVertex(
-        triangles_buffer: *std.ArrayList(triangles.DrawInstance),
-        position: Point,
-        height: f32,
-        time_u32: u32,
-    ) !void {
+        self: Text,
+        relative_start: Point,
+    ) ?[2]triangles.DrawInstance {
+        const matrix = Matrix3x3.getMatrixFromRectangleNoScale(self.bounds);
+        const relative_end = Point{
+            .x = relative_start.x,
+            .y = relative_start.y + self.font_size * self.line_height,
+        };
+
         const CARET_BLINK_INTERVAL_MS = 700;
-        const blink = (time_u32 / CARET_BLINK_INTERVAL_MS) % 2 == 0;
-        const newly_updated = time_u32 - last_caret_update < 1000;
+        const blink = (shared.time_u32 / CARET_BLINK_INTERVAL_MS) % 2 == 0;
+        const newly_updated = shared.time_u32 - last_caret_update < 1000;
 
         if (blink or newly_updated) {
             var buffer: [2]triangles.DrawInstance = undefined;
             const width = 3.0 * shared.render_scale;
-            lines.getDrawVertexData(&buffer, position, Point{
-                .x = position.x,
-                .y = position.y + height,
-            }, width, .{ 255, 255, 255, 255 }, width / 2);
-            try triangles_buffer.appendSlice(&buffer);
+            lines.getDrawVertexData(
+                &buffer,
+                matrix.get(relative_start),
+                matrix.get(relative_end),
+                width,
+                .{ 255, 255, 255, 255 },
+                width / 2,
+            );
+            return buffer;
         }
+        return null;
     }
 
     pub fn getCaretIndex(self: Text, id: [4]u32, relative_x: f32) ?u32 {
