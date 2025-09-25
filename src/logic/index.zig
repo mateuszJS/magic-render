@@ -829,7 +829,7 @@ pub fn computeSdfs() !void {
                     shape.sdf_size = texture_size.get_allowed_sdf_size(desired_size);
 
                     const init_width = bounds[0].distance(bounds[1]) * shared.render_scale; // this multiplication is weird
-                    // * shared.render_scale to revert to logical scale, without impact of camera/zoom
+                    // * shared.render_scale to revert to logical scale (without impact of camera/zoom)
 
                     shape.sdf_scale = shape.sdf_size.w / init_width;
 
@@ -869,8 +869,8 @@ pub fn computeSdfs() !void {
                 const logical_w = d.max_requested_font_size * d.width + 2 * d.max_requested_effect_padding;
                 const logical_h = d.max_requested_font_size * d.height + 2 * d.max_requested_effect_padding;
                 const viewport_desired_size = texture_size.TextureSize{
-                    .w = logical_w, // / shared.render_scale,
-                    .h = logical_h, // / shared.render_scale,
+                    .w = logical_w,
+                    .h = logical_h,
                 };
 
                 const sdf_size = texture_size.get_allowed_sdf_size(
@@ -881,7 +881,7 @@ pub fn computeSdfs() !void {
                 const height_sdf_size = @ceil(sdf_size.h);
 
                 const sdf_scale = width_sdf_size / viewport_desired_size.w;
-
+                d.sdf_scale = width_sdf_size / (viewport_desired_size.w * shared.render_scale);
                 // d.paths_container_width = d.max_requested_font_size * d.width * sdf_scale;
                 // d.paths_container_height = d.max_requested_font_size * d.height * sdf_scale;
                 // d.effect_padding = d.max_requested_effect_padding
@@ -1049,26 +1049,30 @@ pub fn renderDraw() !void {
                     std.ArrayList(triangles.DrawInstance).init(allocator);
                 const matrix = Matrix3x3.getMatrixFromRectangleNoScale(text.bounds);
 
-                const uniform = sdf.DrawUniform{
-                    .solid = .{
-                        .dist_start = 2,
-                        .dist_end = -2,
-                        .color = .{ 0.9, 0.9, 0, 1 },
-                    },
-                };
-
                 for (text.text_vertex.items, 0..) |vertex, i| {
                     if (vertex.char) |char| {
-                        const char_details = try fonts.get(
+                        const char_details = try fonts.get_with_sdf(
                             0,
                             char,
-                            text.font_size,
-                            sdf.getSdfPadding(text.sdf_effects.items),
+                            text.font_size / shared.render_scale,
+                            sdf.getSdfPadding(text.sdf_effects.items) / shared.render_scale,
                         );
-
+                        // std.debug.print("font_size: {d}, padding: {d}\n", .{
+                        //     text.font_size / shared.render_scale,
+                        //     sdf.getSdfPadding(text.sdf_effects.items) / shared.render_scale,
+                        // });
+                        // std.debug.print("char_details.sdf_scale: {d}\n", .{char_details.sdf_scale});
                         if (char_details.sdf_texture_id) |sdf_texture_id| {
-                            const width = vertex.relative_bounds[1].x - vertex.relative_bounds[0].x;
                             const scale_size_to_padding = char_details.max_requested_effect_padding / (char_details.max_requested_font_size * char_details.width);
+                            const width = vertex.relative_bounds[1].x - vertex.relative_bounds[0].x;
+
+                            const uniform = sdf.DrawUniform{
+                                .solid = .{
+                                    .dist_start = 2 * char_details.sdf_scale,
+                                    .dist_end = -2 * char_details.sdf_scale,
+                                    .color = .{ 0.9, 0.9, 0, 1 },
+                                },
+                            };
 
                             web_gpu_programs.draw_shape(
                                 &vertex.getBounds(width * scale_size_to_padding, matrix),

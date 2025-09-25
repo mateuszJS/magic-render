@@ -46,8 +46,8 @@ fn getSample(pos: vec2f) -> vec4f {
 
 
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
-  let sdf = textureLoad(texture, vec2u(vsOut.uv));
-  // let sdf = getSample(vsOut.uv);
+  // let sdf = textureLoad(texture, vec2u(vsOut.uv));
+  let sdf = getSample(vsOut.uv);
 
   let dist = sdf.r;
   let width = fwidth(dist) * 0.5;

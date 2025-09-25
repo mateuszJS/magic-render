@@ -16,6 +16,7 @@ pub const Details = struct {
     paths_container_width: f32 = 0,
     paths_container_height: f32 = 0,
     effect_padding: f32 = 0,
+    sdf_scale: f32 = 1,
 };
 
 pub const Chars = struct {

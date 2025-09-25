@@ -28,20 +28,25 @@ pub fn init() void {
     fonts = std.AutoArrayHashMap(u32, chars.Chars).init(std.heap.page_allocator);
 }
 
-// pass font_size = 0 and effect_padding = 0 if you are not interested in rendering SDFs
-// eg. you just need to obtain kerning value
-pub fn get(font_id: u32, c: u21, font_size: f32, effect_padding: f32) !*chars.Details {
+pub fn get_with_sdf(font_id: u32, c: u21, font_size: f32, effect_padding: f32) !chars.Details {
+    const char_details = try get(font_id, c);
+
+    if (char_details.max_requested_effect_padding < effect_padding) {
+        char_details.max_requested_effect_padding = effect_padding;
+        char_details.outdated_sdf = true;
+    }
+    if (char_details.max_requested_font_size < font_size) {
+        char_details.max_requested_font_size = font_size;
+        char_details.outdated_sdf = true;
+    }
+
+    return char_details.*;
+}
+
+pub fn get(font_id: u32, c: u21) !*chars.Details {
     const font = fonts.getPtr(font_id) orelse @panic("Font ID not found");
     const details = font.get(c);
     if (details) |d| {
-        if (d.max_requested_effect_padding < effect_padding) {
-            d.max_requested_effect_padding = effect_padding;
-            d.outdated_sdf = true;
-        }
-        if (d.max_requested_font_size < font_size) {
-            d.max_requested_font_size = font_size;
-            d.outdated_sdf = true;
-        }
         return d;
     } else {
         const char = getCharData(font_id, c);
@@ -54,8 +59,8 @@ pub fn get(font_id: u32, c: u21, font_size: f32, effect_padding: f32) !*chars.De
             .points = char.points,
             .outdated_sdf = true,
             .kerning = std.AutoArrayHashMap(u21, f32).init(std.heap.page_allocator),
-            .max_requested_effect_padding = @max(50.0, effect_padding), // sdf needs at least 1 texel of empty padding to ensure correct sampling
-            .max_requested_font_size = font_size,
+            .max_requested_effect_padding = 50.0, // sdf needs at least 1 texel of empty padding to ensure correct sampling
+            .max_requested_font_size = 0,
         };
         try font.set(c, d);
         // Now get the pointer to the stored struct
@@ -64,7 +69,7 @@ pub fn get(font_id: u32, c: u21, font_size: f32, effect_padding: f32) !*chars.De
 }
 
 pub fn get_kerning(font_id: u32, c1: u21, c2: u21) !f32 {
-    var details = try get(font_id, c1, 0, 0);
+    var details = try get(font_id, c1);
     if (details.kerning.get(c2)) |k| {
         return k;
     } else {

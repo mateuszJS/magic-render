@@ -131,12 +131,7 @@ pub const Text = struct {
             if (new_selection_start == 0 and cp_index >= selection_start) new_selection_start = self.text_vertex.items.len;
             if (new_selection_end == 0 and cp_index >= selection_end) new_selection_end = self.text_vertex.items.len;
 
-            const char_details = try fonts.get(
-                0,
-                cp,
-                self.font_size,
-                sdf.getSdfPadding(self.sdf_effects.items),
-            );
+            const char_details = try fonts.get(0, cp);
             const char_width = (char_details.x + char_details.width) * self.font_size;
 
             var space_before = if (option_prev_cp) |prev_cp| b: {
