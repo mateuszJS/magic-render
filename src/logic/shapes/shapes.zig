@@ -411,55 +411,9 @@ pub const Shape = struct {
         return points;
     }
 
-    pub fn getBoundsWithPadding(self: Shape, scale: f32, include_filter_margin: bool) [4]PointUV {
-        const sdf_padding = sdf.getSdfPadding(self.props.sdf_effects.items);
-        var padding = Point{
-            .x = sdf_padding,
-            .y = sdf_padding,
-        };
-
-        if (include_filter_margin) {
-            const filter_margin = self.getFilterMargin();
-            padding.x += filter_margin.x;
-            padding.y += filter_margin.y;
-        }
-
-        var buffer: [4]PointUV = undefined;
-        const len = self.bounds.len;
-
-        for (self.bounds, 0..) |b, i| {
-            const b_next = self.bounds[(i + 1) % len];
-            const b_prev = self.bounds[@min((i -% 1), (len - 1)) % len];
-
-            const angle_next = b.angleTo(b_next);
-            const angle_prev = b.angleTo(b_prev);
-
-            buffer[i] = b;
-            buffer[i].x -= @cos(angle_next) * padding.x + @cos(angle_prev) * padding.x;
-            buffer[i].y -= @sin(angle_next) * padding.y + @sin(angle_prev) * padding.y;
-            buffer[i].x *= scale;
-            buffer[i].y *= scale;
-        }
-
-        return buffer;
-    }
-
-    pub fn getDrawBounds(self: Shape, include_filter_margin: bool) [6]PointUV {
-        const bounds = self.getBoundsWithPadding(1, include_filter_margin);
-        return [_]PointUV{
-            // first triangle
-            bounds[0],
-            bounds[1],
-            bounds[2],
-            // second triangle
-            bounds[2],
-            bounds[3],
-            bounds[0],
-        };
-    }
-
     pub fn getPickBounds(self: Shape) [6]images.PickVertex {
-        const bounds = self.getDrawBounds(false);
+        const sdf_padding = sdf.getSdfPadding(self.props.sdf_effects.items);
+        const bounds = sdf.getDrawBounds(self.bounds, sdf_padding, null);
         var buffer: [6]images.PickVertex = undefined;
         for (bounds, 0..) |b, i| {
             buffer[i] = .{

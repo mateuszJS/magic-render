@@ -28,20 +28,20 @@ pub fn init() void {
     fonts = std.AutoArrayHashMap(u32, chars.Chars).init(std.heap.page_allocator);
 }
 
-pub fn get_with_sdf(font_id: u32, c: u21, font_size: f32, effect_padding: f32) !chars.Details {
-    const char_details = try get(font_id, c);
+// pub fn get_with_sdf(font_id: u32, c: u21, font_size: f32, effect_padding: f32) !chars.Details {
+//     const char_details = try get(font_id, c);
 
-    if (char_details.max_requested_effect_padding < effect_padding) {
-        char_details.max_requested_effect_padding = effect_padding;
-        char_details.outdated_sdf = true;
-    }
-    if (char_details.max_requested_font_size < font_size) {
-        char_details.max_requested_font_size = font_size;
-        char_details.outdated_sdf = true;
-    }
+//     if (char_details.max_requested_effect_padding < effect_padding) {
+//         char_details.max_requested_effect_padding = effect_padding;
+//         char_details.outdated_sdf = true;
+//     }
+//     if (char_details.max_requested_font_size < font_size) {
+//         char_details.max_requested_font_size = font_size;
+//         char_details.outdated_sdf = true;
+//     }
 
-    return char_details.*;
-}
+//     return char_details.*;
+// }
 
 pub fn get(font_id: u32, c: u21) !*chars.Details {
     const font = fonts.getPtr(font_id) orelse @panic("Font ID not found");
@@ -59,8 +59,8 @@ pub fn get(font_id: u32, c: u21) !*chars.Details {
             .points = char.points,
             .outdated_sdf = true,
             .kerning = std.AutoArrayHashMap(u21, f32).init(std.heap.page_allocator),
-            .max_requested_effect_padding = 50.0, // sdf needs at least 1 texel of empty padding to ensure correct sampling
-            .max_requested_font_size = 0,
+            .max_requested_viewport_effect_padding = 50.0, // sdf needs at least 1 texel of empty padding to ensure correct sampling
+            .max_requested_viewport_font_size = 16,
         };
         try font.set(c, d);
         // Now get the pointer to the stored struct

@@ -43,7 +43,13 @@ pub fn generateUiElementsSdf(compute_shape: *const fn ([]const Point, u32, u32, 
         var shape = entry.value_ptr;
         const option_points = try shape.getRelativePoints(allocator);
         if (option_points) |points| {
-            const bounds = shape.getBoundsWithPadding(1, false);
+            const sdf_padding = sdf.getSdfPadding(shape.props.sdf_effects.items);
+            const bounds = sdf.getBoundsWithPadding(
+                shape.bounds,
+                sdf_padding,
+                1,
+                null,
+            );
             shape.sdf_size = texture_size.get_allowed_sdf_size(
                 texture_size.get_allowed_size(
                     bounds[0].distance(bounds[1]),

@@ -59,7 +59,7 @@ fn getSample(pos: vec2f) -> vec4f {
 
   let result = vec4f(color.rgb, color.a * alpha);
   if (result.a < 0.001) {
-    return vec4f(1, 0, 0, 0.5);
+    return vec4f(1, 0, 0, 0.1);
   }
   return result;
 
