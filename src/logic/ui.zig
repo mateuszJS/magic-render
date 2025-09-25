@@ -33,7 +33,7 @@ pub fn importUiElement(
     try elements.put(id, shape);
 }
 
-pub fn generateUiElementsSdf(compute_shape: *const fn ([]const Point, f32, f32, u32) void) !void {
+pub fn generateUiElementsSdf(compute_shape: *const fn ([]const Point, u32, u32, u32) void) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -41,14 +41,19 @@ pub fn generateUiElementsSdf(compute_shape: *const fn ([]const Point, f32, f32, 
     var iterator = elements.iterator();
     while (iterator.next()) |entry| {
         var shape = entry.value_ptr;
-        const option_points = try shape.getNewSdfPoint(allocator);
+        const option_points = try shape.getRelativePoints(allocator);
         if (option_points) |points| {
             const bounds = shape.getBoundsWithPadding(1, false);
-            shape.sdf_size = texture_size.get_sdf_size(bounds);
+            shape.sdf_size = texture_size.get_allowed_sdf_size(
+                texture_size.get_allowed_size(
+                    bounds[0].distance(bounds[1]),
+                    bounds[0].distance(bounds[3]),
+                ),
+            );
             compute_shape(
                 points,
-                @floor(shape.sdf_size.w),
-                @floor(shape.sdf_size.h),
+                @intFromFloat(@floor(shape.sdf_size.w)),
+                @intFromFloat(@floor(shape.sdf_size.h)),
                 shape.sdf_texture_id,
             );
         }

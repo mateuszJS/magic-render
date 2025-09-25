@@ -7,9 +7,15 @@ pub const Details = struct {
     y: f32,
     width: f32,
     height: f32,
+    max_requested_effect_padding: f32,
+    max_requested_font_size: f32,
     points: []const Point,
     outdated_sdf: bool,
     kerning: std.AutoArrayHashMap(u21, f32), // kerning between current char and next one
+
+    paths_container_width: f32 = 0,
+    paths_container_height: f32 = 0,
+    effect_padding: f32 = 0,
 };
 
 pub const Chars = struct {

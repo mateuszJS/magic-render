@@ -371,9 +371,9 @@ pub const Shape = struct {
         );
     }
 
-    pub fn getNewSdfPoint(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
+    pub fn getRelativePoints(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
         if (!self.outdated_sdf and !self.should_update_sdf) {
-            @panic("getNewSdfPoint was called but the shape sdf was not marked as outdated!");
+            @panic("getRelativePoints was called but the shape sdf was not marked as outdated!");
         }
         const check_points = try self.getAllPoints(
             allocator,
@@ -401,18 +401,22 @@ pub const Shape = struct {
             self.bounds[0].distance(self.bounds[3]),
         );
 
-        const padding = self.getSdfPadding();
+        const padding = sdf.getSdfPadding(self.props.sdf_effects.items);
         for (points) |*point| {
             const scaled = scale.get(point);
-            point.x = padding.x + scaled.x;
-            point.y = padding.y + scaled.y;
+            point.x = padding + scaled.x;
+            point.y = padding + scaled.y;
         }
 
         return points;
     }
 
     pub fn getBoundsWithPadding(self: Shape, scale: f32, include_filter_margin: bool) [4]PointUV {
-        var padding = self.getSdfPadding();
+        const sdf_padding = sdf.getSdfPadding(self.props.sdf_effects.items);
+        var padding = Point{
+            .x = sdf_padding,
+            .y = sdf_padding,
+        };
 
         if (include_filter_margin) {
             const filter_margin = self.getFilterMargin();
@@ -471,26 +475,6 @@ pub const Shape = struct {
             .x = 3 * filter.gaussianBlur.x,
             .y = 3 * filter.gaussianBlur.y,
         } else consts.POINT_ZERO;
-    }
-
-    fn getSdfPadding(self: Shape) Point {
-        var padding = consts.POINT_ZERO;
-        // because of skeleton render, we cannot od less than zero
-
-        for (self.props.sdf_effects.items) |effect| {
-            if (std.math.isInf(effect.dist_end)) {
-                std.debug.print("SDF effect dist_end cannot be infinite!\nShape ID: {d}, effect: {any}\n", .{ self.id, effect });
-                @panic("SDF effect dist_end cannot be infinite!");
-            }
-            padding.x = @max(padding.x, -effect.dist_end);
-            padding.y = @max(padding.y, -effect.dist_end);
-        }
-
-        // we do smoothing in shaders wit fwidth(), so it's 1px to make sure we wont cut it out
-        padding.x += 1.0;
-        padding.y += 1.0;
-
-        return padding;
     }
 
     pub fn serialize(self: Shape, allocator: std.mem.Allocator) !Serialized {

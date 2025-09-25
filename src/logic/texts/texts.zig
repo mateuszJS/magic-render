@@ -10,6 +10,7 @@ const rects = @import("../rects.zig");
 const shared = @import("../shared.zig");
 const lines = @import("../lines.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
+const sdf = @import("../sdf/sdf.zig");
 
 const ENTER_CHAR_CODE: u21 = 0xa;
 const SOFT_BREAK_MARKER: u21 = 0x2060;
@@ -22,10 +23,25 @@ pub var selection_end_position: u32 = 0; // selection start is indicated by care
 pub var last_caret_update: u32 = 0;
 
 pub const CharVertex = struct {
-    relative_bounds: [6]PointUV,
-    sdf_texture_id: ?u32,
+    relative_bounds: [4]PointUV,
+    char: ?u21,
     origin: Point, // origin of the char (bottom left corner), useful for drawing selection/caret/picking
     last_in_line: bool = false,
+
+    pub fn getBounds(self: CharVertex, padding: f32, matrix: Matrix3x3) [6]PointUV {
+        const b = self.relative_bounds;
+        const p = padding;
+        return [_]PointUV{
+            // first triangle
+            matrix.getUV(.{ .x = b[3].x - p, .y = b[3].y - p, .u = 0.0, .v = 0.0 }),
+            matrix.getUV(.{ .x = b[0].x - p, .y = b[0].y + p, .u = 0.0, .v = 1.0 }),
+            matrix.getUV(.{ .x = b[1].x + p, .y = b[1].y + p, .u = 1.0, .v = 1.0 }),
+            // second triangle
+            matrix.getUV(.{ .x = b[1].x + p, .y = b[1].y + p, .u = 1.0, .v = 1.0 }),
+            matrix.getUV(.{ .x = b[2].x + p, .y = b[2].y - p, .u = 1.0, .v = 0.0 }),
+            matrix.getUV(.{ .x = b[3].x - p, .y = b[3].y - p, .u = 0.0, .v = 0.0 }),
+        };
+    }
 };
 
 pub const ComputeTextResult = struct {
@@ -44,6 +60,8 @@ pub const Text = struct {
     serialized_updated_content: []const u8 = &.{}, // to cache results of computeText
     // useful when user clicks on text again in the future to be used as input for HTMLTextAreaElement
 
+    sdf_effects: std.ArrayList(sdf.Effect),
+
     pub fn new(
         id: u32,
         content: []const u8,
@@ -56,6 +74,7 @@ pub const Text = struct {
             .font_size = font_size,
             .bounds = bounds,
             .text_vertex = std.ArrayList(CharVertex).init(std.heap.page_allocator),
+            .sdf_effects = std.ArrayList(sdf.Effect).init(std.heap.page_allocator),
         };
 
         _ = try text.computeText(0, 0);
@@ -63,7 +82,7 @@ pub const Text = struct {
         return text;
     }
 
-    fn getDrawRelativeBounds(self: Text, x: f32, y: f32, width: f32, height: f32, origin: Point) [6]PointUV {
+    fn getDrawRelativeBounds(self: Text, x: f32, y: f32, width: f32, height: f32, origin: Point) [4]PointUV {
         const w = width * self.font_size;
         const h = height * self.font_size;
         const p = Point{
@@ -71,9 +90,7 @@ pub const Text = struct {
             .y = origin.y + y * self.font_size,
         };
         return [_]PointUV{
-            .{ .x = p.x, .y = p.y, .u = 0.0, .v = 0.0 },
             .{ .x = p.x, .y = p.y + h, .u = 0.0, .v = 1.0 },
-            .{ .x = p.x + w, .y = p.y + h, .u = 1.0, .v = 1.0 },
             .{ .x = p.x + w, .y = p.y + h, .u = 1.0, .v = 1.0 },
             .{ .x = p.x + w, .y = p.y, .u = 1.0, .v = 0.0 },
             .{ .x = p.x, .y = p.y, .u = 0.0, .v = 0.0 },
@@ -114,7 +131,12 @@ pub const Text = struct {
             if (new_selection_start == 0 and cp_index >= selection_start) new_selection_start = self.text_vertex.items.len;
             if (new_selection_end == 0 and cp_index >= selection_end) new_selection_end = self.text_vertex.items.len;
 
-            const char_details = try fonts.get(0, cp);
+            const char_details = try fonts.get(
+                0,
+                cp,
+                self.font_size,
+                sdf.getSdfPadding(self.sdf_effects.items),
+            );
             const char_width = (char_details.x + char_details.width) * self.font_size;
 
             var space_before = if (option_prev_cp) |prev_cp| b: {
@@ -132,16 +154,16 @@ pub const Text = struct {
                 try updated_content.append(SOFT_BREAK_MARKER);
                 try self.text_vertex.append(CharVertex{
                     .relative_bounds = self.getDrawRelativeBounds(0, 0, 0, 0, next_pos),
-                    .sdf_texture_id = null,
                     .origin = next_pos,
+                    .char = null,
                 });
 
                 // add word joiner character before line break so that when user copies the text, they get the same line breaks
                 try updated_content.append(ENTER_CHAR_CODE);
                 try self.text_vertex.append(CharVertex{
                     .relative_bounds = self.getDrawRelativeBounds(0, 0, 0, 0, next_pos),
-                    .sdf_texture_id = null,
                     .origin = next_pos,
+                    .char = null,
                 });
 
                 next_pos = Point{ .x = 0, .y = next_pos.y - lh };
@@ -163,7 +185,7 @@ pub const Text = struct {
             try updated_content.append(cp);
             try self.text_vertex.append(CharVertex{
                 .relative_bounds = relative_bounds,
-                .sdf_texture_id = char_details.sdf_texture_id,
+                .char = cp,
                 .origin = next_pos,
                 .last_in_line = cp == ENTER_CHAR_CODE,
             });
@@ -231,7 +253,7 @@ pub const Text = struct {
             matrix,
             ch_vertex.origin.x,
             ch_vertex.origin.y,
-            ch_vertex.relative_bounds[2].x - ch_vertex.origin.x,
+            ch_vertex.relative_bounds[1].x - ch_vertex.origin.x,
             self.font_size * self.line_height,
             0.0,
             .{ 0, 50, 50, 50 },
@@ -275,7 +297,7 @@ pub const Text = struct {
             const char_details = self.text_vertex.items[caret_index - 1];
 
             // calculate if the click happened more on left side of the char, in this case put caret before the char, not after
-            const left_side = @abs(relative_x - char_details.relative_bounds[0].x) < @abs(relative_x - char_details.relative_bounds[2].x);
+            const left_side = @abs(relative_x - char_details.relative_bounds[0].x) < @abs(relative_x - char_details.relative_bounds[1].x);
             if (left_side) {
                 caret_index -= 1;
             }

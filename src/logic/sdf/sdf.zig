@@ -1,5 +1,13 @@
 const Point = @import("../types.zig").Point;
 const fill = @import("fill.zig");
+const std = @import("std");
+
+// pub const Padding = struct {
+//     left: f32,
+//     right: f32,
+//     top: f32,
+//     bottom: f32,
+// };
 
 pub const Effect = struct {
     dist_start: f32,
@@ -113,4 +121,22 @@ pub fn getDrawUniform(sdf_effect: Effect, sdf_scale: f32, opacity: f32) DrawUnif
             };
         },
     }
+}
+
+pub fn getSdfPadding(sdf_effects: []Effect) f32 {
+    var padding: f32 = 0.0;
+    // because of skeleton render, we cannot od less than zero
+
+    for (sdf_effects) |effect| {
+        if (std.math.isInf(effect.dist_end)) {
+            std.debug.print("SDF effect dist_end cannot be infinite!\n effect: {any}\n", .{effect});
+            @panic("SDF effect dist_end cannot be infinite!");
+        }
+        padding = @max(padding, -effect.dist_end);
+    }
+
+    // we do smoothing in shaders wit fwidth(), so it's 1px to make sure we wont cut it out
+    padding += 1.0;
+
+    return padding;
 }

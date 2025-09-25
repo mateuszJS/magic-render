@@ -29,7 +29,7 @@ const FillType = enum(u8) {
 const WebGpuPrograms = struct {
     draw_texture: *const fn ([]const types.PointUV, u32) void,
     draw_triangle: *const fn ([]const triangles.DrawInstance) void,
-    compute_shape: *const fn ([]const types.Point, f32, f32, u32) void,
+    compute_shape: *const fn ([]const types.Point, u32, u32, u32) void,
     draw_blur: *const fn (u32, u32, u32, u32, f32, f32) void,
     draw_shape: *const fn ([]const types.PointUV, sdf.DrawUniform, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
@@ -190,7 +190,11 @@ pub fn updateRenderScale(scale: f32) !void {
             .img => {},
             .shape => |*shape| {
                 const bounds = shape.getBoundsWithPadding(1 / shared.render_scale, false);
-                const new_size = texture_size.get_sdf_size(bounds);
+                const desired_size = texture_size.get_allowed_size(
+                    bounds[0].distance(bounds[1]),
+                    bounds[0].distance(bounds[3]),
+                );
+                const new_size = texture_size.get_allowed_sdf_size(desired_size);
 
                 if (new_size.w > shape.sdf_size.w or new_size.h > shape.sdf_size.h) {
                     shape.outdated_sdf = true;
@@ -417,7 +421,8 @@ pub fn onPointerDown(x: f32, y: f32) !void {
 
             const new_text = try addText(
                 id,
-                "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+                "o",
+                // "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
                 bounds,
                 72.0,
             );
@@ -795,7 +800,7 @@ fn drawProjectBoundary() void {
     web_gpu_programs.draw_triangle(&buffer);
 }
 
-pub fn calculateShapesSDF() !void {
+pub fn computeSdfs() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -811,15 +816,19 @@ pub fn calculateShapesSDF() !void {
                 const do_update = shape.outdated_sdf or (shape.should_update_sdf and is_throttle_event);
                 if (!do_update) continue;
 
-                const option_points = try shape.getNewSdfPoint(allocator);
+                const option_points = try shape.getRelativePoints(allocator);
                 if (option_points) |points| {
                     const bounds = shape.getBoundsWithPadding(
                         1 / shared.render_scale,
                         false,
                     );
-                    shape.sdf_size = texture_size.get_sdf_size(bounds);
+                    const desired_size = texture_size.get_allowed_size(
+                        bounds[0].distance(bounds[1]),
+                        bounds[0].distance(bounds[3]),
+                    );
+                    shape.sdf_size = texture_size.get_allowed_sdf_size(desired_size);
 
-                    const init_width = bounds[0].distance(bounds[1]) * shared.render_scale;
+                    const init_width = bounds[0].distance(bounds[1]) * shared.render_scale; // this multiplication is weird
                     // * shared.render_scale to revert to logical scale, without impact of camera/zoom
 
                     shape.sdf_scale = shape.sdf_size.w / init_width;
@@ -832,8 +841,8 @@ pub fn calculateShapesSDF() !void {
                     if (shape.sdf_size.w > consts.MIN_TEXTURE_SIZE and shape.sdf_size.h > consts.MIN_TEXTURE_SIZE) {
                         web_gpu_programs.compute_shape(
                             points,
-                            @floor(shape.sdf_size.w),
-                            @floor(shape.sdf_size.h),
+                            @intFromFloat(shape.sdf_size.w),
+                            @intFromFloat(shape.sdf_size.h),
                             shape.sdf_texture_id,
                         );
 
@@ -857,38 +866,43 @@ pub fn calculateShapesSDF() !void {
             if (d.sdf_texture_id) |sdf_texture_id| {
                 if (!d.outdated_sdf) continue;
 
-                const w = 100.0 * d.width;
-                const h = 100.0 * d.height;
+                const logical_w = d.max_requested_font_size * d.width + 2 * d.max_requested_effect_padding;
+                const logical_h = d.max_requested_font_size * d.height + 2 * d.max_requested_effect_padding;
+                const viewport_desired_size = texture_size.TextureSize{
+                    .w = logical_w, // / shared.render_scale,
+                    .h = logical_h, // / shared.render_scale,
+                };
 
-                // const bounds = [4]types.PointUV{
-                //     .{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 },
-                //     .{ .x = w, .y = 0.0, .u = 1.0, .v = 0.0 },
-                //     .{ .x = w, .y = h, .u = 1.0, .v = 1.0 },
-                //     .{ .x = 0.0, .y = h, .u = 0.0, .v = 1.0 },
-                // };
-                // const sdf_size = texture_size.get_sdf_size(bounds);
+                const sdf_size = texture_size.get_allowed_sdf_size(
+                    texture_size.get_allowed_size(viewport_desired_size.w, viewport_desired_size.h),
+                );
+                const width_sdf_size = @ceil(sdf_size.w); // ceil because without it, while casting f32 to u32 it rounds down
+                // and often the end of the texture cuts out large part of the padding and in the result shapes touched the edge
+                const height_sdf_size = @ceil(sdf_size.h);
 
-                // const init_width = bounds[0].distance(bounds[1]) * shared.render_scale;
-                // * shared.render_scale to revert to logical scale, without impact of camera/zoom
+                const sdf_scale = width_sdf_size / viewport_desired_size.w;
 
-                // shape.sdf_scale = shape.sdf_size.w / init_width;
-                const ps = try std.heap.page_allocator.dupe(types.Point, d.points);
-                for (ps) |*point| {
-                    point.x = point.x * 100.0;
-                    point.y = point.y * 100.0;
+                // d.paths_container_width = d.max_requested_font_size * d.width * sdf_scale;
+                // d.paths_container_height = d.max_requested_font_size * d.height * sdf_scale;
+                // d.effect_padding = d.max_requested_effect_padding
+
+                const points = try std.heap.page_allocator.dupe(types.Point, d.points);
+                for (points) |*point| {
+                    const x = (point.x * d.max_requested_font_size) + d.max_requested_effect_padding;
+                    const y = (point.y * d.max_requested_font_size) + d.max_requested_effect_padding;
+                    point.x = x * sdf_scale;
+                    point.y = y * sdf_scale;
                 }
 
-                // if (shape.sdf_size.w > consts.MIN_TEXTURE_SIZE and shape.sdf_size.h > consts.MIN_TEXTURE_SIZE) {
                 web_gpu_programs.compute_shape(
-                    ps,
-                    @floor(w),
-                    @floor(h),
+                    points,
+                    @intFromFloat(width_sdf_size),
+                    @intFromFloat(height_sdf_size),
                     sdf_texture_id,
                 );
 
                 d.outdated_sdf = false;
             }
-            // }
         }
     }
 }
@@ -1035,44 +1049,51 @@ pub fn renderDraw() !void {
                     std.ArrayList(triangles.DrawInstance).init(allocator);
                 const matrix = Matrix3x3.getMatrixFromRectangleNoScale(text.bounds);
 
+                const uniform = sdf.DrawUniform{
+                    .solid = .{
+                        .dist_start = 2,
+                        .dist_end = -2,
+                        .color = .{ 0.9, 0.9, 0, 1 },
+                    },
+                };
+
                 for (text.text_vertex.items, 0..) |vertex, i| {
-                    if (vertex.sdf_texture_id) |sdf_texture_id| {
-                        const uniform = sdf.DrawUniform{
-                            .solid = .{
-                                .dist_start = std.math.inf(f32),
-                                .dist_end = 0,
-                                .color = .{ 0.9, 0.9, 0, 1 },
-                            },
-                        };
-
-                        var absolute_vertex: [6]types.PointUV = undefined;
-                        for (vertex.relative_bounds, 0..) |point, j| {
-                            absolute_vertex[j] = matrix.getUV(point);
-                        }
-
-                        web_gpu_programs.draw_shape(
-                            &absolute_vertex,
-                            uniform,
-                            sdf_texture_id,
+                    if (vertex.char) |char| {
+                        const char_details = try fonts.get(
+                            0,
+                            char,
+                            text.font_size,
+                            sdf.getSdfPadding(text.sdf_effects.items),
                         );
-                    }
 
-                    if (is_typing_ui) {
-                        const is_selection = selection_start != selection_end;
+                        if (char_details.sdf_texture_id) |sdf_texture_id| {
+                            const width = vertex.relative_bounds[1].x - vertex.relative_bounds[0].x;
+                            const scale_size_to_padding = char_details.max_requested_effect_padding / (char_details.max_requested_font_size * char_details.width);
 
-                        if (!is_selection and texts.caret_position == i) {
-                            const caret_buffer = text.addCaretDrawVertex(
-                                vertex.relative_bounds[0].toPoint(),
+                            web_gpu_programs.draw_shape(
+                                &vertex.getBounds(width * scale_size_to_padding, matrix),
+                                uniform,
+                                sdf_texture_id,
                             );
-                            if (caret_buffer) |buffer| {
-                                try vertex_triangles_buffer.appendSlice(&buffer);
-                            }
                         }
 
-                        if (is_selection and i >= selection_start and i < selection_end) {
-                            try vertex_triangles_buffer.appendSlice(
-                                &text.addTextSelectionDrawVertex(vertex),
-                            );
+                        if (is_typing_ui) {
+                            const is_selection = selection_start != selection_end;
+
+                            if (!is_selection and texts.caret_position == i) {
+                                const caret_buffer = text.addCaretDrawVertex(
+                                    vertex.relative_bounds[3].toPoint(),
+                                );
+                                if (caret_buffer) |buffer| {
+                                    try vertex_triangles_buffer.appendSlice(&buffer);
+                                }
+                            }
+
+                            if (is_selection and i >= selection_start and i < selection_end) {
+                                try vertex_triangles_buffer.appendSlice(
+                                    &text.addTextSelectionDrawVertex(vertex),
+                                );
+                            }
                         }
                     }
                 }
@@ -1081,7 +1102,7 @@ pub fn renderDraw() !void {
                 if (texts.caret_position == text.text_vertex.items.len) {
                     const position =
                         if (text.text_vertex.getLastOrNull()) |last_vertex|
-                            last_vertex.relative_bounds[4].toPoint()
+                            last_vertex.relative_bounds[2].toPoint()
                         else
                             types.Point{
                                 .x = 0,
@@ -1224,7 +1245,7 @@ pub fn renderPick() !void {
 
                 var next_char_is_first_in_line = true;
                 for (text.text_vertex.items, 0..) |vertex, index| {
-                    const half_width = (vertex.relative_bounds[2].x - vertex.origin.x) / 2;
+                    const half_width = (vertex.relative_bounds[1].x - vertex.origin.x) / 2;
                     if (half_width > consts.EPSILON) {
                         const valid_pick_index = index + 1; // pick = 0 -> no selection
                         // left part of the char

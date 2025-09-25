@@ -1,0 +1,27 @@
+We have two ways of drawing text:
+a) Each char has dedicated SDF, and we draw one by one SDFs to draw the whole text
+pros:
+
+- in most cases uses less memory because all textures are unique(except cases where effect-padding is huge)
+- allows us to create effect where each char should have own dedicated SDF(not like distance field should be based on all chars)
+
+cons:
+
+- to create effect where all chars impact SDF we would have to use depth-buffer and pass length there and use shorter length
+- complex calculations, we need to have use max size of requested font but ALSO max size of requested effect-padding -> also at point where sdf max size is reached we have to decide to decrease effect-padding or font-size! Probably font-size is the one that has to be decreased - we might also make it more dynamic(depends on zoom and we can cut out effect if not visible for user) or we might generate more than one SDF
+- how do we deal with two different usages of the same char. One has huge effect-padding and the other one is just huge and has zero effect-padding.
+
+b) One SDF per text
+pros:
+
+- effects where SDF depends on all chars distance
+- simpler calculations because we don't have to maintain list of sdf for each char, and calculate their font-size, effect-padding
+- if effect requires large effect-padding, then this solution can use less memory
+
+cons:
+
+- to calculate effect where SDF depends on individual chars, we would need to render separated SDF anyway
+- might be heavy to compute SDF if there are gonna be a lot of chars/curves in the text
+
+Conclusions:
+Maybe we should use the first way to create SDF, and then treat it as a shape? Because blur also needs to be handled!

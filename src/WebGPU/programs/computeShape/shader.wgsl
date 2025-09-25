@@ -15,7 +15,7 @@ struct CubicBezier {
 @compute @workgroup_size(1) fn cs(
   @builtin(global_invocation_id) id : vec3u
 )  {
-  let pos = vec2f(id.xy);
+  let pos = vec2f(id.xy) + vec2f(0.5, 0.5);
   let shape_info = evaluate_shape(pos);
 
   textureStore(tex, id.xy, vec4f(

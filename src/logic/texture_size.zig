@@ -8,8 +8,9 @@ pub const TextureSize = struct {
     h: f32,
 };
 
-pub fn get_sdf_size(bounds: [4]PointUV) TextureSize {
-    var size = get_size(bounds);
+// buffer size limits the size of rgba32float texture
+pub fn get_allowed_sdf_size(desired_size: TextureSize) TextureSize {
+    var size = desired_size;
     const sdf_texture_size = size.w * size.h * 16;
 
     if (sdf_texture_size > shared.max_buffer_size) {
@@ -22,10 +23,7 @@ pub fn get_sdf_size(bounds: [4]PointUV) TextureSize {
     return size;
 }
 
-pub fn get_size(bounds: [4]PointUV) TextureSize {
-    const width = bounds[0].distance(bounds[1]);
-    const height = bounds[0].distance(bounds[3]);
-
+pub fn get_allowed_size(width: f32, height: f32) TextureSize {
     const scale = shared.texture_max_size / @max(width, height);
     const ratio = @min(1.0, scale); // makes sure we only downscale
     return TextureSize{ .w = width * ratio, .h = height * ratio };
@@ -34,7 +32,10 @@ pub fn get_size(bounds: [4]PointUV) TextureSize {
 const MAX_COST = 90050924; // it's just chosen base on my own preferences
 // returns new safe size, new sigma and cache scale
 pub fn get_safe_blur_dims(init_width: f32, bounds: [4]PointUV, gaussianBlur: Point) struct { TextureSize, Point, f32 } {
-    var size = get_size(bounds);
+    var size = get_allowed_size(
+        bounds[0].distance(bounds[1]),
+        bounds[0].distance(bounds[3]),
+    );
     // * shared.render_scale to revert to logical scale, without impact of camera/zoom
 
     const init_cache_scale = size.w / init_width;

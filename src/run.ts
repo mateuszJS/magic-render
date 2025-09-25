@@ -149,7 +149,7 @@ export default function runCreator(
     })
 
     computePass = encoder.beginComputePass()
-    Logic.calculateShapesSDF()
+    Logic.computeSdfs()
     computePass.end()
 
     Logic.updateCache()
