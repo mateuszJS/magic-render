@@ -63,6 +63,7 @@ type TextAsset = {
   content: string | null
   bounds: PointUV[]
   font_size: number
+  props: ShapeProps
 }
 
 type ShapeAsset = {
@@ -174,6 +175,18 @@ declare module '*.zig' {
       height: number,
       sdf_texture_id: number
     ) => void
+    clear_sdf: (
+      sdfTextureId: number,
+      computeDepthTextureId: number,
+      width: number,
+      height: number
+    ) => void
+    combine_sdf: (
+      destinatioTexId: number,
+      sourceTexId: number,
+      computeDepthTextureId: number,
+      uniformData: ArrayPointerDataView
+    ) => void
     draw_shape: (
       bound_box_data: ArrayPointerDataView,
       uniformData: ShapeDrawUniform,
@@ -187,7 +200,10 @@ declare module '*.zig' {
   }) => void
   export const connectOnAssetUpdateCallback: (cb: (data: ZigAsset[]) => void) => void
   export const connectOnAssetSelectionCallback: (cb: (data: Id) => void) => void
-  export const connectCreateSdfTexture: (cb: () => number) => void
+  export const connectCreateSdfTexture: (
+    createSdfTexture: () => number,
+    createComputeDepthTexture: (width: number, height: number) => number
+  ) => void
   export const connectCacheCallbacks: (
     create_cache_texture: () => number,
     start_cache: (texture_id: number, box: BoundingBox, width: number, height: number) => void,

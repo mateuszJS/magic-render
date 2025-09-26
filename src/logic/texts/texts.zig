@@ -11,6 +11,8 @@ const shared = @import("../shared.zig");
 const lines = @import("../lines.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const sdf = @import("../sdf/sdf.zig");
+const shapes = @import("../shapes/shapes.zig");
+const fill = @import("../sdf/fill.zig");
 
 const ENTER_CHAR_CODE: u21 = 0xa;
 const SOFT_BREAK_MARKER: u21 = 0x2060;
@@ -60,21 +62,42 @@ pub const Text = struct {
     serialized_updated_content: []const u8 = &.{}, // to cache results of computeText
     // useful when user clicks on text again in the future to be used as input for HTMLTextAreaElement
 
-    sdf_effects: std.ArrayList(sdf.Effect),
+    sdf_texture_id: ?u32 = null,
+    is_sdf_outdated: bool = true,
+    props: shapes.Props,
 
     pub fn new(
+        allocator: std.mem.Allocator,
         id: u32,
         content: []const u8,
         bounds: [4]PointUV,
         font_size: f32,
+        input_props: shapes.SerializedProps,
+        sdf_texture_id: ?u32,
     ) !Text {
+        var effects_list = std.ArrayList(sdf.Effect).init(allocator);
+        for (input_props.sdf_effects) |effect| {
+            try effects_list.append(sdf.Effect{
+                .dist_start = effect.dist_start,
+                .dist_end = effect.dist_end,
+                .fill = try fill.Fill.new(effect.fill, allocator),
+            });
+        }
+
+        const props = shapes.Props{
+            .sdf_effects = effects_list,
+            .filter = input_props.filter,
+            .opacity = input_props.opacity,
+        };
+
         var text = Text{
             .id = id,
             .content = content,
             .font_size = font_size,
             .bounds = bounds,
-            .text_vertex = std.ArrayList(CharVertex).init(std.heap.page_allocator),
-            .sdf_effects = std.ArrayList(sdf.Effect).init(std.heap.page_allocator),
+            .text_vertex = std.ArrayList(CharVertex).init(allocator),
+            .props = props,
+            .sdf_texture_id = sdf_texture_id,
         };
 
         _ = try text.computeText(0, 0);
@@ -230,6 +253,8 @@ pub const Text = struct {
         std.heap.page_allocator.free(self.serialized_updated_content); // free previous content
         self.serialized_updated_content = try serialized_updated_content.toOwnedSlice();
 
+        self.is_sdf_outdated = true;
+
         return .{
             .content = self.serialized_updated_content,
             .selection_start = new_selection_start,
@@ -303,12 +328,36 @@ pub const Text = struct {
         return null;
     }
 
-    pub fn serialize(self: Text) Serialized {
+    pub fn getDrawUniform(self: Text, sdf_effect: sdf.Effect, sdf_scale: f32) sdf.DrawUniform {
+        return sdf.getDrawUniform(
+            sdf_effect,
+            sdf_scale,
+            self.props.opacity,
+        );
+    }
+
+    pub fn serialize(self: Text, allocator: std.mem.Allocator) !Serialized {
+        var effects_list = std.ArrayList(shapes.SerializedSdfEffect).init(allocator);
+        for (self.props.sdf_effects.items) |effect| {
+            try effects_list.append(shapes.SerializedSdfEffect{
+                .dist_start = effect.dist_start,
+                .dist_end = effect.dist_end,
+                .fill = effect.fill.serialize(),
+            });
+        }
+
+        const props = shapes.SerializedProps{
+            .sdf_effects = try effects_list.toOwnedSlice(),
+            .filter = self.props.filter,
+            .opacity = self.props.opacity,
+        };
+
         return Serialized{
             .id = self.id,
             .content = self.content,
             .font_size = self.font_size,
             .bounds = self.bounds,
+            .props = props,
         };
     }
 };
@@ -319,4 +368,5 @@ pub const Serialized = struct {
     // to avoid throwing the exception
     bounds: [4]PointUV,
     font_size: f32,
+    props: shapes.SerializedProps,
 };

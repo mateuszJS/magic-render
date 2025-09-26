@@ -30,6 +30,8 @@ const WebGpuPrograms = struct {
     draw_texture: *const fn ([]const types.PointUV, u32) void,
     draw_triangle: *const fn ([]const triangles.DrawInstance) void,
     compute_shape: *const fn ([]const types.Point, u32, u32, u32) void,
+    clear_sdf: *const fn (u32, u32, u32, u32) void,
+    combine_sdf: *const fn (u32, u32, u32, []const f32) void,
     draw_blur: *const fn (u32, u32, u32, u32, f32, f32) void,
     draw_shape: *const fn ([]const types.PointUV, sdf.DrawUniform, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
@@ -58,8 +60,13 @@ pub fn connectOnAssetSelectionCallback(cb: *const fn ([4]u32) void) void {
 }
 
 var create_sdf_texture: *const fn () u32 = undefined;
-pub fn connectCreateSdfTexture(cb: *const fn () u32) void {
-    create_sdf_texture = cb;
+var create_compute_depth_texture: *const fn (u32, u32) u32 = undefined;
+pub fn connectCreateSdfTexture(
+    create_sdf: *const fn () u32,
+    create_compute_depth: *const fn (u32, u32) u32,
+) void {
+    create_sdf_texture = create_sdf;
+    create_compute_depth_texture = create_compute_depth;
 }
 
 pub const SerializedCharDetails = fonts.SerializedCharDetails;
@@ -199,12 +206,14 @@ pub fn updateRenderScale(scale: f32) !void {
                     shape.outdated_sdf = true;
                 }
             },
-            .text => {},
+            .text => |*text| {
+                text.is_sdf_outdated = true;
+            },
         }
     }
 
     // We don't update font here because we would need to know what fonts/chars are still in use!
-    // so It's better to update them in renderDraw
+    // so It's better to update them in render draw
 }
 
 var next_asset_id: u32 = ASSET_ID_MIN;
@@ -253,13 +262,17 @@ fn addText(
     content: []const u8,
     bounds: [4]types.PointUV,
     font_size: f32,
+    props: shapes.SerializedProps,
 ) !texts.Text {
     const id = if (id_or_zero == 0) generateId() else id_or_zero;
     const text = try texts.Text.new(
+        std.heap.page_allocator,
         id,
         content,
         bounds,
         font_size,
+        props,
+        create_sdf_texture(),
     );
     try state.assets.put(id, Asset{ .text = text });
     try checkAssetsUpdate(true);
@@ -308,7 +321,7 @@ fn checkAssetsUpdate(should_notify: bool) !void {
             },
             .text => |text| {
                 try new_assets_update.append(AssetSerialized{
-                    .text = text.serialize(),
+                    .text = try text.serialize(std.heap.page_allocator),
                 });
             },
         }
@@ -421,12 +434,35 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                 .{ .x = x, .y = y - 1.0, .u = 0.0, .v = 0.0 },
             };
 
+            const props = shapes.SerializedProps{
+                .sdf_effects = &.{
+                    shapes.SerializedSdfEffect{
+                        .dist_start = std.math.inf(f32),
+                        .dist_end = 0,
+                        .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
+                    },
+                    shapes.SerializedSdfEffect{
+                        .dist_start = 6,
+                        .dist_end = 4,
+                        .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
+                    },
+                    shapes.SerializedSdfEffect{
+                        .dist_start = -6,
+                        .dist_end = -8,
+                        .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
+                    },
+                },
+                .filter = .{ .gaussianBlur = .{ .x = 30, .y = 30 } },
+                .opacity = 1.0,
+            };
+
             const new_text = try addText(
                 id,
                 "o",
                 // "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
                 bounds,
                 72.0,
+                props,
             );
             try updateSelectedAsset(AssetId{ ._prim = id });
             break :b new_text;
@@ -802,10 +838,88 @@ fn drawProjectBoundary() void {
     web_gpu_programs.draw_triangle(&buffer);
 }
 
+fn requestCharsSdfs() !void {
+    const is_throttle_event = ticks % 5 == 0;
+    _ = is_throttle_event; // autofix
+    var iterator = state.assets.iterator();
+    while (iterator.next()) |asset| {
+        switch (asset.value_ptr.*) {
+            .img => {},
+            .shape => {},
+            .text => |*text| {
+                if (!text.is_sdf_outdated) continue;
+
+                const padding = sdf.getSdfPadding(text.props.sdf_effects.items);
+
+                for (text.text_vertex.items) |vertex| {
+                    if (vertex.char) |char| {
+                        const ch_d = try fonts.get(0, char);
+
+                        ch_d.request_size(
+                            text.font_size,
+                            padding,
+                        );
+                    }
+                }
+            },
+        }
+    }
+}
+
 pub fn computeSdfs() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
+
+    try requestCharsSdfs();
+
+    var fonts_iter = fonts.fonts.iterator();
+    while (fonts_iter.next()) |font_entry| {
+        var font = font_entry.value_ptr.*;
+        var char_iter = font.chars.iterator();
+        while (char_iter.next()) |details_entry| {
+            var ch_d = details_entry.value_ptr;
+            if (ch_d.sdf_texture_id) |sdf_texture_id| {
+                if (!ch_d.outdated_sdf) continue;
+
+                const ch_w = ch_d.max_font_size * ch_d.width;
+                const ch_h = ch_d.max_font_size * ch_d.height;
+                // std.debug.print("d.max_requested_effect_paddinge: {d}\n", .{d.max_requested_effect_padding});
+
+                const bounds = [4]types.PointUV{
+                    .{ .x = 0, .y = ch_h, .u = 0, .v = 1 },
+                    .{ .x = ch_w, .y = ch_h, .u = 1, .v = 1 },
+                    .{ .x = ch_w, .y = 0, .u = 1, .v = 0 },
+                    .{ .x = 0, .y = 0, .u = 0, .v = 0 },
+                };
+                const sdf_dims = sdf.getSdfTextureDims(
+                    bounds,
+                    ch_d.max_effect_padding,
+                );
+
+                ch_d.sdf_scale = sdf_dims.scale;
+                ch_d.max_requested_viewport_font_size = ch_d.max_font_size * ch_d.sdf_scale;
+                ch_d.max_requested_viewport_effect_padding = ch_d.max_effect_padding * ch_d.sdf_scale;
+
+                const points = try std.heap.page_allocator.dupe(types.Point, ch_d.points);
+                for (points) |*point| {
+                    const x = (point.x * ch_d.max_font_size) + ch_d.max_effect_padding;
+                    const y = (point.y * ch_d.max_font_size) + ch_d.max_effect_padding;
+                    point.x = x * ch_d.sdf_scale;
+                    point.y = y * ch_d.sdf_scale;
+                }
+
+                web_gpu_programs.compute_shape(
+                    points,
+                    @intFromFloat(sdf_dims.size.w),
+                    @intFromFloat(sdf_dims.size.h),
+                    sdf_texture_id,
+                );
+
+                ch_d.outdated_sdf = false;
+            }
+        }
+    }
 
     var iterator = state.assets.iterator();
     while (iterator.next()) |asset| {
@@ -846,55 +960,64 @@ pub fn computeSdfs() !void {
                 shape.outdated_sdf = false;
                 shape.should_update_sdf = false;
             },
-            .text => {},
-        }
-    }
+            .text => |*text| {
+                if (!text.is_sdf_outdated) continue;
 
-    var iter = fonts.fonts.iterator();
-    while (iter.next()) |f| {
-        var font = f.value_ptr.*;
-        var char_iter = font.chars.iterator();
-        while (char_iter.next()) |details| {
-            var d = details.value_ptr;
-            if (d.sdf_texture_id) |sdf_texture_id| {
-                if (!d.outdated_sdf) continue;
+                const padding = sdf.getSdfPadding(text.props.sdf_effects.items);
 
-                const ch_w = d.max_font_size * d.width;
-                const ch_h = d.max_font_size * d.height;
-                // std.debug.print("d.max_requested_effect_paddinge: {d}\n", .{d.max_requested_effect_padding});
-
-                const bounds = [4]types.PointUV{
-                    .{ .x = 0, .y = ch_h, .u = 0, .v = 1 },
-                    .{ .x = ch_w, .y = ch_h, .u = 1, .v = 1 },
-                    .{ .x = ch_w, .y = 0, .u = 1, .v = 0 },
-                    .{ .x = 0, .y = 0, .u = 0, .v = 0 },
-                };
-                const sdf_dims = sdf.getSdfTextureDims(
-                    bounds,
-                    d.max_effect_padding,
+                const safe_margin_bottom = 0; //text.font_size * text.line_height; // some ltters like "g" got tail wich excees bottom part outside of bounds
+                // we have to include this part in final SDF
+                const text_viewport_height = (text.bounds[0].distance(text.bounds[3]) + safe_margin_bottom + 2 * padding) / shared.render_scale;
+                const text_viewport_width = (text.bounds[0].distance(text.bounds[1]) + 2 * padding) / shared.render_scale;
+                const sdf_tex_viewport_width: u32 = @intFromFloat(text_viewport_width);
+                const sdf_tex_viewport_height: u32 = @intFromFloat(text_viewport_height);
+                const compute_depth_texture_id = create_compute_depth_texture(
+                    sdf_tex_viewport_width,
+                    sdf_tex_viewport_height,
                 );
 
-                d.sdf_scale = sdf_dims.scale;
-                d.max_requested_viewport_font_size = d.max_font_size * d.sdf_scale;
-                d.max_requested_viewport_effect_padding = d.max_effect_padding * d.sdf_scale;
+                if (text.sdf_texture_id) |text_sdf_texture_id| {
+                    web_gpu_programs.clear_sdf(
+                        text_sdf_texture_id,
+                        compute_depth_texture_id,
+                        sdf_tex_viewport_width,
+                        sdf_tex_viewport_height,
+                    );
 
-                const points = try std.heap.page_allocator.dupe(types.Point, d.points);
-                for (points) |*point| {
-                    const x = (point.x * d.max_font_size) + d.max_effect_padding;
-                    const y = (point.y * d.max_font_size) + d.max_effect_padding;
-                    point.x = x * d.sdf_scale;
-                    point.y = y * d.sdf_scale;
+                    for (text.text_vertex.items) |vertex| {
+                        if (vertex.char) |char| {
+                            const ch_d = try fonts.get(0, char);
+
+                            if (ch_d.sdf_texture_id) |char_sdf_texture_id| {
+                                const font_size_viewport = text.font_size / shared.render_scale;
+                                const scale_text_font_size_to_sdf_font_size = font_size_viewport / ch_d.max_requested_viewport_font_size;
+                                const char_padding = ch_d.max_requested_viewport_effect_padding * scale_text_font_size_to_sdf_font_size;
+                                // TODO: STOP USING shared.render_scale
+                                // the whole purpose of it is to use it as little AS POSSIBLE!
+                                const uniforms = [4]f32{
+                                    vertex.relative_bounds[3].x / shared.render_scale - char_padding,
+                                    text_viewport_height + vertex.relative_bounds[3].y / shared.render_scale - char_padding,
+                                    vertex.relative_bounds[1].x / shared.render_scale + char_padding,
+                                    text_viewport_height + vertex.relative_bounds[1].y / shared.render_scale + char_padding,
+                                };
+
+                                // std.debug.print("uniforms[0]: {d}\n", .{uniforms[0]});
+                                // std.debug.print("uniforms[1]: {d}\n", .{uniforms[1]});
+                                // std.debug.print("uniforms[2]: {d}\n", .{uniforms[2]});
+                                // std.debug.print("uniforms[3]: {d}\n", .{uniforms[3]});
+                                web_gpu_programs.combine_sdf(
+                                    text_sdf_texture_id,
+                                    char_sdf_texture_id,
+                                    compute_depth_texture_id,
+                                    &uniforms,
+                                );
+                            }
+                        }
+                    }
+
+                    text.is_sdf_outdated = false;
                 }
-
-                web_gpu_programs.compute_shape(
-                    points,
-                    @intFromFloat(sdf_dims.size.w),
-                    @intFromFloat(sdf_dims.size.h),
-                    sdf_texture_id,
-                );
-
-                d.outdated_sdf = false;
-            }
+            },
         }
     }
 }
@@ -1046,6 +1169,22 @@ pub fn renderDraw() !void {
                 }
             },
             .text => |*text| {
+                if (text.sdf_texture_id) |sdf_texture_id| {
+                    const sdf_padding = sdf.getSdfPadding(text.props.sdf_effects.items);
+                    for (text.props.sdf_effects.items) |effect| {
+                        web_gpu_programs.draw_shape(
+                            &sdf.getDrawBounds(
+                                text.bounds,
+                                sdf_padding,
+                                null,
+                            ),
+                            text.getDrawUniform(effect, 1),
+                            sdf_texture_id,
+                        );
+                    }
+                    continue;
+                }
+
                 const is_typing_ui = state.tool == .Text and state.selected_asset_id.getPrim() == text.id;
                 const selection_start = @min(texts.caret_position, texts.selection_end_position);
                 const selection_end = @max(texts.caret_position, texts.selection_end_position);
@@ -1057,33 +1196,21 @@ pub fn renderDraw() !void {
                     if (vertex.char) |char| {
                         const char_details = try fonts.get(0, char);
 
-                        char_details.request_size(
-                            text.font_size,
-                            sdf.getSdfPadding(text.sdf_effects.items),
-                        );
-
-                        // std.debug.print("font_size: {d}, padding: {d}\n", .{
-                        //     text.font_size / shared.render_scale,
-                        //     sdf.getSdfPadding(text.sdf_effects.items) / shared.render_scale,
-                        // });
-                        // std.debug.print("char_details.sdf_scale: {d}\n", .{char_details.sdf_scale});
+                        // char_details.request_size(
+                        //     text.font_size,
+                        //     sdf.getSdfPadding(text.props.sdf_effects.items),
+                        // );
                         if (char_details.sdf_texture_id) |sdf_texture_id| {
-                            const scale_size_to_padding = char_details.max_requested_viewport_effect_padding / (char_details.max_requested_viewport_font_size * char_details.width);
-                            const width = vertex.relative_bounds[1].x - vertex.relative_bounds[0].x;
+                            for (text.props.sdf_effects.items) |effect| {
+                                const scale_size_to_padding = char_details.max_requested_viewport_effect_padding / (char_details.max_requested_viewport_font_size * char_details.width);
+                                const width = vertex.relative_bounds[1].x - vertex.relative_bounds[0].x;
 
-                            const uniform = sdf.DrawUniform{
-                                .solid = .{
-                                    .dist_start = 2 * char_details.sdf_scale,
-                                    .dist_end = -2 * char_details.sdf_scale,
-                                    .color = .{ 0.9, 0.9, 0, 1 },
-                                },
-                            };
-
-                            web_gpu_programs.draw_shape(
-                                &vertex.getBounds(width * scale_size_to_padding, matrix),
-                                uniform,
-                                sdf_texture_id,
-                            );
+                                web_gpu_programs.draw_shape(
+                                    &vertex.getBounds(width * scale_size_to_padding, matrix),
+                                    text.getDrawUniform(effect, char_details.sdf_scale),
+                                    sdf_texture_id,
+                                );
+                            }
                         }
 
                         if (is_typing_ui) {
@@ -1162,37 +1289,6 @@ pub fn renderDraw() !void {
             web_gpu_programs.draw_triangle(vertex_data);
         }
     }
-
-    // testing:
-
-    // const points = [_]types.Point{
-    //     types.Point{ .x = 100.0, .y = 70.0 }, //
-    //     types.Point{ .x = 300.0, .y = 100.0 }, //
-    //     types.Point{ .x = 300.0, .y = 250.0 }, //
-    //     types.Point{ .x = 100.0, .y = 150.0 }, //
-    // };
-    // const p0_v = Triangle.get_round_corner_vector(0, points, 10.0);
-    // const p1_v = Triangle.get_round_corner_vector(1, points, 20.0);
-    // const p2_v = Triangle.get_round_corner_vector(2, points, 80.0);
-    // const p3_v = Triangle.get_round_corner_vector(3, points, 20.0);
-
-    // const color = [_]u8{ 0, 255, 255, 255 };
-
-    // var shape_vertex_data: [2]Triangle.DrawInstance = undefined;
-
-    // Triangle.get_draw_vertex_data(shape_vertex_data[0..1], p0_v, p1_v, p2_v, color);
-    // Triangle.get_draw_vertex_data(shape_vertex_data[1..2], p0_v, p2_v, p3_v, color);
-
-    // web_gpu_programs.draw_triangle(&shape_vertex_data);
-
-    // const msdf_vertex_data = Msdf.get_draw_vertex_data(
-    //     Msdf.IconId.rotate,
-    //     10.0,
-    //     10.0,
-    //     100.0,
-    //     [_]u8{ 255, 0, 0, 255 },
-    // );
-    // web_gpu_programs.draw_msdf(&msdf_vertex_data, 0);
 }
 
 pub fn renderPick() !void {
@@ -1351,6 +1447,7 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
                     text.content orelse "",
                     text.bounds,
                     text.font_size,
+                    text.props,
                 );
             },
         }

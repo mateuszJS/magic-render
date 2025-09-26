@@ -13,6 +13,9 @@ import {
   drawBlur,
   canvasMatrix,
   destroyGpuObjects,
+  combineSdf,
+  clearSdf,
+  clearComputeDepth,
 } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
@@ -66,9 +69,26 @@ export default function runCreator(
     },
     compute_shape: (curves_data, width, height, textureId) => {
       const curvesDataView = curves_data['*'].dataView
-      Textures.updateSDF(textureId, width, height)
+      Textures.update(textureId, width, height)
       // console.log(curves_data, width, height, textureId)
       computeShape(computePass, curvesDataView, Textures.getTexture(textureId))
+    },
+    clear_sdf: (sdfTextureId, computeDepthTextureId, width, height) => {
+      Textures.update(sdfTextureId, width, height)
+      Textures.update(computeDepthTextureId, width, height)
+
+      clearSdf(computePass, Textures.getTexture(sdfTextureId))
+      clearComputeDepth(computePass, Textures.getTexture(computeDepthTextureId))
+    },
+    combine_sdf: (destinatioTexId, sourceTexId, computeDepthTextureId, uniformData) => {
+      const placementDataView = uniformData['*'].dataView
+      combineSdf(
+        computePass,
+        Textures.getTexture(destinatioTexId),
+        Textures.getTexture(sourceTexId),
+        Textures.getTexture(computeDepthTextureId),
+        placementDataView
+      )
     },
     draw_blur: (
       textureId,

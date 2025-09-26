@@ -59,8 +59,8 @@ pub fn get(font_id: u32, c: u21) !*chars.Details {
             .points = char.points,
             .outdated_sdf = true,
             .kerning = std.AutoArrayHashMap(u21, f32).init(std.heap.page_allocator),
-            .max_requested_viewport_effect_padding = 50.0, // sdf needs at least 1 texel of empty padding to ensure correct sampling
-            .max_requested_viewport_font_size = 16,
+            .max_requested_viewport_effect_padding = 1, // sdf needs at least 1 texel of empty padding to ensure correct sampling
+            .max_requested_viewport_font_size = 1, // anyway but 0 because we calculate scale later by dividing by font size
         };
         try font.set(c, d);
         // Now get the pointer to the stored struct

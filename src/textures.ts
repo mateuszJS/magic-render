@@ -154,6 +154,20 @@ export function createCacheTexture(): number {
   return textureId
 }
 
+export function createComputeDepthTexture(width: number, height: number): number {
+  const textureId = textures.length
+  const label = 'combineSdf - depth texture'
+  const texture: GPUTexture = device.createTexture({
+    label,
+    size: [width, height],
+    format: 'r32float',
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  })
+
+  textures.push({ url: label, texture })
+  return textureId
+}
+
 export function createSDF(): number {
   const textureId = textures.length
   const label = `SDF texture ${textureId}`
@@ -168,7 +182,7 @@ export function createSDF(): number {
   return textureId
 }
 
-export function updateSDF(textureId: number, width: number, height: number): void {
+export function emptySDF(textureId: number, width: number, height: number): void {
   const label = `SDF texture ${textureId}`
   const texture: GPUTexture = device.createTexture({
     label,
@@ -178,6 +192,26 @@ export function updateSDF(textureId: number, width: number, height: number): voi
   })
 
   textures[textureId].texture?.destroy()
+  textures[textureId].texture = texture
+}
+
+export function update(textureId: number, width: number, height: number): void {
+  const existingTex = textures[textureId]?.texture
+
+  if (!existingTex) throw Error('Texture not found with id: ' + textureId)
+
+  if (existingTex.width === width && existingTex.height === height) {
+    return
+  }
+
+  const texture: GPUTexture = device.createTexture({
+    label: existingTex.label,
+    size: [width, height],
+    format: existingTex.format,
+    usage: existingTex.usage,
+  })
+
+  existingTex?.destroy()
   textures[textureId].texture = texture
 }
 
