@@ -1,6 +1,6 @@
 struct Uniform {
   placement_start: vec2f,
-  placement_end: vec2f, // not used!
+  placement_size: vec2f,
 };
 
 @group(0) @binding(0) var destination_tex: texture_storage_2d<rgba32float, write>;
@@ -11,15 +11,16 @@ struct Uniform {
 @compute @workgroup_size(1) fn cs(
   @builtin(global_invocation_id) id : vec3u
 )  {
-  let source_pos = vec2f(id.xy) + vec2f(0.5);
+  let texel_pos = vec2f(id.xy) + vec2f(0.5);
 
-  let dest_pos = vec2i(u.placement_start + source_pos);
+  let dest_pos = vec2i(u.placement_start + texel_pos);
   if (any(dest_pos < vec2i(0)) || any(dest_pos >= vec2i(textureDimensions(destination_tex)))) {
     return;
   }
 
   let depth = textureLoad(depth_tex, dest_pos).r;
-  let source_texel = getSample(source_pos);
+  let ratio_source_tex_to_placement = vec2f(textureDimensions(source_tex)) / u.placement_size; // texture doesn't to be same size as placement_size!
+  let source_texel = getSample(texel_pos * ratio_source_tex_to_placement);
 
   if (source_texel.r > depth){
     textureStore(destination_tex, dest_pos, source_texel);

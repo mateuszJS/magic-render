@@ -63,6 +63,7 @@ pub const Text = struct {
     // useful when user clicks on text again in the future to be used as input for HTMLTextAreaElement
 
     sdf_texture_id: ?u32 = null,
+    sdf_scale: f32 = 1.0,
     is_sdf_outdated: bool = true,
     props: shapes.Props,
 

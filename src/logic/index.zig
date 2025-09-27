@@ -26,12 +26,19 @@ const FillType = enum(u8) {
     RadialGradient,
 };
 
+const Placement = struct {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+};
+
 const WebGpuPrograms = struct {
     draw_texture: *const fn ([]const types.PointUV, u32) void,
     draw_triangle: *const fn ([]const triangles.DrawInstance) void,
     compute_shape: *const fn ([]const types.Point, u32, u32, u32) void,
     clear_sdf: *const fn (u32, u32, u32, u32) void,
-    combine_sdf: *const fn (u32, u32, u32, []const f32) void,
+    combine_sdf: *const fn (u32, u32, u32, Placement) void,
     draw_blur: *const fn (u32, u32, u32, u32, f32, f32) void,
     draw_shape: *const fn ([]const types.PointUV, sdf.DrawUniform, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
@@ -441,27 +448,27 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                         .dist_end = 0,
                         .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
                     },
-                    shapes.SerializedSdfEffect{
-                        .dist_start = 6,
-                        .dist_end = 4,
-                        .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
-                    },
-                    shapes.SerializedSdfEffect{
-                        .dist_start = -6,
-                        .dist_end = -8,
-                        .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
-                    },
+                    // shapes.SerializedSdfEffect{
+                    //     .dist_start = 6,
+                    //     .dist_end = 4,
+                    //     .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
+                    // },
+                    // shapes.SerializedSdfEffect{
+                    //     .dist_start = -6,
+                    //     .dist_end = -8,
+                    //     .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
+                    // },
                 },
-                .filter = .{ .gaussianBlur = .{ .x = 30, .y = 30 } },
+                .filter = null,
                 .opacity = 1.0,
             };
 
             const new_text = try addText(
                 id,
-                "o",
+                "A",
                 // "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
                 bounds,
-                72.0,
+                2000.0,
                 props,
             );
             try updateSelectedAsset(AssetId{ ._prim = id });
@@ -839,8 +846,6 @@ fn drawProjectBoundary() void {
 }
 
 fn requestCharsSdfs() !void {
-    const is_throttle_event = ticks % 5 == 0;
-    _ = is_throttle_event; // autofix
     var iterator = state.assets.iterator();
     while (iterator.next()) |asset| {
         switch (asset.value_ptr.*) {
@@ -850,7 +855,7 @@ fn requestCharsSdfs() !void {
                 if (!text.is_sdf_outdated) continue;
 
                 const padding = sdf.getSdfPadding(text.props.sdf_effects.items);
-
+                // std.debug.print("pppppadddding: {d}-------------\n", .{padding});
                 for (text.text_vertex.items) |vertex| {
                     if (vertex.char) |char| {
                         const ch_d = try fonts.get(0, char);
@@ -884,7 +889,6 @@ pub fn computeSdfs() !void {
 
                 const ch_w = ch_d.max_font_size * ch_d.width;
                 const ch_h = ch_d.max_font_size * ch_d.height;
-                // std.debug.print("d.max_requested_effect_paddinge: {d}\n", .{d.max_requested_effect_padding});
 
                 const bounds = [4]types.PointUV{
                     .{ .x = 0, .y = ch_h, .u = 0, .v = 1 },
@@ -892,21 +896,27 @@ pub fn computeSdfs() !void {
                     .{ .x = ch_w, .y = 0, .u = 1, .v = 0 },
                     .{ .x = 0, .y = 0, .u = 0, .v = 0 },
                 };
-                const sdf_dims = sdf.getSdfTextureDims(
-                    bounds,
-                    ch_d.max_effect_padding,
-                );
+                const padding = ch_d.max_font_size * ch_d.max_ratio_padding_to_font_size;
+                const sdf_dims = sdf.getSdfTextureDims(bounds, padding);
 
-                ch_d.sdf_scale = sdf_dims.scale;
-                ch_d.max_requested_viewport_font_size = ch_d.max_font_size * ch_d.sdf_scale;
-                ch_d.max_requested_viewport_effect_padding = ch_d.max_effect_padding * ch_d.sdf_scale;
+                // ch_d.sdf_scale = sdf_dims.scale;
+
+                // this is NOT viewport, it's SDF scale, if it's smaller htan requested viewport(often while using zoom)
+                // we will keep regenerating it for no reason!
+                ch_d.max_requested_viewport_font_size = ch_d.max_font_size * sdf_dims.scale;
+                const viewport_padding = padding * sdf_dims.scale;
+                // ch_d.max_requested_viewport_effect_padding = ch_d.max_effect_padding * ch_d.sdf_scale;
 
                 const points = try std.heap.page_allocator.dupe(types.Point, ch_d.points);
+                // std.debug.print("char texture size {d}x{d}\n", .{ sdf_dims.size.w, sdf_dims.size.h });
+                // std.debug.print("ch_d.max_effect_padding {d}\n", .{ch_d.max_effect_padding});
                 for (points) |*point| {
-                    const x = (point.x * ch_d.max_font_size) + ch_d.max_effect_padding;
-                    const y = (point.y * ch_d.max_font_size) + ch_d.max_effect_padding;
-                    point.x = x * ch_d.sdf_scale;
-                    point.y = y * ch_d.sdf_scale;
+                    if (PathUtils.isStraightLineHandle(point.*)) {
+                        continue;
+                    }
+                    point.x = (point.x * ch_d.max_requested_viewport_font_size) + viewport_padding;
+                    point.y = (point.y * ch_d.max_requested_viewport_font_size) + viewport_padding;
+                    // std.debug.print("point: {d}, {d}\n", .{ point.x, point.y });
                 }
 
                 web_gpu_programs.compute_shape(
@@ -964,24 +974,28 @@ pub fn computeSdfs() !void {
                 if (!text.is_sdf_outdated) continue;
 
                 const padding = sdf.getSdfPadding(text.props.sdf_effects.items);
-
-                const safe_margin_bottom = 0; //text.font_size * text.line_height; // some ltters like "g" got tail wich excees bottom part outside of bounds
-                // we have to include this part in final SDF
-                const text_viewport_height = (text.bounds[0].distance(text.bounds[3]) + safe_margin_bottom + 2 * padding) / shared.render_scale;
-                const text_viewport_width = (text.bounds[0].distance(text.bounds[1]) + 2 * padding) / shared.render_scale;
-                const sdf_tex_viewport_width: u32 = @intFromFloat(text_viewport_width);
-                const sdf_tex_viewport_height: u32 = @intFromFloat(text_viewport_height);
-                const compute_depth_texture_id = create_compute_depth_texture(
-                    sdf_tex_viewport_width,
-                    sdf_tex_viewport_height,
+                const sdf_dims = sdf.getSdfTextureDims(
+                    text.bounds,
+                    padding,
                 );
+                text.sdf_scale = sdf_dims.scale;
 
                 if (text.sdf_texture_id) |text_sdf_texture_id| {
+                    const safe_margin_bottom = 0; //text.font_size * text.line_height; // some ltters like "g" got tail wich excees bottom part outside of bounds
+                    _ = safe_margin_bottom; // autofix
+                    // we have to include this part in final SDF
+                    const text_viewport_height = text.bounds[0].distance(text.bounds[3]);
+
+                    const compute_depth_texture_id = create_compute_depth_texture(
+                        @intFromFloat(sdf_dims.size.w),
+                        @intFromFloat(sdf_dims.size.h),
+                    );
+
                     web_gpu_programs.clear_sdf(
                         text_sdf_texture_id,
                         compute_depth_texture_id,
-                        sdf_tex_viewport_width,
-                        sdf_tex_viewport_height,
+                        @intFromFloat(sdf_dims.size.w),
+                        @intFromFloat(sdf_dims.size.h),
                     );
 
                     for (text.text_vertex.items) |vertex| {
@@ -989,27 +1003,24 @@ pub fn computeSdfs() !void {
                             const ch_d = try fonts.get(0, char);
 
                             if (ch_d.sdf_texture_id) |char_sdf_texture_id| {
-                                const font_size_viewport = text.font_size / shared.render_scale;
-                                const scale_text_font_size_to_sdf_font_size = font_size_viewport / ch_d.max_requested_viewport_font_size;
-                                const char_padding = ch_d.max_requested_viewport_effect_padding * scale_text_font_size_to_sdf_font_size;
-                                // TODO: STOP USING shared.render_scale
-                                // the whole purpose of it is to use it as little AS POSSIBLE!
-                                const uniforms = [4]f32{
-                                    vertex.relative_bounds[3].x / shared.render_scale - char_padding,
-                                    text_viewport_height + vertex.relative_bounds[3].y / shared.render_scale - char_padding,
-                                    vertex.relative_bounds[1].x / shared.render_scale + char_padding,
-                                    text_viewport_height + vertex.relative_bounds[1].y / shared.render_scale + char_padding,
+                                const char_padding = text.font_size * ch_d.max_ratio_padding_to_font_size;
+                                const start_x = vertex.relative_bounds[3].x - char_padding;
+                                const start_y = text_viewport_height + vertex.relative_bounds[3].y - char_padding;
+                                const end_x = vertex.relative_bounds[1].x + char_padding;
+                                const end_y = text_viewport_height + vertex.relative_bounds[1].y + char_padding;
+
+                                const placement = Placement{
+                                    .x = start_x * text.sdf_scale,
+                                    .y = start_y * text.sdf_scale,
+                                    .width = (end_x - start_x) * text.sdf_scale,
+                                    .height = (end_y - start_y) * text.sdf_scale,
                                 };
 
-                                // std.debug.print("uniforms[0]: {d}\n", .{uniforms[0]});
-                                // std.debug.print("uniforms[1]: {d}\n", .{uniforms[1]});
-                                // std.debug.print("uniforms[2]: {d}\n", .{uniforms[2]});
-                                // std.debug.print("uniforms[3]: {d}\n", .{uniforms[3]});
                                 web_gpu_programs.combine_sdf(
                                     text_sdf_texture_id,
                                     char_sdf_texture_id,
                                     compute_depth_texture_id,
-                                    &uniforms,
+                                    placement,
                                 );
                             }
                         }
@@ -1194,20 +1205,20 @@ pub fn renderDraw() !void {
 
                 for (text.text_vertex.items, 0..) |vertex, i| {
                     if (vertex.char) |char| {
-                        const char_details = try fonts.get(0, char);
+                        const ch_d = try fonts.get(0, char);
 
                         // char_details.request_size(
                         //     text.font_size,
                         //     sdf.getSdfPadding(text.props.sdf_effects.items),
                         // );
-                        if (char_details.sdf_texture_id) |sdf_texture_id| {
+                        if (ch_d.sdf_texture_id) |sdf_texture_id| {
                             for (text.props.sdf_effects.items) |effect| {
-                                const scale_size_to_padding = char_details.max_requested_viewport_effect_padding / (char_details.max_requested_viewport_font_size * char_details.width);
-                                const width = vertex.relative_bounds[1].x - vertex.relative_bounds[0].x;
-
+                                // const scale_size_to_padding = ch_d.max_requested_viewport_effect_padding / (char_details.max_requested_viewport_font_size * char_details.width);
+                                // const width = vertex.relative_bounds[1].x - vertex.relative_bounds[0].x;
+                                const viewport_font_size = text.font_size / shared.render_scale;
                                 web_gpu_programs.draw_shape(
-                                    &vertex.getBounds(width * scale_size_to_padding, matrix),
-                                    text.getDrawUniform(effect, char_details.sdf_scale),
+                                    &vertex.getBounds(viewport_font_size * ch_d.max_ratio_padding_to_font_size, matrix),
+                                    text.getDrawUniform(effect, ch_d.sdf_scale),
                                     sdf_texture_id,
                                 );
                             }

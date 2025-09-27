@@ -185,7 +185,7 @@ declare module '*.zig' {
       destinatioTexId: number,
       sourceTexId: number,
       computeDepthTextureId: number,
-      uniformData: ArrayPointerDataView
+      uniformData: PointerDataView
     ) => void
     draw_shape: (
       bound_box_data: ArrayPointerDataView,

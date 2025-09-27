@@ -58,15 +58,11 @@ fn getSample(pos: vec2f) -> vec4f {
   let color = getColor(sdf, vsOut.uv, vsOut.norm_uv);
   let result = vec4f(color.rgb, color.a * alpha);
 
-  // if (result.a < 0.1) {
-  //   return vec4f(1, 0, 0, 0.1);
-  // }
+  if (dist < -99999) {
+    return vec4f(0, 0, 0, 1);
+  }
 
-  return vec4f(dist * 0.3, 0, abs(dist) / 20, 1);
-
-
-  // 181.72799682617188 183.0240020751953 -69.40799713134766
-  // 31.24798583984375 112.31999969482422 214.27198791503906
+  // return vec4f(dist, 0, abs(dist) / 20, 1);
 
   return result;
 

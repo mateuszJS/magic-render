@@ -70,7 +70,6 @@ export default function runCreator(
     compute_shape: (curves_data, width, height, textureId) => {
       const curvesDataView = curves_data['*'].dataView
       Textures.update(textureId, width, height)
-      // console.log(curves_data, width, height, textureId)
       computeShape(computePass, curvesDataView, Textures.getTexture(textureId))
     },
     clear_sdf: (sdfTextureId, computeDepthTextureId, width, height) => {
@@ -80,14 +79,13 @@ export default function runCreator(
       clearSdf(computePass, Textures.getTexture(sdfTextureId))
       clearComputeDepth(computePass, Textures.getTexture(computeDepthTextureId))
     },
-    combine_sdf: (destinatioTexId, sourceTexId, computeDepthTextureId, uniformData) => {
-      const placementDataView = uniformData['*'].dataView
+    combine_sdf: (destinatioTexId, sourceTexId, computeDepthTextureId, placementData) => {
       combineSdf(
         computePass,
         Textures.getTexture(destinatioTexId),
         Textures.getTexture(sourceTexId),
         Textures.getTexture(computeDepthTextureId),
-        placementDataView
+        placementData.dataView
       )
     },
     draw_blur: (
