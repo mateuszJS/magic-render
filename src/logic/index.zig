@@ -448,16 +448,16 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                         .dist_end = 0,
                         .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
                     },
-                    // shapes.SerializedSdfEffect{
-                    //     .dist_start = 6,
-                    //     .dist_end = 4,
-                    //     .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
-                    // },
-                    // shapes.SerializedSdfEffect{
-                    //     .dist_start = -6,
-                    //     .dist_end = -8,
-                    //     .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
-                    // },
+                    shapes.SerializedSdfEffect{
+                        .dist_start = 3,
+                        .dist_end = 1.5,
+                        .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
+                    },
+                    shapes.SerializedSdfEffect{
+                        .dist_start = -6,
+                        .dist_end = -8,
+                        .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
+                    },
                 },
                 .filter = null,
                 .opacity = 1.0,
@@ -468,7 +468,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                 "A",
                 // "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
                 bounds,
-                2000.0,
+                72.0,
                 props,
             );
             try updateSelectedAsset(AssetId{ ._prim = id });
@@ -899,7 +899,7 @@ pub fn computeSdfs() !void {
                 const padding = ch_d.max_font_size * ch_d.max_ratio_padding_to_font_size;
                 const sdf_dims = sdf.getSdfTextureDims(bounds, padding);
 
-                // ch_d.sdf_scale = sdf_dims.scale;
+                ch_d.sdf_scale = sdf_dims.scale;
 
                 // this is NOT viewport, it's SDF scale, if it's smaller htan requested viewport(often while using zoom)
                 // we will keep regenerating it for no reason!
@@ -973,10 +973,10 @@ pub fn computeSdfs() !void {
             .text => |*text| {
                 if (!text.is_sdf_outdated) continue;
 
-                const padding = sdf.getSdfPadding(text.props.sdf_effects.items);
+                const text_padding = sdf.getSdfPadding(text.props.sdf_effects.items);
                 const sdf_dims = sdf.getSdfTextureDims(
                     text.bounds,
-                    padding,
+                    text_padding,
                 );
                 text.sdf_scale = sdf_dims.scale;
 
@@ -1004,16 +1004,17 @@ pub fn computeSdfs() !void {
 
                             if (ch_d.sdf_texture_id) |char_sdf_texture_id| {
                                 const char_padding = text.font_size * ch_d.max_ratio_padding_to_font_size;
+
                                 const start_x = vertex.relative_bounds[3].x - char_padding;
                                 const start_y = text_viewport_height + vertex.relative_bounds[3].y - char_padding;
                                 const end_x = vertex.relative_bounds[1].x + char_padding;
                                 const end_y = text_viewport_height + vertex.relative_bounds[1].y + char_padding;
 
                                 const placement = Placement{
-                                    .x = start_x * text.sdf_scale,
-                                    .y = start_y * text.sdf_scale,
-                                    .width = (end_x - start_x) * text.sdf_scale,
-                                    .height = (end_y - start_y) * text.sdf_scale,
+                                    .x = (text_padding + start_x) * text.sdf_scale,
+                                    .y = (text_padding + start_y) * text.sdf_scale,
+                                    .width = (text_padding + end_x - start_x) * text.sdf_scale,
+                                    .height = (text_padding + end_y - start_y) * text.sdf_scale,
                                 };
 
                                 web_gpu_programs.combine_sdf(
@@ -1189,7 +1190,7 @@ pub fn renderDraw() !void {
                                 sdf_padding,
                                 null,
                             ),
-                            text.getDrawUniform(effect, 1),
+                            text.getDrawUniform(effect, text.sdf_scale),
                             sdf_texture_id,
                         );
                     }
@@ -1213,11 +1214,8 @@ pub fn renderDraw() !void {
                         // );
                         if (ch_d.sdf_texture_id) |sdf_texture_id| {
                             for (text.props.sdf_effects.items) |effect| {
-                                // const scale_size_to_padding = ch_d.max_requested_viewport_effect_padding / (char_details.max_requested_viewport_font_size * char_details.width);
-                                // const width = vertex.relative_bounds[1].x - vertex.relative_bounds[0].x;
-                                const viewport_font_size = text.font_size / shared.render_scale;
                                 web_gpu_programs.draw_shape(
-                                    &vertex.getBounds(viewport_font_size * ch_d.max_ratio_padding_to_font_size, matrix),
+                                    &vertex.getBounds(text.font_size * ch_d.max_ratio_padding_to_font_size, matrix),
                                     text.getDrawUniform(effect, ch_d.sdf_scale),
                                     sdf_texture_id,
                                 );

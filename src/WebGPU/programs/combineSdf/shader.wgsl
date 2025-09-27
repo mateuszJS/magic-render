@@ -21,10 +21,11 @@ struct Uniform {
   let depth = textureLoad(depth_tex, dest_pos).r;
   let ratio_source_tex_to_placement = vec2f(textureDimensions(source_tex)) / u.placement_size; // texture doesn't to be same size as placement_size!
   let source_texel = getSample(texel_pos * ratio_source_tex_to_placement);
+  let scaled_dist = source_texel.r / ratio_source_tex_to_placement.x; // we assume all sizes keeps their ratio width / height, so we can use .x or .y here
 
-  if (source_texel.r > depth){
-    textureStore(destination_tex, dest_pos, source_texel);
-    textureStore(depth_tex, dest_pos, vec4f(source_texel.r));
+  if (scaled_dist > depth){
+    textureStore(destination_tex, dest_pos, vec4f(scaled_dist, source_texel.g, source_texel.b, source_texel.a));
+    textureStore(depth_tex, dest_pos, vec4f(scaled_dist));
   }
 }
 
