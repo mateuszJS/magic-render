@@ -233,5 +233,5 @@ declare module '*.zig' {
   ) => void
   export const generateUiElementsSdf: VoidFunction
 
-  // export const page_allocator:
+  export const toggleSharedTextEffects: VoidFunction
 }

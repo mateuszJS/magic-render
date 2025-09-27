@@ -279,7 +279,7 @@ fn addText(
         bounds,
         font_size,
         props,
-        create_sdf_texture(),
+        null,
     );
     try state.assets.put(id, Asset{ .text = text });
     try checkAssetsUpdate(true);
@@ -448,16 +448,16 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                         .dist_end = 0,
                         .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
                     },
-                    shapes.SerializedSdfEffect{
-                        .dist_start = 3,
-                        .dist_end = 1.5,
-                        .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
-                    },
-                    shapes.SerializedSdfEffect{
-                        .dist_start = -6,
-                        .dist_end = -8,
-                        .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
-                    },
+                    // shapes.SerializedSdfEffect{
+                    //     .dist_start = 3,
+                    //     .dist_end = 1.5,
+                    //     .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
+                    // },
+                    // shapes.SerializedSdfEffect{
+                    //     .dist_start = -6,
+                    //     .dist_end = -8,
+                    //     .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
+                    // },
                 },
                 .filter = null,
                 .opacity = 1.0,
@@ -1182,12 +1182,12 @@ pub fn renderDraw() !void {
             },
             .text => |*text| {
                 if (text.sdf_texture_id) |sdf_texture_id| {
-                    const sdf_padding = sdf.getSdfPadding(text.props.sdf_effects.items);
+                    const padding = sdf.getSdfPadding(text.props.sdf_effects.items);
                     for (text.props.sdf_effects.items) |effect| {
                         web_gpu_programs.draw_shape(
                             &sdf.getDrawBounds(
                                 text.bounds,
-                                sdf_padding,
+                                padding,
                                 null,
                             ),
                             text.getDrawUniform(effect, text.sdf_scale),
@@ -1518,6 +1518,17 @@ var ticks: u32 = 0; // it's like a time, but always increases by 1, used for per
 pub fn tick(now: f32) void {
     ticks +%= 1;
     shared.setTime(now);
+}
+
+pub fn toggleSharedTextEffects() void {
+    if (getSelectedText()) |text| {
+        if (text.sdf_texture_id != null) {
+            text.sdf_texture_id = null;
+        } else {
+            text.sdf_texture_id = create_sdf_texture();
+            text.is_sdf_outdated = true;
+        }
+    }
 }
 
 test "reset_assets does not call the real update callback" {
