@@ -1013,8 +1013,8 @@ pub fn computeSdfs() !void {
                                 const placement = Placement{
                                     .x = (text_padding + start_x) * text.sdf_scale,
                                     .y = (text_padding + start_y) * text.sdf_scale,
-                                    .width = (text_padding + end_x - start_x) * text.sdf_scale,
-                                    .height = (text_padding + end_y - start_y) * text.sdf_scale,
+                                    .width = (end_x - start_x) * text.sdf_scale,
+                                    .height = (end_y - start_y) * text.sdf_scale,
                                 };
 
                                 web_gpu_programs.combine_sdf(
