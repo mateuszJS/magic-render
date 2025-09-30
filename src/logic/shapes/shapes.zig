@@ -371,9 +371,9 @@ pub const Shape = struct {
         );
     }
 
-    pub fn getNewSdfPoint(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
+    pub fn getRelativePoints(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
         if (!self.outdated_sdf and !self.should_update_sdf) {
-            @panic("getNewSdfPoint was called but the shape sdf was not marked as outdated!");
+            @panic("getRelativePoints was called but the shape sdf was not marked as outdated!");
         }
         const check_points = try self.getAllPoints(
             allocator,
@@ -401,61 +401,19 @@ pub const Shape = struct {
             self.bounds[0].distance(self.bounds[3]),
         );
 
-        const padding = self.getSdfPadding();
+        const padding = sdf.getSdfPadding(self.props.sdf_effects.items);
         for (points) |*point| {
             const scaled = scale.get(point);
-            point.x = padding.x + scaled.x;
-            point.y = padding.y + scaled.y;
+            point.x = padding + scaled.x;
+            point.y = padding + scaled.y;
         }
 
         return points;
     }
 
-    pub fn getBoundsWithPadding(self: Shape, scale: f32, include_filter_margin: bool) [4]PointUV {
-        var padding = self.getSdfPadding();
-
-        if (include_filter_margin) {
-            const filter_margin = self.getFilterMargin();
-            padding.x += filter_margin.x;
-            padding.y += filter_margin.y;
-        }
-
-        var buffer: [4]PointUV = undefined;
-        const len = self.bounds.len;
-
-        for (self.bounds, 0..) |b, i| {
-            const b_next = self.bounds[(i + 1) % len];
-            const b_prev = self.bounds[@min((i -% 1), (len - 1)) % len];
-
-            const angle_next = b.angleTo(b_next);
-            const angle_prev = b.angleTo(b_prev);
-
-            buffer[i] = b;
-            buffer[i].x -= @cos(angle_next) * padding.x + @cos(angle_prev) * padding.x;
-            buffer[i].y -= @sin(angle_next) * padding.y + @sin(angle_prev) * padding.y;
-            buffer[i].x *= scale;
-            buffer[i].y *= scale;
-        }
-
-        return buffer;
-    }
-
-    pub fn getDrawBounds(self: Shape, include_filter_margin: bool) [6]PointUV {
-        const bounds = self.getBoundsWithPadding(1, include_filter_margin);
-        return [_]PointUV{
-            // first triangle
-            bounds[0],
-            bounds[1],
-            bounds[2],
-            // second triangle
-            bounds[2],
-            bounds[3],
-            bounds[0],
-        };
-    }
-
     pub fn getPickBounds(self: Shape) [6]images.PickVertex {
-        const bounds = self.getDrawBounds(false);
+        const sdf_padding = sdf.getSdfPadding(self.props.sdf_effects.items);
+        const bounds = sdf.getDrawBounds(self.bounds, sdf_padding, null);
         var buffer: [6]images.PickVertex = undefined;
         for (bounds, 0..) |b, i| {
             buffer[i] = .{
@@ -471,26 +429,6 @@ pub const Shape = struct {
             .x = 3 * filter.gaussianBlur.x,
             .y = 3 * filter.gaussianBlur.y,
         } else consts.POINT_ZERO;
-    }
-
-    fn getSdfPadding(self: Shape) Point {
-        var padding = consts.POINT_ZERO;
-        // because of skeleton render, we cannot od less than zero
-
-        for (self.props.sdf_effects.items) |effect| {
-            if (std.math.isInf(effect.dist_end)) {
-                std.debug.print("SDF effect dist_end cannot be infinite!\nShape ID: {d}, effect: {any}\n", .{ self.id, effect });
-                @panic("SDF effect dist_end cannot be infinite!");
-            }
-            padding.x = @max(padding.x, -effect.dist_end);
-            padding.y = @max(padding.y, -effect.dist_end);
-        }
-
-        // we do smoothing in shaders wit fwidth(), so it's 1px to make sure we wont cut it out
-        padding.x += 1.0;
-        padding.y += 1.0;
-
-        return padding;
     }
 
     pub fn serialize(self: Shape, allocator: std.mem.Allocator) !Serialized {

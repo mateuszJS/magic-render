@@ -33,6 +33,7 @@ export type SerializedInputText = {
   content: string
   bounds: PointUV[]
   font_size: number
+  props: ShapeProps
 }
 
 export type SerializedInputAsset = SerializedInputImage | SerializedInputShape | SerializedInputText
@@ -58,6 +59,7 @@ export type SerializedOutputText = {
   content: string
   bounds: PointUV[]
   font_size: number
+  props: ShapeProps
 }
 
 export type SerializedOutputAsset =
@@ -77,6 +79,7 @@ export interface CreatorAPI {
   removeAsset: VoidFunction
   destroy: VoidFunction
   setTool: (tool: CreatorTool) => void
+  toggleSharedTextEffects: VoidFunction
 }
 
 const NO_ASSET_ID = 0 // used when we don't have asset id yet
@@ -203,22 +206,7 @@ export default async function initCreator(
             u: point.u,
             v: point.v,
           })),
-          props: {
-            sdf_effects: [...shape.props.sdf_effects].map((effect) => ({
-              dist_start: effect.dist_start,
-              dist_end: effect.dist_end,
-              fill: sanitizeFill(effect.fill),
-            })),
-            filter: shape.props.filter?.gaussianBlur
-              ? {
-                  gaussianBlur: {
-                    x: shape.props.filter.gaussianBlur.x,
-                    y: shape.props.filter.gaussianBlur.y,
-                  },
-                }
-              : null,
-            opacity: shape.props.opacity,
-          },
+          props: serializeShapeProps(shape.props),
           sdf_texture_id: shape.sdf_texture_id,
           cache_texture_id: shape.cache_texture_id,
         }
@@ -233,6 +221,7 @@ export default async function initCreator(
             v: point.v,
           })),
           font_size: asset.text.font_size,
+          props: serializeShapeProps(asset.text.props),
         }
       } else {
         throw Error('Unknown asset type')
@@ -244,7 +233,7 @@ export default async function initCreator(
   Fonts.loadFont()
 
   Logic.connectOnAssetSelectionCallback(onAssetSelect)
-  Logic.connectCreateSdfTexture(Textures.createSDF)
+  Logic.connectCreateSdfTexture(Textures.createSDF, Textures.createComputeDepthTexture)
   Logic.connectTyping(
     Typing.enable,
     Typing.disable,
@@ -298,6 +287,7 @@ export default async function initCreator(
                   content: asset.content,
                   bounds: asset.bounds,
                   font_size: asset.font_size,
+                  props: asset.props,
                 },
               })
             }
@@ -355,5 +345,25 @@ export default async function initCreator(
       device.destroy()
     },
     setTool: Logic.setTool,
+    toggleSharedTextEffects: Logic.toggleSharedTextEffects,
+  }
+}
+
+function serializeShapeProps(props: ShapeProps): ShapeProps {
+  return {
+    sdf_effects: [...props.sdf_effects].map((effect) => ({
+      dist_start: effect.dist_start,
+      dist_end: effect.dist_end,
+      fill: sanitizeFill(effect.fill),
+    })),
+    filter: props.filter?.gaussianBlur
+      ? {
+          gaussianBlur: {
+            x: props.filter.gaussianBlur.x,
+            y: props.filter.gaussianBlur.y,
+          },
+        }
+      : null,
+    opacity: props.opacity,
   }
 }

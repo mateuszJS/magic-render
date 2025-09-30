@@ -88,7 +88,7 @@ export default class PickManager {
     return { pass, end: endPicking }
   }
 
-  createMatrix(canvas: HTMLCanvasElement, canvasMatrix: Float32Array) {
+  createMatrix(canvas: HTMLCanvasElement, canvasMatrix: Float32Array<ArrayBuffer>) {
     const tx = -(2 * (pointer.x / canvas.width) - 1)
     const ty = 2 * (pointer.y / canvas.height) - 1
 

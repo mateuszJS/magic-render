@@ -9,6 +9,9 @@ import linearGradientFS from './drawShape/linear-gradient.wgsl'
 import radialGradientFS from './drawShape/radial-gradient.wgsl'
 import getPickShape from './pickShape/getProgram'
 import getComputeShape from './computeShape/getProgram'
+import getCombineSdf from './combineSdf/getProgram'
+import getClearComputeDepth from './clearComputeDepth/getProgram'
+import getClearSdf from './clearSdf/getProgram'
 
 export let drawTriangle: ReturnType<typeof getDrawTriangle>
 export let drawBlur: ReturnType<typeof getBlur>
@@ -20,6 +23,9 @@ export let drawLinearGradientShape: ReturnType<typeof getDrawShape>
 export let drawRadialGradientShape: ReturnType<typeof getDrawShape>
 export let pickShape: ReturnType<typeof getPickShape>
 export let computeShape: ReturnType<typeof getComputeShape>
+export let combineSdf: ReturnType<typeof getCombineSdf>
+export let clearComputeDepth: ReturnType<typeof getClearComputeDepth>
+export let clearSdf: ReturnType<typeof getClearSdf>
 
 export const canvasMatrix: {
   buffer: GPUBuffer
@@ -87,4 +93,7 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
   )
   pickShape = getPickShape(device, pickCanvasMatrixBuffer)
   computeShape = getComputeShape(device)
+  combineSdf = getCombineSdf(device)
+  clearComputeDepth = getClearComputeDepth(device)
+  clearSdf = getClearSdf(device)
 }

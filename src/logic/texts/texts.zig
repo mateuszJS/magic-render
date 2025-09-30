@@ -10,6 +10,9 @@ const rects = @import("../rects.zig");
 const shared = @import("../shared.zig");
 const lines = @import("../lines.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
+const sdf = @import("../sdf/sdf.zig");
+const shapes = @import("../shapes/shapes.zig");
+const fill = @import("../sdf/fill.zig");
 
 const ENTER_CHAR_CODE: u21 = 0xa;
 const SOFT_BREAK_MARKER: u21 = 0x2060;
@@ -22,10 +25,25 @@ pub var selection_end_position: u32 = 0; // selection start is indicated by care
 pub var last_caret_update: u32 = 0;
 
 pub const CharVertex = struct {
-    relative_bounds: [6]PointUV,
-    sdf_texture_id: ?u32,
+    relative_bounds: [4]PointUV,
+    char: ?u21,
     origin: Point, // origin of the char (bottom left corner), useful for drawing selection/caret/picking
     last_in_line: bool = false,
+
+    pub fn getBounds(self: CharVertex, padding: f32, matrix: Matrix3x3) [6]PointUV {
+        const b = self.relative_bounds;
+        const p = padding;
+        return [_]PointUV{
+            // first triangle
+            matrix.getUV(.{ .x = b[3].x - p, .y = b[3].y - p, .u = 0.0, .v = 0.0 }),
+            matrix.getUV(.{ .x = b[0].x - p, .y = b[0].y + p, .u = 0.0, .v = 1.0 }),
+            matrix.getUV(.{ .x = b[1].x + p, .y = b[1].y + p, .u = 1.0, .v = 1.0 }),
+            // second triangle
+            matrix.getUV(.{ .x = b[1].x + p, .y = b[1].y + p, .u = 1.0, .v = 1.0 }),
+            matrix.getUV(.{ .x = b[2].x + p, .y = b[2].y - p, .u = 1.0, .v = 0.0 }),
+            matrix.getUV(.{ .x = b[3].x - p, .y = b[3].y - p, .u = 0.0, .v = 0.0 }),
+        };
+    }
 };
 
 pub const ComputeTextResult = struct {
@@ -44,18 +62,43 @@ pub const Text = struct {
     serialized_updated_content: []const u8 = &.{}, // to cache results of computeText
     // useful when user clicks on text again in the future to be used as input for HTMLTextAreaElement
 
+    sdf_texture_id: ?u32 = null,
+    sdf_scale: f32 = 1.0,
+    is_sdf_outdated: bool = true,
+    props: shapes.Props,
+
     pub fn new(
+        allocator: std.mem.Allocator,
         id: u32,
         content: []const u8,
         bounds: [4]PointUV,
         font_size: f32,
+        input_props: shapes.SerializedProps,
+        sdf_texture_id: ?u32,
     ) !Text {
+        var effects_list = std.ArrayList(sdf.Effect).init(allocator);
+        for (input_props.sdf_effects) |effect| {
+            try effects_list.append(sdf.Effect{
+                .dist_start = effect.dist_start,
+                .dist_end = effect.dist_end,
+                .fill = try fill.Fill.new(effect.fill, allocator),
+            });
+        }
+
+        const props = shapes.Props{
+            .sdf_effects = effects_list,
+            .filter = input_props.filter,
+            .opacity = input_props.opacity,
+        };
+
         var text = Text{
             .id = id,
             .content = content,
             .font_size = font_size,
             .bounds = bounds,
-            .text_vertex = std.ArrayList(CharVertex).init(std.heap.page_allocator),
+            .text_vertex = std.ArrayList(CharVertex).init(allocator),
+            .props = props,
+            .sdf_texture_id = sdf_texture_id,
         };
 
         _ = try text.computeText(0, 0);
@@ -63,7 +106,7 @@ pub const Text = struct {
         return text;
     }
 
-    fn getDrawRelativeBounds(self: Text, x: f32, y: f32, width: f32, height: f32, origin: Point) [6]PointUV {
+    fn getDrawRelativeBounds(self: Text, x: f32, y: f32, width: f32, height: f32, origin: Point) [4]PointUV {
         const w = width * self.font_size;
         const h = height * self.font_size;
         const p = Point{
@@ -71,9 +114,7 @@ pub const Text = struct {
             .y = origin.y + y * self.font_size,
         };
         return [_]PointUV{
-            .{ .x = p.x, .y = p.y, .u = 0.0, .v = 0.0 },
             .{ .x = p.x, .y = p.y + h, .u = 0.0, .v = 1.0 },
-            .{ .x = p.x + w, .y = p.y + h, .u = 1.0, .v = 1.0 },
             .{ .x = p.x + w, .y = p.y + h, .u = 1.0, .v = 1.0 },
             .{ .x = p.x + w, .y = p.y, .u = 1.0, .v = 0.0 },
             .{ .x = p.x, .y = p.y, .u = 0.0, .v = 0.0 },
@@ -101,6 +142,7 @@ pub const Text = struct {
         var iter = (try std.unicode.Utf8View.init(self.content)).iterator();
         var cp_index: usize = 0;
         var option_prev_cp: ?u21 = null;
+        var min_y = -lh;
 
         while (iter.nextCodepoint()) |cp| { // code point
             defer cp_index += 1;
@@ -132,20 +174,24 @@ pub const Text = struct {
                 try updated_content.append(SOFT_BREAK_MARKER);
                 try self.text_vertex.append(CharVertex{
                     .relative_bounds = self.getDrawRelativeBounds(0, 0, 0, 0, next_pos),
-                    .sdf_texture_id = null,
                     .origin = next_pos,
+                    .char = null,
                 });
 
                 // add word joiner character before line break so that when user copies the text, they get the same line breaks
                 try updated_content.append(ENTER_CHAR_CODE);
                 try self.text_vertex.append(CharVertex{
                     .relative_bounds = self.getDrawRelativeBounds(0, 0, 0, 0, next_pos),
-                    .sdf_texture_id = null,
                     .origin = next_pos,
+                    .char = null,
                 });
 
                 next_pos = Point{ .x = 0, .y = next_pos.y - lh };
                 space_before = 0.0; // we start with a new line, so no kerning needed
+            }
+
+            if (cp == ENTER_CHAR_CODE) {
+                next_pos = Point{ .x = 0, .y = next_pos.y - lh };
             }
 
             const relative_bounds = self.getDrawRelativeBounds(
@@ -163,19 +209,14 @@ pub const Text = struct {
             try updated_content.append(cp);
             try self.text_vertex.append(CharVertex{
                 .relative_bounds = relative_bounds,
-                .sdf_texture_id = char_details.sdf_texture_id,
+                .char = cp,
                 .origin = next_pos,
                 .last_in_line = cp == ENTER_CHAR_CODE,
             });
 
-            // so enter is located in same line(self.text_vertex already appended),
-            // and makes new character starting from a new line
-            if (cp == ENTER_CHAR_CODE) {
-                next_pos = Point{ .x = 0, .y = next_pos.y - lh };
-            }
-
             next_pos.x += space_before + char_width;
             longest_line = @max(longest_line, next_pos.x);
+            min_y = @min(min_y, relative_bounds[3].y);
         }
 
         if (self.text_vertex.items.len > 0) {
@@ -196,8 +237,8 @@ pub const Text = struct {
         self.bounds = [_]PointUV{
             matrix.getUV(.{ .x = 0, .y = 0, .u = 0.0, .v = 1.0 }),
             matrix.getUV(.{ .x = text_width, .y = 0, .u = 1.0, .v = 1.0 }),
-            matrix.getUV(.{ .x = text_width, .y = next_pos.y, .u = 1.0, .v = 0.0 }),
-            matrix.getUV(.{ .x = 0, .y = next_pos.y, .u = 0.0, .v = 0.0 }),
+            matrix.getUV(.{ .x = text_width, .y = min_y, .u = 1.0, .v = 0.0 }),
+            matrix.getUV(.{ .x = 0, .y = min_y, .u = 0.0, .v = 0.0 }),
         };
 
         var serialized_updated_content = std.ArrayList(u8).init(std.heap.page_allocator);
@@ -212,6 +253,8 @@ pub const Text = struct {
 
         std.heap.page_allocator.free(self.serialized_updated_content); // free previous content
         self.serialized_updated_content = try serialized_updated_content.toOwnedSlice();
+
+        self.is_sdf_outdated = true;
 
         return .{
             .content = self.serialized_updated_content,
@@ -231,7 +274,7 @@ pub const Text = struct {
             matrix,
             ch_vertex.origin.x,
             ch_vertex.origin.y,
-            ch_vertex.relative_bounds[2].x - ch_vertex.origin.x,
+            ch_vertex.relative_bounds[1].x - ch_vertex.origin.x,
             self.font_size * self.line_height,
             0.0,
             .{ 0, 50, 50, 50 },
@@ -275,7 +318,7 @@ pub const Text = struct {
             const char_details = self.text_vertex.items[caret_index - 1];
 
             // calculate if the click happened more on left side of the char, in this case put caret before the char, not after
-            const left_side = @abs(relative_x - char_details.relative_bounds[0].x) < @abs(relative_x - char_details.relative_bounds[2].x);
+            const left_side = @abs(relative_x - char_details.relative_bounds[0].x) < @abs(relative_x - char_details.relative_bounds[1].x);
             if (left_side) {
                 caret_index -= 1;
             }
@@ -286,12 +329,36 @@ pub const Text = struct {
         return null;
     }
 
-    pub fn serialize(self: Text) Serialized {
+    pub fn getDrawUniform(self: Text, sdf_effect: sdf.Effect, sdf_scale: f32) sdf.DrawUniform {
+        return sdf.getDrawUniform(
+            sdf_effect,
+            sdf_scale,
+            self.props.opacity,
+        );
+    }
+
+    pub fn serialize(self: Text, allocator: std.mem.Allocator) !Serialized {
+        var effects_list = std.ArrayList(shapes.SerializedSdfEffect).init(allocator);
+        for (self.props.sdf_effects.items) |effect| {
+            try effects_list.append(shapes.SerializedSdfEffect{
+                .dist_start = effect.dist_start,
+                .dist_end = effect.dist_end,
+                .fill = effect.fill.serialize(),
+            });
+        }
+
+        const props = shapes.SerializedProps{
+            .sdf_effects = try effects_list.toOwnedSlice(),
+            .filter = self.props.filter,
+            .opacity = self.props.opacity,
+        };
+
         return Serialized{
             .id = self.id,
             .content = self.content,
             .font_size = self.font_size,
             .bounds = self.bounds,
+            .props = props,
         };
     }
 };
@@ -302,4 +369,5 @@ pub const Serialized = struct {
     // to avoid throwing the exception
     bounds: [4]PointUV,
     font_size: f32,
+    props: shapes.SerializedProps,
 };

@@ -46,6 +46,7 @@ fn getSample(pos: vec2f) -> vec4f {
 
 
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
+  // let sdf = textureLoad(texture, vec2u(vsOut.uv));
   let sdf = getSample(vsOut.uv);
 
   let dist = sdf.r;
@@ -55,11 +56,8 @@ fn getSample(pos: vec2f) -> vec4f {
   let outer_alpha = smoothstep(u.dist_end - width, u.dist_end + width, dist);
   let alpha = outer_alpha - inner_alpha;
   let color = getColor(sdf, vsOut.uv, vsOut.norm_uv);
-
   let result = vec4f(color.rgb, color.a * alpha);
-  // if (result.a < 0.001) {
-  //   return vec4f(1, 0, 0, 0.1);
-  // }
+
   return result;
 
   // let stroke_factor = select(0.5, 0.0, sdf.g > 1.0);

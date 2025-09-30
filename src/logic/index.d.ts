@@ -63,6 +63,7 @@ type TextAsset = {
   content: string | null
   bounds: PointUV[]
   font_size: number
+  props: ShapeProps
 }
 
 type ShapeAsset = {
@@ -174,6 +175,18 @@ declare module '*.zig' {
       height: number,
       sdf_texture_id: number
     ) => void
+    clear_sdf: (
+      sdfTextureId: number,
+      computeDepthTextureId: number,
+      width: number,
+      height: number
+    ) => void
+    combine_sdf: (
+      destinationTexId: number,
+      sourceTexId: number,
+      computeDepthTextureId: number,
+      uniformData: PointerDataView
+    ) => void
     draw_shape: (
       bound_box_data: ArrayPointerDataView,
       uniformData: ShapeDrawUniform,
@@ -187,7 +200,10 @@ declare module '*.zig' {
   }) => void
   export const connectOnAssetUpdateCallback: (cb: (data: ZigAsset[]) => void) => void
   export const connectOnAssetSelectionCallback: (cb: (data: Id) => void) => void
-  export const connectCreateSdfTexture: (cb: () => number) => void
+  export const connectCreateSdfTexture: (
+    createSdfTexture: () => number,
+    createComputeDepthTexture: (width: number, height: number) => number
+  ) => void
   export const connectCacheCallbacks: (
     create_cache_texture: () => number,
     start_cache: (texture_id: number, box: BoundingBox, width: number, height: number) => void,
@@ -204,7 +220,7 @@ declare module '*.zig' {
   export const setCaretPosition: (selection_start: number, selection_end: number) => void
 
   export const tick: (time: DOMHighResTimeStamp) => void
-  export const calculateShapesSDF: VoidFunction
+  export const computeSdfs: VoidFunction
   export const renderDraw: VoidFunction
   export const renderPick: VoidFunction
   export const deinitState: VoidFunction
@@ -217,5 +233,5 @@ declare module '*.zig' {
   ) => void
   export const generateUiElementsSdf: VoidFunction
 
-  // export const page_allocator:
+  export const toggleSharedTextEffects: VoidFunction
 }

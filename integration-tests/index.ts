@@ -25,6 +25,7 @@ async function test() {
   const redoBtn = document.querySelector<HTMLSpanElement>('#redo-btn')!
   const toolsSelect = document.querySelector<HTMLSelectElement>('#tools-select')!
   const previewImg = document.querySelector<HTMLImageElement>('#preview')!
+  const sharedTextEffects = document.querySelector<HTMLInputElement>('#shared-text-effects')!
 
   window.assetsSnapshot = []
   function setAssetSnapshot(assets: SerializedOutputAsset[]) {
@@ -160,6 +161,10 @@ async function test() {
   toolsSelect.addEventListener('change', (event) => {
     const selectedTool = Number((event.target as HTMLSelectElement).value)
     creator.setTool(selectedTool)
+  })
+
+  sharedTextEffects.addEventListener('change', () => {
+    creator.toggleSharedTextEffects()
   })
 }
 

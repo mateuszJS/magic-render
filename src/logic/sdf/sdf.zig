@@ -1,5 +1,17 @@
 const Point = @import("../types.zig").Point;
+const PointUV = @import("../types.zig").PointUV;
+const texture_size = @import("../texture_size.zig");
 const fill = @import("fill.zig");
+const std = @import("std");
+const shared = @import("../shared.zig");
+const consts = @import("../consts.zig");
+
+// pub const Padding = struct {
+//     left: f32,
+//     right: f32,
+//     top: f32,
+//     bottom: f32,
+// };
 
 pub const Effect = struct {
     dist_start: f32,
@@ -113,4 +125,110 @@ pub fn getDrawUniform(sdf_effect: Effect, sdf_scale: f32, opacity: f32) DrawUnif
             };
         },
     }
+}
+
+pub fn getSdfPadding(sdf_effects: []Effect) f32 {
+    var padding: f32 = 0.0;
+    // because of skeleton render, we cannot od less than zero
+
+    for (sdf_effects) |effect| {
+        if (std.math.isInf(effect.dist_end)) {
+            std.debug.print("SDF effect dist_end cannot be infinite!\n effect: {any}\n", .{effect});
+            @panic("SDF effect dist_end cannot be infinite!");
+        }
+        padding = @max(padding, -effect.dist_end);
+    }
+
+    // we do smoothing in shaders wit fwidth(), so it's 1px to make sure we wont cut it out
+    padding += 1.0;
+
+    return padding;
+}
+
+pub fn getBoundsWithPadding(bounds: [4]PointUV, sdf_padding: f32, scale: f32, filter_margin: ?Point) [4]PointUV {
+    // const sdf_padding = sdf.getSdfPadding(self.props.sdf_effects.items);
+    var padding = Point{
+        .x = sdf_padding,
+        .y = sdf_padding,
+    };
+
+    if (filter_margin) |margin| {
+        padding.x += margin.x;
+        padding.y += margin.y;
+    }
+
+    var buffer: [4]PointUV = undefined;
+    const bounds_len: usize = 4;
+    for (bounds, 0..) |b, i| {
+        const b_next = bounds[(i + 1) % bounds_len];
+        const b_prev = bounds[@min((i -% 1), (bounds_len - 1)) % bounds_len];
+
+        const angle_next = b.angleTo(b_next);
+        const angle_prev = b.angleTo(b_prev);
+
+        buffer[i] = b;
+        buffer[i].x -= @cos(angle_next) * padding.x + @cos(angle_prev) * padding.x;
+        buffer[i].y -= @sin(angle_next) * padding.y + @sin(angle_prev) * padding.y;
+        buffer[i].x *= scale;
+        buffer[i].y *= scale;
+    }
+
+    return buffer;
+}
+
+pub fn getDrawBounds(bounds: [4]PointUV, sdf_padding: f32, filter_margin: ?Point) [6]PointUV {
+    const bounds_with_padding = getBoundsWithPadding(
+        bounds,
+        sdf_padding,
+        1,
+        filter_margin,
+    );
+    return [_]PointUV{
+        // first triangle
+        bounds_with_padding[0],
+        bounds_with_padding[1],
+        bounds_with_padding[2],
+        // second triangle
+        bounds_with_padding[2],
+        bounds_with_padding[3],
+        bounds_with_padding[0],
+    };
+}
+
+pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32) struct {
+    size: texture_size.TextureSize,
+    scale: f32,
+    // rounding_error: texture_size.TextureSize,
+} {
+    const bounds_with_padding = getBoundsWithPadding(
+        bounds,
+        sdf_padding,
+        1 / shared.render_scale,
+        null,
+    );
+
+    const desired_size = texture_size.get_allowed_size(
+        bounds_with_padding[0].distance(bounds_with_padding[1]),
+        bounds_with_padding[0].distance(bounds_with_padding[3]),
+    );
+
+    const sdf_size = texture_size.get_allowed_sdf_size(desired_size);
+    const sdf_safe_size = texture_size.TextureSize{
+        .w = @ceil(@max(sdf_size.w, consts.MIN_TEXTURE_SIZE)),
+        .h = @ceil(@max(sdf_size.h, consts.MIN_TEXTURE_SIZE)), // ceil because without it, while casting f32 to u32 it rounds down
+        // and often the end of the texture cuts out large part of the padding and in the result shapes touched the edge
+    };
+
+    const init_width = bounds_with_padding[0].distance(bounds_with_padding[1]) * shared.render_scale; // this multiplication is weird
+    // * shared.render_scale to revert to logical scale (without impact of camera/zoom)
+    const sdf_scale = sdf_size.w / init_width;
+
+    return .{
+        .size = sdf_safe_size,
+        .scale = sdf_scale,
+        // .rounding_error = .{
+        //     .w = sdf_safe_size.w - sdf_size.w,
+        //     .h = sdf_safe_size.h - sdf_size.h,
+        // },
+    };
 }

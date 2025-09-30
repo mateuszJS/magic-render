@@ -29,8 +29,8 @@ pub fn init() void {
 }
 
 pub fn get(font_id: u32, c: u21) !*chars.Details {
-    const f = fonts.getPtr(font_id) orelse @panic("Font ID not found");
-    const details = f.get(c);
+    const font = fonts.getPtr(font_id) orelse @panic("Font ID not found");
+    const details = font.get(c);
     if (details) |d| {
         return d;
     } else {
@@ -45,9 +45,9 @@ pub fn get(font_id: u32, c: u21) !*chars.Details {
             .outdated_sdf = true,
             .kerning = std.AutoArrayHashMap(u21, f32).init(std.heap.page_allocator),
         };
-        try f.set(c, d);
+        try font.set(c, d);
         // Now get the pointer to the stored struct
-        return f.get(c) orelse @panic("Failed to retrieve stored character details");
+        return font.get(c) orelse @panic("Failed to retrieve stored character details");
     }
 }
 
