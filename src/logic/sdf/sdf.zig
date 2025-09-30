@@ -198,6 +198,7 @@ pub fn getDrawBounds(bounds: [4]PointUV, sdf_padding: f32, filter_margin: ?Point
 pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32) struct {
     size: texture_size.TextureSize,
     scale: f32,
+    // rounding_error: texture_size.TextureSize,
 } {
     const bounds_with_padding = getBoundsWithPadding(
         bounds,
@@ -211,19 +212,23 @@ pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32) struct {
         bounds_with_padding[0].distance(bounds_with_padding[3]),
     );
 
-    var sdf_size = texture_size.get_allowed_sdf_size(desired_size);
-    sdf_size.w = @max(sdf_size.w, consts.MIN_TEXTURE_SIZE);
-    sdf_size.h = @max(sdf_size.h, consts.MIN_TEXTURE_SIZE);
-    sdf_size.w = @ceil(sdf_size.w); // ceil because without it, while casting f32 to u32 it rounds down
-    // and often the end of the texture cuts out large part of the padding and in the result shapes touched the edge
-    sdf_size.h = @ceil(sdf_size.h);
+    const sdf_size = texture_size.get_allowed_sdf_size(desired_size);
+    const sdf_safe_size = texture_size.TextureSize{
+        .w = @ceil(@max(sdf_size.w, consts.MIN_TEXTURE_SIZE)),
+        .h = @ceil(@max(sdf_size.h, consts.MIN_TEXTURE_SIZE)), // ceil because without it, while casting f32 to u32 it rounds down
+        // and often the end of the texture cuts out large part of the padding and in the result shapes touched the edge
+    };
 
     const init_width = bounds_with_padding[0].distance(bounds_with_padding[1]) * shared.render_scale; // this multiplication is weird
     // * shared.render_scale to revert to logical scale (without impact of camera/zoom)
     const sdf_scale = sdf_size.w / init_width;
 
     return .{
-        .size = sdf_size,
+        .size = sdf_safe_size,
         .scale = sdf_scale,
+        // .rounding_error = .{
+        //     .w = sdf_safe_size.w - sdf_size.w,
+        //     .h = sdf_safe_size.h - sdf_size.h,
+        // },
     };
 }

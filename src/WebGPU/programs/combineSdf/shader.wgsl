@@ -18,8 +18,8 @@ struct Uniform {
     return;
   }
 
-  let depth = textureLoad(depth_tex, dest_pos).r;
   let ratio_source_tex_to_placement = vec2f(textureDimensions(source_tex)) / u.placement_size; // texture doesn't to be same size as placement_size!
+  let depth = textureLoad(depth_tex, dest_pos).r;
   let source_texel = getSample(texel_pos * ratio_source_tex_to_placement);
   let scaled_dist = source_texel.r / ratio_source_tex_to_placement.x; // we assume all sizes keeps their ratio width / height, so we can use .x or .y here
 
@@ -31,7 +31,7 @@ struct Uniform {
 
 fn getSample(pos: vec2f) -> vec4f {
   let floor_pos = floor(pos - 0.5);
-  let fract_pos = pos - 0.5 - floor_pos;
+  let fract_pos = (pos - 0.5) - floor_pos;
 
   let p00 = vec2u(floor_pos);
   let p10 = vec2u(floor_pos + vec2f(1.0, 0.0));

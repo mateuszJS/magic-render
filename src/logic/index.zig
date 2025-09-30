@@ -448,16 +448,21 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                         .dist_end = 0,
                         .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
                     },
-                    // shapes.SerializedSdfEffect{
-                    //     .dist_start = 3,
-                    //     .dist_end = 1.5,
-                    //     .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
-                    // },
-                    // shapes.SerializedSdfEffect{
-                    //     .dist_start = -6,
-                    //     .dist_end = -8,
-                    //     .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
-                    // },
+                    shapes.SerializedSdfEffect{
+                        .dist_start = 3,
+                        .dist_end = 1.5,
+                        .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
+                    },
+                    shapes.SerializedSdfEffect{
+                        .dist_start = -6,
+                        .dist_end = -8,
+                        .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
+                    },
+                    shapes.SerializedSdfEffect{
+                        .dist_start = -12,
+                        .dist_end = -18,
+                        .fill = .{ .solid = .{ 1.0, 1.0, 0.0, 1.0 } },
+                    },
                 },
                 .filter = null,
                 .opacity = 1.0,
@@ -465,10 +470,10 @@ pub fn onPointerDown(x: f32, y: f32) !void {
 
             const new_text = try addText(
                 id,
-                "A",
+                "Hello",
                 // "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
                 bounds,
-                72.0,
+                72,
                 props,
             );
             try updateSelectedAsset(AssetId{ ._prim = id });
@@ -981,10 +986,7 @@ pub fn computeSdfs() !void {
                 text.sdf_scale = sdf_dims.scale;
 
                 if (text.sdf_texture_id) |text_sdf_texture_id| {
-                    const safe_margin_bottom = 0; //text.font_size * text.line_height; // some ltters like "g" got tail wich excees bottom part outside of bounds
-                    _ = safe_margin_bottom; // autofix
-                    // we have to include this part in final SDF
-                    const text_viewport_height = text.bounds[0].distance(text.bounds[3]);
+                    const bounds_height = text.bounds[0].distance(text.bounds[3]);
 
                     const compute_depth_texture_id = create_compute_depth_texture(
                         @intFromFloat(sdf_dims.size.w),
@@ -1006,9 +1008,9 @@ pub fn computeSdfs() !void {
                                 const char_padding = text.font_size * ch_d.max_ratio_padding_to_font_size;
 
                                 const start_x = vertex.relative_bounds[3].x - char_padding;
-                                const start_y = text_viewport_height + vertex.relative_bounds[3].y - char_padding;
+                                const start_y = bounds_height + vertex.relative_bounds[3].y - char_padding;
                                 const end_x = vertex.relative_bounds[1].x + char_padding;
-                                const end_y = text_viewport_height + vertex.relative_bounds[1].y + char_padding;
+                                const end_y = bounds_height + vertex.relative_bounds[1].y + char_padding;
 
                                 const placement = Placement{
                                     .x = (text_padding + start_x) * text.sdf_scale,
@@ -1184,12 +1186,13 @@ pub fn renderDraw() !void {
                 if (text.sdf_texture_id) |sdf_texture_id| {
                     const padding = sdf.getSdfPadding(text.props.sdf_effects.items);
                     for (text.props.sdf_effects.items) |effect| {
+                        const text_bounds = sdf.getDrawBounds(
+                            text.bounds,
+                            padding,
+                            null,
+                        );
                         web_gpu_programs.draw_shape(
-                            &sdf.getDrawBounds(
-                                text.bounds,
-                                padding,
-                                null,
-                            ),
+                            &text_bounds,
                             text.getDrawUniform(effect, text.sdf_scale),
                             sdf_texture_id,
                         );
@@ -1208,14 +1211,11 @@ pub fn renderDraw() !void {
                     if (vertex.char) |char| {
                         const ch_d = try fonts.get(0, char);
 
-                        // char_details.request_size(
-                        //     text.font_size,
-                        //     sdf.getSdfPadding(text.props.sdf_effects.items),
-                        // );
                         if (ch_d.sdf_texture_id) |sdf_texture_id| {
                             for (text.props.sdf_effects.items) |effect| {
+                                const bounds = vertex.getBounds(text.font_size * ch_d.max_ratio_padding_to_font_size, matrix);
                                 web_gpu_programs.draw_shape(
-                                    &vertex.getBounds(text.font_size * ch_d.max_ratio_padding_to_font_size, matrix),
+                                    &bounds,
                                     text.getDrawUniform(effect, ch_d.sdf_scale),
                                     sdf_texture_id,
                                 );

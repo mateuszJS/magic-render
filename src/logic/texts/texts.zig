@@ -142,6 +142,7 @@ pub const Text = struct {
         var iter = (try std.unicode.Utf8View.init(self.content)).iterator();
         var cp_index: usize = 0;
         var option_prev_cp: ?u21 = null;
+        var min_y = -lh;
 
         while (iter.nextCodepoint()) |cp| { // code point
             defer cp_index += 1;
@@ -189,6 +190,10 @@ pub const Text = struct {
                 space_before = 0.0; // we start with a new line, so no kerning needed
             }
 
+            if (cp == ENTER_CHAR_CODE) {
+                next_pos = Point{ .x = 0, .y = next_pos.y - lh };
+            }
+
             const relative_bounds = self.getDrawRelativeBounds(
                 char_details.x,
                 char_details.y,
@@ -209,14 +214,9 @@ pub const Text = struct {
                 .last_in_line = cp == ENTER_CHAR_CODE,
             });
 
-            // so enter is located in same line(self.text_vertex already appended),
-            // and makes new character starting from a new line
-            if (cp == ENTER_CHAR_CODE) {
-                next_pos = Point{ .x = 0, .y = next_pos.y - lh };
-            }
-
             next_pos.x += space_before + char_width;
             longest_line = @max(longest_line, next_pos.x);
+            min_y = @min(min_y, relative_bounds[3].y);
         }
 
         if (self.text_vertex.items.len > 0) {
@@ -237,8 +237,8 @@ pub const Text = struct {
         self.bounds = [_]PointUV{
             matrix.getUV(.{ .x = 0, .y = 0, .u = 0.0, .v = 1.0 }),
             matrix.getUV(.{ .x = text_width, .y = 0, .u = 1.0, .v = 1.0 }),
-            matrix.getUV(.{ .x = text_width, .y = next_pos.y, .u = 1.0, .v = 0.0 }),
-            matrix.getUV(.{ .x = 0, .y = next_pos.y, .u = 0.0, .v = 0.0 }),
+            matrix.getUV(.{ .x = text_width, .y = min_y, .u = 1.0, .v = 0.0 }),
+            matrix.getUV(.{ .x = 0, .y = min_y, .u = 0.0, .v = 0.0 }),
         };
 
         var serialized_updated_content = std.ArrayList(u8).init(std.heap.page_allocator);
