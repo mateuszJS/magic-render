@@ -470,7 +470,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
 
             const new_text = try addText(
                 id,
-                "Hello",
+                "Hellollllllllllolll",
                 // "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
                 bounds,
                 72,

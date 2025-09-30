@@ -145,10 +145,12 @@ pub const Text = struct {
         var min_y = -lh;
 
         while (iter.nextCodepoint()) |cp| { // code point
-            defer cp_index += 1;
+            defer {
+                cp_index += 1;
+                option_prev_cp = cp;
+            }
 
             const is_soft_break = cp == SOFT_BREAK_MARKER or (option_prev_cp == SOFT_BREAK_MARKER and cp == ENTER_CHAR_CODE);
-            option_prev_cp = cp;
             if (is_soft_break) continue;
 
             // cp_index >= selection -> to put caret on a first free position,
@@ -185,13 +187,11 @@ pub const Text = struct {
                     .origin = next_pos,
                     .char = null,
                 });
-
-                next_pos = Point{ .x = 0, .y = next_pos.y - lh };
-                space_before = 0.0; // we start with a new line, so no kerning needed
             }
 
-            if (cp == ENTER_CHAR_CODE) {
+            if (cp == ENTER_CHAR_CODE or exceeded_max_width) {
                 next_pos = Point{ .x = 0, .y = next_pos.y - lh };
+                space_before = 0.0; // we start with a new line, so no kerning needed
             }
 
             const relative_bounds = self.getDrawRelativeBounds(

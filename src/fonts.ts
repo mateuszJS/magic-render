@@ -6,6 +6,7 @@ import * as Textures from 'textures'
 import * as Logic from 'logic/index.zig'
 
 const DEFAULT_SPACE = 250 // expressed in font units
+const ENTER = 10
 
 let font: Font
 
@@ -44,6 +45,10 @@ export function getCharData(font_id: number, char_code: number): Logic.Serialize
   if (width === 0) {
     const glyph = font.charToGlyph(' ')
     width = (glyph.advanceWidth ?? DEFAULT_SPACE) / font.unitsPerEm
+  }
+
+  if (char_code == ENTER) {
+    width = 0
   }
 
   const result = new Logic.SerializedCharDetails({
