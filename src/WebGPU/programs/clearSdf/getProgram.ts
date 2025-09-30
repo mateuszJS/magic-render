@@ -1,6 +1,6 @@
 import shaderCode from './shader.wgsl'
 
-export default function getCombineSdf(device: GPUDevice) {
+export default function getClearSdf(device: GPUDevice) {
   const shaderModule = device.createShaderModule({
     label: 'fill texture with max float shader module',
     code: shaderCode,

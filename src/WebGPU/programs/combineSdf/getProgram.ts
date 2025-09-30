@@ -23,7 +23,7 @@ export default function getCombineSdf(device: GPUDevice) {
     placementData: DataView<ArrayBuffer> // [placement_start_x, placement_start_y, placement_end_x, placement_end_y]
   ) {
     const uniformBuffer = device.createBuffer({
-      label: 'computeShape curves buffer',
+      label: 'combine sdf uniform buffer',
       size: placementData.byteLength,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })

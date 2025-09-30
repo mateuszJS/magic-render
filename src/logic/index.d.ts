@@ -182,7 +182,7 @@ declare module '*.zig' {
       height: number
     ) => void
     combine_sdf: (
-      destinatioTexId: number,
+      destinationTexId: number,
       sourceTexId: number,
       computeDepthTextureId: number,
       uniformData: PointerDataView

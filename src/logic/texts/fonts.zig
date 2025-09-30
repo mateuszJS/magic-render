@@ -28,21 +28,6 @@ pub fn init() void {
     fonts = std.AutoArrayHashMap(u32, chars.Chars).init(std.heap.page_allocator);
 }
 
-// pub fn get_with_sdf(font_id: u32, c: u21, font_size: f32, effect_padding: f32) !chars.Details {
-//     const char_details = try get(font_id, c);
-
-//     if (char_details.max_requested_effect_padding < effect_padding) {
-//         char_details.max_requested_effect_padding = effect_padding;
-//         char_details.outdated_sdf = true;
-//     }
-//     if (char_details.max_requested_font_size < font_size) {
-//         char_details.max_requested_font_size = font_size;
-//         char_details.outdated_sdf = true;
-//     }
-
-//     return char_details.*;
-// }
-
 pub fn get(font_id: u32, c: u21) !*chars.Details {
     const font = fonts.getPtr(font_id) orelse @panic("Font ID not found");
     const details = font.get(c);

@@ -79,10 +79,10 @@ export default function runCreator(
       clearSdf(computePass, Textures.getTexture(sdfTextureId))
       clearComputeDepth(computePass, Textures.getTexture(computeDepthTextureId))
     },
-    combine_sdf: (destinatioTexId, sourceTexId, computeDepthTextureId, placementData) => {
+    combine_sdf: (destinationTexId, sourceTexId, computeDepthTextureId, placementData) => {
       combineSdf(
         computePass,
-        Textures.getTexture(destinatioTexId),
+        Textures.getTexture(destinationTexId),
         Textures.getTexture(sourceTexId),
         Textures.getTexture(computeDepthTextureId),
         placementData.dataView
