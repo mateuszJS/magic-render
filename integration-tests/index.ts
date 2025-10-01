@@ -88,6 +88,10 @@ async function test() {
     },
     (canvas) => {
       previewImg.src = canvas.toDataURL('image/png')
+    },
+    (newTool) => {
+      toolsSelect.value = newTool.toString()
+      console.log(`new tool: ${newTool}`)
     }
   )
 

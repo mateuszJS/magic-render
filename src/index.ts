@@ -90,7 +90,8 @@ export default async function initCreator(
   onAssetsUpdate: (assets: SerializedOutputAsset[]) => void,
   onAssetSelect: (assetId: Id) => void,
   onProcessingUpdate: (inProgress: boolean) => void,
-  onPreviewUpdate: (canvas: HTMLCanvasElement) => void
+  onPreviewUpdate: (canvas: HTMLCanvasElement) => void,
+  onUpdateTool: (tool: CreatorTool) => void
 ): Promise<CreatorAPI> {
   let loadingTextures = 0
   let isMouseEventProcessing = false
@@ -242,6 +243,7 @@ export default async function initCreator(
     Fonts.getCharData,
     Fonts.getKerning
   )
+  Logic.onUpdateToolCallback(onUpdateTool)
 
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = Textures.add(url, (width, height, isNew) => {

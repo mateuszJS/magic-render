@@ -162,11 +162,15 @@ fn getPointsOfLine(points: [4]PointUV, t_line: TransformLine) struct { Point, Po
 pub const RENDER_TRIANGLE_INSTANCES = UI_VERTICES_COUNT_BORDER * 2 * 2; // two triangle per line, each line has front and back color
 
 pub fn getDrawVertexData(
-    triangle_buffer: *[RENDER_TRIANGLE_INSTANCES]triangles.DrawInstance,
-    icon_vertex_data: *std.ArrayList(UI.DrawVertex),
     points: [4]PointUV,
     hovered_elem_id: u32,
-) !void {
+) struct {
+    triangles: [RENDER_TRIANGLE_INSTANCES]triangles.DrawInstance,
+    icon_vertex_data: UI.DrawVertex,
+} {
+    var triangle_buffer: [RENDER_TRIANGLE_INSTANCES]triangles.DrawInstance = undefined;
+    var icon_vertex_data: UI.DrawVertex = undefined;
+
     var i: usize = 0;
     for (resize_lines) |t_line| {
         const color = if (hovered_elem_id == t_line.id) white else black;
@@ -180,12 +184,12 @@ pub fn getDrawVertexData(
             const icon_size = thickness - 5.0 * shared.render_scale;
             const icon_color = if (hovered_elem_id == t_line.id) black else white;
 
-            try icon_vertex_data.append(UI.DrawVertex{
+            icon_vertex_data = UI.DrawVertex{
                 .position = p1,
                 .max_size = icon_size,
                 .icon = UI.IconType.Rotate,
                 .color = @as(@Vector(4, f32), @floatFromInt(icon_color)) / normalized,
-            });
+            };
         }
 
         const outer_line_width = thickness + 10.0 * shared.render_scale;
@@ -208,6 +212,11 @@ pub fn getDrawVertexData(
 
         i += 2;
     }
+
+    return .{
+        .triangles = triangle_buffer,
+        .icon_vertex_data = icon_vertex_data,
+    };
 }
 
 pub const PICK_TRIANGLE_INSTANCES = UI_VERTICES_COUNT_BORDER * 2;

@@ -59,7 +59,7 @@ pub const Text = struct {
     bounds: [4]PointUV,
     line_height: f32 = 1.2, // line height multiplier
     text_vertex: std.ArrayList(CharVertex),
-    serialized_updated_content: []const u8 = &.{}, // to cache results of computeText
+    html_content: []const u8 = &.{}, // to cache results of computeText
     // useful when user clicks on text again in the future to be used as input for HTMLTextAreaElement
 
     sdf_texture_id: ?u32 = null,
@@ -145,10 +145,12 @@ pub const Text = struct {
         var min_y = -lh;
 
         while (iter.nextCodepoint()) |cp| { // code point
-            defer cp_index += 1;
+            defer {
+                cp_index += 1;
+                option_prev_cp = cp;
+            }
 
             const is_soft_break = cp == SOFT_BREAK_MARKER or (option_prev_cp == SOFT_BREAK_MARKER and cp == ENTER_CHAR_CODE);
-            option_prev_cp = cp;
             if (is_soft_break) continue;
 
             // cp_index >= selection -> to put caret on a first free position,
@@ -185,13 +187,11 @@ pub const Text = struct {
                     .origin = next_pos,
                     .char = null,
                 });
-
-                next_pos = Point{ .x = 0, .y = next_pos.y - lh };
-                space_before = 0.0; // we start with a new line, so no kerning needed
             }
 
-            if (cp == ENTER_CHAR_CODE) {
+            if (cp == ENTER_CHAR_CODE or exceeded_max_width) {
                 next_pos = Point{ .x = 0, .y = next_pos.y - lh };
+                space_before = 0.0; // we start with a new line, so no kerning needed
             }
 
             const relative_bounds = self.getDrawRelativeBounds(
@@ -241,23 +241,23 @@ pub const Text = struct {
             matrix.getUV(.{ .x = 0, .y = min_y, .u = 0.0, .v = 0.0 }),
         };
 
-        var serialized_updated_content = std.ArrayList(u8).init(std.heap.page_allocator);
+        var html_content = std.ArrayList(u8).init(std.heap.page_allocator);
         const codepoints_slice = try updated_content.toOwnedSlice();
         defer std.heap.page_allocator.free(codepoints_slice);
 
         for (codepoints_slice) |cp| {
             var utf8_buffer: [4]u8 = undefined;
             const utf8_len = try std.unicode.utf8Encode(cp, &utf8_buffer);
-            try serialized_updated_content.appendSlice(utf8_buffer[0..utf8_len]);
+            try html_content.appendSlice(utf8_buffer[0..utf8_len]);
         }
 
-        std.heap.page_allocator.free(self.serialized_updated_content); // free previous content
-        self.serialized_updated_content = try serialized_updated_content.toOwnedSlice();
+        std.heap.page_allocator.free(self.html_content); // free previous content
+        self.html_content = try html_content.toOwnedSlice();
 
         self.is_sdf_outdated = true;
 
         return .{
-            .content = self.serialized_updated_content,
+            .content = self.html_content,
             .selection_start = new_selection_start,
             .selection_end = new_selection_end,
         };
@@ -277,7 +277,7 @@ pub const Text = struct {
             ch_vertex.relative_bounds[1].x - ch_vertex.origin.x,
             self.font_size * self.line_height,
             0.0,
-            .{ 0, 50, 50, 50 },
+            .{ 0, 100, 100, 100 },
         );
         return buffer;
     }
@@ -327,6 +327,81 @@ pub const Text = struct {
         }
 
         return null;
+    }
+
+    pub fn addPickVertex(
+        self: Text,
+        allocator: std.mem.Allocator,
+        overflow_size: f32,
+    ) ![]triangles.PickInstance {
+        var triangles_buffer = std.ArrayList(triangles.PickInstance).init(allocator);
+        const matrix = Matrix3x3.getMatrixFromRectangleNoScale(self.bounds);
+        const text_width = self.bounds[1].distance(self.bounds[0]);
+        const text_height = self.bounds[3].distance(self.bounds[0]);
+
+        // above text area
+        const area_above_text_buffer = rects.getPickVertexData(
+            matrix,
+            -overflow_size,
+            0,
+            text_width + 2 * overflow_size,
+            overflow_size,
+            0.0,
+            .{ self.id, 1, 0, 0 },
+        );
+        try triangles_buffer.appendSlice(&area_above_text_buffer);
+
+        // below text area
+        const area_below_text_buffer = rects.getPickVertexData(
+            matrix,
+            -overflow_size,
+            -text_height,
+            text_width + 2 * overflow_size,
+            -overflow_size,
+            0.0,
+            .{ self.id, self.text_vertex.items.len + 1, 0, 0 },
+        );
+        try triangles_buffer.appendSlice(&area_below_text_buffer);
+
+        var next_char_is_first_in_line = true;
+        for (self.text_vertex.items, 0..) |vertex, index| {
+            const half_width = (vertex.relative_bounds[1].x - vertex.origin.x) / 2;
+            if (half_width > consts.EPSILON) {
+                const valid_pick_index = index + 1; // pick = 0 -> no selection
+                // left part of the char
+                const left_additional_offset =
+                    if (next_char_is_first_in_line) overflow_size else 0.0;
+                try triangles_buffer.appendSlice(&rects.getPickVertexData(
+                    matrix,
+                    vertex.origin.x - left_additional_offset,
+                    vertex.origin.y,
+                    half_width + left_additional_offset,
+                    self.line_height * self.font_size,
+                    0.0,
+                    .{ self.id, valid_pick_index, 0, 0 },
+                ));
+
+                // right part of the char
+                const char_x = vertex.origin.x + half_width;
+                const right_space = text_width - (char_x + half_width); // space between char right edge and text right edge
+                const right_additional_offset =
+                    if (vertex.last_in_line) right_space + overflow_size else 0;
+
+                try triangles_buffer.appendSlice(&rects.getPickVertexData(
+                    matrix,
+                    char_x,
+                    vertex.origin.y,
+                    half_width + right_additional_offset,
+                    self.line_height * self.font_size,
+                    0.0,
+                    .{ self.id, valid_pick_index + 1, 0, 0 },
+                ));
+
+                next_char_is_first_in_line = vertex.last_in_line;
+            }
+        }
+
+        return triangles_buffer.toOwnedSlice();
     }
 
     pub fn getDrawUniform(self: Text, sdf_effect: sdf.Effect, sdf_scale: f32) sdf.DrawUniform {

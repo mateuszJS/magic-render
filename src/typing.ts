@@ -1,6 +1,7 @@
 import * as Logic from 'logic/index.zig'
 
 const SOFT_BREAK_MARKER = '\u2060' // Word Joiner - stops navigation but invisible
+const SOFT_BREAK_PATTERN = /\u2060\n/g
 
 let textarea: HTMLTextAreaElement | null = null
 
@@ -80,6 +81,13 @@ function onSelect(this: HTMLTextAreaElement) {
   Logic.setCaretPosition(this.selectionStart, this.selectionEnd)
 }
 
+function onCopy(this: HTMLTextAreaElement, event: ClipboardEvent) {
+  const selection = this.value.substring(this.selectionStart, this.selectionEnd)
+  const sanitizedSelection = selection?.toString().replace(SOFT_BREAK_PATTERN, '') ?? ''
+  event.clipboardData?.setData('text/plain', sanitizedSelection)
+  event.preventDefault()
+}
+
 export function enable(text: string): void {
   if (!textarea) {
     const newEl = document.createElement('textarea')
@@ -92,6 +100,7 @@ export function enable(text: string): void {
 
     newEl.addEventListener('input', onInput)
     newEl.addEventListener('selectionchange', onSelect)
+    newEl.addEventListener('copy', onCopy)
 
     textarea = newEl
   }

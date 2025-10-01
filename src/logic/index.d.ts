@@ -115,6 +115,8 @@ declare module '*.zig' {
   export const onPointerDown: (x: number, y: number) => void
   export const onPointerUp: () => void
   export const onPointerMove: (x: number, y: number) => void
+  export const onPointerDoubleClick: VoidFunction
+  export const onUpdateToolCallback: (cb: (new_tool: number) => void) => void
   export const onPointerLeave: VoidFunction
   export const commitChanges: VoidFunction
   export const updateRenderScale: (render_scale: number) => void
