@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub const AssetId = struct {
     // 0 -> no asset/element selected
     _prim: u32 = 0, // primary
@@ -46,5 +48,17 @@ pub const AssetId = struct {
 
     pub fn serialize(self: AssetId) [4]u32 {
         return [_]u32{ self._prim, self._sec, self._tert, self._quat };
+    }
+
+    pub fn format(
+        self: AssetId,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+
+        try writer.print("{d}, {d}, {d}, {d}", .{ self._prim, self._sec, self._tert, self._quat });
     }
 };

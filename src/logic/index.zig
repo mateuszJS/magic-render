@@ -430,6 +430,53 @@ pub fn updateTextContent(
     }
 }
 
+fn createText(x: f32, y: f32) !texts.Text {
+    const id = generateId();
+    const max_width = 300.0;
+    const bounds = [4]types.PointUV{
+        .{ .x = x, .y = y, .u = 0.0, .v = 1.0 },
+        .{ .x = x + max_width, .y = y, .u = 1.0, .v = 1.0 },
+        .{ .x = x + max_width, .y = y - 1.0, .u = 1.0, .v = 0.0 },
+        .{ .x = x, .y = y - 1.0, .u = 0.0, .v = 0.0 },
+    };
+
+    const props = shapes.SerializedProps{
+        .sdf_effects = &.{
+            shapes.SerializedSdfEffect{
+                .dist_start = std.math.inf(f32),
+                .dist_end = 0,
+                .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
+            },
+            shapes.SerializedSdfEffect{
+                .dist_start = 3,
+                .dist_end = 1.5,
+                .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
+            },
+            shapes.SerializedSdfEffect{
+                .dist_start = -6,
+                .dist_end = -8,
+                .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
+            },
+            shapes.SerializedSdfEffect{
+                .dist_start = -12,
+                .dist_end = -18,
+                .fill = .{ .solid = .{ 1.0, 1.0, 0.0, 1.0 } },
+            },
+        },
+        .filter = null,
+        .opacity = 1.0,
+    };
+
+    return try addText(
+        id,
+        "Hellollllllllllolll",
+        // "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+        bounds,
+        72,
+        props,
+    );
+}
+
 pub fn onPointerDown(x: f32, y: f32) !void {
     if (state.tool == .Text) {
         try updateSelectedAsset(state.hovered_asset_id);
@@ -437,51 +484,8 @@ pub fn onPointerDown(x: f32, y: f32) !void {
         const text: texts.Text = if (getSelectedText()) |text| b: {
             break :b text.*;
         } else b: {
-            const id = generateId();
-            const max_width = 300.0;
-            const bounds = [4]types.PointUV{
-                .{ .x = x, .y = y, .u = 0.0, .v = 1.0 },
-                .{ .x = x + max_width, .y = y, .u = 1.0, .v = 1.0 },
-                .{ .x = x + max_width, .y = y - 1.0, .u = 1.0, .v = 0.0 },
-                .{ .x = x, .y = y - 1.0, .u = 0.0, .v = 0.0 },
-            };
-
-            const props = shapes.SerializedProps{
-                .sdf_effects = &.{
-                    shapes.SerializedSdfEffect{
-                        .dist_start = std.math.inf(f32),
-                        .dist_end = 0,
-                        .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
-                    },
-                    shapes.SerializedSdfEffect{
-                        .dist_start = 3,
-                        .dist_end = 1.5,
-                        .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
-                    },
-                    shapes.SerializedSdfEffect{
-                        .dist_start = -6,
-                        .dist_end = -8,
-                        .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
-                    },
-                    shapes.SerializedSdfEffect{
-                        .dist_start = -12,
-                        .dist_end = -18,
-                        .fill = .{ .solid = .{ 1.0, 1.0, 0.0, 1.0 } },
-                    },
-                },
-                .filter = null,
-                .opacity = 1.0,
-            };
-
-            const new_text = try addText(
-                id,
-                "Hellollllllllllolll",
-                // "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
-                bounds,
-                72,
-                props,
-            );
-            try updateSelectedAsset(AssetId{ ._prim = id });
+            const new_text = try createText(x, y);
+            try updateSelectedAsset(AssetId{ ._prim = new_text.id });
             break :b new_text;
         };
 
@@ -1334,86 +1338,30 @@ pub fn renderPick() !void {
                 }
             },
             .text => |text| {
-                // if there is any text selected, render pick for only that text
-                if (state.action == .TextSelection and state.selected_asset_id.getPrim() != text.id) continue;
+                if (state.action == .TextSelection) continue; // while selecting text I need only active/selected text asset
 
-                var triangles_buffer = std.ArrayList(triangles.PickInstance).init(std.heap.page_allocator);
-                const matrix = Matrix3x3.getMatrixFromRectangleNoScale(text.bounds);
-                const overflow_size =
-                    if (state.action == .TextSelection)
-                        300 * shared.render_scale
-                    else if (state.tool == .Text)
-                        30 * shared.render_scale
-                    else
-                        0.0;
+                // if there is any text selected, render pick for only that text(at the end to make sure selected text is a priority)
+                if (state.tool == Tool.Text and state.selected_asset_id.getPrim() == text.id) continue;
 
-                const text_width = text.bounds[1].distance(text.bounds[0]);
-                const text_height = text.bounds[3].distance(text.bounds[0]);
-
-                // above text area
-                const area_above_text_buffer = rects.getPickVertexData(
-                    matrix,
-                    -overflow_size,
+                const buffer = try text.addPickVertex(
+                    std.heap.page_allocator,
                     0,
-                    text_width + 2 * overflow_size,
-                    overflow_size,
-                    0.0,
-                    .{ text.id, 1, 0, 0 },
                 );
-                try triangles_buffer.appendSlice(&area_above_text_buffer);
-
-                // below text area
-                const area_below_text_buffer = rects.getPickVertexData(
-                    matrix,
-                    -overflow_size,
-                    -text_height,
-                    text_width + 2 * overflow_size,
-                    -overflow_size,
-                    0.0,
-                    .{ text.id, text.text_vertex.items.len + 1, 0, 0 },
-                );
-                try triangles_buffer.appendSlice(&area_below_text_buffer);
-
-                var next_char_is_first_in_line = true;
-                for (text.text_vertex.items, 0..) |vertex, index| {
-                    const half_width = (vertex.relative_bounds[1].x - vertex.origin.x) / 2;
-                    if (half_width > consts.EPSILON) {
-                        const valid_pick_index = index + 1; // pick = 0 -> no selection
-                        // left part of the char
-                        const left_additional_offset =
-                            if (next_char_is_first_in_line) overflow_size else 0.0;
-                        try triangles_buffer.appendSlice(&rects.getPickVertexData(
-                            matrix,
-                            vertex.origin.x - left_additional_offset,
-                            vertex.origin.y,
-                            half_width + left_additional_offset,
-                            text.line_height * text.font_size,
-                            0.0,
-                            .{ text.id, valid_pick_index, 0, 0 },
-                        ));
-
-                        // right part of the char
-                        const right_additional_offset =
-                            if (vertex.last_in_line) overflow_size else 0.0;
-                        try triangles_buffer.appendSlice(&rects.getPickVertexData(
-                            matrix,
-                            vertex.origin.x + half_width,
-                            vertex.origin.y,
-                            half_width + right_additional_offset,
-                            text.line_height * text.font_size,
-                            0.0,
-                            .{ text.id, valid_pick_index + 1, 0, 0 },
-                        ));
-
-                        next_char_is_first_in_line = vertex.last_in_line;
-                    }
-                }
-
-                if (triangles_buffer.items.len > 0) {
-                    web_gpu_programs.pick_triangle(triangles_buffer.items);
-                }
-                triangles_buffer.deinit();
+                web_gpu_programs.pick_triangle(buffer);
+                std.heap.page_allocator.free(buffer);
             },
+        }
+    }
+
+    if (state.tool == Tool.Text) {
+        if (getSelectedText()) |text| {
+            const overflow_margin_factor = if (state.action == .TextSelection) 300 * shared.render_scale else 0;
+            const buffer = try text.addPickVertex(
+                std.heap.page_allocator,
+                overflow_margin_factor,
+            );
+            web_gpu_programs.pick_triangle(buffer);
+            std.heap.page_allocator.free(buffer);
         }
     }
 
