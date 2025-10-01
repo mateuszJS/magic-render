@@ -167,12 +167,17 @@ pub const Text = struct {
             } else 0.0;
 
             const exceeded_max_width = (next_pos.x + space_before + char_width) > max_text_width;
-            if (exceeded_max_width) {
+
+            if (cp == ENTER_CHAR_CODE or exceeded_max_width) {
+                next_pos = Point{ .x = 0, .y = next_pos.y - lh };
+                space_before = 0.0; // we start with a new line, so no kerning needed
                 if (self.text_vertex.items.len > 0) {
                     var previous = &self.text_vertex.items[self.text_vertex.items.len - 1];
                     previous.last_in_line = true;
                 }
+            }
 
+            if (exceeded_max_width) {
                 try updated_content.append(SOFT_BREAK_MARKER);
                 try self.text_vertex.append(CharVertex{
                     .relative_bounds = self.getDrawRelativeBounds(0, 0, 0, 0, next_pos),
@@ -187,11 +192,6 @@ pub const Text = struct {
                     .origin = next_pos,
                     .char = null,
                 });
-            }
-
-            if (cp == ENTER_CHAR_CODE or exceeded_max_width) {
-                next_pos = Point{ .x = 0, .y = next_pos.y - lh };
-                space_before = 0.0; // we start with a new line, so no kerning needed
             }
 
             const relative_bounds = self.getDrawRelativeBounds(

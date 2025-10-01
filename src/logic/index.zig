@@ -3,7 +3,7 @@ const types = @import("types.zig");
 const images = @import("images.zig");
 const lines = @import("lines.zig");
 const triangles = @import("triangles.zig");
-const TransformUI = @import("transform_ui.zig");
+const transform_ui = @import("transform_ui.zig");
 const zigar = @import("zigar");
 const shapes = @import("./shapes/shapes.zig");
 const rects = @import("rects.zig");
@@ -19,6 +19,8 @@ const texts = @import("texts/texts.zig");
 const sdf = @import("sdf/sdf.zig");
 const fonts = @import("texts/fonts.zig");
 const AssetId = @import("asset_id.zig").AssetId;
+const Asset = @import("types.zig").Asset;
+const AssetSerialized = @import("types.zig").AssetSerialized;
 
 const FillType = enum(u8) {
     Solid,
@@ -153,18 +155,6 @@ const Tool = enum(u16) {
     DrawShape,
     EditShape,
     Text,
-};
-
-const Asset = union(enum) {
-    img: images.Image,
-    shape: shapes.Shape,
-    text: texts.Text,
-};
-
-const AssetSerialized = union(enum) {
-    img: images.Serialized,
-    shape: shapes.Serialized,
-    text: texts.Serialized,
 };
 
 const State = struct {
@@ -553,7 +543,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
 
         if (!state.selected_asset_id.isPrim()) {
             // No active asset, do nothing
-        } else if (TransformUI.isTransformUi(state.hovered_asset_id.getPrim())) {
+        } else if (transform_ui.isTransformUi(state.hovered_asset_id.getPrim())) {
             state.action = .Transform;
         } else if (state.selected_asset_id.getPrim() >= ASSET_ID_MIN and state.selected_asset_id.getPrim() == state.hovered_asset_id.getPrim()) {
             state.action = .Move;
@@ -671,11 +661,7 @@ pub fn onPointerMove(x: f32, y: f32) !void {
     }
 
     const asset = state.assets.getPtr(state.selected_asset_id.getPrim()) orelse return;
-    const bounds = switch (asset.*) {
-        .img => |*img| &img.points,
-        .shape => |*shape| &shape.bounds,
-        .text => |*text| &text.bounds,
-    };
+    const bounds = asset.getBoundsPtr();
 
     switch (state.action) {
         .Move => {
@@ -691,7 +677,7 @@ pub fn onPointerMove(x: f32, y: f32) !void {
             }
         },
         .Transform => {
-            TransformUI.transformPoints(
+            transform_ui.transformPoints(
                 state.hovered_asset_id.getPrim(),
                 bounds,
                 types.Point{ .x = x, .y = y },
@@ -747,66 +733,33 @@ pub fn commitChanges() !void {
         texts.selection_end_position = 0;
     }
 }
-// TODO: extract to another file and simplify(extract common code)
-// https://github.com/users/mateuszJS/projects/1/views/1?pane=issue&itemId=123400787&issue=mateuszJS%7Cmagic-render%7C122
+
 fn drawBorder(allocator: std.mem.Allocator) !void {
     var triangle_vertex_data = std.ArrayList(triangles.DrawInstance).init(allocator);
     var ui_vertex_data = std.ArrayList(UI.DrawVertex).init(allocator);
 
-    const red = [_]u8{ 255, 0, 0, 255 };
     if (state.hovered_asset_id.getPrim() != state.selected_asset_id.getPrim()) {
         if (state.assets.get(state.hovered_asset_id.getPrim())) |asset| {
-            const points = switch (asset) {
-                .img => |img| img.points,
-                .shape => |shape| shape.bounds,
-                .text => |text| text.bounds,
-            };
-
-            for (points, 0..) |point, i| {
-                const next_point = if (i == 3) points[0] else points[i + 1];
-                var buffer: [2]triangles.DrawInstance = undefined;
-
-                lines.getDrawVertexData(
-                    buffer[0..2],
-                    point,
-                    next_point,
-                    10.0 * shared.render_scale,
-                    red,
-                    5.0 * shared.render_scale,
-                );
-
-                try triangle_vertex_data.appendSlice(&buffer);
-            }
+            try triangle_vertex_data.appendSlice(
+                &transform_ui.getBorderDrawVertex(
+                    asset,
+                    .{ 255, 0, 0, 255 },
+                ),
+            );
         }
     }
 
-    const green = [_]u8{ 0, 255, 0, 255 };
     if (state.assets.get(state.selected_asset_id.getPrim())) |asset| {
-        const points = switch (asset) {
-            .img => |img| img.points,
-            .shape => |shape| shape.bounds,
-            .text => |text| text.bounds,
-        };
-
-        for (points, 0..) |point, i| {
-            const next_point = if (i == 3) points[0] else points[i + 1];
-            var buffer: [2]triangles.DrawInstance = undefined;
-
-            lines.getDrawVertexData(
-                buffer[0..2],
-                point,
-                next_point,
-                10.0 * shared.render_scale,
-                green,
-                5.0 * shared.render_scale,
-            );
-
-            try triangle_vertex_data.appendSlice(&buffer);
-        }
+        try triangle_vertex_data.appendSlice(
+            &transform_ui.getBorderDrawVertex(
+                asset,
+                .{ 0, 255, 0, 255 },
+            ),
+        );
 
         if (state.tool != .Text) {
-            const buffers = TransformUI.getDrawVertexData(
-                points,
+            const buffers = transform_ui.getDrawVertexData(
+                asset.getBounds(),
                 state.hovered_asset_id.getPrim(),
             );
             try ui_vertex_data.append(buffers.icon_vertex_data);
@@ -1384,9 +1337,9 @@ pub fn renderPick() !void {
                 .shape => |shape| shape.bounds,
                 .text => |text| text.bounds,
             };
-            var vertex_buffer: [TransformUI.PICK_TRIANGLE_INSTANCES]triangles.PickInstance = undefined;
-            TransformUI.getPickVertexData(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES], points);
-            web_gpu_programs.pick_triangle(vertex_buffer[0..TransformUI.PICK_TRIANGLE_INSTANCES]);
+            var vertex_buffer: [transform_ui.PICK_TRIANGLE_INSTANCES]triangles.PickInstance = undefined;
+            transform_ui.getPickVertexData(vertex_buffer[0..transform_ui.PICK_TRIANGLE_INSTANCES], points);
+            web_gpu_programs.pick_triangle(vertex_buffer[0..transform_ui.PICK_TRIANGLE_INSTANCES]);
         }
     }
 }

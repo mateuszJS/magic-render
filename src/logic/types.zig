@@ -1,4 +1,35 @@
 const std = @import("std");
+const images = @import("images.zig");
+const shapes = @import("shapes/shapes.zig");
+const texts = @import("texts/texts.zig");
+
+pub const Asset = union(enum) {
+    img: images.Image,
+    shape: shapes.Shape,
+    text: texts.Text,
+
+    pub fn getBounds(self: Asset) [4]PointUV {
+        return switch (self) {
+            .img => |img| img.points,
+            .shape => |shape| shape.bounds,
+            .text => |text| text.bounds,
+        };
+    }
+
+    pub fn getBoundsPtr(self: *Asset) *[4]PointUV {
+        return switch (self.*) {
+            .img => |*img| &img.points,
+            .shape => |*shape| &shape.bounds,
+            .text => |*text| &text.bounds,
+        };
+    }
+};
+
+pub const AssetSerialized = union(enum) {
+    img: images.Serialized,
+    shape: shapes.Serialized,
+    text: texts.Serialized,
+};
 
 pub const Point = extern struct {
     x: f32,

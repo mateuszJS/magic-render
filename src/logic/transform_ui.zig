@@ -8,6 +8,8 @@ const triangles = @import("triangles.zig");
 const shared = @import("shared.zig");
 const consts = @import("consts.zig");
 const UI = @import("ui.zig");
+const AssetId = @import("asset_id.zig").AssetId;
+const Asset = @import("types.zig").Asset;
 
 const white = @Vector(4, u8){ 255, 255, 255, 255 };
 const black = @Vector(4, u8){ 0, 0, 0, 255 };
@@ -237,4 +239,26 @@ pub fn getPickVertexData(buffer: *[PICK_TRIANGLE_INSTANCES]triangles.PickInstanc
 
         i += 2;
     }
+}
+
+pub fn getBorderDrawVertex(
+    asset: Asset,
+    color: [4]u8,
+) [8]triangles.DrawInstance {
+    var buffer: [8]triangles.DrawInstance = undefined;
+    const bounds = asset.getBounds();
+
+    for (bounds, 0..) |point, i| {
+        const next_point = if (i == 3) bounds[0] else bounds[i + 1];
+        lines.getDrawVertexData(
+            buffer[(i * 2)..][0..2],
+            point,
+            next_point,
+            10.0 * shared.render_scale,
+            color,
+            5.0 * shared.render_scale,
+        );
+    }
+
+    return buffer;
 }
