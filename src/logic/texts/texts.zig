@@ -59,7 +59,7 @@ pub const Text = struct {
     bounds: [4]PointUV,
     line_height: f32 = 1.2, // line height multiplier
     text_vertex: std.ArrayList(CharVertex),
-    serialized_updated_content: []const u8 = &.{}, // to cache results of computeText
+    html_content: []const u8 = &.{}, // to cache results of computeText
     // useful when user clicks on text again in the future to be used as input for HTMLTextAreaElement
 
     sdf_texture_id: ?u32 = null,
@@ -241,23 +241,23 @@ pub const Text = struct {
             matrix.getUV(.{ .x = 0, .y = min_y, .u = 0.0, .v = 0.0 }),
         };
 
-        var serialized_updated_content = std.ArrayList(u8).init(std.heap.page_allocator);
+        var html_content = std.ArrayList(u8).init(std.heap.page_allocator);
         const codepoints_slice = try updated_content.toOwnedSlice();
         defer std.heap.page_allocator.free(codepoints_slice);
 
         for (codepoints_slice) |cp| {
             var utf8_buffer: [4]u8 = undefined;
             const utf8_len = try std.unicode.utf8Encode(cp, &utf8_buffer);
-            try serialized_updated_content.appendSlice(utf8_buffer[0..utf8_len]);
+            try html_content.appendSlice(utf8_buffer[0..utf8_len]);
         }
 
-        std.heap.page_allocator.free(self.serialized_updated_content); // free previous content
-        self.serialized_updated_content = try serialized_updated_content.toOwnedSlice();
+        std.heap.page_allocator.free(self.html_content); // free previous content
+        self.html_content = try html_content.toOwnedSlice();
 
         self.is_sdf_outdated = true;
 
         return .{
-            .content = self.serialized_updated_content,
+            .content = self.html_content,
             .selection_start = new_selection_start,
             .selection_end = new_selection_end,
         };

@@ -76,6 +76,11 @@ pub fn connectCreateSdfTexture(
     create_compute_depth_texture = create_compute_depth;
 }
 
+var on_update_tool: *const fn (u16) void = undefined;
+pub fn onUpdateToolCallback(cb: *const fn (u16) void) void {
+    on_update_tool = cb;
+}
+
 pub const SerializedCharDetails = fonts.SerializedCharDetails;
 
 pub const TextCallback = fn (text: []const u8) void;
@@ -143,7 +148,7 @@ const ActionType = enum {
     TextSelection,
 };
 
-const Tool = enum {
+const Tool = enum(u16) {
     None,
     DrawShape,
     EditShape,
@@ -480,7 +485,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             break :b new_text;
         };
 
-        enable_typing(text.serialized_updated_content);
+        enable_typing(text.html_content);
 
         if (state.hovered_asset_id.isSec()) {
             state.selected_asset_id.setSec(state.hovered_asset_id.getSec());
@@ -710,6 +715,13 @@ pub fn onPointerMove(x: f32, y: f32) !void {
     }
 }
 
+pub fn onPointerDoubleClick() !void {
+    if (state.tool == .None and getSelectedText() != null) {
+        try setTool(Tool.Text);
+        on_update_tool(@intFromEnum(Tool.Text));
+    }
+}
+
 pub fn onPointerLeave() !void {
     state.action = .None;
     state.hovered_asset_id = AssetId{};
@@ -788,16 +800,14 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
             try triangle_vertex_data.appendSlice(&buffer);
         }
 
-        var triangle_buffer: [TransformUI.RENDER_TRIANGLE_INSTANCES]triangles.DrawInstance = undefined;
-
-        try TransformUI.getDrawVertexData(
-            &triangle_buffer,
-            &ui_vertex_data,
-            points,
-            state.hovered_asset_id.getPrim(),
-        );
-
-        try triangle_vertex_data.appendSlice(&triangle_buffer);
+        if (state.tool != .Text) {
+            const buffers = TransformUI.getDrawVertexData(
+                points,
+                state.hovered_asset_id.getPrim(),
+            );
+            try ui_vertex_data.append(buffers.icon_vertex_data);
+            try triangle_vertex_data.appendSlice(&buffers.triangles);
+        }
     }
 
     if (triangle_vertex_data.items.len > 0) {
@@ -1324,7 +1334,7 @@ pub fn renderPick() !void {
                 }
             },
             .text => |text| {
-                // if text selection is activ,e then render only selected text
+                // if there is any text selected, render pick for only that text
                 if (state.action == .TextSelection and state.selected_asset_id.getPrim() != text.id) continue;
 
                 var triangles_buffer = std.ArrayList(triangles.PickInstance).init(std.heap.page_allocator);
@@ -1332,6 +1342,8 @@ pub fn renderPick() !void {
                 const overflow_size =
                     if (state.action == .TextSelection)
                         300 * shared.render_scale
+                    else if (state.tool == .Text)
+                        30 * shared.render_scale
                     else
                         0.0;
 
@@ -1509,7 +1521,7 @@ pub fn setTool(tool: Tool) !void {
 
     if (tool == .Text) {
         if (getSelectedText()) |text| {
-            enable_typing(text.content);
+            enable_typing(text.html_content);
         }
     }
 }

@@ -71,6 +71,10 @@ export default function initMouseController(
     }
   })
 
+  canvas.addEventListener('dblclick', () => {
+    Logic.onPointerDoubleClick()
+  })
+
   canvas.addEventListener('mousemove', (e) => {
     if (panCameraStart) {
       updatePointer(e)
