@@ -1197,6 +1197,8 @@ pub fn renderDraw() !void {
                 }
             },
             .text => |*text| {
+                const is_typing_ui = state.tool == .Text and state.selected_asset_id.getPrim() == text.id;
+
                 if (text.sdf_texture_id) |sdf_texture_id| {
                     const padding = sdf.getSdfPadding(text.props.sdf_effects.items);
                     for (text.props.sdf_effects.items) |effect| {
@@ -1211,10 +1213,10 @@ pub fn renderDraw() !void {
                             sdf_texture_id,
                         );
                     }
-                    continue;
+
+                    if (!is_typing_ui) continue;
                 }
 
-                const is_typing_ui = state.tool == .Text and state.selected_asset_id.getPrim() == text.id;
                 const selection_start = @min(texts.caret_position, texts.selection_end_position);
                 const selection_end = @max(texts.caret_position, texts.selection_end_position);
                 var vertex_triangles_buffer =
@@ -1223,16 +1225,18 @@ pub fn renderDraw() !void {
 
                 for (text.text_vertex.items, 0..) |vertex, i| {
                     if (vertex.char) |char| {
-                        const ch_d = try fonts.get(0, char);
+                        if (text.sdf_texture_id == null) {
+                            const ch_d = try fonts.get(0, char);
 
-                        if (ch_d.sdf_texture_id) |sdf_texture_id| {
-                            for (text.props.sdf_effects.items) |effect| {
-                                const bounds = vertex.getBounds(text.font_size * ch_d.max_ratio_padding_to_font_size, matrix);
-                                web_gpu_programs.draw_shape(
-                                    &bounds,
-                                    text.getDrawUniform(effect, ch_d.sdf_scale),
-                                    sdf_texture_id,
-                                );
+                            if (ch_d.sdf_texture_id) |sdf_texture_id| {
+                                for (text.props.sdf_effects.items) |effect| {
+                                    const bounds = vertex.getBounds(text.font_size * ch_d.max_ratio_padding_to_font_size, matrix);
+                                    web_gpu_programs.draw_shape(
+                                        &bounds,
+                                        text.getDrawUniform(effect, ch_d.sdf_scale),
+                                        sdf_texture_id,
+                                    );
+                                }
                             }
                         }
 
@@ -1267,10 +1271,7 @@ pub fn renderDraw() !void {
                                 .x = 0,
                                 .y = -text.font_size * text.line_height,
                             };
-                    const caret_buffer = text.addCaretDrawVertex(
-                        position,
-                    );
-                    if (caret_buffer) |buffer| {
+                    if (text.addCaretDrawVertex(position)) |buffer| {
                         try vertex_triangles_buffer.appendSlice(&buffer);
                     }
                 }

@@ -277,7 +277,7 @@ pub const Text = struct {
             ch_vertex.relative_bounds[1].x - ch_vertex.origin.x,
             self.font_size * self.line_height,
             0.0,
-            .{ 0, 50, 50, 50 },
+            .{ 0, 100, 100, 100 },
         );
         return buffer;
     }
