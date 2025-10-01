@@ -81,8 +81,8 @@ function onSelect(this: HTMLTextAreaElement) {
   Logic.setCaretPosition(this.selectionStart, this.selectionEnd)
 }
 
-function onCopy(event: ClipboardEvent) {
-  const selection = document.getSelection()
+function onCopy(this: HTMLTextAreaElement, event: ClipboardEvent) {
+  const selection = this.value.substring(this.selectionStart, this.selectionEnd)
   const sanitizedSelection = selection?.toString().replace(SOFT_BREAK_PATTERN, '') ?? ''
   event.clipboardData?.setData('text/plain', sanitizedSelection)
   event.preventDefault()
