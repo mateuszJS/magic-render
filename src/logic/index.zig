@@ -407,13 +407,13 @@ fn updateSelectedAsset(id: AssetId) !void {
 }
 
 pub fn updateTextContent(
-    input_content: []const u8,
+    input_content: []const u8, // it allocated wit std.eap.wasm_allocator by default
     selection_start: usize,
     selection_end: usize,
 ) !texts.ComputeTextResult {
     const option_text = getSelectedText();
     if (option_text) |text| {
-        text.content = try std.heap.wasm_allocator.dupe(u8, input_content);
+        text.content = input_content;
         const results = try text.computeText(selection_start, selection_end);
         try checkAssetsUpdate(true);
         return results;
