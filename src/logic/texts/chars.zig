@@ -36,19 +36,19 @@ pub const Details = struct {
 };
 
 pub const Chars = struct {
-    chars: std.AutoArrayHashMap(u21, Details),
+    chars: std.AutoArrayHashMap(u21, *Details),
 
     pub fn new() Chars {
         return Chars{
-            .chars = std.AutoArrayHashMap(u21, Details).init(std.heap.page_allocator),
+            .chars = std.AutoArrayHashMap(u21, *Details).init(std.heap.page_allocator),
         };
     }
 
-    pub fn get(self: *Chars, c: u21) ?*Details {
-        return self.chars.getPtr(c);
+    pub fn getChar(self: *Chars, c: u21) ?*Details {
+        return self.chars.get(c);
     }
 
-    pub fn set(self: *Chars, c: u21, details: Details) !void {
+    pub fn addChar(self: *Chars, c: u21, details: *Details) !void {
         return try self.chars.put(c, details);
     }
 };
