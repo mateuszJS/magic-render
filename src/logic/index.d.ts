@@ -54,7 +54,7 @@ type ShapeProps = {
 
 type ImageAsset = {
   id: number
-  points: PointUV[]
+  bounds: PointUV[]
   texture_id: number
 }
 
@@ -96,7 +96,7 @@ declare module '*.zig' {
     max_texture_size: number,
     max_buffer_size: number
   ) => void
-  export const addImage: (maybe_asset_id: number, points: PointUV[], texture_id: number) => void
+  export const addImage: (maybe_asset_id: number, bounds: PointUV[], texture_id: number) => void
   export const updateCache: VoidFunction
   export const addShape: (
     maybe_asset_id: number,

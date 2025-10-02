@@ -103,28 +103,28 @@ pub fn transformPoints(ui_component_id: u32, bounds: *[4]PointUV, raw_pointer: P
     }
 }
 
-fn getPointsOfLine(points: [4]PointUV, t_line: TransformLine) struct { Point, Point } {
+fn getPointsOfLine(b: [4]PointUV, t_line: TransformLine) struct { Point, Point } {
     if (t_line.id <= 4) {
         // corners
-        const length = points[t_line.start].distance(points[t_line.end]);
-        const angle = points[t_line.start].angleTo(points[t_line.end]);
+        const length = b[t_line.start].distance(b[t_line.end]);
+        const angle = b[t_line.start].angleTo(b[t_line.end]);
         const sanitized_length = @min(30.0 * shared.render_scale, length * 0.1);
 
         const p1 = Point{
-            .x = points[t_line.start].x,
-            .y = points[t_line.start].y,
+            .x = b[t_line.start].x,
+            .y = b[t_line.start].y,
         };
         const p2 = Point{
-            .x = points[t_line.start].x + @cos(angle) * sanitized_length,
-            .y = points[t_line.start].y + @sin(angle) * sanitized_length,
+            .x = b[t_line.start].x + @cos(angle) * sanitized_length,
+            .y = b[t_line.start].y + @sin(angle) * sanitized_length,
         };
 
         return .{ p1, p2 };
     } else if (t_line.id <= 8) {
         // straight lines
-        const point = points[t_line.start].mid(points[t_line.end]);
-        const length = points[t_line.start].distance(points[t_line.end]);
-        const angle = points[t_line.start].angleTo(points[t_line.end]);
+        const point = b[t_line.start].mid(b[t_line.end]);
+        const length = b[t_line.start].distance(b[t_line.end]);
+        const angle = b[t_line.start].angleTo(b[t_line.end]);
         const sanitized_length = @min(30.0 * shared.render_scale, length * 0.07);
 
         const p1 = Point{
@@ -139,12 +139,12 @@ fn getPointsOfLine(points: [4]PointUV, t_line: TransformLine) struct { Point, Po
         return .{ p1, p2 };
     } else if (t_line.id == 9) {
         const asset_center = Point{
-            .x = (points[0].x + points[2].x) * 0.5,
-            .y = (points[0].y + points[2].y) * 0.5,
+            .x = (b[0].x + b[2].x) * 0.5,
+            .y = (b[0].y + b[2].y) * 0.5,
         };
         const asset_mid_bottom = Point{
-            .x = (points[2].x + points[3].x) * 0.5,
-            .y = (points[2].y + points[3].y) * 0.5,
+            .x = (b[2].x + b[3].x) * 0.5,
+            .y = (b[2].y + b[3].y) * 0.5,
         };
         const angle = std.math.atan2(asset_mid_bottom.y - asset_center.y, asset_mid_bottom.x - asset_center.x);
         const p1 = Point{
@@ -164,7 +164,7 @@ fn getPointsOfLine(points: [4]PointUV, t_line: TransformLine) struct { Point, Po
 pub const RENDER_TRIANGLE_INSTANCES = UI_VERTICES_COUNT_BORDER * 2 * 2; // two triangle per line, each line has front and back color
 
 pub fn getDrawVertexData(
-    points: [4]PointUV,
+    bounds: [4]PointUV,
     hovered_elem_id: u32,
 ) struct {
     triangles: [RENDER_TRIANGLE_INSTANCES]triangles.DrawInstance,
@@ -177,7 +177,7 @@ pub fn getDrawVertexData(
     for (resize_lines) |t_line| {
         const color = if (hovered_elem_id == t_line.id) white else black;
 
-        const p1, const p2 = getPointsOfLine(points, t_line);
+        const p1, const p2 = getPointsOfLine(bounds, t_line);
         var thickness: f32 = 10.0 * shared.render_scale;
 
         if (t_line.id == 9) {
@@ -222,10 +222,10 @@ pub fn getDrawVertexData(
 }
 
 pub const PICK_TRIANGLE_INSTANCES = UI_VERTICES_COUNT_BORDER * 2;
-pub fn getPickVertexData(buffer: *[PICK_TRIANGLE_INSTANCES]triangles.PickInstance, points: [4]PointUV) void {
+pub fn getPickVertexData(buffer: *[PICK_TRIANGLE_INSTANCES]triangles.PickInstance, bounds: [4]PointUV) void {
     var i: usize = 0;
     for (resize_lines) |t_line| {
-        const p1, const p2 = getPointsOfLine(points, t_line);
+        const p1, const p2 = getPointsOfLine(bounds, t_line);
         const thickness: f32 = if (t_line.id == 9) 30.0 * shared.render_scale else 10.0 * shared.render_scale;
 
         lines.getPickVertexData(

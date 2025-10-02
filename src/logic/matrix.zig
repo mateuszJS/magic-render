@@ -248,6 +248,22 @@ pub const Matrix3x3 = struct {
         const det = self.values[0] * self.values[4] - self.values[1] * self.values[3];
         return det < 0;
     }
+
+    pub fn format(
+        self: Matrix3x3,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+
+        try writer.print("\n{d}, {d}, {d},\n{d}, {d}, {d},\n{d}, {d}, {d}\n", .{
+            self.values[0], self.values[1], self.values[2],
+            self.values[3], self.values[4], self.values[5],
+            self.values[6], self.values[7], self.values[8],
+        });
+    }
 };
 
 // --- Tests ---

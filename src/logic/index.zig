@@ -334,7 +334,7 @@ fn checkAssetsUpdate(should_notify: bool) !void {
         for (new_assets_update.items, last_assets_update) |new_asset, old_asset| {
             switch (old_asset) {
                 .img => |old_img| {
-                    if (!std.meta.eql(new_asset.img, old_img)) {
+                    if (!old_img.compare(new_asset.img)) {
                         all_match = false;
                         break;
                     }
@@ -346,7 +346,7 @@ fn checkAssetsUpdate(should_notify: bool) !void {
                     }
                 },
                 .text => |old_text| {
-                    if (!std.meta.eql(new_asset.text, old_text)) {
+                    if (!old_text.compare(new_asset.text)) {
                         all_match = false;
                         break;
                     }
@@ -407,14 +407,16 @@ fn updateSelectedAsset(id: AssetId) !void {
 }
 
 pub fn updateTextContent(
-    content: []const u8,
+    input_content: []const u8, // it allocated wit std.eap.wasm_allocator by default
     selection_start: usize,
     selection_end: usize,
 ) !texts.ComputeTextResult {
     const option_text = getSelectedText();
     if (option_text) |text| {
-        text.content = content;
-        return try text.computeText(selection_start, selection_end);
+        text.content = input_content;
+        const results = try text.computeText(selection_start, selection_end);
+        try checkAssetsUpdate(true);
+        return results;
     } else {
         @panic("updateTextContent called but no text asset selected");
     }
@@ -459,7 +461,7 @@ fn createText(x: f32, y: f32) !texts.Text {
 
     return try addText(
         id,
-        "Hellollllllllllolll",
+        try std.heap.wasm_allocator.dupe(u8, "Hellollllllllllolll"),
         // "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
         bounds,
         72,
@@ -479,7 +481,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             break :b new_text;
         };
 
-        enable_typing(text.html_content);
+        enable_typing(text.content);
 
         if (state.hovered_asset_id.isSec()) {
             state.selected_asset_id.setSec(state.hovered_asset_id.getSec());
@@ -695,7 +697,6 @@ pub fn onPointerMove(x: f32, y: f32) !void {
 
                     if (state.tool == .Text) {
                         update_text_content(result.content);
-                        update_text_selection(result.selection_start, result.selection_end);
                     }
                 },
             }
@@ -1332,13 +1333,13 @@ pub fn renderPick() !void {
 
     if (state.tool == Tool.None) {
         if (state.assets.get(state.selected_asset_id.getPrim())) |asset| {
-            const points = switch (asset) {
-                .img => |img| img.points,
+            const bounds = switch (asset) {
+                .img => |img| img.bounds,
                 .shape => |shape| shape.bounds,
                 .text => |text| text.bounds,
             };
             var vertex_buffer: [transform_ui.PICK_TRIANGLE_INSTANCES]triangles.PickInstance = undefined;
-            transform_ui.getPickVertexData(vertex_buffer[0..transform_ui.PICK_TRIANGLE_INSTANCES], points);
+            transform_ui.getPickVertexData(vertex_buffer[0..transform_ui.PICK_TRIANGLE_INSTANCES], bounds);
             web_gpu_programs.pick_triangle(vertex_buffer[0..transform_ui.PICK_TRIANGLE_INSTANCES]);
         }
     }
@@ -1352,7 +1353,7 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
     for (new_assets) |asset| {
         switch (asset) {
             .img => |img| {
-                try addImage(img.id, img.points, img.texture_id);
+                try addImage(img.id, img.bounds, img.texture_id);
             },
             .shape => |shape| {
                 _ = try addShape(
@@ -1423,7 +1424,7 @@ pub fn setTool(tool: Tool) !void {
 
     if (tool == .Text) {
         if (getSelectedText()) |text| {
-            enable_typing(text.html_content);
+            enable_typing(text.content);
         }
     }
 }
@@ -1471,7 +1472,7 @@ test "reset_assets does not call the real update callback" {
 
     // Call the function we are testing
     const initial_assets = [_]images.Serialized{.{
-        .points = [_]types.PointUV{
+        .bounds = [_]types.PointUV{
             types.PointUV{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 },
             types.PointUV{ .x = 1.0, .y = 0.0, .u = 1.0, .v = 0.0 },
             types.PointUV{ .x = 1.0, .y = 1.0, .u = 1.0, .v = 1.0 },

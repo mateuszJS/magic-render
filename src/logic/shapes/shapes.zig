@@ -1,4 +1,4 @@
-const Utils = @import("../utils.zig");
+const utils = @import("../utils.zig");
 const Point = @import("../types.zig").Point;
 const PointUV = @import("../types.zig").PointUV;
 const TextureSize = @import("../texture_size.zig").TextureSize;
@@ -201,7 +201,7 @@ pub const Shape = struct {
         const curr_preview = self.preview_point orelse Point{ .x = std.math.inf(f32), .y = 0 };
         const new_preview = p orelse Point{ .x = std.math.inf(f32), .y = 0 };
 
-        const is_diff = !Utils.equalF32(curr_preview.x, new_preview.x) or !Utils.equalF32(curr_preview.y, new_preview.y);
+        const is_diff = !utils.equalF32(curr_preview.x, new_preview.x) or !utils.equalF32(curr_preview.y, new_preview.y);
 
         if (is_diff) {
             self.preview_point = p;
@@ -221,7 +221,7 @@ pub const Shape = struct {
         const new_width = box.max_x - box.min_x;
         const new_height = box.max_y - box.min_y;
 
-        if (Utils.equalF32(new_width, 0) or Utils.equalF32(new_height, 0)) {
+        if (utils.equalF32(new_width, 0) or utils.equalF32(new_height, 0)) {
             return; // No valid bounding box
         }
 
@@ -502,7 +502,7 @@ pub const Serialized = struct {
         const all_match = self.id == other.id and
             self.paths.len == other.paths.len and
             std.meta.eql(self.props, other.props) and
-            std.meta.eql(self.bounds, other.bounds);
+            utils.compareBounds(self.bounds, other.bounds);
 
         if (!all_match) {
             return false;

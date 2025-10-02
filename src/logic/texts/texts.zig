@@ -59,8 +59,6 @@ pub const Text = struct {
     bounds: [4]PointUV,
     line_height: f32 = 1.2, // line height multiplier
     text_vertex: std.ArrayList(CharVertex),
-    html_content: []const u8 = &.{}, // to cache results of computeText
-    // useful when user clicks on text again in the future to be used as input for HTMLTextAreaElement
 
     sdf_texture_id: ?u32 = null,
     sdf_scale: f32 = 1.0,
@@ -233,7 +231,6 @@ pub const Text = struct {
 
         const text_width = @max(max_text_width, longest_line);
         const matrix = Matrix3x3.getMatrixFromRectangleNoScale(self.bounds);
-
         self.bounds = [_]PointUV{
             matrix.getUV(.{ .x = 0, .y = 0, .u = 0.0, .v = 1.0 }),
             matrix.getUV(.{ .x = text_width, .y = 0, .u = 1.0, .v = 1.0 }),
@@ -241,23 +238,23 @@ pub const Text = struct {
             matrix.getUV(.{ .x = 0, .y = min_y, .u = 0.0, .v = 0.0 }),
         };
 
-        var html_content = std.ArrayList(u8).init(std.heap.page_allocator);
+        var updated_content_bytes = std.ArrayList(u8).init(std.heap.page_allocator);
         const codepoints_slice = try updated_content.toOwnedSlice();
         defer std.heap.page_allocator.free(codepoints_slice);
 
         for (codepoints_slice) |cp| {
             var utf8_buffer: [4]u8 = undefined;
             const utf8_len = try std.unicode.utf8Encode(cp, &utf8_buffer);
-            try html_content.appendSlice(utf8_buffer[0..utf8_len]);
+            try updated_content_bytes.appendSlice(utf8_buffer[0..utf8_len]);
         }
 
-        std.heap.page_allocator.free(self.html_content); // free previous content
-        self.html_content = try html_content.toOwnedSlice();
+        std.heap.wasm_allocator.free(self.content); // free previous content
+        self.content = try updated_content_bytes.toOwnedSlice();
 
         self.is_sdf_outdated = true;
 
         return .{
-            .content = self.html_content,
+            .content = self.content,
             .selection_start = new_selection_start,
             .selection_end = new_selection_end,
         };
@@ -440,9 +437,18 @@ pub const Text = struct {
 
 pub const Serialized = struct {
     id: u32,
-    content: ?[]const u8, // it's a null pointer exception if content is empty, that's why we allow null
-    // to avoid throwing the exception
+    content: ?[]const u8, // it's a null pointer exception for case when content is empty, we allow null
+    // to avoid throwing the exception by Zigar
     bounds: [4]PointUV,
     font_size: f32,
     props: shapes.SerializedProps,
+
+    pub fn compare(self: Serialized, other: Serialized) bool {
+        const all_match = self.id == other.id and
+            self.font_size == other.font_size and
+            utils.compareBounds(self.bounds, other.bounds) and
+            std.mem.eql(u8, self.content orelse &.{}, other.content orelse &.{});
+
+        return all_match;
+    }
 };
