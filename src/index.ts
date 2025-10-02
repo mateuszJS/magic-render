@@ -14,7 +14,7 @@ import * as Fonts from 'fonts'
 
 export type SerializedInputImage = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
-  points?: PointUV[]
+  bounds?: PointUV[]
   url: string
   textureId?: number
 }
@@ -40,7 +40,7 @@ export type SerializedInputAsset = SerializedInputImage | SerializedInputShape |
 
 export type SerializedOutputImage = {
   id: number // not needed while loading project but useful for undo/redo to maintain selection
-  points: PointUV[]
+  bounds: PointUV[]
   url: string
   textureId: number
 }
@@ -180,7 +180,7 @@ export default async function initCreator(
         return {
           id: img.id,
           textureId: img.texture_id,
-          points: [...img.points].map((point) => ({
+          bounds: [...img.bounds].map((point) => ({
             x: point.x,
             y: point.y,
             u: point.u,
@@ -295,11 +295,11 @@ export default async function initCreator(
             }
             // otherwise it's an image
 
-            if (asset.points) {
+            if (asset.bounds) {
               return resolve({
                 img: {
                   id: asset.id || NO_ASSET_ID,
-                  points: asset.points,
+                  bounds: asset.bounds,
                   texture_id: asset.textureId || Textures.add(asset.url), // if we got points, so we have url on the server for sure
                 },
               })
@@ -320,7 +320,7 @@ export default async function initCreator(
               return resolve({
                 img: {
                   id: NO_ASSET_ID,
-                  points: getDefaultPoints(width, height, projectWidth, projectHeight), // TODO: do it in zig only liek for shaoes
+                  bounds: getDefaultPoints(width, height, projectWidth, projectHeight), // TODO: do it in zig only liek for shaoes
                   texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
                 },
               })

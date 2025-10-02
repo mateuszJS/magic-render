@@ -1,6 +1,7 @@
 const std = @import("std");
 const Types = @import("types.zig");
 const PointUV = Types.PointUV;
+const utils = @import("./utils.zig");
 
 const SHADER_TRIANGLE_INDICES = [_]usize{
     0, 1, 2,
@@ -14,13 +15,13 @@ pub const PickVertex = extern struct {
 
 pub const Image = struct {
     id: u32,
-    points: [4]PointUV,
+    bounds: [4]PointUV,
     texture_id: u32,
 
-    pub fn new(id: u32, points: [4]PointUV, texture_id: u32) Image {
+    pub fn new(id: u32, bounds: [4]PointUV, texture_id: u32) Image {
         return Image{
             .id = id,
-            .points = points,
+            .bounds = bounds,
             .texture_id = texture_id,
         };
     }
@@ -29,20 +30,20 @@ pub const Image = struct {
         var i: usize = 0;
 
         for (SHADER_TRIANGLE_INDICES) |index| {
-            buffer[i] = self.points[index];
+            buffer[i] = self.bounds[index];
             i += 1;
         }
     }
 
     pub fn getPickVertexData(self: Image, buffer: *[6]PickVertex) void {
         for (SHADER_TRIANGLE_INDICES, 0..) |index, i| {
-            buffer[i] = .{ .point = self.points[index], .id = .{ self.id, 0, 0, 0 } };
+            buffer[i] = .{ .point = self.bounds[index], .id = .{ self.id, 0, 0, 0 } };
         }
     }
 
     pub fn serialize(self: Image) Serialized {
         return Serialized{
-            .points = self.points,
+            .bounds = self.bounds,
             .texture_id = self.texture_id,
             .id = self.id,
         };
@@ -50,7 +51,13 @@ pub const Image = struct {
 };
 
 pub const Serialized = struct {
-    points: [4]PointUV,
+    bounds: [4]PointUV,
     texture_id: u32,
     id: u32,
+
+    pub fn compare(self: Serialized, other: Serialized) bool {
+        return self.id == other.id and
+            self.texture_id == other.texture_id and
+            utils.compareBounds(self.bounds, other.bounds);
+    }
 };

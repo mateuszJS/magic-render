@@ -21,11 +21,18 @@ pub fn equalF32(a: f32, b: f32) bool {
     return @abs(a - b) < consts.EPSILON;
 }
 
-pub fn getBounds(x: f32, y: f32, width: f32, height: f32) [4]PointUV {
-    var bounds = consts.DEFAULT_BOUNDS;
-    for (&bounds) |*b| {
-        b.x = x + width * b.x;
-        b.y = y + height * b.y;
+// 0.001 tolerance for bounds comparison
+// most of precision issues start at transform_ui module, where we perform lots of trigonometric operations
+pub fn equalBoundPoint(a: PointUV, b: PointUV) bool {
+    return @abs(a.x - b.x) < 0.001 and @abs(a.y - b.y) < 0.001;
+}
+
+pub fn compareBounds(bounds1: [4]PointUV, bounds2: [4]PointUV) bool {
+    for (bounds1, 0..) |b1, i| {
+        const b2 = bounds2[i];
+        if (!equalBoundPoint(b1, b2)) {
+            return false;
+        }
     }
-    return bounds;
+    return true;
 }

@@ -10,7 +10,7 @@ pub const Asset = union(enum) {
 
     pub fn getBounds(self: Asset) [4]PointUV {
         return switch (self) {
-            .img => |img| img.points,
+            .img => |img| img.bounds,
             .shape => |shape| shape.bounds,
             .text => |text| text.bounds,
         };
@@ -18,7 +18,7 @@ pub const Asset = union(enum) {
 
     pub fn getBoundsPtr(self: *Asset) *[4]PointUV {
         return switch (self.*) {
-            .img => |*img| &img.points,
+            .img => |*img| &img.bounds,
             .shape => |*shape| &shape.bounds,
             .text => |*text| &text.bounds,
         };
