@@ -41,3 +41,20 @@ pub fn serializeProps(allocator: std.mem.Allocator, props: Props) !SerializedPro
         .opacity = props.opacity,
     };
 }
+
+pub fn deserializeProps(allocator: std.mem.Allocator, props: SerializedProps) !Props {
+    var effects_list = std.ArrayList(sdf.Effect).init(allocator);
+    for (props.sdf_effects) |effect| {
+        try effects_list.append(sdf.Effect{
+            .dist_start = effect.dist_start,
+            .dist_end = effect.dist_end,
+            .fill = try fill.Fill.new(effect.fill, allocator),
+        });
+    }
+
+    return Props{
+        .sdf_effects = effects_list,
+        .filter = props.filter,
+        .opacity = props.opacity,
+    };
+}

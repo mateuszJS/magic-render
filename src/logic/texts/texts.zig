@@ -74,28 +74,13 @@ pub const Text = struct {
         input_props: asset_props.SerializedProps,
         sdf_texture_id: ?u32,
     ) !Text {
-        var effects_list = std.ArrayList(sdf.Effect).init(allocator);
-        for (input_props.sdf_effects) |effect| {
-            try effects_list.append(sdf.Effect{
-                .dist_start = effect.dist_start,
-                .dist_end = effect.dist_end,
-                .fill = try fill.Fill.new(effect.fill, allocator),
-            });
-        }
-
-        const props = asset_props.Props{
-            .sdf_effects = effects_list,
-            .filter = input_props.filter,
-            .opacity = input_props.opacity,
-        };
-
         var text = Text{
             .id = id,
             .content = content,
             .font_size = font_size,
             .bounds = bounds,
             .text_vertex = std.ArrayList(CharVertex).init(allocator),
-            .props = props,
+            .props = try asset_props.deserializeProps(allocator, input_props),
             .sdf_texture_id = sdf_texture_id,
         };
 

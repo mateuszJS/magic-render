@@ -26,10 +26,10 @@ async function test() {
   const toolsSelect = document.querySelector<HTMLSelectElement>('#tools-select')!
   const previewImg = document.querySelector<HTMLImageElement>('#preview')!
   const sharedTextEffects = document.querySelector<HTMLInputElement>('#shared-text-effects')!
-  const assetCoordsTextarea = document.querySelector<HTMLTextAreaElement>('#asset-coords-content')!
+  const assetBoundsTextarea = document.querySelector<HTMLTextAreaElement>('#asset-bounds-content')!
   const assetPropertiesTextarea =
     document.querySelector<HTMLTextAreaElement>('#asset-props-content')!
-  const assetCoordsForm = document.querySelector<HTMLFormElement>('#asset-coords-popover')!
+  const assetBoundsForm = document.querySelector<HTMLFormElement>('#asset-bounds-popover')!
   const assetPropsForm = document.querySelector<HTMLFormElement>('#asset-props-popover')!
 
   window.assetsSnapshot = []
@@ -99,7 +99,7 @@ async function test() {
       console.log(`new tool: ${newTool}`)
     },
     (bounds, props) => {
-      assetCoordsTextarea.value = JSON.stringify(bounds, null, 2)
+      assetBoundsTextarea.value = JSON.stringify(bounds, null, 2)
       assetPropertiesTextarea.value = JSON.stringify(props, null, 2)
       console.log('selected asset updated', bounds, props)
     }
@@ -192,12 +192,12 @@ async function test() {
     }
   })
 
-  assetCoordsForm.addEventListener('submit', function (e) {
+  assetBoundsForm.addEventListener('submit', function (e) {
     e.preventDefault()
-    const formData = new FormData(assetCoordsForm)
+    const formData = new FormData(assetBoundsForm)
     try {
-      const newCoords = JSON.parse(formData.get('code') as string)
-      creator.updateAssetCoords(newCoords)
+      const newBounds = JSON.parse(formData.get('code') as string)
+      creator.updateAssetBounds(newBounds)
     } catch (e) {
       alert('Cannot parse JSON: ' + (e as Error).message)
     }

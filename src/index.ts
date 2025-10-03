@@ -82,7 +82,7 @@ export interface CreatorAPI {
   toggleSharedTextEffects: VoidFunction
   // we need to obtain live update!
   updateAssetProps: (props: Partial<ShapeProps>) => void // updates properties of selected asset
-  updateAssetCoords: (coords: PointUV[]) => void // updates properties of selected asset
+  updateAssetBounds: (bounds: PointUV[]) => void // updates properties of selected asset
 }
 
 const NO_ASSET_ID = 0 // used when we don't have asset id yet
@@ -345,10 +345,10 @@ export default async function initCreator(
     setTool: Logic.setTool,
     toggleSharedTextEffects: Logic.toggleSharedTextEffects,
     updateAssetProps: (props) => {
-      console.log('updateProps', props)
+      Logic.setSelectedAssetProps(props)
     },
-    updateAssetCoords: (coords) => {
-      console.log('updateCoords', coords)
+    updateAssetBounds: (bounds) => {
+      Logic.setSelectedAssetBounds(bounds)
     },
   }
 }

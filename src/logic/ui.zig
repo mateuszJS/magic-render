@@ -80,7 +80,7 @@ pub fn draw(
         if (elements.get(@intFromEnum(data.icon))) |shape| {
             const uniform = sdf.DrawUniform{
                 .solid = .{
-                    .dist_start = std.math.inf(f32),
+                    .dist_start = std.math.floatMax(f32),
                     .dist_end = 0,
                     .color = data.color,
                 },

@@ -289,7 +289,7 @@ fn addText(
 
 pub fn removeAsset() !void {
     _ = state.assets.orderedRemove(state.selected_asset_id.getPrim());
-    try updateSelectedAsset(AssetId{});
+    try setSelectedAsset(AssetId{});
     try checkAssetsUpdate(true);
 }
 
@@ -379,8 +379,12 @@ fn checkAssetsUpdate(should_notify: bool) !void {
     }
 }
 
+fn getSelectedAsset() ?*types.Asset {
+    return state.assets.getPtr(state.selected_asset_id.getPrim());
+}
+
 fn getSelectedImg() ?*images.Image {
-    const asset = state.assets.getPtr(state.selected_asset_id.getPrim()) orelse return null;
+    const asset = getSelectedAsset() orelse return null;
     switch (asset.*) {
         .img => |*img| return img,
         .shape => return null,
@@ -389,7 +393,7 @@ fn getSelectedImg() ?*images.Image {
 }
 
 fn getSelectedShape() ?*shapes.Shape {
-    const asset = state.assets.getPtr(state.selected_asset_id.getPrim()) orelse return null;
+    const asset = getSelectedAsset() orelse return null;
     switch (asset.*) {
         .img => return null,
         .shape => |*shape| return shape,
@@ -398,7 +402,7 @@ fn getSelectedShape() ?*shapes.Shape {
 }
 
 fn getSelectedText() ?*texts.Text {
-    const asset = state.assets.getPtr(state.selected_asset_id.getPrim()) orelse return null;
+    const asset = getSelectedAsset() orelse return null;
     switch (asset.*) {
         .img => return null,
         .shape => return null,
@@ -406,7 +410,7 @@ fn getSelectedText() ?*texts.Text {
     }
 }
 
-fn updateSelectedAsset(id: AssetId) !void {
+fn setSelectedAsset(id: AssetId) !void {
     try commitChanges();
     state.selected_asset_id = id;
     asset_observer.triggerUpdate();
@@ -444,7 +448,7 @@ fn createText(x: f32, y: f32) !texts.Text {
     const props = asset_props.SerializedProps{
         .sdf_effects = &.{
             .{
-                .dist_start = std.math.inf(f32),
+                .dist_start = std.math.floatMax(f32),
                 .dist_end = 0,
                 .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
             },
@@ -478,13 +482,13 @@ fn createText(x: f32, y: f32) !texts.Text {
 
 pub fn onPointerDown(x: f32, y: f32) !void {
     if (state.tool == .Text) {
-        try updateSelectedAsset(state.hovered_asset_id);
+        try setSelectedAsset(state.hovered_asset_id);
 
         const text: texts.Text = if (getSelectedText()) |text| b: {
             break :b text.*;
         } else b: {
             const new_text = try createText(x, y);
-            try updateSelectedAsset(AssetId{ ._prim = new_text.id });
+            try setSelectedAsset(AssetId{ ._prim = new_text.id });
             break :b new_text;
         };
 
@@ -504,7 +508,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             const props = asset_props.SerializedProps{
                 .sdf_effects = &.{
                     .{
-                        .dist_start = std.math.inf(f32),
+                        .dist_start = std.math.floatMax(f32),
                         .dist_end = 0,
                         .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
                     },
@@ -529,7 +533,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                 create_sdf_texture(),
                 if (props.filter != null) create_cache_texture() else null,
             );
-            try updateSelectedAsset(AssetId{ ._prim = id });
+            try setSelectedAsset(AssetId{ ._prim = id });
         }
 
         if (getSelectedShape()) |shape| {
@@ -545,7 +549,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
         if (state.tool == Tool.EditShape) {
             // should not be accessible on mobile, that's why selection happens with pointer down
             if (state.hovered_asset_id.isPrim()) {
-                try updateSelectedAsset(state.hovered_asset_id);
+                try setSelectedAsset(state.hovered_asset_id);
             }
         }
 
@@ -563,7 +567,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
 pub fn onPointerUp() !void {
     if (state.tool == .None) {
         if (state.action == .None) {
-            try updateSelectedAsset(state.hovered_asset_id);
+            try setSelectedAsset(state.hovered_asset_id);
         } else {
             state.action = .None;
             try checkAssetsUpdate(true);
@@ -669,7 +673,7 @@ pub fn onPointerMove(x: f32, y: f32) !void {
         return;
     }
 
-    const asset = state.assets.getPtr(state.selected_asset_id.getPrim()) orelse return;
+    const asset = getSelectedAsset() orelse return;
     const bounds = asset.getBoundsPtr();
 
     switch (state.action) {
@@ -761,10 +765,10 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
         }
     }
 
-    if (state.assets.get(state.selected_asset_id.getPrim())) |asset| {
+    if (getSelectedAsset()) |asset| {
         try triangle_vertex_data.appendSlice(
             &transform_ui.getBorderDrawVertex(
-                asset,
+                asset.*,
                 .{ 0, 255, 0, 255 },
             ),
         );
@@ -1338,12 +1342,8 @@ pub fn renderPick() !void {
     }
 
     if (state.tool == Tool.None) {
-        if (state.assets.get(state.selected_asset_id.getPrim())) |asset| {
-            const bounds = switch (asset) {
-                .img => |img| img.bounds,
-                .shape => |shape| shape.bounds,
-                .text => |text| text.bounds,
-            };
+        if (getSelectedAsset()) |asset| {
+            const bounds = asset.getBounds();
             var vertex_buffer: [transform_ui.PICK_TRIANGLE_INSTANCES]triangles.PickInstance = undefined;
             transform_ui.getPickVertexData(vertex_buffer[0..transform_ui.PICK_TRIANGLE_INSTANCES], bounds);
             web_gpu_programs.pick_triangle(vertex_buffer[0..transform_ui.PICK_TRIANGLE_INSTANCES]);
@@ -1384,7 +1384,7 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
     }
 
     if (!state.assets.contains(state.selected_asset_id.getPrim())) {
-        try updateSelectedAsset(AssetId{});
+        try setSelectedAsset(AssetId{});
     }
     on_asset_update_cb = original_on_asset_update_cb;
     try checkAssetsUpdate(with_snapshot);
@@ -1439,7 +1439,65 @@ var ticks: u32 = 0; // it's like a time, but always increases by 1, used for per
 pub fn tick(now: f32) !void {
     ticks +%= 1;
     shared.setTime(now);
-    try asset_observer.loop(state.assets.get(state.selected_asset_id.getPrim()));
+    const asset = if (getSelectedAsset()) |a| a.* else null; // to deref pointer
+    try asset_observer.loop(asset);
+}
+
+pub fn setSelectedAssetProps(ser_props: asset_props.SerializedProps) !void {
+    if (getSelectedAsset()) |asset| {
+        switch (asset.*) {
+            .img => |img| {
+                _ = img; // autofix
+                // img.props = props;
+            },
+            .shape => |*shape| {
+                shape.props = try asset_props.deserializeProps(std.heap.page_allocator, ser_props);
+                if (ser_props.filter == null and shape.cache_texture_id != null) {
+                    // TODO: https://github.com/mateuszJS/magic-render/issues/204
+                    // destroy_texture(shape.cache_texture_id);
+
+                    shape.cache_texture_id = null;
+                } else if (ser_props.filter != null and shape.cache_texture_id == null) {
+                    shape.cache_texture_id = create_cache_texture();
+                }
+                shape.outdated_sdf = true;
+            },
+            .text => |*text| {
+                text.props = try asset_props.deserializeProps(std.heap.page_allocator, ser_props);
+                if (text.sdf_texture_id != null) {
+                    text.is_sdf_outdated = true;
+                }
+            },
+        }
+    }
+}
+
+pub fn setSelectedAssetBounds(bounds: [4]types.PointUV) !void {
+    // TODO: code duplication with transform_ui
+    if (getSelectedAsset()) |asset| {
+        switch (asset.*) {
+            .img => |*img| {
+                img.bounds = bounds;
+            },
+            .shape => |*shape| {
+                shape.bounds = bounds;
+                shape.should_update_sdf = true;
+            },
+            .text => |*text| {
+                text.bounds = bounds;
+                const result = try text.computeText(
+                    texts.caret_position,
+                    texts.selection_end_position,
+                );
+
+                if (state.tool == .Text) {
+                    update_text_content(result.content);
+                }
+            },
+        }
+    }
+
+    // asset_observer.triggerUpdate();
 }
 
 pub fn toggleSharedTextEffects() void {
