@@ -101,7 +101,6 @@ async function test() {
     (bounds, props) => {
       assetBoundsTextarea.value = JSON.stringify(bounds, null, 2)
       assetPropertiesTextarea.value = JSON.stringify(props, null, 2)
-      console.log('selected asset updated', bounds, props)
     }
   )
 
