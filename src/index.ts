@@ -95,7 +95,8 @@ export default async function initCreator(
   onProcessingUpdate: (inProgress: boolean) => void,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void,
   onUpdateTool: (tool: CreatorTool) => void,
-  onUpdateProps: (bounds: PointUV[] | null, props: Partial<ShapeProps> | null) => void // called when properties of selected asset as been canged
+  onUpdateProps: (bounds: PointUV[] | null, props: Partial<ShapeProps> | null) => void
+  // called when properties of selected asset has been changed
   // included changed caused by calling "updateProps"
 ): Promise<CreatorAPI> {
   let loadingTextures = 0
