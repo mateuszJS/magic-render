@@ -92,8 +92,9 @@ export function enable(text: string): void {
   if (!textarea) {
     const newEl = document.createElement('textarea')
     newEl.style.position = 'fixed'
-    // newEl.style.left = '-9999px'
-    // newEl.style.opacity = '0'
+    newEl.style.left = '-210px'
+    newEl.style.height = '200px'
+    newEl.style.opacity = '0'
     newEl.style.width = '9999px'
     newEl.style.whiteSpace = 'pre-line'
     document.body.appendChild(newEl)
