@@ -97,7 +97,7 @@ export default async function initCreator(
   onUpdateTool: (tool: CreatorTool) => void,
   onUpdateProps: (bounds: PointUV[] | null, props: Partial<ShapeProps> | null) => void
   // called when properties/bounds of selected asset have been changed
-  // included changed caused by calling "updateAssetProps"
+  // including modifications caused by calling "updateAssetProps"
   // also called with null when no asset is selected
 ): Promise<CreatorAPI> {
   let loadingTextures = 0
