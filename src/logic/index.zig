@@ -1470,6 +1470,8 @@ pub fn setSelectedAssetProps(ser_props: asset_props.SerializedProps) !void {
             },
         }
     }
+
+    try checkAssetsUpdate(true);
 }
 
 pub fn setSelectedAssetBounds(bounds: [4]types.PointUV) !void {
@@ -1497,7 +1499,9 @@ pub fn setSelectedAssetBounds(bounds: [4]types.PointUV) !void {
         }
     }
 
-    // asset_observer.triggerUpdate();
+    try checkAssetsUpdate(true);
+    // asset_observer.triggerUpdate(); not sure if we sould perform it or nothing
+    // we might ruin UX for the user while they are editing
 }
 
 pub fn toggleSharedTextEffects() void {

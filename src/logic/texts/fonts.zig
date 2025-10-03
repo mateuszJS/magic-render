@@ -28,8 +28,8 @@ pub fn init() void {
     fonts = std.AutoArrayHashMap(u32, chars.Chars).init(std.heap.page_allocator);
 }
 
-// Details it's own by allocator struct, ArrayHashMap only has a pointer, but doesn't own the struct!
-// So pointer should never change
+// struct "Details" is owned by allocator, ArrayHashMap only has a pointer, but doesn't own the struct!
+// So pointer to a "Details" struct should never change!
 pub fn get(font_id: u32, c: u21) !*chars.Details {
     const font = fonts.getPtr(font_id) orelse @panic("Font ID not found");
     const details = font.getChar(c);

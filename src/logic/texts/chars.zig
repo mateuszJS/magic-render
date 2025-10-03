@@ -32,7 +32,7 @@ pub const Details = struct {
 
         const viewport_font_size = font_size / shared.render_scale;
         if (viewport_font_size > self.max_requested_viewport_font_size) {
-            self.max_requested_viewport_font_size = viewport_font_size; // is override while we compute sdfs
+            self.max_requested_viewport_font_size = viewport_font_size; // will be overridden while we compute sdfs
             // since shared.render_scale might change between request and sdf computation
             self.max_font_size = font_size;
             self.outdated_sdf = true;

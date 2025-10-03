@@ -8,7 +8,7 @@ const asset_props = @import("asset_props.zig");
 
 const THROTTLING_TIME_MS = 100;
 
-// ID of the asset is not pased on purpose
+// ID of the asset is not passed on purpose
 // UI should be dumb, show result and collect changes only
 // not searching asset in the current assets state
 pub const NotifyWorldFn = *const fn (?[4]types.PointUV, ?asset_props.SerializedProps) void;
