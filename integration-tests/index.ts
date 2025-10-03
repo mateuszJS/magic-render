@@ -92,6 +92,9 @@ async function test() {
     (newTool) => {
       toolsSelect.value = newTool.toString()
       console.log(`new tool: ${newTool}`)
+    },
+    (bounds, props) => {
+      console.log('selected asset updated', bounds, props)
     }
   )
 

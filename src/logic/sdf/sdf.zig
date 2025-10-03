@@ -212,16 +212,21 @@ pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32) struct {
         bounds_with_padding[0].distance(bounds_with_padding[3]),
     );
 
+    // TODO: recreate and solve this issue:
+    // ceil because without it, while casting f32 to u32 it rounds down
+    // and often the end of the texture cuts out large part of the padding and in the result shapes touched the edge
+    // we cannot round above because it jumps between values, and we cannot do it below becuase it might be
+    // bigger than max sdf size. We might just +1?
+
     const sdf_size = texture_size.get_allowed_sdf_size(desired_size);
     const sdf_safe_size = texture_size.TextureSize{
-        .w = @ceil(@max(sdf_size.w, consts.MIN_TEXTURE_SIZE)),
-        .h = @ceil(@max(sdf_size.h, consts.MIN_TEXTURE_SIZE)), // ceil because without it, while casting f32 to u32 it rounds down
-        // and often the end of the texture cuts out large part of the padding and in the result shapes touched the edge
+        .w = @max(sdf_size.w, consts.MIN_TEXTURE_SIZE),
+        .h = @max(sdf_size.h, consts.MIN_TEXTURE_SIZE),
     };
 
-    const init_width = bounds_with_padding[0].distance(bounds_with_padding[1]) * shared.render_scale; // this multiplication is weird
+    const init_width = bounds_with_padding[0].distance(bounds_with_padding[1]) * shared.render_scale;
     // * shared.render_scale to revert to logical scale (without impact of camera/zoom)
-    const sdf_scale = sdf_size.w / init_width;
+    const sdf_scale = sdf_safe_size.w / init_width;
 
     return .{
         .size = sdf_safe_size,

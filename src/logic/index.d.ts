@@ -211,6 +211,9 @@ declare module '*.zig' {
     start_cache: (texture_id: number, box: BoundingBox, width: number, height: number) => void,
     end_cache: VoidFunction
   ) => void
+  export const connectSelectedAssetUpdates: (
+    on_selected_asset_update: (corners: PointUV[], props: ShapeProps) => void
+  ) => void
   export const connectTyping: (
     enable: (text: string) => void,
     disable: VoidFunction,

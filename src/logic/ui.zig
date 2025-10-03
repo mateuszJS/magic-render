@@ -1,5 +1,6 @@
 const std = @import("std");
 const shapes = @import("shapes/shapes.zig");
+const asset_props = @import("asset_props.zig");
 const texture_size = @import("texture_size.zig");
 const Point = @import("types.zig").Point;
 const PointUV = @import("types.zig").PointUV;
@@ -16,11 +17,7 @@ pub fn importUiElement(
     paths: []const []const Point,
     sdf_texture_id: u32,
 ) !void {
-    const props = shapes.SerializedProps{
-        .sdf_effects = &.{},
-        .filter = null,
-        .opacity = 1.0,
-    };
+    const props = asset_props.SerializedProps{};
     const shape = try shapes.Shape.new(
         0,
         paths,

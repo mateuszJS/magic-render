@@ -21,6 +21,7 @@ const fonts = @import("texts/fonts.zig");
 const AssetId = @import("asset_id.zig").AssetId;
 const Asset = @import("types.zig").Asset;
 const AssetSerialized = @import("types.zig").AssetSerialized;
+const asset_props = @import("asset_props.zig");
 
 const FillType = enum(u8) {
     Solid,
@@ -140,6 +141,28 @@ pub fn connectCacheCallbacks(
     end_cache = end_cache_cb;
 }
 
+// ID of the asset is not pased on purpose
+// UI should be dumb, show result and collect changes only
+// not searching asset in the current assets state
+var onSelectedAssetUpdateCallback: *const fn ([4]types.PointUV, asset_props.SerializedProps) void = undefined;
+pub fn connectSelectedAssetUpdates(cb: *const fn ([4]types.PointUV, asset_props.SerializedProps) void) void {
+    onSelectedAssetUpdateCallback = cb;
+}
+
+// Implement throttle and throttle this function
+// Also issue, SDFs are not scaled correctyl for text with SDF per char
+fn onSelectedAssetUpdate(asset: Asset) !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    switch (asset) {
+        .img => |img| onSelectedAssetUpdateCallback(img.bounds, asset_props.SerializedProps{}),
+        .shape => |shape| onSelectedAssetUpdateCallback(shape.bounds, try asset_props.serializeProps(allocator, shape.props)),
+        .text => |text| onSelectedAssetUpdateCallback(text.bounds, try asset_props.serializeProps(allocator, text.props)),
+    }
+}
+
 pub const ASSET_ID_MIN: u32 = 1000;
 const MIN_NEW_CONTROL_POINT_DISTANCE = 10.0; // Minimum distance to consider a new control point
 
@@ -239,7 +262,7 @@ pub fn addShape(
     id_or_zero: u32,
     paths: []const []const types.Point,
     bounds: ?[4]types.PointUV,
-    props: shapes.SerializedProps,
+    props: asset_props.SerializedProps,
     sdf_texture_id: u32,
     cache_texture_id: ?u32,
 ) !u32 {
@@ -264,7 +287,7 @@ fn addText(
     content: []const u8,
     bounds: [4]types.PointUV,
     font_size: f32,
-    props: shapes.SerializedProps,
+    props: asset_props.SerializedProps,
 ) !texts.Text {
     const id = if (id_or_zero == 0) generateId() else id_or_zero;
     const text = try texts.Text.new(
@@ -434,36 +457,34 @@ fn createText(x: f32, y: f32) !texts.Text {
         .{ .x = x, .y = y - 1.0, .u = 0.0, .v = 0.0 },
     };
 
-    const props = shapes.SerializedProps{
+    const props = asset_props.SerializedProps{
         .sdf_effects = &.{
-            shapes.SerializedSdfEffect{
+            .{
                 .dist_start = std.math.inf(f32),
                 .dist_end = 0,
                 .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
             },
-            shapes.SerializedSdfEffect{
+            .{
                 .dist_start = 3,
                 .dist_end = 1.5,
                 .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
             },
-            shapes.SerializedSdfEffect{
+            .{
                 .dist_start = -6,
                 .dist_end = -8,
                 .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
             },
-            shapes.SerializedSdfEffect{
+            .{
                 .dist_start = -12,
                 .dist_end = -18,
                 .fill = .{ .solid = .{ 1.0, 1.0, 0.0, 1.0 } },
             },
         },
-        .filter = null,
-        .opacity = 1.0,
     };
 
     return try addText(
         id,
-        try std.heap.wasm_allocator.dupe(u8, "Hellollllllllllooll"),
+        try std.heap.wasm_allocator.dupe(u8, "H"),
         // "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
         bounds,
         72,
@@ -496,26 +517,25 @@ pub fn onPointerDown(x: f32, y: f32) !void {
         state.action = .TextSelection;
     } else if (state.tool == Tool.DrawShape) {
         if (getSelectedShape() == null) {
-            const props = shapes.SerializedProps{
+            const props = asset_props.SerializedProps{
                 .sdf_effects = &.{
-                    shapes.SerializedSdfEffect{
+                    .{
                         .dist_start = std.math.inf(f32),
                         .dist_end = 0,
                         .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
                     },
-                    shapes.SerializedSdfEffect{
+                    .{
                         .dist_start = 26,
                         .dist_end = 24,
                         .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
                     },
-                    shapes.SerializedSdfEffect{
+                    .{
                         .dist_start = -30,
                         .dist_end = -32,
                         .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
                     },
                 },
                 .filter = .{ .gaussianBlur = .{ .x = 30, .y = 30 } },
-                .opacity = 1.0,
             };
             const id = try addShape(
                 0,
@@ -679,6 +699,8 @@ pub fn onPointerMove(x: f32, y: f32) !void {
                 point.x += offset.x;
                 point.y += offset.y;
             }
+
+            try onSelectedAssetUpdate(asset.*);
         },
         .Transform => {
             transform_ui.transformPoints(
@@ -702,6 +724,8 @@ pub fn onPointerMove(x: f32, y: f32) !void {
                     }
                 },
             }
+
+            try onSelectedAssetUpdate(asset.*);
         },
         .TextSelection => {},
         .None => {},
@@ -857,41 +881,33 @@ pub fn computeSdfs() !void {
     while (fonts_iter.next()) |font_entry| {
         var font = font_entry.value_ptr.*;
         var char_iter = font.chars.iterator();
-        while (char_iter.next()) |details_entry| {
-            var ch_d = details_entry.value_ptr.*.*;
+
+        while (char_iter.next()) |char_details_entry| {
+            var ch_d = char_details_entry.value_ptr.*;
+
             if (ch_d.sdf_texture_id) |sdf_texture_id| {
                 if (!ch_d.outdated_sdf) continue;
+                const font_size = ch_d.max_font_size;
+                const ch_w = font_size * ch_d.width;
+                const ch_h = font_size * ch_d.height;
 
-                const ch_w = ch_d.max_font_size * ch_d.width;
-                const ch_h = ch_d.max_font_size * ch_d.height;
-
-                const bounds = [4]types.PointUV{
-                    .{ .x = 0, .y = ch_h, .u = 0, .v = 1 },
-                    .{ .x = ch_w, .y = ch_h, .u = 1, .v = 1 },
-                    .{ .x = ch_w, .y = 0, .u = 1, .v = 0 },
-                    .{ .x = 0, .y = 0, .u = 0, .v = 0 },
-                };
-                const padding = ch_d.max_font_size * ch_d.max_ratio_padding_to_font_size;
+                const bounds = Utils.createBounds(ch_w, ch_h);
+                const padding = font_size * ch_d.*.max_ratio_padding_to_font_size;
                 const sdf_dims = sdf.getSdfTextureDims(bounds, padding);
 
                 ch_d.sdf_scale = sdf_dims.scale;
+                ch_d.max_requested_viewport_font_size = font_size / shared.render_scale;
+                // max requested size is not actual generated(like real_viewport_font_size below is)
+                // it's max requested size in viewport coords to avoid re-requesting same size again
+                const real_viewport_font_size = font_size * ch_d.sdf_scale;
 
-                // this is NOT viewport, it's SDF scale, if it's smaller htan requested viewport(often while using zoom)
-                // we will keep regenerating it for no reason!
-                ch_d.max_requested_viewport_font_size = ch_d.max_font_size * sdf_dims.scale;
                 const viewport_padding = padding * sdf_dims.scale;
-                // ch_d.max_requested_viewport_effect_padding = ch_d.max_effect_padding * ch_d.sdf_scale;
+                const points = try allocator.dupe(types.Point, ch_d.points);
 
-                const points = try std.heap.page_allocator.dupe(types.Point, ch_d.points);
-                // std.debug.print("char texture size {d}x{d}\n", .{ sdf_dims.size.w, sdf_dims.size.h });
-                // std.debug.print("ch_d.max_effect_padding {d}\n", .{ch_d.max_effect_padding});
                 for (points) |*point| {
-                    if (PathUtils.isStraightLineHandle(point.*)) {
-                        continue;
-                    }
-                    point.x = (point.x * ch_d.max_requested_viewport_font_size) + viewport_padding;
-                    point.y = (point.y * ch_d.max_requested_viewport_font_size) + viewport_padding;
-                    // std.debug.print("point: {d}, {d}\n", .{ point.x, point.y });
+                    if (PathUtils.isStraightLineHandle(point.*)) continue;
+                    point.x = (point.x * real_viewport_font_size) + viewport_padding;
+                    point.y = (point.y * real_viewport_font_size) + viewport_padding;
                 }
 
                 web_gpu_programs.compute_shape(
@@ -946,16 +962,16 @@ pub fn computeSdfs() !void {
                 shape.should_update_sdf = false;
             },
             .text => |*text| {
-                if (!text.is_sdf_outdated) continue;
-
-                const text_padding = sdf.getSdfPadding(text.props.sdf_effects.items);
-                const sdf_dims = sdf.getSdfTextureDims(
-                    text.bounds,
-                    text_padding,
-                );
-                text.sdf_scale = sdf_dims.scale;
-
                 if (text.sdf_texture_id) |text_sdf_texture_id| {
+                    if (!text.is_sdf_outdated) continue;
+
+                    const text_padding = sdf.getSdfPadding(text.props.sdf_effects.items);
+                    const sdf_dims = sdf.getSdfTextureDims(
+                        text.bounds,
+                        text_padding,
+                    );
+                    text.sdf_scale = sdf_dims.scale;
+
                     const bounds_height = text.bounds[0].distance(text.bounds[3]);
 
                     const compute_depth_texture_id = create_compute_depth_texture(
@@ -1186,10 +1202,13 @@ pub fn renderDraw() !void {
 
                             if (ch_d.sdf_texture_id) |sdf_texture_id| {
                                 for (text.props.sdf_effects.items) |effect| {
-                                    const bounds = vertex.getBounds(text.font_size * ch_d.max_ratio_padding_to_font_size, matrix);
+                                    const bounds = vertex.getBoundsVertex(text.font_size * ch_d.max_ratio_padding_to_font_size, matrix);
+                                    const char_sdf_viewport_font_size = ch_d.max_font_size * ch_d.sdf_scale;
+                                    const sdf_scale = char_sdf_viewport_font_size / text.font_size;
+
                                     web_gpu_programs.draw_shape(
                                         &bounds,
-                                        text.getDrawUniform(effect, ch_d.sdf_scale),
+                                        text.getDrawUniform(effect, sdf_scale),
                                         sdf_texture_id,
                                     );
                                 }

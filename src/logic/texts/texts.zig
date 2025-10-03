@@ -11,7 +11,7 @@ const shared = @import("../shared.zig");
 const lines = @import("../lines.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const sdf = @import("../sdf/sdf.zig");
-const shapes = @import("../shapes/shapes.zig");
+const asset_props = @import("../asset_props.zig");
 const fill = @import("../sdf/fill.zig");
 
 const ENTER_CHAR_CODE: u21 = 0xa;
@@ -30,7 +30,7 @@ pub const CharVertex = struct {
     origin: Point, // origin of the char (bottom left corner), useful for drawing selection/caret/picking
     last_in_line: bool = false,
 
-    pub fn getBounds(self: CharVertex, padding: f32, matrix: Matrix3x3) [6]PointUV {
+    pub fn getBoundsVertex(self: CharVertex, padding: f32, matrix: Matrix3x3) [6]PointUV {
         const b = self.relative_bounds;
         const p = padding;
         return [_]PointUV{
@@ -63,7 +63,7 @@ pub const Text = struct {
     sdf_texture_id: ?u32 = null,
     sdf_scale: f32 = 1.0,
     is_sdf_outdated: bool = true,
-    props: shapes.Props,
+    props: asset_props.Props,
 
     pub fn new(
         allocator: std.mem.Allocator,
@@ -71,7 +71,7 @@ pub const Text = struct {
         content: []const u8,
         bounds: [4]PointUV,
         font_size: f32,
-        input_props: shapes.SerializedProps,
+        input_props: asset_props.SerializedProps,
         sdf_texture_id: ?u32,
     ) !Text {
         var effects_list = std.ArrayList(sdf.Effect).init(allocator);
@@ -83,7 +83,7 @@ pub const Text = struct {
             });
         }
 
-        const props = shapes.Props{
+        const props = asset_props.Props{
             .sdf_effects = effects_list,
             .filter = input_props.filter,
             .opacity = input_props.opacity,
@@ -410,16 +410,16 @@ pub const Text = struct {
     }
 
     pub fn serialize(self: Text, allocator: std.mem.Allocator) !Serialized {
-        var effects_list = std.ArrayList(shapes.SerializedSdfEffect).init(allocator);
+        var effects_list = std.ArrayList(asset_props.SerializedSdfEffect).init(allocator);
         for (self.props.sdf_effects.items) |effect| {
-            try effects_list.append(shapes.SerializedSdfEffect{
+            try effects_list.append(asset_props.SerializedSdfEffect{
                 .dist_start = effect.dist_start,
                 .dist_end = effect.dist_end,
                 .fill = effect.fill.serialize(),
             });
         }
 
-        const props = shapes.SerializedProps{
+        const props = asset_props.SerializedProps{
             .sdf_effects = try effects_list.toOwnedSlice(),
             .filter = self.props.filter,
             .opacity = self.props.opacity,
@@ -441,7 +441,7 @@ pub const Serialized = struct {
     // to avoid throwing the exception by Zigar
     bounds: [4]PointUV,
     font_size: f32,
-    props: shapes.SerializedProps,
+    props: asset_props.SerializedProps,
 
     pub fn compare(self: Serialized, other: Serialized) bool {
         const all_match = self.id == other.id and
