@@ -82,7 +82,7 @@ export interface CreatorAPI {
   toggleSharedTextEffects: VoidFunction
   // we need to obtain live update!
   updateAssetProps: (props: Partial<ShapeProps>) => void // updates properties of selected asset
-  updateAssetBounds: (bounds: PointUV[]) => void // updates properties of selected asset
+  updateAssetBounds: (bounds: PointUV[]) => void // updates bounds of selected asset
 }
 
 const NO_ASSET_ID = 0 // used when we don't have asset id yet
