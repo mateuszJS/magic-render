@@ -212,7 +212,7 @@ declare module '*.zig' {
     end_cache: VoidFunction
   ) => void
   export const connectSelectedAssetUpdates: (
-    on_selected_asset_update: (corners: PointUV[], props: ShapeProps) => void
+    on_selected_asset_update: (bounds: PointUV[] | null, props: ShapeProps | null) => void
   ) => void
   export const connectTyping: (
     enable: (text: string) => void,

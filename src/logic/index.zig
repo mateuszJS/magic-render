@@ -22,6 +22,7 @@ const AssetId = @import("asset_id.zig").AssetId;
 const Asset = @import("types.zig").Asset;
 const AssetSerialized = @import("types.zig").AssetSerialized;
 const asset_props = @import("asset_props.zig");
+const asset_observer = @import("asset_observer.zig");
 
 const FillType = enum(u8) {
     Solid,
@@ -141,26 +142,8 @@ pub fn connectCacheCallbacks(
     end_cache = end_cache_cb;
 }
 
-// ID of the asset is not pased on purpose
-// UI should be dumb, show result and collect changes only
-// not searching asset in the current assets state
-var onSelectedAssetUpdateCallback: *const fn ([4]types.PointUV, asset_props.SerializedProps) void = undefined;
-pub fn connectSelectedAssetUpdates(cb: *const fn ([4]types.PointUV, asset_props.SerializedProps) void) void {
-    onSelectedAssetUpdateCallback = cb;
-}
-
-// Implement throttle and throttle this function
-// Also issue, SDFs are not scaled correctyl for text with SDF per char
-fn onSelectedAssetUpdate(asset: Asset) !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    switch (asset) {
-        .img => |img| onSelectedAssetUpdateCallback(img.bounds, asset_props.SerializedProps{}),
-        .shape => |shape| onSelectedAssetUpdateCallback(shape.bounds, try asset_props.serializeProps(allocator, shape.props)),
-        .text => |text| onSelectedAssetUpdateCallback(text.bounds, try asset_props.serializeProps(allocator, text.props)),
-    }
+pub fn connectSelectedAssetUpdates(cb: asset_observer.NotifyWorldFn) void {
+    asset_observer.notifyWorld = cb;
 }
 
 pub const ASSET_ID_MIN: u32 = 1000;
@@ -426,6 +409,7 @@ fn getSelectedText() ?*texts.Text {
 fn updateSelectedAsset(id: AssetId) !void {
     try commitChanges();
     state.selected_asset_id = id;
+    asset_observer.triggerUpdate();
     on_asset_select_cb(id.serialize());
 }
 
@@ -588,6 +572,7 @@ pub fn onPointerUp() !void {
         try checkAssetsUpdate(true);
         if (getSelectedShape()) |shape| {
             shape.onReleasePointer();
+            asset_observer.triggerUpdate();
         }
     } else if (state.tool == Tool.EditShape) {
         // to remove sec, third, quat fields
@@ -700,7 +685,7 @@ pub fn onPointerMove(x: f32, y: f32) !void {
                 point.y += offset.y;
             }
 
-            try onSelectedAssetUpdate(asset.*);
+            asset_observer.triggerUpdate();
         },
         .Transform => {
             transform_ui.transformPoints(
@@ -725,7 +710,7 @@ pub fn onPointerMove(x: f32, y: f32) !void {
                 },
             }
 
-            try onSelectedAssetUpdate(asset.*);
+            asset_observer.triggerUpdate();
         },
         .TextSelection => {},
         .None => {},
@@ -1451,9 +1436,10 @@ pub fn setTool(tool: Tool) !void {
 }
 
 var ticks: u32 = 0; // it's like a time, but always increases by 1, used for performance optimizations
-pub fn tick(now: f32) void {
+pub fn tick(now: f32) !void {
     ticks +%= 1;
     shared.setTime(now);
+    try asset_observer.loop(state.assets.get(state.selected_asset_id.getPrim()));
 }
 
 pub fn toggleSharedTextEffects() void {

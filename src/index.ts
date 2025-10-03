@@ -94,7 +94,7 @@ export default async function initCreator(
   onProcessingUpdate: (inProgress: boolean) => void,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void,
   onUpdateTool: (tool: CreatorTool) => void,
-  onUpdateProps: (bounds: PointUV[], props: Partial<ShapeProps>) => void // called when properties of selected asset as been canged
+  onUpdateProps: (bounds: PointUV[] | null, props: Partial<ShapeProps> | null) => void // called when properties of selected asset as been canged
   // included changed caused by calling "updateProps"
 ): Promise<CreatorAPI> {
   let loadingTextures = 0
@@ -234,7 +234,10 @@ export default async function initCreator(
   )
   Logic.onUpdateToolCallback(onUpdateTool)
   Logic.connectSelectedAssetUpdates((bounds, props) => {
-    onUpdateProps(serializeBounds([...bounds]), serializeShapeProps(props))
+    onUpdateProps(
+      bounds && serializeBounds([...bounds]), //
+      props && serializeShapeProps(props)
+    )
   })
 
   const addImage: CreatorAPI['addImage'] = (url) => {
