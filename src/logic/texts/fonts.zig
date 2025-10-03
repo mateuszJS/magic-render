@@ -28,14 +28,18 @@ pub fn init() void {
     fonts = std.AutoArrayHashMap(u32, chars.Chars).init(std.heap.page_allocator);
 }
 
+// struct "Details" is owned by allocator, ArrayHashMap only has a pointer, but doesn't own the struct!
+// So pointer to a "Details" struct should never change!
 pub fn get(font_id: u32, c: u21) !*chars.Details {
     const font = fonts.getPtr(font_id) orelse @panic("Font ID not found");
-    const details = font.get(c);
+    const details = font.getChar(c);
     if (details) |d| {
         return d;
     } else {
         const char = getCharData(font_id, c);
-        const d = chars.Details{
+
+        const d = try std.heap.page_allocator.create(chars.Details);
+        d.* = chars.Details{
             .sdf_texture_id = char.sdf_texture_id,
             .x = char.x,
             .y = char.y,
@@ -45,9 +49,9 @@ pub fn get(font_id: u32, c: u21) !*chars.Details {
             .outdated_sdf = true,
             .kerning = std.AutoArrayHashMap(u21, f32).init(std.heap.page_allocator),
         };
-        try font.set(c, d);
+        try font.addChar(c, d);
         // Now get the pointer to the stored struct
-        return font.get(c) orelse @panic("Failed to retrieve stored character details");
+        return font.getChar(c) orelse @panic("Failed to retrieve stored character details");
     }
 }
 

@@ -80,6 +80,9 @@ export interface CreatorAPI {
   destroy: VoidFunction
   setTool: (tool: CreatorTool) => void
   toggleSharedTextEffects: VoidFunction
+  // we need to obtain live update!
+  updateAssetProps: (props: Partial<ShapeProps>) => void // updates properties of selected asset
+  updateAssetBounds: (bounds: PointUV[]) => void // updates bounds of selected asset
 }
 
 const NO_ASSET_ID = 0 // used when we don't have asset id yet
@@ -91,7 +94,11 @@ export default async function initCreator(
   onAssetSelect: (assetId: Id) => void,
   onProcessingUpdate: (inProgress: boolean) => void,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void,
-  onUpdateTool: (tool: CreatorTool) => void
+  onUpdateTool: (tool: CreatorTool) => void,
+  onUpdateProps: (bounds: PointUV[] | null, props: Partial<ShapeProps> | null) => void
+  // called when properties/bounds of selected asset have been changed
+  // including modifications caused by calling "updateAssetProps"
+  // also called with null when no asset is selected
 ): Promise<CreatorAPI> {
   let loadingTextures = 0
   let isMouseEventProcessing = false
@@ -180,12 +187,7 @@ export default async function initCreator(
         return {
           id: img.id,
           textureId: img.texture_id,
-          bounds: [...img.bounds].map((point) => ({
-            x: point.x,
-            y: point.y,
-            u: point.u,
-            v: point.v,
-          })),
+          bounds: serializeBounds([...img.bounds]),
           url: Textures.getUrl(img.texture_id),
         }
       } else if ('shape' in asset && asset.shape) {
@@ -201,12 +203,7 @@ export default async function initCreator(
               y: point.y,
             }))
           ),
-          bounds: [...shape.bounds].map((point) => ({
-            x: point.x,
-            y: point.y,
-            u: point.u,
-            v: point.v,
-          })),
+          bounds: serializeBounds([...shape.bounds]),
           props: serializeShapeProps(shape.props),
           sdf_texture_id: shape.sdf_texture_id,
           cache_texture_id: shape.cache_texture_id,
@@ -215,12 +212,7 @@ export default async function initCreator(
         return {
           id: asset.text.id,
           content: asset.text.content ?? '',
-          bounds: [...asset.text.bounds].map((point) => ({
-            x: point.x,
-            y: point.y,
-            u: point.u,
-            v: point.v,
-          })),
+          bounds: serializeBounds([...asset.text.bounds]),
           font_size: asset.text.font_size,
           props: serializeShapeProps(asset.text.props),
         }
@@ -244,6 +236,12 @@ export default async function initCreator(
     Fonts.getKerning
   )
   Logic.onUpdateToolCallback(onUpdateTool)
+  Logic.connectSelectedAssetUpdates((bounds, props) => {
+    onUpdateProps(
+      bounds && serializeBounds([...bounds]), //
+      props && serializeShapeProps(props)
+    )
+  })
 
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = Textures.add(url, (width, height, isNew) => {
@@ -348,7 +346,22 @@ export default async function initCreator(
     },
     setTool: Logic.setTool,
     toggleSharedTextEffects: Logic.toggleSharedTextEffects,
+    updateAssetProps: (props) => {
+      Logic.setSelectedAssetProps(props)
+    },
+    updateAssetBounds: (bounds) => {
+      Logic.setSelectedAssetBounds(bounds)
+    },
   }
+}
+
+function serializeBounds(bounds: PointUV[]): PointUV[] {
+  return bounds.map((point) => ({
+    x: point.x,
+    y: point.y,
+    u: point.u,
+    v: point.v,
+  }))
 }
 
 function serializeShapeProps(props: ShapeProps): ShapeProps {

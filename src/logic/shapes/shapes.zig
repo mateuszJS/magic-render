@@ -15,6 +15,7 @@ const PathUtils = @import("path_utils.zig");
 const fill = @import("../sdf/fill.zig");
 const sdf = @import("../sdf/sdf.zig");
 const AssetId = @import("../asset_id.zig").AssetId;
+const asset_props = @import("../asset_props.zig");
 
 const CREATE_HANDLE_THRESHOLD = 10.0;
 // above this distance two handles are created around control point
@@ -44,31 +45,10 @@ fn getSnapThreshold(bounds: [4]PointUV) Point {
     return close_path_threshold;
 }
 
-pub const SerializedSdfEffect = struct {
-    dist_start: f32,
-    dist_end: f32,
-    fill: fill.SerializedFill,
-};
-
-pub const Filter = struct {
-    gaussianBlur: Point,
-};
-
-pub const Props = struct {
-    sdf_effects: std.ArrayList(sdf.Effect),
-    filter: ?Filter,
-    opacity: f32,
-};
-pub const SerializedProps = struct {
-    sdf_effects: []const SerializedSdfEffect,
-    filter: ?Filter,
-    opacity: f32,
-};
-
 pub const Shape = struct {
     id: u32,
     paths: std.ArrayList(Path),
-    props: Props,
+    props: asset_props.Props,
     bounds: [4]PointUV,
 
     sdf_scale: f32 = 1.0,
@@ -91,7 +71,7 @@ pub const Shape = struct {
         id: u32,
         input_paths: []const []const Point,
         input_bounds: ?[4]PointUV,
-        input_props: SerializedProps,
+        input_props: asset_props.SerializedProps,
         sdf_texture_id: u32,
         cache_texture_id: ?u32,
         allocator: std.mem.Allocator,
@@ -106,25 +86,10 @@ pub const Shape = struct {
             try paths_list.append(path);
         }
 
-        var effects_list = std.ArrayList(sdf.Effect).init(allocator);
-        for (input_props.sdf_effects) |effect| {
-            try effects_list.append(sdf.Effect{
-                .dist_start = effect.dist_start,
-                .dist_end = effect.dist_end,
-                .fill = try fill.Fill.new(effect.fill, allocator),
-            });
-        }
-
-        const props = Props{
-            .sdf_effects = effects_list,
-            .filter = input_props.filter,
-            .opacity = input_props.opacity,
-        };
-
         const shape = Shape{
             .id = id,
             .paths = paths_list,
-            .props = props,
+            .props = try asset_props.deserializeProps(allocator, input_props),
             .sdf_texture_id = sdf_texture_id,
             .outdated_sdf = true,
             .should_update_sdf = false,
@@ -438,25 +403,10 @@ pub const Shape = struct {
             try paths_list.append(serialized_path);
         }
 
-        var effects_list = std.ArrayList(SerializedSdfEffect).init(allocator);
-        for (self.props.sdf_effects.items) |effect| {
-            try effects_list.append(SerializedSdfEffect{
-                .dist_start = effect.dist_start,
-                .dist_end = effect.dist_end,
-                .fill = effect.fill.serialize(),
-            });
-        }
-
-        const props = SerializedProps{
-            .sdf_effects = try effects_list.toOwnedSlice(),
-            .filter = self.props.filter,
-            .opacity = self.props.opacity,
-        };
-
         return Serialized{
             .id = self.id,
             .paths = try paths_list.toOwnedSlice(),
-            .props = props,
+            .props = try asset_props.serializeProps(allocator, self.props),
             .bounds = self.bounds,
             .sdf_texture_id = self.sdf_texture_id,
             .cache_texture_id = self.cache_texture_id,
@@ -484,7 +434,7 @@ pub const PickUniform = struct {
 pub const Serialized = struct {
     id: u32,
     paths: []const []const Point,
-    props: SerializedProps,
+    props: asset_props.SerializedProps,
     bounds: [4]PointUV,
     sdf_texture_id: u32,
     cache_texture_id: ?u32,

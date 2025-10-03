@@ -14,7 +14,11 @@ pub const Details = struct {
     outdated_sdf: bool,
     kerning: std.AutoArrayHashMap(u21, f32), // kerning between current char and next one
 
-    sdf_scale: f32 = 1,
+    sdf_scale: f32 = 1, // in contrary to other sdf_scales
+    // this one is relative to requested viewport size, not logical size.
+    // It's due to the fact char's sdf is used for multiple cases at once
+    // so there is no one logical size to base on
+    // so sdf_scale is always 1 expect fact when sdf texture hits max size!
 
     max_requested_viewport_font_size: f32 = 0,
     max_font_size: f32 = 0,
@@ -28,7 +32,8 @@ pub const Details = struct {
 
         const viewport_font_size = font_size / shared.render_scale;
         if (viewport_font_size > self.max_requested_viewport_font_size) {
-            self.max_requested_viewport_font_size = viewport_font_size;
+            self.max_requested_viewport_font_size = viewport_font_size; // will be overridden while we compute sdfs
+            // since shared.render_scale might change between request and sdf computation
             self.max_font_size = font_size;
             self.outdated_sdf = true;
         }
@@ -36,19 +41,19 @@ pub const Details = struct {
 };
 
 pub const Chars = struct {
-    chars: std.AutoArrayHashMap(u21, Details),
+    chars: std.AutoArrayHashMap(u21, *Details),
 
     pub fn new() Chars {
         return Chars{
-            .chars = std.AutoArrayHashMap(u21, Details).init(std.heap.page_allocator),
+            .chars = std.AutoArrayHashMap(u21, *Details).init(std.heap.page_allocator),
         };
     }
 
-    pub fn get(self: *Chars, c: u21) ?*Details {
-        return self.chars.getPtr(c);
+    pub fn getChar(self: *Chars, c: u21) ?*Details {
+        return self.chars.get(c);
     }
 
-    pub fn set(self: *Chars, c: u21, details: Details) !void {
+    pub fn addChar(self: *Chars, c: u21, details: *Details) !void {
         return try self.chars.put(c, details);
     }
 };

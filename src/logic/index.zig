@@ -21,6 +21,8 @@ const fonts = @import("texts/fonts.zig");
 const AssetId = @import("asset_id.zig").AssetId;
 const Asset = @import("types.zig").Asset;
 const AssetSerialized = @import("types.zig").AssetSerialized;
+const asset_props = @import("asset_props.zig");
+const asset_observer = @import("asset_observer.zig");
 
 const FillType = enum(u8) {
     Solid,
@@ -140,6 +142,10 @@ pub fn connectCacheCallbacks(
     end_cache = end_cache_cb;
 }
 
+pub fn connectSelectedAssetUpdates(cb: asset_observer.NotifyWorldFn) void {
+    asset_observer.notifyWorld = cb;
+}
+
 pub const ASSET_ID_MIN: u32 = 1000;
 const MIN_NEW_CONTROL_POINT_DISTANCE = 10.0; // Minimum distance to consider a new control point
 
@@ -239,7 +245,7 @@ pub fn addShape(
     id_or_zero: u32,
     paths: []const []const types.Point,
     bounds: ?[4]types.PointUV,
-    props: shapes.SerializedProps,
+    props: asset_props.SerializedProps,
     sdf_texture_id: u32,
     cache_texture_id: ?u32,
 ) !u32 {
@@ -264,7 +270,7 @@ fn addText(
     content: []const u8,
     bounds: [4]types.PointUV,
     font_size: f32,
-    props: shapes.SerializedProps,
+    props: asset_props.SerializedProps,
 ) !texts.Text {
     const id = if (id_or_zero == 0) generateId() else id_or_zero;
     const text = try texts.Text.new(
@@ -283,7 +289,7 @@ fn addText(
 
 pub fn removeAsset() !void {
     _ = state.assets.orderedRemove(state.selected_asset_id.getPrim());
-    try updateSelectedAsset(AssetId{});
+    try setSelectedAsset(AssetId{});
     try checkAssetsUpdate(true);
 }
 
@@ -373,8 +379,12 @@ fn checkAssetsUpdate(should_notify: bool) !void {
     }
 }
 
+fn getSelectedAsset() ?*types.Asset {
+    return state.assets.getPtr(state.selected_asset_id.getPrim());
+}
+
 fn getSelectedImg() ?*images.Image {
-    const asset = state.assets.getPtr(state.selected_asset_id.getPrim()) orelse return null;
+    const asset = getSelectedAsset() orelse return null;
     switch (asset.*) {
         .img => |*img| return img,
         .shape => return null,
@@ -383,7 +393,7 @@ fn getSelectedImg() ?*images.Image {
 }
 
 fn getSelectedShape() ?*shapes.Shape {
-    const asset = state.assets.getPtr(state.selected_asset_id.getPrim()) orelse return null;
+    const asset = getSelectedAsset() orelse return null;
     switch (asset.*) {
         .img => return null,
         .shape => |*shape| return shape,
@@ -392,7 +402,7 @@ fn getSelectedShape() ?*shapes.Shape {
 }
 
 fn getSelectedText() ?*texts.Text {
-    const asset = state.assets.getPtr(state.selected_asset_id.getPrim()) orelse return null;
+    const asset = getSelectedAsset() orelse return null;
     switch (asset.*) {
         .img => return null,
         .shape => return null,
@@ -400,20 +410,23 @@ fn getSelectedText() ?*texts.Text {
     }
 }
 
-fn updateSelectedAsset(id: AssetId) !void {
+fn setSelectedAsset(id: AssetId) !void {
     try commitChanges();
     state.selected_asset_id = id;
+    asset_observer.triggerUpdate();
     on_asset_select_cb(id.serialize());
 }
 
 pub fn updateTextContent(
-    input_content: []const u8, // it allocated wit std.eap.wasm_allocator by default
+    input_content: []const u8,
     selection_start: usize,
     selection_end: usize,
 ) !texts.ComputeTextResult {
     const option_text = getSelectedText();
     if (option_text) |text| {
-        text.content = input_content;
+        text.content = try std.heap.wasm_allocator.dupe(u8, input_content);
+        // IMPORTANT: do NOT free input_content,
+        // also it's owned by Zigar/JS side! So hopefully it somehow handled there
         const results = try text.computeText(selection_start, selection_end);
         try checkAssetsUpdate(true);
         return results;
@@ -432,36 +445,34 @@ fn createText(x: f32, y: f32) !texts.Text {
         .{ .x = x, .y = y - 1.0, .u = 0.0, .v = 0.0 },
     };
 
-    const props = shapes.SerializedProps{
+    const props = asset_props.SerializedProps{
         .sdf_effects = &.{
-            shapes.SerializedSdfEffect{
-                .dist_start = std.math.inf(f32),
+            .{
+                .dist_start = std.math.floatMax(f32),
                 .dist_end = 0,
                 .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
             },
-            shapes.SerializedSdfEffect{
+            .{
                 .dist_start = 3,
                 .dist_end = 1.5,
                 .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
             },
-            shapes.SerializedSdfEffect{
+            .{
                 .dist_start = -6,
                 .dist_end = -8,
                 .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
             },
-            shapes.SerializedSdfEffect{
+            .{
                 .dist_start = -12,
                 .dist_end = -18,
                 .fill = .{ .solid = .{ 1.0, 1.0, 0.0, 1.0 } },
             },
         },
-        .filter = null,
-        .opacity = 1.0,
     };
 
     return try addText(
         id,
-        try std.heap.wasm_allocator.dupe(u8, "Hellollllllllllolll"),
+        try std.heap.wasm_allocator.dupe(u8, "H"),
         // "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
         bounds,
         72,
@@ -471,13 +482,13 @@ fn createText(x: f32, y: f32) !texts.Text {
 
 pub fn onPointerDown(x: f32, y: f32) !void {
     if (state.tool == .Text) {
-        try updateSelectedAsset(state.hovered_asset_id);
+        try setSelectedAsset(state.hovered_asset_id);
 
         const text: texts.Text = if (getSelectedText()) |text| b: {
             break :b text.*;
         } else b: {
             const new_text = try createText(x, y);
-            try updateSelectedAsset(AssetId{ ._prim = new_text.id });
+            try setSelectedAsset(AssetId{ ._prim = new_text.id });
             break :b new_text;
         };
 
@@ -494,26 +505,25 @@ pub fn onPointerDown(x: f32, y: f32) !void {
         state.action = .TextSelection;
     } else if (state.tool == Tool.DrawShape) {
         if (getSelectedShape() == null) {
-            const props = shapes.SerializedProps{
+            const props = asset_props.SerializedProps{
                 .sdf_effects = &.{
-                    shapes.SerializedSdfEffect{
-                        .dist_start = std.math.inf(f32),
+                    .{
+                        .dist_start = std.math.floatMax(f32),
                         .dist_end = 0,
                         .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
                     },
-                    shapes.SerializedSdfEffect{
+                    .{
                         .dist_start = 26,
                         .dist_end = 24,
                         .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
                     },
-                    shapes.SerializedSdfEffect{
+                    .{
                         .dist_start = -30,
                         .dist_end = -32,
                         .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
                     },
                 },
                 .filter = .{ .gaussianBlur = .{ .x = 30, .y = 30 } },
-                .opacity = 1.0,
             };
             const id = try addShape(
                 0,
@@ -523,7 +533,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                 create_sdf_texture(),
                 if (props.filter != null) create_cache_texture() else null,
             );
-            try updateSelectedAsset(AssetId{ ._prim = id });
+            try setSelectedAsset(AssetId{ ._prim = id });
         }
 
         if (getSelectedShape()) |shape| {
@@ -539,7 +549,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
         if (state.tool == Tool.EditShape) {
             // should not be accessible on mobile, that's why selection happens with pointer down
             if (state.hovered_asset_id.isPrim()) {
-                try updateSelectedAsset(state.hovered_asset_id);
+                try setSelectedAsset(state.hovered_asset_id);
             }
         }
 
@@ -557,7 +567,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
 pub fn onPointerUp() !void {
     if (state.tool == .None) {
         if (state.action == .None) {
-            try updateSelectedAsset(state.hovered_asset_id);
+            try setSelectedAsset(state.hovered_asset_id);
         } else {
             state.action = .None;
             try checkAssetsUpdate(true);
@@ -566,6 +576,7 @@ pub fn onPointerUp() !void {
         try checkAssetsUpdate(true);
         if (getSelectedShape()) |shape| {
             shape.onReleasePointer();
+            asset_observer.triggerUpdate();
         }
     } else if (state.tool == Tool.EditShape) {
         // to remove sec, third, quat fields
@@ -662,7 +673,7 @@ pub fn onPointerMove(x: f32, y: f32) !void {
         return;
     }
 
-    const asset = state.assets.getPtr(state.selected_asset_id.getPrim()) orelse return;
+    const asset = getSelectedAsset() orelse return;
     const bounds = asset.getBoundsPtr();
 
     switch (state.action) {
@@ -677,6 +688,8 @@ pub fn onPointerMove(x: f32, y: f32) !void {
                 point.x += offset.x;
                 point.y += offset.y;
             }
+
+            asset_observer.triggerUpdate();
         },
         .Transform => {
             transform_ui.transformPoints(
@@ -700,6 +713,8 @@ pub fn onPointerMove(x: f32, y: f32) !void {
                     }
                 },
             }
+
+            asset_observer.triggerUpdate();
         },
         .TextSelection => {},
         .None => {},
@@ -750,10 +765,10 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
         }
     }
 
-    if (state.assets.get(state.selected_asset_id.getPrim())) |asset| {
+    if (getSelectedAsset()) |asset| {
         try triangle_vertex_data.appendSlice(
             &transform_ui.getBorderDrawVertex(
-                asset,
+                asset.*,
                 .{ 0, 255, 0, 255 },
             ),
         );
@@ -855,41 +870,33 @@ pub fn computeSdfs() !void {
     while (fonts_iter.next()) |font_entry| {
         var font = font_entry.value_ptr.*;
         var char_iter = font.chars.iterator();
-        while (char_iter.next()) |details_entry| {
-            var ch_d = details_entry.value_ptr;
+
+        while (char_iter.next()) |char_details_entry| {
+            var ch_d = char_details_entry.value_ptr.*;
+
             if (ch_d.sdf_texture_id) |sdf_texture_id| {
                 if (!ch_d.outdated_sdf) continue;
+                const font_size = ch_d.max_font_size;
+                const ch_w = font_size * ch_d.width;
+                const ch_h = font_size * ch_d.height;
 
-                const ch_w = ch_d.max_font_size * ch_d.width;
-                const ch_h = ch_d.max_font_size * ch_d.height;
-
-                const bounds = [4]types.PointUV{
-                    .{ .x = 0, .y = ch_h, .u = 0, .v = 1 },
-                    .{ .x = ch_w, .y = ch_h, .u = 1, .v = 1 },
-                    .{ .x = ch_w, .y = 0, .u = 1, .v = 0 },
-                    .{ .x = 0, .y = 0, .u = 0, .v = 0 },
-                };
-                const padding = ch_d.max_font_size * ch_d.max_ratio_padding_to_font_size;
+                const bounds = Utils.createBounds(ch_w, ch_h);
+                const padding = font_size * ch_d.*.max_ratio_padding_to_font_size;
                 const sdf_dims = sdf.getSdfTextureDims(bounds, padding);
 
                 ch_d.sdf_scale = sdf_dims.scale;
+                ch_d.max_requested_viewport_font_size = font_size / shared.render_scale;
+                // max requested size is not actual generated(like real_viewport_font_size below is)
+                // it's max requested size in viewport coords to avoid re-requesting same size again
+                const real_viewport_font_size = font_size * ch_d.sdf_scale;
 
-                // this is NOT viewport, it's SDF scale, if it's smaller htan requested viewport(often while using zoom)
-                // we will keep regenerating it for no reason!
-                ch_d.max_requested_viewport_font_size = ch_d.max_font_size * sdf_dims.scale;
                 const viewport_padding = padding * sdf_dims.scale;
-                // ch_d.max_requested_viewport_effect_padding = ch_d.max_effect_padding * ch_d.sdf_scale;
+                const points = try allocator.dupe(types.Point, ch_d.points);
 
-                const points = try std.heap.page_allocator.dupe(types.Point, ch_d.points);
-                // std.debug.print("char texture size {d}x{d}\n", .{ sdf_dims.size.w, sdf_dims.size.h });
-                // std.debug.print("ch_d.max_effect_padding {d}\n", .{ch_d.max_effect_padding});
                 for (points) |*point| {
-                    if (PathUtils.isStraightLineHandle(point.*)) {
-                        continue;
-                    }
-                    point.x = (point.x * ch_d.max_requested_viewport_font_size) + viewport_padding;
-                    point.y = (point.y * ch_d.max_requested_viewport_font_size) + viewport_padding;
-                    // std.debug.print("point: {d}, {d}\n", .{ point.x, point.y });
+                    if (PathUtils.isStraightLineHandle(point.*)) continue;
+                    point.x = (point.x * real_viewport_font_size) + viewport_padding;
+                    point.y = (point.y * real_viewport_font_size) + viewport_padding;
                 }
 
                 web_gpu_programs.compute_shape(
@@ -944,16 +951,16 @@ pub fn computeSdfs() !void {
                 shape.should_update_sdf = false;
             },
             .text => |*text| {
-                if (!text.is_sdf_outdated) continue;
-
-                const text_padding = sdf.getSdfPadding(text.props.sdf_effects.items);
-                const sdf_dims = sdf.getSdfTextureDims(
-                    text.bounds,
-                    text_padding,
-                );
-                text.sdf_scale = sdf_dims.scale;
-
                 if (text.sdf_texture_id) |text_sdf_texture_id| {
+                    if (!text.is_sdf_outdated) continue;
+
+                    const text_padding = sdf.getSdfPadding(text.props.sdf_effects.items);
+                    const sdf_dims = sdf.getSdfTextureDims(
+                        text.bounds,
+                        text_padding,
+                    );
+                    text.sdf_scale = sdf_dims.scale;
+
                     const bounds_height = text.bounds[0].distance(text.bounds[3]);
 
                     const compute_depth_texture_id = create_compute_depth_texture(
@@ -1184,10 +1191,13 @@ pub fn renderDraw() !void {
 
                             if (ch_d.sdf_texture_id) |sdf_texture_id| {
                                 for (text.props.sdf_effects.items) |effect| {
-                                    const bounds = vertex.getBounds(text.font_size * ch_d.max_ratio_padding_to_font_size, matrix);
+                                    const bounds = vertex.getBoundsVertex(text.font_size * ch_d.max_ratio_padding_to_font_size, matrix);
+                                    const char_sdf_viewport_font_size = ch_d.max_font_size * ch_d.sdf_scale;
+                                    const sdf_scale = char_sdf_viewport_font_size / text.font_size;
+
                                     web_gpu_programs.draw_shape(
                                         &bounds,
-                                        text.getDrawUniform(effect, ch_d.sdf_scale),
+                                        text.getDrawUniform(effect, sdf_scale),
                                         sdf_texture_id,
                                     );
                                 }
@@ -1332,12 +1342,8 @@ pub fn renderPick() !void {
     }
 
     if (state.tool == Tool.None) {
-        if (state.assets.get(state.selected_asset_id.getPrim())) |asset| {
-            const bounds = switch (asset) {
-                .img => |img| img.bounds,
-                .shape => |shape| shape.bounds,
-                .text => |text| text.bounds,
-            };
+        if (getSelectedAsset()) |asset| {
+            const bounds = asset.getBounds();
             var vertex_buffer: [transform_ui.PICK_TRIANGLE_INSTANCES]triangles.PickInstance = undefined;
             transform_ui.getPickVertexData(vertex_buffer[0..transform_ui.PICK_TRIANGLE_INSTANCES], bounds);
             web_gpu_programs.pick_triangle(vertex_buffer[0..transform_ui.PICK_TRIANGLE_INSTANCES]);
@@ -1378,7 +1384,7 @@ pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !vo
     }
 
     if (!state.assets.contains(state.selected_asset_id.getPrim())) {
-        try updateSelectedAsset(AssetId{});
+        try setSelectedAsset(AssetId{});
     }
     on_asset_update_cb = original_on_asset_update_cb;
     try checkAssetsUpdate(with_snapshot);
@@ -1430,9 +1436,72 @@ pub fn setTool(tool: Tool) !void {
 }
 
 var ticks: u32 = 0; // it's like a time, but always increases by 1, used for performance optimizations
-pub fn tick(now: f32) void {
+pub fn tick(now: f32) !void {
     ticks +%= 1;
     shared.setTime(now);
+    const asset = if (getSelectedAsset()) |a| a.* else null; // to deref pointer
+    try asset_observer.loop(asset);
+}
+
+pub fn setSelectedAssetProps(ser_props: asset_props.SerializedProps) !void {
+    if (getSelectedAsset()) |asset| {
+        switch (asset.*) {
+            .img => |img| {
+                _ = img; // autofix
+                // img.props = props;
+            },
+            .shape => |*shape| {
+                shape.props = try asset_props.deserializeProps(std.heap.page_allocator, ser_props);
+                if (ser_props.filter == null and shape.cache_texture_id != null) {
+                    // TODO: https://github.com/mateuszJS/magic-render/issues/204
+                    // destroy_texture(shape.cache_texture_id);
+
+                    shape.cache_texture_id = null;
+                } else if (ser_props.filter != null and shape.cache_texture_id == null) {
+                    shape.cache_texture_id = create_cache_texture();
+                }
+                shape.outdated_sdf = true;
+            },
+            .text => |*text| {
+                text.props = try asset_props.deserializeProps(std.heap.page_allocator, ser_props);
+                if (text.sdf_texture_id != null) {
+                    text.is_sdf_outdated = true;
+                }
+            },
+        }
+    }
+
+    try checkAssetsUpdate(true);
+}
+
+pub fn setSelectedAssetBounds(bounds: [4]types.PointUV) !void {
+    // TODO: code duplication with transform_ui
+    if (getSelectedAsset()) |asset| {
+        switch (asset.*) {
+            .img => |*img| {
+                img.bounds = bounds;
+            },
+            .shape => |*shape| {
+                shape.bounds = bounds;
+                shape.should_update_sdf = true;
+            },
+            .text => |*text| {
+                text.bounds = bounds;
+                const result = try text.computeText(
+                    texts.caret_position,
+                    texts.selection_end_position,
+                );
+
+                if (state.tool == .Text) {
+                    update_text_content(result.content);
+                }
+            },
+        }
+    }
+
+    try checkAssetsUpdate(true);
+    // asset_observer.triggerUpdate(); not sure if we sould perform it or nothing
+    // we might ruin UX for the user while they are editing
 }
 
 pub fn toggleSharedTextEffects() void {

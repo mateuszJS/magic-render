@@ -26,6 +26,11 @@ async function test() {
   const toolsSelect = document.querySelector<HTMLSelectElement>('#tools-select')!
   const previewImg = document.querySelector<HTMLImageElement>('#preview')!
   const sharedTextEffects = document.querySelector<HTMLInputElement>('#shared-text-effects')!
+  const assetBoundsTextarea = document.querySelector<HTMLTextAreaElement>('#asset-bounds-content')!
+  const assetPropertiesTextarea =
+    document.querySelector<HTMLTextAreaElement>('#asset-props-content')!
+  const assetBoundsForm = document.querySelector<HTMLFormElement>('#asset-bounds-popover')!
+  const assetPropsForm = document.querySelector<HTMLFormElement>('#asset-props-popover')!
 
   window.assetsSnapshot = []
   function setAssetSnapshot(assets: SerializedOutputAsset[]) {
@@ -92,6 +97,10 @@ async function test() {
     (newTool) => {
       toolsSelect.value = newTool.toString()
       console.log(`new tool: ${newTool}`)
+    },
+    (bounds, props) => {
+      assetBoundsTextarea.value = JSON.stringify(bounds, null, 2)
+      assetPropertiesTextarea.value = JSON.stringify(props, null, 2)
     }
   )
 
@@ -169,6 +178,28 @@ async function test() {
 
   sharedTextEffects.addEventListener('change', () => {
     creator.toggleSharedTextEffects()
+  })
+
+  assetPropsForm.addEventListener('submit', function (e) {
+    e.preventDefault()
+    const formData = new FormData(assetPropsForm)
+    try {
+      const newProps = JSON.parse(formData.get('code') as string)
+      creator.updateAssetProps(newProps)
+    } catch (e) {
+      alert('Cannot parse JSON: ' + (e as Error).message)
+    }
+  })
+
+  assetBoundsForm.addEventListener('submit', function (e) {
+    e.preventDefault()
+    const formData = new FormData(assetBoundsForm)
+    try {
+      const newBounds = JSON.parse(formData.get('code') as string)
+      creator.updateAssetBounds(newBounds)
+    } catch (e) {
+      alert('Cannot parse JSON: ' + (e as Error).message)
+    }
   })
 }
 

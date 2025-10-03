@@ -211,6 +211,9 @@ declare module '*.zig' {
     start_cache: (texture_id: number, box: BoundingBox, width: number, height: number) => void,
     end_cache: VoidFunction
   ) => void
+  export const connectSelectedAssetUpdates: (
+    on_selected_asset_update: (bounds: PointUV[] | null, props: ShapeProps | null) => void
+  ) => void
   export const connectTyping: (
     enable: (text: string) => void,
     disable: VoidFunction,
@@ -236,4 +239,6 @@ declare module '*.zig' {
   export const generateUiElementsSdf: VoidFunction
 
   export const toggleSharedTextEffects: VoidFunction
+  export const setSelectedAssetProps: (props: Partial<ShapeProps>) => void
+  export const setSelectedAssetBounds: (bounds: PointUV[]) => void
 }

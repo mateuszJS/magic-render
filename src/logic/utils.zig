@@ -36,3 +36,12 @@ pub fn compareBounds(bounds1: [4]PointUV, bounds2: [4]PointUV) bool {
     }
     return true;
 }
+
+pub fn createBounds(w: f32, h: f32) [4]PointUV {
+    return [_]PointUV{
+        .{ .x = 0, .y = h, .u = 0, .v = 1 },
+        .{ .x = w, .y = h, .u = 1, .v = 1 },
+        .{ .x = w, .y = 0, .u = 1, .v = 0 },
+        .{ .x = 0, .y = 0, .u = 0, .v = 0 },
+    };
+}
