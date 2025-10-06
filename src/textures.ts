@@ -303,6 +303,7 @@ async function getImageWithDetails(url: string): Promise<[HTMLImageElement, Root
   return Promise.all([
     new Promise<HTMLImageElement>((resolve) => {
       const img = new Image()
+      img.crossOrigin = 'anonymous'
       img.src = url
       img.onload = () => resolve(img)
     }),
