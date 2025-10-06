@@ -189,7 +189,7 @@ export default function collectShapesData(
 
         if (serializedFill) {
           serializedProps.sdf_effects.push({
-            dist_start: Infinity,
+            dist_start: Number.MAX_SAFE_INTEGER,
             dist_end: 0,
             fill: serializedFill,
           })

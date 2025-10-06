@@ -7,7 +7,7 @@ import init from '../init'
 const STATE_AFTER_UPLOAD = [
   {
     id: 1000,
-    textureId: 1,
+    texture_id: 1,
     points: [
       {
         u: 0,

@@ -16,7 +16,7 @@ export type SerializedInputImage = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   bounds?: PointUV[]
   url: string
-  textureId?: number
+  texture_id?: number
 }
 
 export type SerializedInputShape = {
@@ -42,7 +42,7 @@ export type SerializedOutputImage = {
   id: number // not needed while loading project but useful for undo/redo to maintain selection
   bounds: PointUV[]
   url: string
-  textureId: number
+  texture_id: number
 }
 
 export type SerializedOutputShape = {
@@ -186,7 +186,7 @@ export default async function initCreator(
         const img = asset.img
         return {
           id: img.id,
-          textureId: img.texture_id,
+          texture_id: img.texture_id,
           bounds: serializeBounds([...img.bounds]),
           url: Textures.getUrl(img.texture_id),
         }
@@ -298,7 +298,7 @@ export default async function initCreator(
                 img: {
                   id: asset.id || NO_ASSET_ID,
                   bounds: asset.bounds,
-                  texture_id: asset.textureId || Textures.add(asset.url), // if we got points, so we have url on the server for sure
+                  texture_id: asset.texture_id || Textures.add(asset.url), // if we got points, so we have url on the server for sure
                 },
               })
             }
