@@ -225,7 +225,7 @@ export default async function initCreator(
 
   Fonts.loadFont()
 
-  Logic.connectOnAssetSelectionCallback(onAssetSelect)
+  Logic.connectOnAssetSelectionCallback((id) => onAssetSelect([...id]))
   Logic.connectCreateSdfTexture(Textures.createSDF, Textures.createComputeDepthTexture)
   Logic.connectTyping(
     Typing.enable,

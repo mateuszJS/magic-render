@@ -11,8 +11,12 @@ const ENTER = 10
 let font: Font
 
 export async function loadFont() {
-  const buffer = fetch(fontFile).then((res) => res.arrayBuffer())
-  font = opentype.parse(await buffer)
+  try {
+    const buffer = fetch(fontFile).then((res) => res.arrayBuffer())
+    font = opentype.parse(await buffer)
+  } catch (err) {
+    console.error('Failed to load font', err)
+  }
 }
 
 export function getKerning(charA: number, charB: number): number {
