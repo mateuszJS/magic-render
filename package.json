@@ -54,7 +54,7 @@
     "webpack-dev-server": "^5.2.0",
     "zigar-loader": "^0.14.1"
   },
-  "types": "./lib/types/src/index.d.ts",
+  "types": "./lib/types/index.d.ts",
   "main": "./lib/index.mjs",
   "type": "module",
   "repository": {
