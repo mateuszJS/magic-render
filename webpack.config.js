@@ -4,7 +4,7 @@ import { BundleAnalyzerPlugin } from 'webpack-bundle-analyzer'
 import HtmlWebpackPlugin from 'html-webpack-plugin'
 import TerserPlugin from 'terser-webpack-plugin'
 
-/* eslint-disable no-undef */ // node process isn't defined, but is provided wile running webpack config
+/* eslint-disable no-undef */ // node process isn't defined, but is provided while running webpack config
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isProd = process.env.NODE_ENV === 'production'
