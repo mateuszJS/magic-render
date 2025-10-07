@@ -1,8 +1,10 @@
 import { fileURLToPath } from 'url'
 import path from 'path'
-// const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin
-// thanks to that plugin we don't need to make sure wasm-pack is installed
+import { BundleAnalyzerPlugin } from 'webpack-bundle-analyzer'
 import HtmlWebpackPlugin from 'html-webpack-plugin'
+import TerserPlugin from 'terser-webpack-plugin'
+
+/* eslint-disable no-undef */ // node process isn't defined, but is provided while running webpack config
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isProd = process.env.NODE_ENV === 'production'
@@ -28,7 +30,7 @@ const baseConfig = {
     /* useful with absolute imports, "src" dir now takes precedence over "node_modules" */
   },
   output: {
-    filename: '[name].mjs', // Direct filename instead of [name].js
+    filename: '[name].mjs',
     library: {
       type: 'module',
     },
@@ -76,12 +78,20 @@ const baseConfig = {
     runtimeChunk: false,
     splitChunks: false,
     minimize: isProd,
+    minimizer: [
+      // used to remove license .txt file(comes from opentype library) + let's remove rest of unnecessary comments in the code
+      // https://github.com/webpack/webpack/issues/12506#issuecomment-767454504
+      new TerserPlugin({
+        terserOptions: {
+          format: {
+            comments: false,
+          },
+        },
+        extractComments: false,
+      }),
+    ],
   },
-  plugins: [
-    // isProd && !process.env.CI && new BundleAnalyzerPlugin({
-    //   analyzerMode: 'static' // 'server' had issue running along with PrerendererWebpackPlugin
-    // }),
-  ],
+  plugins: [isProd && !process.env.CI && new BundleAnalyzerPlugin({})],
 }
 
 const libConfig = {
@@ -112,4 +122,4 @@ const testConfig = {
   ],
 }
 
-export default isProd ? [libConfig, testConfig] : testConfig
+export default isProd ? libConfig : testConfig
