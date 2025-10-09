@@ -54,6 +54,8 @@ pub const SerializedFill = union(enum) {
                         return false;
                     }
 
+                    if (g.stops.len != other_g.stops.len) return false;
+
                     for (g.stops, 0..) |stop, i| {
                         if (!stop.compare(other_g.stops[i])) return false;
                     }
@@ -70,6 +72,8 @@ pub const SerializedFill = union(enum) {
                     {
                         return false;
                     }
+
+                    if (g.stops.len != other_g.stops.len) return false;
 
                     for (g.stops, 0..) |stop, i| {
                         if (!stop.compare(other_g.stops[i])) return false;

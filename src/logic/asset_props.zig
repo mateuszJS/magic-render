@@ -43,7 +43,7 @@ pub const SerializedProps = struct {
     opacity: f32 = 1.0,
 
     pub fn compare(self: SerializedProps, other: SerializedProps) bool {
-        if (self.opacity != other.opacity) return false;
+        if (!utils.equalF32(self.opacity, other.opacity)) return false;
 
         if (self.filter) |filter| {
             if (other.filter) |other_filter| {
