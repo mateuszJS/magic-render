@@ -25,7 +25,7 @@ export type SerializedInputShape = {
   props: ShapeProps
   sdf_texture_id?: number
   cache_texture_id?: number | null
-  bounds?: PointUV[]
+  bounds: PointUV[]
 }
 
 export type SerializedInputText = {
@@ -68,9 +68,10 @@ export type SerializedOutputAsset =
   | SerializedOutputText
 
 export enum CreatorTool {
-  None = 0,
-  DrawShape = 1,
-  EditShape = 2,
+  SelectAsset = 0,
+  DrawBezierCurve = 1,
+  SelectNode = 2,
+  Text = 3,
 }
 
 export interface CreatorAPI {
@@ -275,7 +276,7 @@ export default async function initCreator(
                   id: asset.id || NO_ASSET_ID,
                   paths: asset.paths,
                   props: asset.props,
-                  bounds: asset.bounds || null,
+                  bounds: asset.bounds,
                   sdf_texture_id: asset.sdf_texture_id || Textures.createSDF(),
                   cache_texture_id: asset.cache_texture_id || null,
                 },

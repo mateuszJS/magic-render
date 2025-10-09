@@ -80,7 +80,7 @@ pub const Text = struct {
             .font_size = font_size,
             .bounds = bounds,
             .text_vertex = std.ArrayList(CharVertex).init(allocator),
-            .props = try asset_props.deserializeProps(allocator, input_props),
+            .props = try asset_props.deserializeProps(input_props, allocator),
             .sdf_texture_id = sdf_texture_id,
         };
 
@@ -431,6 +431,7 @@ pub const Serialized = struct {
     pub fn compare(self: Serialized, other: Serialized) bool {
         const all_match = self.id == other.id and
             self.font_size == other.font_size and
+            self.props.compare(other.props) and
             utils.compareBounds(self.bounds, other.bounds) and
             std.mem.eql(u8, self.content orelse &.{}, other.content orelse &.{});
 

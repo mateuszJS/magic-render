@@ -23,7 +23,7 @@ pub fn equalF32(a: f32, b: f32) bool {
 
 // 0.001 tolerance for bounds comparison
 // most of precision issues start at transform_ui module, where we perform lots of trigonometric operations
-pub fn equalBoundPoint(a: PointUV, b: PointUV) bool {
+pub fn equalBoundPoint(a: anytype, b: anytype) bool {
     return @abs(a.x - b.x) < 0.001 and @abs(a.y - b.y) < 0.001;
 }
 

@@ -86,10 +86,10 @@ pub const Shape = struct {
             try paths_list.append(path);
         }
 
-        const shape = Shape{
+        var shape = Shape{
             .id = id,
             .paths = paths_list,
-            .props = try asset_props.deserializeProps(allocator, input_props),
+            .props = try asset_props.deserializeProps(input_props, allocator),
             .sdf_texture_id = sdf_texture_id,
             .outdated_sdf = true,
             .should_update_sdf = false,
@@ -97,6 +97,14 @@ pub const Shape = struct {
             .cache_texture_id = cache_texture_id,
             .outdated_cache = true,
         };
+
+        // calculate bounds early so there won't be a change detected while serializing
+        // between consts.DEFAULT_BOUNDS  vs real bounds(calculated below)
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const arena_allocator = arena.allocator();
+
+        try shape.update_bounds(arena_allocator, null);
 
         return shape;
     }
@@ -174,7 +182,7 @@ pub const Shape = struct {
         }
     }
 
-    fn update_bounds(self: *Shape, allocator: std.mem.Allocator, option_preview_point: ?Point) !void {
+    pub fn update_bounds(self: *Shape, allocator: std.mem.Allocator, option_preview_point: ?Point) !void {
         const points = try self.getAllPoints(
             allocator,
             option_preview_point,
@@ -406,7 +414,7 @@ pub const Shape = struct {
         return Serialized{
             .id = self.id,
             .paths = try paths_list.toOwnedSlice(),
-            .props = try asset_props.serializeProps(allocator, self.props),
+            .props = try self.props.serialize(allocator),
             .bounds = self.bounds,
             .sdf_texture_id = self.sdf_texture_id,
             .cache_texture_id = self.cache_texture_id,
@@ -451,7 +459,7 @@ pub const Serialized = struct {
         // but how will we handle when a new texture need to be generated??
         const all_match = self.id == other.id and
             self.paths.len == other.paths.len and
-            std.meta.eql(self.props, other.props) and
+            self.props.compare(other.props) and
             utils.compareBounds(self.bounds, other.bounds);
 
         if (!all_match) {

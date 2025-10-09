@@ -58,14 +58,6 @@ type ImageAsset = {
   texture_id: number
 }
 
-type TextAsset = {
-  id: number
-  content: string | null
-  bounds: PointUV[]
-  font_size: number
-  props: ShapeProps
-}
-
 type ShapeAsset = {
   id: number
   paths: Point[][]
@@ -73,6 +65,14 @@ type ShapeAsset = {
   bounds: PointUV[] | null
   sdf_texture_id: number
   cache_texture_id: number | null
+}
+
+type TextAsset = {
+  id: number
+  content: string | null
+  bounds: PointUV[]
+  font_size: number
+  props: ShapeProps
 }
 
 type ZigAsset = { img: ImageAsset } | { shape: ShapeAsset } | { text: TextAsset }
