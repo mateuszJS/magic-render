@@ -843,7 +843,7 @@ fn requestCharsSdfs() !void {
                 if (!text.is_sdf_outdated) continue;
 
                 const padding = sdf.getSdfPadding(text.props.sdf_effects.items);
-                // std.debug.print("pppppadddding: {d}-------------\n", .{padding});
+
                 for (text.text_vertex.items) |vertex| {
                     if (vertex.char) |char| {
                         const ch_d = try fonts.get(0, char);
@@ -1451,7 +1451,7 @@ pub fn setSelectedAssetProps(ser_props: asset_props.SerializedProps) !void {
                 // img.props = props;
             },
             .shape => |*shape| {
-                shape.props = try asset_props.deserializeProps(std.heap.page_allocator, ser_props);
+                shape.props = try asset_props.deserializeProps(ser_props, std.heap.page_allocator);
                 if (ser_props.filter == null and shape.cache_texture_id != null) {
                     // TODO: https://github.com/mateuszJS/magic-render/issues/204
                     // destroy_texture(shape.cache_texture_id);
@@ -1463,7 +1463,7 @@ pub fn setSelectedAssetProps(ser_props: asset_props.SerializedProps) !void {
                 shape.outdated_sdf = true;
             },
             .text => |*text| {
-                text.props = try asset_props.deserializeProps(std.heap.page_allocator, ser_props);
+                text.props = try asset_props.deserializeProps(ser_props, std.heap.page_allocator);
                 if (text.sdf_texture_id != null) {
                     text.is_sdf_outdated = true;
                 }

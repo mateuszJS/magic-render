@@ -31,11 +31,11 @@ fn notify(option_asset: ?types.Asset) !void {
         switch (asset) {
             .img => |img| notifyWorld(img.bounds, asset_props.SerializedProps{}),
             .shape => |shape| {
-                const props = try asset_props.serializeProps(allocator, shape.props);
+                const props = try shape.props.serialize(allocator);
                 notifyWorld(shape.bounds, props);
             },
             .text => |text| {
-                const props = try asset_props.serializeProps(allocator, text.props);
+                const props = try text.props.serialize(allocator);
                 notifyWorld(text.bounds, props);
             },
         }

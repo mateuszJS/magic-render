@@ -1,9 +1,20 @@
 const Point = @import("../types.zig").Point;
 const std = @import("std");
+const utils = @import("../utils.zig");
 
 pub const GradientStop = extern struct {
     color: [4]f32,
     offset: f32, // 0..1
+
+    pub fn compare(self: GradientStop, other: GradientStop) bool {
+        if (!utils.equalF32(self.offset, other.offset)) return false;
+
+        for (self.color, 0..) |c, i| {
+            if (!utils.equalF32(c, other.color[i])) return false;
+        }
+
+        return true;
+    }
 };
 
 const SerializedLinearGradient = struct {
@@ -23,6 +34,57 @@ pub const SerializedFill = union(enum) {
     linear: SerializedLinearGradient,
     radial: SerializedRadialGradient,
     solid: [4]f32,
+
+    pub fn compare(self: SerializedFill, other: SerializedFill) bool {
+        return switch (self) {
+            .solid => |color| switch (other) {
+                .solid => |other_color| {
+                    for (color, 0..) |c, i| {
+                        if (!utils.equalF32(c, other_color[i])) return false;
+                    }
+                    return true;
+                },
+                else => false,
+            },
+            .linear => |g| switch (other) {
+                .linear => |other_g| {
+                    if (!utils.equalBoundPoint(g.start, other_g.start) or
+                        !utils.equalBoundPoint(g.end, other_g.end))
+                    {
+                        return false;
+                    }
+
+                    if (g.stops.len != other_g.stops.len) return false;
+
+                    for (g.stops, 0..) |stop, i| {
+                        if (!stop.compare(other_g.stops[i])) return false;
+                    }
+
+                    return true;
+                },
+                else => false,
+            },
+            .radial => |g| switch (other) {
+                .radial => |other_g| {
+                    if (!utils.equalF32(g.radius_ratio, other_g.radius_ratio) or
+                        !utils.equalBoundPoint(g.center, other_g.center) or
+                        !utils.equalBoundPoint(g.destination, other_g.destination))
+                    {
+                        return false;
+                    }
+
+                    if (g.stops.len != other_g.stops.len) return false;
+
+                    for (g.stops, 0..) |stop, i| {
+                        if (!stop.compare(other_g.stops[i])) return false;
+                    }
+
+                    return true;
+                },
+                else => false,
+            },
+        };
+    }
 };
 
 pub const LinearGradient = struct {

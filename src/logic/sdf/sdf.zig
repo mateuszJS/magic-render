@@ -132,9 +132,9 @@ pub fn getSdfPadding(sdf_effects: []Effect) f32 {
     // because of skeleton render, we cannot od less than zero
 
     for (sdf_effects) |effect| {
-        if (std.math.isInf(effect.dist_end)) {
-            std.debug.print("SDF effect dist_end cannot be infinite!\n effect: {any}\n", .{effect});
-            @panic("SDF effect dist_end cannot be infinite!");
+        if (effect.dist_end > 9999999) {
+            std.debug.print("SDF effect dist_end should NOT be a large positive number!\n effect: {any}\n", .{effect});
+            @panic("SDF effect dist_end should NOT be a large positive number!");
         }
         padding = @max(padding, -effect.dist_end);
     }
