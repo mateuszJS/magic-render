@@ -345,7 +345,10 @@ export default async function initCreator(
       context.unconfigure()
       device.destroy()
     },
-    setTool: Logic.setTool,
+    setTool: (tool) => {
+      onUpdateTool(tool)
+      Logic.setTool(tool)
+    },
     toggleSharedTextEffects: Logic.toggleSharedTextEffects,
     updateAssetProps: (props) => {
       Logic.setSelectedAssetProps(props)
