@@ -1,6 +1,7 @@
 import * as Logic from 'logic/index.zig'
 import clamp from './utils/clamp'
 import * as Typing from './typing'
+import { Point } from 'types'
 
 const OUTSIDE_CANVAS = -1
 

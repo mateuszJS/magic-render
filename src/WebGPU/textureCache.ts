@@ -3,6 +3,7 @@ import mat4 from 'utils/mat4'
 import { updateRenderPass } from 'run'
 import * as Textures from 'textures'
 import getMultisampleTexture from 'getMultisampleTexture'
+import { BoundingBox } from 'types'
 
 let endCacheCallback: VoidFunction = () => {
   throw new Error('Cache not started')

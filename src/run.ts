@@ -23,6 +23,7 @@ import * as Logic from 'logic/index.zig'
 import { pointer } from 'pointer'
 import * as Textures from 'textures'
 import { endCache, startCache } from 'WebGPU/textureCache'
+import { BoundingBox, Point } from 'types'
 
 let renderPass: GPURenderPassEncoder
 export function updateRenderPass(newRenderPass: GPURenderPassEncoder) {

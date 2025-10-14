@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "lib": ["es2020"],
     "outDir": "./lib",
     "sourceMap": true,
     "module": "ESNext", // normally it would be es6, but because of dynamic import it need to be something modern
@@ -7,16 +8,18 @@
     "allowJs": true,
     "moduleResolution": "bundler",
     "baseUrl": "./src",
-    "typeRoots": ["./node_modules/@webgpu/types", "./node_modules/@types"], // added because of WebGPU types. Also had to add node_modules/@types, because typeRoots override default typeRoots, not extends
+    "typeRoots": ["./node_modules/@webgpu/types"], // added because of WebGPU types.
+    // Also we should add node_modules/@types, because typeRoots override default typeRoots, not extends
+    // BUT it makes impossible to exclude "node_modules/@types/jsdom" which throws issues while during compilation in TS definition
+    "skipLibCheck": false, // we need this to check out local .d.ts ambient definition for *.zig
 
     // everything below is just suggested by https://www.npmjs.com/package/@tsconfig/recommended
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
   "$schema": "https://json.schemastore.org/tsconfig", // @tsconfig/recommended
   "display": "Recommended", // @tsconfig/recommended
 
-  "exclude": ["src/suspended/**/*"]
+  "exclude": ["src/suspended/**/*", "lib"]
 }

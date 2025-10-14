@@ -11,68 +11,16 @@ import generatePreview from 'WebGPU/generatePreview'
 import sanitizeFill from 'sanitizeFill'
 import * as Typing from 'typing'
 import * as Fonts from 'fonts'
-
-export type SerializedInputImage = {
-  id?: number // not needed while loading project but useful for undo/redo to maintain selection
-  bounds?: PointUV[]
-  url: string
-  texture_id?: number
-}
-
-export type SerializedInputShape = {
-  id?: number // not needed while loading project but useful for undo/redo to maintain selection
-  paths: Point[][]
-  props: ShapeProps
-  sdf_texture_id?: number
-  cache_texture_id?: number | null
-  bounds: PointUV[]
-}
-
-export type SerializedInputText = {
-  id?: number // not needed while loading project but useful for undo/redo to maintain selection
-  content: string
-  bounds: PointUV[]
-  font_size: number
-  props: ShapeProps
-}
-
-export type SerializedInputAsset = SerializedInputImage | SerializedInputShape | SerializedInputText
-
-export type SerializedOutputImage = {
-  id: number // not needed while loading project but useful for undo/redo to maintain selection
-  bounds: PointUV[]
-  url: string
-  texture_id: number
-}
-
-export type SerializedOutputShape = {
-  id: number // not needed while loading project but useful for undo/redo to maintain selection
-  paths: Point[][]
-  props: ShapeProps
-  bounds: PointUV[]
-  sdf_texture_id: number
-  cache_texture_id: number | null
-}
-
-export type SerializedOutputText = {
-  id: number // not needed while loading project but useful for undo/redo to maintain selection
-  content: string
-  bounds: PointUV[]
-  font_size: number
-  props: ShapeProps
-}
-
-export type SerializedOutputAsset =
-  | SerializedOutputImage
-  | SerializedOutputShape
-  | SerializedOutputText
-
-export enum CreatorTool {
-  SelectAsset = 0,
-  DrawBezierCurve = 1,
-  SelectNode = 2,
-  Text = 3,
-}
+import {
+  CreatorTool,
+  Id,
+  PointUV,
+  SerializedInputAsset,
+  SerializedOutputAsset,
+  ShapeProps,
+  ZigAsset,
+} from './types'
+export * from './types'
 
 export interface CreatorAPI {
   addImage: (url: string) => void
@@ -226,7 +174,7 @@ export default async function initCreator(
 
   Fonts.loadFont()
 
-  Logic.connectOnAssetSelectionCallback((id) => onAssetSelect([...id]))
+  Logic.connectOnAssetSelectionCallback((id) => onAssetSelect([...id] as Id))
   Logic.connectCreateSdfTexture(Textures.createSDF, Textures.createComputeDepthTexture)
   Logic.connectTyping(
     Typing.enable,

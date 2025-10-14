@@ -1,3 +1,4 @@
+import { Point } from 'types'
 import arcToBezier from './arcToBezier'
 import { STRAIGHT_LINE_HANDLE } from './const'
 

@@ -1,3 +1,4 @@
+import { Point } from 'types'
 import { STRAIGHT_LINE_HANDLE } from './const'
 
 export default function parseRect(x: number, y: number, width: number, height: number): Point[] {

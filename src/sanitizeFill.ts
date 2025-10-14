@@ -1,3 +1,5 @@
+import { SdfEffect } from 'types'
+
 export default function sanitizeFill(fill: SdfEffect['fill']): SdfEffect['fill'] {
   if ('solid' in fill && fill.solid) {
     return { solid: [...fill.solid] }

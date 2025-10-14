@@ -1,3 +1,4 @@
+import { Point } from 'types'
 import normalizeVec2 from './normalizeVec2'
 
 export default function getBezierTan(p1: Point, p2: Point, p3: Point, p4: Point, t: number): Point {

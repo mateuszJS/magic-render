@@ -1,3 +1,5 @@
+import { Point } from 'types'
+
 /**
  * Get the distance and ratio between two points for radial gradient
  * When shape's boundary has aspect ratio different than 1:1,

@@ -1,3 +1,4 @@
+import { Point } from 'types'
 import { isStraightHandle } from './utils'
 
 /**

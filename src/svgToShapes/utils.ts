@@ -1,5 +1,6 @@
 import { ElementNode, Node } from 'svg-parser'
 import { AttrValue } from './definitions'
+import { Color, Point } from 'types'
 
 const STRAIGHT_LINE_THRESHOLD = 1e10
 
