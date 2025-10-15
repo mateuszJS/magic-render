@@ -1,3 +1,5 @@
+import { Point } from 'types'
+
 export default function distancePointToLine(p: Point, l1: Point, l2: Point) {
   const A = l2.y - l1.y
   const B = l1.x - l2.x

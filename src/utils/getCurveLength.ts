@@ -1,3 +1,4 @@
+import { Point } from 'types'
 import getBezierPos from './getBezierPos'
 
 // precision describes how many samples on the curve we want to measure to calculate whole length

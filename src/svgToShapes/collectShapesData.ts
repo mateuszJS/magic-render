@@ -11,6 +11,7 @@ import {
 import * as radialGradient from './radialGradient'
 import { Def, Defs, DefStop } from './definitions'
 import getProps from './getProps'
+import { Point, SdfEffect, ShapeProps } from 'types'
 
 export interface ShapeData {
   paths: Point[][]

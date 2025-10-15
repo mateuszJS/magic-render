@@ -1,4 +1,4 @@
-import initCreator, { SerializedOutputAsset } from '../src/index'
+import initCreator, { Point, SerializedOutputAsset } from '../src/index'
 import { camera } from '../src/pointer'
 
 export interface AssetBasics {

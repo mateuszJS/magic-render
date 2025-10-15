@@ -6,7 +6,8 @@
     "declarationMap": true,
     "declarationDir": "./lib/types"
   },
-  "include": ["src/**/*", "global.d.ts"] // this field is the main purpose of this separation
+  // actually maybe src/index.ts should be included?
+  "include": ["src/**/*", "global.d.ts", "modules.d.ts"] // this field is the main purpose of this separation
   // between tsconfig.json and tsconfig.build.json
-  // we don't want to geenrate type declarations for ALL the files in this project
+  // we don't want to generate type declarations for ALL the files in this project
 }

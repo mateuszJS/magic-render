@@ -4,6 +4,7 @@ import parseEllipse from './parseEllipse'
 import parsePathData from './parsePathData'
 import parseRect from './parseRect'
 import { getNum, isElementNode, parseColor, parseTransform } from './utils'
+import { Color } from 'types'
 
 export default function getProps(node: ElementNode): Def {
   let rawProps = node.properties

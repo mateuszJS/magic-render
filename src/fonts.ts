@@ -4,6 +4,7 @@ import type { Font } from 'opentype.js'
 import parsePathData from 'svgToShapes/parsePathData'
 import * as Textures from 'textures'
 import * as Logic from 'logic/index.zig'
+import { Point } from 'types'
 
 const DEFAULT_SPACE = 250 // expressed in font units
 const ENTER = 10

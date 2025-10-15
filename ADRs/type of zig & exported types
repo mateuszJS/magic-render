@@ -1,0 +1,5 @@
+The only way to type \*.zig files is to add typescript ambient(without implementation) definition.
+Unfortunately adding export automatically changes this to standard .ts module, and stops providing global typing for
+\*.zig file.
+
+The solution is to use `declare global` block, this one can import(from ./src/types.ts) and export types to make them global(available for zig ambient definition) while we can reexport types from packages from ./src/types.ts

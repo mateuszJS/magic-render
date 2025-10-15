@@ -1,81 +1,5 @@
-interface Point {
-  x: number
-  y: number
-}
-
-interface PointUV {
-  x: number
-  y: number
-  u: number
-  v: number
-}
-
-interface BoundingBox {
-  min_x: number
-  min_y: number
-  max_x: number
-  max_y: number
-}
-
-type Color = [number, number, number, number]
-type Id = [number, number, number, number]
-
+// types below does not need to be exported from this package
 type UiElementType = 0
-
-type GradientStop = {
-  color: Color
-  offset: number // 0..1
-}
-
-type LinearGradient = {
-  start: Point
-  end: Point
-  stops: GradientStop[]
-}
-
-type RadialGradient = {
-  radius_ratio: number
-  stops: GradientStop[]
-  center: Point
-  destination: Point
-}
-
-type SdfEffect = {
-  dist_start: number
-  dist_end: number
-  fill: { linear: LinearGradient } | { radial: RadialGradient } | { solid: Color }
-}
-
-type ShapeProps = {
-  sdf_effects: SdfEffect[]
-  filter: { gaussianBlur: Point } | null
-  opacity: number
-}
-
-type ImageAsset = {
-  id: number
-  bounds: PointUV[]
-  texture_id: number
-}
-
-type ShapeAsset = {
-  id: number
-  paths: Point[][]
-  props: ShapeProps
-  bounds: PointUV[] | null
-  sdf_texture_id: number
-  cache_texture_id: number | null
-}
-
-type TextAsset = {
-  id: number
-  content: string | null
-  bounds: PointUV[]
-  font_size: number
-  props: ShapeProps
-}
-
-type ZigAsset = { img: ImageAsset } | { shape: ShapeAsset } | { text: TextAsset }
 
 type ArrayPointerDataView = {
   '*': PointerDataView
@@ -96,22 +20,22 @@ declare module '*.zig' {
     max_texture_size: number,
     max_buffer_size: number
   ) => void
-  export const addImage: (maybe_asset_id: number, bounds: PointUV[], texture_id: number) => void
+  export const addImage: (maybe_asset_id: number, bounds: zig.PointUV[], texture_id: number) => void
   export const updateCache: VoidFunction
   export const addShape: (
     maybe_asset_id: number,
-    paths: Point[][],
-    bounds: PointUV[] | null,
-    props: Partial<ShapeProps>,
+    paths: zig.Point[][],
+    bounds: zig.PointUV[] | null,
+    props: Partial<zig.ShapeProps>,
     sdf_texture_id: number,
     cache_texture_id: null | number
   ) => number /* id */
   export const addShapeBegin: VoidFunction
   export const addShapeFinish: VoidFunction
   export const removeAsset: () => void
-  export const resetAssets: (assets: ZigAsset[], with_snapshot: boolean) => void
+  export const resetAssets: (assets: zig.ZigAsset[], with_snapshot: boolean) => void
 
-  export const onUpdatePick: (id: Id) => void
+  export const onUpdatePick: (id: zig.Id) => void
   export const onPointerDown: (x: number, y: number) => void
   export const onPointerUp: () => void
   export const onPointerMove: (x: number, y: number) => void
@@ -137,7 +61,7 @@ declare module '*.zig' {
     width: number
     height: number
     sdf_texture_id: number | null
-    setPaths(paths: Point[]): void // we have to call std.mem.Allocator.dupe() to allocate permament memory in zig
+    setPaths(paths: zig.Point[]): void // we have to call std.mem.Allocator.dupe() to allocate permament memory in zig
   }
 
   export const SerializedCharDetails: new ({
@@ -154,9 +78,9 @@ declare module '*.zig' {
     sdf_texture_id: number | null
   }) => SerializedCharDetails
 
-  export const Point: new ({ x, y }: { x: number; y: number }) => Point
+  export const Point: new ({ x, y }: { x: number; y: number }) => zig.Point
 
-  export const PtrI32: new (p: Point[][]) => Point[][]
+  export const PtrI32: new (p: zig.Point[][]) => zig.Point[][]
 
   export const connectWebGpuPrograms: (programs: {
     draw_texture: (vertex_data: PointerDataView, texture_id: number) => void
@@ -200,19 +124,19 @@ declare module '*.zig' {
       sdf_texture_id: number
     ) => void
   }) => void
-  export const connectOnAssetUpdateCallback: (cb: (data: ZigAsset[]) => void) => void
-  export const connectOnAssetSelectionCallback: (cb: (data: Id) => void) => void
+  export const connectOnAssetUpdateCallback: (cb: (data: zig.ZigAsset[]) => void) => void
+  export const connectOnAssetSelectionCallback: (cb: (data: zig.Id) => void) => void
   export const connectCreateSdfTexture: (
     createSdfTexture: () => number,
     createComputeDepthTexture: (width: number, height: number) => number
   ) => void
   export const connectCacheCallbacks: (
     create_cache_texture: () => number,
-    start_cache: (texture_id: number, box: BoundingBox, width: number, height: number) => void,
+    start_cache: (texture_id: number, box: zig.BoundingBox, width: number, height: number) => void,
     end_cache: VoidFunction
   ) => void
   export const connectSelectedAssetUpdates: (
-    on_selected_asset_update: (bounds: PointUV[] | null, props: ShapeProps | null) => void
+    on_selected_asset_update: (bounds: zig.PointUV[] | null, props: zig.ShapeProps | null) => void
   ) => void
   export const connectTyping: (
     enable: (text: string) => void,
@@ -233,12 +157,12 @@ declare module '*.zig' {
 
   export const importUiElement: (
     id: UiElementType,
-    paths: Point[][],
+    paths: zig.Point[][],
     sdf_texture_id: number
   ) => void
   export const generateUiElementsSdf: VoidFunction
 
   export const toggleSharedTextEffects: VoidFunction
-  export const setSelectedAssetProps: (props: Partial<ShapeProps>) => void
-  export const setSelectedAssetBounds: (bounds: PointUV[]) => void
+  export const setSelectedAssetProps: (props: Partial<zig.ShapeProps>) => void
+  export const setSelectedAssetBounds: (bounds: zig.PointUV[]) => void
 }

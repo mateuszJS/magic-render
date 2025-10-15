@@ -1,3 +1,5 @@
+import { Point } from 'types'
+
 export default function parseEllipse(cx: number, cy: number, rx: number, ry: number): Point[] {
   // Magic number for cubic Bezier approximation of a circle/ellipse
   // This creates a very close approximation using 4 cubic Bezier curves

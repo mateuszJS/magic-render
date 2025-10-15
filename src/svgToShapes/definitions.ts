@@ -1,6 +1,7 @@
 import { Node } from 'svg-parser'
 import { isElementNode } from './utils'
 import getProps from './getProps'
+import { Color, Point } from 'types'
 
 export type DefStop = {
   offset: number

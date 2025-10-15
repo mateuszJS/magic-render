@@ -1,3 +1,4 @@
+import { PointUV } from 'types'
 import clamp from 'utils/clamp'
 
 export default function getDefaultPoints(
