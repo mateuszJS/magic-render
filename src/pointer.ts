@@ -184,16 +184,15 @@ export default function initMouseController(
     const notTypingKeys = event.ctrlKey || event.code === 'AltLeft' || event.code === 'AltRight'
     if (Typing.isEnabled() && !notTypingKeys) return
 
-    switch (event.code) {
-      case 'Space':
+    switch (event.key) {
+      case ' ':
         event.preventDefault()
         if (mouseMode !== MouseMode.Pan) {
           canvas.style.cursor = 'grab'
           mouseMode = MouseMode.Pan
         }
         break
-      case 'AltLeft':
-      case 'AltRight':
+      case 'Alt':
         event.preventDefault()
         mouseMode = MouseMode.Zoom
         break
@@ -202,7 +201,7 @@ export default function initMouseController(
         Logic.commitChanges()
         break
       case '=':
-      case '+':
+        // case '+':
         // Zoom in with Ctrl/Cmd + Plus
         if (event.ctrlKey || event.metaKey) {
           event.preventDefault()
@@ -212,7 +211,7 @@ export default function initMouseController(
         }
         break
       case '-':
-      case '_':
+        // case '_':
         // Zoom out with Ctrl/Cmd/Shift + Minus
         if (event.ctrlKey || event.metaKey || event.shiftKey) {
           event.preventDefault()
@@ -221,13 +220,17 @@ export default function initMouseController(
           performZoom(-0.1, centerX, centerY)
         }
         break
+      case 'Meta': {
+        // update the way transform works
+      }
     }
   })
+
   document.body.addEventListener('keyup', (event) => {
-    if (event.code === 'Space' || event.key === 'Alt') {
+    if (event.key === ' ' || event.key === 'Alt') {
       mouseMode = MouseMode.None
     }
-    if (event.code === 'Space' && panCameraStart === null) {
+    if (event.key === ' ' && panCameraStart === null) {
       canvas.style.cursor = 'default'
     }
   })
