@@ -1475,7 +1475,66 @@ pub fn setSelectedAssetProps(ser_props: asset_props.SerializedProps) !void {
 }
 
 pub fn setSelectedAssetBounds(bounds: [4]types.PointUV) !void {
+    // pub fn setSelectedAssetBounds(
+    //     offset_x: f32,
+    //     offset_y: f32,
+    //     origin: u32, // 0 -> Move, 1-9 -> transform ui handles
+    // ) !void {
+    // const asset = getSelectedAsset() orelse return;
+    // const bounds = asset.getBoundsPtr();
+
+    // const handle = switch (origin) {
+    //     1 => bounds[0].toPoint(),
+    //     2 => bounds[1].toPoint(),
+    //     3 => bounds[2].toPoint(),
+    //     4 => bounds[3].toPoint(),
+    //     5 => bounds[0].mid(bounds[1]),
+    //     6 => bounds[1].mid(bounds[2]),
+    //     7 => bounds[2].mid(bounds[3]),
+    //     8 => bounds[3].mid(bounds[0]),
+    //     else => @panic("Invalid origin"),
+    // };
+
+    // switch (state.action) {
+    //     .Move => {
+    //         for (bounds) |*point| {
+    //             point.x += offset_x;
+    //             point.y += offset_y;
+    //         }
+
+    //         asset_observer.triggerUpdate();
+    //     },
+    //     .Transform => {
+    //         transform_ui.transformPoints(
+    //             origin,
+    //             bounds,
+    //             types.Point{ .x = offset_x, .y = offset_y },
+    //         );
+    //         switch (asset.*) {
+    //             .img => {},
+    //             .shape => |*shape| {
+    //                 shape.should_update_sdf = true;
+    //             },
+    //             .text => |*text| {
+    //                 const result = try text.computeText(
+    //                     texts.caret_position,
+    //                     texts.selection_end_position,
+    //                 );
+
+    //                 if (state.tool == .Text) {
+    //                     update_text_content(result.content);
+    //                 }
+    //             },
+    //         }
+
+    //         asset_observer.triggerUpdate();
+    //     },
+    //     .TextSelection => {},
+    //     .None => {},
+    // }
+
     // TODO: code duplication with transform_ui
+
     if (getSelectedAsset()) |asset| {
         switch (asset.*) {
             .img => |*img| {
@@ -1500,8 +1559,7 @@ pub fn setSelectedAssetBounds(bounds: [4]types.PointUV) !void {
     }
 
     try checkAssetsUpdate(true);
-    // asset_observer.triggerUpdate(); not sure if we sould perform it or nothing
-    // we might ruin UX for the user while they are editing
+    asset_observer.triggerUpdate();
 }
 
 pub fn toggleSharedTextEffects() void {
