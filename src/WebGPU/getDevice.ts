@@ -12,6 +12,7 @@ export default async function getDevice() {
 
   const device = await adapter.requestDevice({
     requiredFeatures: hasBGRA8unormStorage ? ['bgra8unorm-storage'] : [],
+    label: 'id: ' + Date.now(),
   })
   device.lost.then((info) => {
     console.error(`WebGPU device was lost: ${info.message}`)

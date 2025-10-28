@@ -21,6 +21,7 @@ import {
   ZigAsset,
 } from './types'
 export * from './types'
+import { destroyCanvasTextures } from 'getCanvasRenderDescriptor'
 
 export interface CreatorAPI {
   addImage: (url: string) => void
@@ -291,6 +292,7 @@ export default async function initCreator(
       stopRAF()
       Logic.deinitState()
       context.unconfigure()
+      destroyCanvasTextures()
       device.destroy()
     },
     setTool: (tool) => {

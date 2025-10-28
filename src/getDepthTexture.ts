@@ -1,5 +1,10 @@
 let depthTexture: GPUTexture | undefined
 
+export function destroy() {
+  depthTexture?.destroy()
+  depthTexture = undefined
+}
+
 export default function getDepthTexture(device: GPUDevice, width: number, height: number) {
   if (!depthTexture || depthTexture.width !== width || depthTexture.height !== height) {
     depthTexture?.destroy()
