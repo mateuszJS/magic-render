@@ -1117,7 +1117,7 @@ pub fn setCaretPosition(start: u32, end: u32) void {
     texts.selection_end_position = end;
 }
 
-pub fn renderDraw() !void {
+pub fn renderDraw(is_ui_hidden: bool) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -1245,6 +1245,10 @@ pub fn renderDraw() !void {
                 }
             },
         }
+    }
+
+    if (is_ui_hidden) {
+        return;
     }
 
     drawProjectBoundary(); // TODO: once we support strokes for triangles, we should use it here wit transparent fill

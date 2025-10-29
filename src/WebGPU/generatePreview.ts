@@ -12,7 +12,7 @@ export default async function generatePreview(
   capturePreview: (canvas: HTMLCanvasElement, context: GPUCanvasContext) => Promise<void>,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void
 ) {
-  const size = Math.min(projectWidth, projectHeight)
+  const size = 400
   const previewCanvas = document.createElement('canvas')
   previewCanvas.width = size
   previewCanvas.height = size
@@ -24,10 +24,11 @@ export default async function generatePreview(
   })
 
   // setup viewport for the preview
+  const scale = size / Math.min(projectWidth, projectHeight)
   const cameraCopy = { ...camera }
-  camera.x = (previewCanvas.width - projectWidth) / 2
-  camera.y = (previewCanvas.height - projectHeight) / 2
-  camera.zoom = 1
+  camera.x = (previewCanvas.width - projectWidth * scale) / 2
+  camera.y = (previewCanvas.height - projectHeight * scale) / 2
+  camera.zoom = scale
 
   Logic.updateRenderScale(scaleFactor)
 

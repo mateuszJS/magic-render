@@ -150,7 +150,7 @@ declare module '*.zig' {
 
   export const tick: (time: DOMHighResTimeStamp) => void
   export const computeSdfs: VoidFunction
-  export const renderDraw: VoidFunction
+  export const renderDraw: (is_ui_hidden: boolean) => void
   export const renderPick: VoidFunction
   export const deinitState: VoidFunction
   export const setTool: (tool: number) => void

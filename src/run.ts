@@ -179,7 +179,7 @@ export default function runCreator(
     const matrix = getCanvasMatrix(preview?.canvas || creatorCanvas)
     device.queue.writeBuffer(canvasMatrix.buffer, 0, matrix)
     // time = performance.now()
-    Logic.renderDraw()
+    Logic.renderDraw(!!preview)
     renderPass.end()
 
     if (preview) {
