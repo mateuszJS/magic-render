@@ -579,6 +579,11 @@ pub fn onPointerUp() !void {
             asset_observer.triggerUpdate();
         }
     } else if (state.tool == Tool.EditShape) {
+        try checkAssetsUpdate(true);
+        if (getSelectedShape()) |shape| {
+            shape.onReleasePointer();
+            asset_observer.triggerUpdate();
+        }
         // to remove sec, third, quat fields
         state.selected_asset_id = AssetId{ ._prim = state.selected_asset_id.getPrim() };
     } else if (state.tool == Tool.Text) {
