@@ -139,7 +139,7 @@ pub fn getSdfPadding(sdf_effects: []Effect) f32 {
         padding = @max(padding, -effect.dist_end);
     }
 
-    // we do smoothing in shaders wit fwidth(), so it's 1px to make sure we wont cut it out
+    // we do smoothing in shaders with fwidth(), so it's 1px to make sure we wont cut it out
     padding += 1.0;
 
     return padding;

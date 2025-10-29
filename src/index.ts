@@ -6,7 +6,7 @@ import * as Logic from './logic/index.zig'
 import initMouseController, { camera } from 'pointer'
 import getDefaultPoints from 'utils/getDefaultPoints'
 import * as Textures from 'textures'
-import debounce from 'utils/debounce'
+import throttle from 'utils/throttle'
 import generatePreview from 'WebGPU/generatePreview'
 import sanitizeFill from 'sanitizeFill'
 import * as Typing from 'typing'
@@ -106,17 +106,16 @@ export default async function initCreator(
     updateProcessing()
   })
 
-  const triggerGeneratePreview = debounce(() => {
+  const triggerGeneratePreview = throttle(() => {
     generatePreview(
       device,
       presentationFormat,
       canvas,
       projectWidth,
       projectHeight,
-      canvas.width / canvas.clientWidth, // only impacted by pixels density
-      // because of that we can use our normal canvas as well
-      // we dont use new canvas(created inside generatePreview), because it's not added to DOM
-      // so clientWidth = 0
+      canvas.width / canvas.clientWidth, // it's pixels density
+      // we have to use DOM-attached canvas to obtain pixel density,
+      // otherwise clientWidth = 0
       capturePreview,
       onPreviewUpdate
     )
@@ -171,6 +170,7 @@ export default async function initCreator(
       }
     })
     onAssetsUpdate(serializedAssetsTextureUrl)
+    triggerGeneratePreview()
   }
 
   Fonts.loadFont()
@@ -201,7 +201,6 @@ export default async function initCreator(
       if (isNew) {
         uploadTexture(url, (newUrl) => {
           Textures.updateTextureUrl(textureId, newUrl)
-          triggerGeneratePreview() // we do it in the callback because new texture might be not loaded yet from blob
           newAssetsSnapshot()
         })
       }
@@ -282,6 +281,7 @@ export default async function initCreator(
       .map((result) => result.value)
 
     Logic.resetAssets(serializedAssets, withSnapshot)
+    triggerGeneratePreview()
   }
 
   return {

@@ -579,6 +579,11 @@ pub fn onPointerUp() !void {
             asset_observer.triggerUpdate();
         }
     } else if (state.tool == Tool.EditShape) {
+        try checkAssetsUpdate(true);
+        if (getSelectedShape()) |shape| {
+            shape.onReleasePointer();
+            asset_observer.triggerUpdate();
+        }
         // to remove sec, third, quat fields
         state.selected_asset_id = AssetId{ ._prim = state.selected_asset_id.getPrim() };
     } else if (state.tool == Tool.Text) {
@@ -1117,7 +1122,7 @@ pub fn setCaretPosition(start: u32, end: u32) void {
     texts.selection_end_position = end;
 }
 
-pub fn renderDraw() !void {
+pub fn renderDraw(is_ui_hidden: bool) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -1247,7 +1252,11 @@ pub fn renderDraw() !void {
         }
     }
 
-    drawProjectBoundary(); // TODO: once we support strokes for triangles, we should use it here wit transparent fill
+    if (is_ui_hidden) {
+        return;
+    }
+
+    drawProjectBoundary(); // TODO: once we support strokes for triangles, we should use it here with transparent fill
 
     if (state.tool == .None or state.tool == .Text) {
         try drawBorder(allocator);
