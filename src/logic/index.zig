@@ -1256,7 +1256,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
         return;
     }
 
-    drawProjectBoundary(); // TODO: once we support strokes for triangles, we should use it here wit transparent fill
+    drawProjectBoundary(); // TODO: once we support strokes for triangles, we should use it here with transparent fill
 
     if (state.tool == .None or state.tool == .Text) {
         try drawBorder(allocator);
