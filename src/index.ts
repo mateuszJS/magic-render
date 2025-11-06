@@ -42,7 +42,7 @@ export default async function initCreator(
   uploadTexture: (url: string, onNewUrl: (newUrl: string) => void) => void,
   onAssetsUpdate: (assets: SerializedOutputAsset[]) => void,
   onAssetSelect: (assetId: Id) => void,
-  onProcessingUpdate: (inProgress: boolean) => void,
+  onIsProcessingFlagUpdate: (inProgress: boolean) => void,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void,
   onUpdateTool: (tool: CreatorTool) => void,
   onUpdateProps: (bounds: PointUV[] | null, props: Partial<ShapeProps> | null) => void
@@ -50,13 +50,13 @@ export default async function initCreator(
   // including modifications caused by calling "updateAssetProps"
   // also called with null when no asset is selected
 ): Promise<CreatorAPI> {
-  let loadingTextures = 0
+  let texturesLoading = 0
   let isMouseEventProcessing = false
 
-  function updateProcessing() {
-    onProcessingUpdate(loadingTextures > 0 || isMouseEventProcessing)
+  function updateIsProcessingFlag() {
+    onIsProcessingFlagUpdate(texturesLoading > 0 || isMouseEventProcessing)
   }
-
+  let isDestroyed = false
   const { device, presentationFormat, storageFormat } = await getDevice()
 
   const projectWidth = canvas.clientWidth / 2
@@ -70,8 +70,9 @@ export default async function initCreator(
   )
 
   Textures.init(device, presentationFormat, storageFormat, (texLoadings) => {
-    loadingTextures = texLoadings
-    updateProcessing()
+    texturesLoading = texLoadings
+    updateIsProcessingFlag()
+    triggerGeneratePreview()
   })
 
   // rotation doesnt work
@@ -103,10 +104,12 @@ export default async function initCreator(
 
   initMouseController(canvas, updateRenderScale, () => {
     isMouseEventProcessing = true
-    updateProcessing()
+    updateIsProcessingFlag()
   })
 
-  const triggerGeneratePreview = throttle(() => {
+  const throttledPreviewGenerator = throttle(() => {
+    if (isDestroyed || texturesLoading > 0) return
+
     generatePreview(
       device,
       presentationFormat,
@@ -120,6 +123,12 @@ export default async function initCreator(
       onPreviewUpdate
     )
   }, 1000 * 5)
+
+  const triggerGeneratePreview = () => {
+    if (texturesLoading === 0) {
+      throttledPreviewGenerator()
+    }
+  }
 
   let lastAssetsSnapshot: ZigAsset[] = []
   Logic.connectOnAssetUpdateCallback((serializedData: ZigAsset[]) => {
@@ -209,14 +218,14 @@ export default async function initCreator(
 
   const { stopRAF, capturePreview } = runCreator(canvas, context, device, () => {
     isMouseEventProcessing = false
-    updateProcessing()
+    updateIsProcessingFlag()
   })
 
   const resetAssets: CreatorAPI['resetAssets'] = async (assets, withSnapshot = false) => {
     const results = await Promise.allSettled(
       assets.map<Promise<ZigAsset>>(
         (asset) =>
-          new Promise((resolve, reject) => {
+          new Promise((resolve) => {
             if ('paths' in asset) {
               // it's a shape
               return resolve({
@@ -289,6 +298,7 @@ export default async function initCreator(
     removeAsset: Logic.removeAsset,
     resetAssets,
     destroy: () => {
+      isDestroyed = true
       stopRAF()
       Logic.deinitState()
       context.unconfigure()

@@ -41,7 +41,7 @@ export default class PickManager {
   startPicking(encoder: GPUCommandEncoder): { pass: GPURenderPassEncoder; end: VoidFunction } {
     const descriptor: GPURenderPassDescriptor = {
       // describe which textures we want to raw to and how use them
-      label: 'our render to canvas renderPass',
+      label: 'render pick',
       colorAttachments: [
         {
           view: this.pickTexture.createView(),
