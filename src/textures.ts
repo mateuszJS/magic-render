@@ -30,9 +30,9 @@ function extractSizeFromSvgViewbox(viewbox: string) {
 
 let device: GPUDevice
 let textures: TextureSource[]
-let loadingTexture: GPUTexture
+let texturePlaceholder: GPUTexture
 let updateProcessing: () => void
-let loadingTextures: number
+let texturesLoading: number
 let presentationFormat: GPUTextureFormat
 let storageFormat: GPUTextureFormat
 
@@ -46,9 +46,9 @@ export function init(
   presentationFormat = _presentationFormat
   storageFormat = _storageFormat
   textures = []
-  loadingTexture = getLoadingTexture(device, presentationFormat)
-  updateProcessing = () => _updateProcessing(loadingTextures)
-  loadingTextures = 0
+  texturePlaceholder = getLoadingTexture(device, presentationFormat)
+  texturesLoading = 0
+  updateProcessing = () => _updateProcessing(texturesLoading)
 
   addIcon(0, RotateIcon)
 }
@@ -76,27 +76,39 @@ export function add(
   url: string,
   onLoad?: (width: number, height: number, isNew: boolean) => void
 ): number {
-  loadingTextures++
-  updateProcessing()
-
   const sameUrl = textures.find((t) => t.url === url)
   if (sameUrl) {
-    loadingTextures--
-    updateProcessing()
     onLoad?.(sameUrl.texture!.width, sameUrl.texture!.height, false)
     return textures.indexOf(sameUrl)
   }
 
+  texturesLoading++
+  updateProcessing()
+
   const textureId = textures.length
   // we allow duplicates in textures array
   textures.push({ url })
+  resolveTexture(url, textureId, onLoad)
 
-  getImageWithDetails(url).then(([img, svgTree]) => {
+  return textureId
+}
+
+async function resolveTexture(
+  url: string,
+  textureId: number,
+  onLoad?: (width: number, height: number, isNew: boolean) => void
+) {
+  try {
+    const [img, svgTree] = await Promise.all([getImage(url), getSvgRoot(url)])
     let existingTexture: TextureSource | null = null
     if (svgTree) {
       const svgRoot = svgTree.children[0] as ElementNode
       const [svgWidth, svgHeight] = getSvgSize(svgRoot, img)
-      if (!svgWidth || !svgHeight) throw Error('SVG width and height are required')
+
+      if (!svgWidth || !svgHeight) {
+        throw Error('SVG width and height are required')
+      }
+
       const defs: Defs = {}
       def.collect(svgRoot, defs)
       def.resolveAll(defs)
@@ -106,8 +118,6 @@ export function add(
       Logic.addShapeFinish()
 
       // onLoad is not called on purpose, it's unnecessary for shapes
-      loadingTextures--
-      updateProcessing()
       return
     }
 
@@ -127,11 +137,11 @@ export function add(
     }
 
     onLoad?.(img.width, img.height, !existingTexture)
-    loadingTextures--
+  } finally {
+    texturesLoading--
     updateProcessing()
-  })
-
-  return textureId
+    console.log('Resolve texture', url, texturesLoading)
+  }
 }
 
 export function getTexture(textureId: number): GPUTexture {
@@ -141,7 +151,7 @@ export function getTexture(textureId: number): GPUTexture {
 }
 
 export function getTextureSafe(textureId: number): GPUTexture {
-  return getOptionTexture(textureId) ?? loadingTexture
+  return getOptionTexture(textureId) ?? texturePlaceholder
 }
 
 export function getOptionTexture(textureId: number): GPUTexture | undefined {
@@ -299,24 +309,21 @@ export function updateTextureUrl(textureId: number, url: string) {
   textures[textureId].url = url
 }
 
-async function getImageWithDetails(url: string): Promise<[HTMLImageElement, RootNode | null]> {
-  return Promise.all([
-    new Promise<HTMLImageElement>((resolve) => {
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.src = url
-      img.onload = () => resolve(img)
-    }),
-    new Promise<RootNode | null>((resolve) => {
-      fetch(url)
-        .then((response) => response.text())
-        .then((text) => {
-          if (text.includes('<svg')) {
-            resolve(parse(text))
-          } else {
-            resolve(null)
-          }
-        })
-    }),
-  ])
+function getImage(url: string): Promise<HTMLImageElement> {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.src = url
+    img.onload = () => resolve(img)
+    img.onerror = (err) => reject(err)
+  })
+}
+
+async function getSvgRoot(url: string): Promise<RootNode | null> {
+  const response = await fetch(url)
+  const text = await response.text()
+  if (text.includes('<svg')) {
+    return parse(text)
+  }
+  return null
 }
