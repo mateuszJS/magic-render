@@ -72,10 +72,7 @@ export default async function initCreator(
   Textures.init(device, presentationFormat, storageFormat, (texLoadings) => {
     texturesLoading = texLoadings
     updateIsProcessingFlag()
-
-    if (texturesLoading == 0) {
-      triggerGeneratePreview()
-    }
+    triggerGeneratePreview()
   })
 
   // rotation doesnt work

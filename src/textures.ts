@@ -140,7 +140,6 @@ async function resolveTexture(
   } finally {
     texturesLoading--
     updateProcessing()
-    console.log('Resolve texture', url, texturesLoading)
   }
 }
 
