@@ -1481,6 +1481,7 @@ pub fn setSelectedAssetProps(ser_props: asset_props.SerializedProps) !void {
     }
 
     try checkAssetsUpdate(true);
+    asset_observer.triggerUpdate();
 }
 
 pub fn setSelectedAssetBounds(bounds: [4]types.PointUV) !void {
