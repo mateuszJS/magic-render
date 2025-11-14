@@ -33,11 +33,14 @@ export interface CreatorAPI {
   // we need to obtain live update!
   updateAssetProps: (props: Partial<ShapeProps>) => void // updates properties of selected asset
   updateAssetBounds: (bounds: PointUV[]) => void // updates bounds of selected asset
+  updateProjectSize: (width: number, height: number) => void
 }
 
 const NO_ASSET_ID = 0 // used when we don't have asset id yet
 
 export default async function initCreator(
+  initialProjectWidth: number,
+  initialProjectHeight: number,
   canvas: HTMLCanvasElement,
   uploadTexture: (url: string, onNewUrl: (newUrl: string) => void) => void,
   onAssetsUpdate: (assets: SerializedOutputAsset[]) => void,
@@ -52,15 +55,14 @@ export default async function initCreator(
 ): Promise<CreatorAPI> {
   let texturesLoading = 0
   let isMouseEventProcessing = false
+  let projectWidth = initialProjectWidth
+  let projectHeight = initialProjectHeight
 
   function updateIsProcessingFlag() {
     onIsProcessingFlagUpdate(texturesLoading > 0 || isMouseEventProcessing)
   }
   let isDestroyed = false
   const { device, presentationFormat, storageFormat } = await getDevice()
-
-  const projectWidth = canvas.clientWidth / 2
-  const projectHeight = canvas.clientHeight / 2
 
   Logic.initState(
     projectWidth,
@@ -315,6 +317,11 @@ export default async function initCreator(
     },
     updateAssetBounds: (bounds) => {
       Logic.setSelectedAssetBounds(bounds)
+    },
+    updateProjectSize: (width, height) => {
+      projectWidth = width
+      projectHeight = height
+      Logic.updateProjectSize(width, height)
     },
   }
 }

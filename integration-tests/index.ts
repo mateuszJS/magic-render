@@ -31,6 +31,7 @@ async function test() {
     document.querySelector<HTMLTextAreaElement>('#asset-props-content')!
   const assetBoundsForm = document.querySelector<HTMLFormElement>('#asset-bounds-popover')!
   const assetPropsForm = document.querySelector<HTMLFormElement>('#asset-props-popover')!
+  const projectSizeForm = document.querySelector<HTMLFormElement>('#project-size-popover')!
 
   window.assetsSnapshot = []
   function setAssetSnapshot(assets: SerializedOutputAsset[]) {
@@ -66,6 +67,8 @@ async function test() {
   let currentHistoryIndex = 0
   let newTextures = 0
   const creator = await initCreator(
+    window.innerWidth / 2,
+    window.innerHeight / 2,
     canvas,
     (url, setNewUrl) => {
       setNewUrl(`${newTextures}-${url}`)
@@ -200,6 +203,14 @@ async function test() {
     } catch (e) {
       alert('Cannot parse JSON: ' + (e as Error).message)
     }
+  })
+
+  projectSizeForm.addEventListener('submit', function (e) {
+    e.preventDefault()
+    const formData = new FormData(projectSizeForm)
+    const width = Number(formData.get('width'))
+    const height = Number(formData.get('height'))
+    creator.updateProjectSize(width, height)
   })
 }
 

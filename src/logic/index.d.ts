@@ -165,4 +165,5 @@ declare module '*.zig' {
   export const toggleSharedTextEffects: VoidFunction
   export const setSelectedAssetProps: (props: Partial<zig.ShapeProps>) => void
   export const setSelectedAssetBounds: (bounds: zig.PointUV[]) => void
+  export const updateProjectSize: (width: number, height: number) => void
 }
