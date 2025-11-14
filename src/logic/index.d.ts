@@ -14,6 +14,8 @@ type ShapeDrawUniform =
   | { radial: PointerDataView }
 
 declare module '*.zig' {
+  import { ZigProjectSnapshot } from 'types'
+
   export const initState: (
     width: number,
     height: number,
@@ -33,7 +35,7 @@ declare module '*.zig' {
   export const addShapeBegin: VoidFunction
   export const addShapeFinish: VoidFunction
   export const removeAsset: () => void
-  export const resetAssets: (assets: zig.ZigAsset[], with_snapshot: boolean) => void
+  export const setSnapshot: (snapshot: ZigProjectSnapshot, with_snapshot: boolean) => void
 
   export const onUpdatePick: (id: zig.Id) => void
   export const onPointerDown: (x: number, y: number) => void
@@ -124,7 +126,7 @@ declare module '*.zig' {
       sdf_texture_id: number
     ) => void
   }) => void
-  export const connectOnAssetUpdateCallback: (cb: (data: zig.ZigAsset[]) => void) => void
+  export const connectOnAssetUpdateCallback: (cb: (snapshot: ZigProjectSnapshot) => void) => void
   export const connectOnAssetSelectionCallback: (cb: (data: zig.Id) => void) => void
   export const connectCreateSdfTexture: (
     createSdfTexture: () => number,
@@ -165,5 +167,4 @@ declare module '*.zig' {
   export const toggleSharedTextEffects: VoidFunction
   export const setSelectedAssetProps: (props: Partial<zig.ShapeProps>) => void
   export const setSelectedAssetBounds: (bounds: zig.PointUV[]) => void
-  export const updateProjectSize: (width: number, height: number) => void
 }

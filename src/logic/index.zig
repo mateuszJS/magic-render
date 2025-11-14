@@ -37,6 +37,12 @@ const Placement = struct {
     height: f32,
 };
 
+const ProjectSnapshot = struct {
+    width: f32,
+    height: f32,
+    assets: []const AssetSerialized,
+};
+
 const WebGpuPrograms = struct {
     draw_texture: *const fn ([]const types.PointUV, u32) void,
     draw_triangle: *const fn ([]const triangles.DrawInstance) void,
@@ -57,10 +63,10 @@ pub fn connectWebGpuPrograms(programs: *const WebGpuPrograms) void {
     web_gpu_programs = programs; // orelse WebGpuPrograms{};
 }
 
-var on_asset_update_cb: ?*const fn ([]const AssetSerialized) void = undefined;
-var original_on_asset_update_cb: ?*const fn ([]const AssetSerialized) void = undefined;
+var on_asset_update_cb: ?*const fn (ProjectSnapshot) void = undefined;
+var original_on_asset_update_cb: ?*const fn (ProjectSnapshot) void = undefined;
 
-pub fn connectOnAssetUpdateCallback(cb: *const fn ([]const AssetSerialized) void) void {
+pub fn connectOnAssetUpdateCallback(cb: *const fn (ProjectSnapshot) void) void {
     on_asset_update_cb = cb;
     original_on_asset_update_cb = cb;
 }
@@ -309,7 +315,12 @@ pub fn addShapeFinish() !void {
     try checkAssetsUpdate(true);
 }
 
-var last_assets_update: []const AssetSerialized = &.{};
+var last_project_snapshot = ProjectSnapshot{
+    .width = 0,
+    .height = 0,
+    .assets = &.{},
+};
+
 fn checkAssetsUpdate(should_notify: bool) !void {
     const cb = on_asset_update_cb orelse return;
 
@@ -335,9 +346,11 @@ fn checkAssetsUpdate(should_notify: bool) !void {
         }
     }
 
-    if (new_assets_update.items.len == last_assets_update.len) {
+    const is_project_size_same = Utils.equalF32(last_project_snapshot.width, state.width) and Utils.equalF32(last_project_snapshot.height, state.height);
+
+    if (is_project_size_same and new_assets_update.items.len == last_project_snapshot.assets.len) {
         var all_match = true;
-        for (new_assets_update.items, last_assets_update) |new_asset, old_asset| {
+        for (new_assets_update.items, last_project_snapshot.assets) |new_asset, old_asset| {
             switch (old_asset) {
                 .img => |old_img| {
                     if (!old_img.compare(new_asset.img)) {
@@ -367,15 +380,19 @@ fn checkAssetsUpdate(should_notify: bool) !void {
         }
     }
 
-    std.heap.page_allocator.free(last_assets_update);
-    last_assets_update = try new_assets_update.toOwnedSlice();
+    std.heap.page_allocator.free(last_project_snapshot.assets);
+    last_project_snapshot = .{
+        .width = state.width,
+        .height = state.height,
+        .assets = try new_assets_update.toOwnedSlice(),
+    };
 
     if (should_notify) {
-        if (last_assets_update.len > 0) {
-            cb(last_assets_update); // would throw error if results.len == 0
-        } else {
-            cb(&.{});
-        }
+        // const assets = if (last_project_snapshot.assets.len > 0)
+        //     last_project_snapshot.assets // would throw error if results.len == 0
+        // else
+        //     &.{};
+        cb(last_project_snapshot);
     }
 }
 
@@ -1360,12 +1377,19 @@ pub fn renderPick() !void {
     }
 }
 
-pub fn resetAssets(new_assets: []const AssetSerialized, with_snapshot: bool) !void {
+pub fn setSnapshot(snapshot: ProjectSnapshot, with_snapshot: bool) !void {
+    std.debug.print(
+        "Setting snapshot with {d} {d} {d} assets\n",
+        .{ snapshot.assets.len, snapshot.width, snapshot.height },
+    );
+    state.width = snapshot.width;
+    state.height = snapshot.height;
+
     on_asset_update_cb = null;
     shapes.resetState();
     state.assets.clearAndFree();
 
-    for (new_assets) |asset| {
+    for (snapshot.assets) |asset| {
         switch (asset) {
             .img => |img| {
                 try addImage(img.id, img.bounds, img.texture_id);
@@ -1410,8 +1434,12 @@ pub fn deinitState() void {
     }
     state.assets.clearAndFree();
     UI.deinit();
-    std.heap.page_allocator.free(last_assets_update);
-    last_assets_update = &.{};
+    std.heap.page_allocator.free(last_project_snapshot.assets);
+    last_project_snapshot = .{
+        .width = 0,
+        .height = 0,
+        .assets = &.{},
+    };
     state.selected_asset_id = AssetId{};
     state.hovered_asset_id = AssetId{};
     next_asset_id = ASSET_ID_MIN;
@@ -1583,11 +1611,6 @@ pub fn toggleSharedTextEffects() void {
     }
 }
 
-pub fn updateProjectSize(width: f32, height: f32) void {
-    state.width = width;
-    state.height = height;
-}
-
 test "reset_assets does not call the real update callback" {
     // Setup initial state
     initState(100, 100);
@@ -1623,8 +1646,8 @@ test "reset_assets does not call the real update callback" {
         .texture_id = 1,
         .id = 123,
     }};
-    resetAssets(&initial_assets, false);
+    setSnapshot(&initial_assets, false);
 
-    // for the duration of resetAssets, the update callback should NOT be called
+    // for the duration of setSnapshot, the update callback should NOT be called
     try std.testing.expect(!MockCallback.was_called);
 }

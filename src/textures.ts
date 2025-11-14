@@ -137,6 +137,8 @@ async function resolveTexture(
     }
 
     onLoad?.(img.width, img.height, !existingTexture)
+  } catch (err) {
+    console.error(err)
   } finally {
     texturesLoading--
     updateProcessing()

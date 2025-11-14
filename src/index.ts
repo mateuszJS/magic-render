@@ -15,17 +15,18 @@ import {
   CreatorTool,
   Id,
   PointUV,
-  SerializedInputAsset,
-  SerializedOutputAsset,
+  ProjectSnapshot,
+  SerializedAsset,
   ShapeProps,
   ZigAsset,
+  ZigProjectSnapshot,
 } from './types'
 export * from './types'
 import { destroyCanvasTextures } from 'getCanvasRenderDescriptor'
 
 export interface CreatorAPI {
   addImage: (url: string) => void
-  resetAssets: (assets: SerializedInputAsset[], withSnapshot?: boolean) => void
+  setSnapshot: (snapshot: ProjectSnapshot, withSnapshot?: boolean) => void
   removeAsset: VoidFunction
   destroy: VoidFunction
   setTool: (tool: CreatorTool) => void
@@ -33,17 +34,17 @@ export interface CreatorAPI {
   // we need to obtain live update!
   updateAssetProps: (props: Partial<ShapeProps>) => void // updates properties of selected asset
   updateAssetBounds: (bounds: PointUV[]) => void // updates bounds of selected asset
-  updateProjectSize: (width: number, height: number) => void
 }
 
 const NO_ASSET_ID = 0 // used when we don't have asset id yet
 
 export default async function initCreator(
-  initialProjectWidth: number,
-  initialProjectHeight: number,
+  initialProjectWidth: number, // we could also set size along setSnapshot, but
+  initialProjectHeight: number, // this way we can setup camera, whiel resetting asset
+  // we odn't know if camera should be updated or not(redo/udno doesnt update camera)
   canvas: HTMLCanvasElement,
   uploadTexture: (url: string, onNewUrl: (newUrl: string) => void) => void,
-  onAssetsUpdate: (assets: SerializedOutputAsset[]) => void,
+  onAssetsUpdate: (snapshot: ProjectSnapshot) => void,
   onAssetSelect: (assetId: Id) => void,
   onIsProcessingFlagUpdate: (inProgress: boolean) => void,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void,
@@ -132,16 +133,17 @@ export default async function initCreator(
     }
   }
 
-  let lastAssetsSnapshot: ZigAsset[] = []
-  Logic.connectOnAssetUpdateCallback((serializedData: ZigAsset[]) => {
-    lastAssetsSnapshot = [...serializedData]
+  let lastSnapshot: ZigProjectSnapshot = { width: 0, height: 0, assets: [] }
+
+  Logic.connectOnAssetUpdateCallback((snapshot) => {
+    lastSnapshot = snapshot
     newAssetsSnapshot()
   })
 
   function newAssetsSnapshot() {
     // this function is not part of Logic.connect_on_asset_update_callback
     // only because once we update a texture url, we have to notify about the assets update
-    const serializedAssetsTextureUrl = lastAssetsSnapshot.map<SerializedOutputAsset>((asset) => {
+    const serializedAssetsTextureUrl = [...lastSnapshot.assets].map<SerializedAsset>((asset) => {
       if ('img' in asset && asset.img) {
         const img = asset.img
         return {
@@ -180,7 +182,15 @@ export default async function initCreator(
         throw Error('Unknown asset type')
       }
     })
-    onAssetsUpdate(serializedAssetsTextureUrl)
+
+    projectWidth = lastSnapshot.width
+    projectHeight = lastSnapshot.height
+
+    onAssetsUpdate({
+      width: lastSnapshot.width,
+      height: lastSnapshot.height,
+      assets: serializedAssetsTextureUrl,
+    })
     triggerGeneratePreview()
   }
 
@@ -223,9 +233,9 @@ export default async function initCreator(
     updateIsProcessingFlag()
   })
 
-  const resetAssets: CreatorAPI['resetAssets'] = async (assets, withSnapshot = false) => {
+  const setSnapshot: CreatorAPI['setSnapshot'] = async (snapshot, withSnapshot = false) => {
     const results = await Promise.allSettled(
-      assets.map<Promise<ZigAsset>>(
+      snapshot.assets.map<Promise<ZigAsset>>(
         (asset) =>
           new Promise((resolve) => {
             if ('paths' in asset) {
@@ -287,18 +297,24 @@ export default async function initCreator(
       )
     )
 
+    results
+      .filter((result) => result.status === 'rejected')
+      .forEach((result) => {
+        console.error(result.reason)
+      })
+
     const serializedAssets = results
       .filter((result) => result.status === 'fulfilled')
       .map((result) => result.value)
 
-    Logic.resetAssets(serializedAssets, withSnapshot)
+    Logic.setSnapshot({ ...snapshot, assets: serializedAssets }, withSnapshot)
     triggerGeneratePreview()
   }
 
   return {
     addImage,
     removeAsset: Logic.removeAsset,
-    resetAssets,
+    setSnapshot,
     destroy: () => {
       isDestroyed = true
       stopRAF()
@@ -317,11 +333,6 @@ export default async function initCreator(
     },
     updateAssetBounds: (bounds) => {
       Logic.setSelectedAssetBounds(bounds)
-    },
-    updateProjectSize: (width, height) => {
-      projectWidth = width
-      projectHeight = height
-      Logic.updateProjectSize(width, height)
     },
   }
 }
