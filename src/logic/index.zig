@@ -1583,6 +1583,11 @@ pub fn toggleSharedTextEffects() void {
     }
 }
 
+pub fn updateProjectSize(width: f32, height: f32) void {
+    state.width = width;
+    state.height = height;
+}
+
 test "reset_assets does not call the real update callback" {
     // Setup initial state
     initState(100, 100);
