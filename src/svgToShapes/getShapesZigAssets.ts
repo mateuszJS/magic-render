@@ -21,7 +21,7 @@ export default function getShapesZigAssets(shapesData: ShapeData[], maxY?: numbe
       shape: {
         id: 0,
         paths: correctedPaths,
-        bounds: DEFAULT_BOUNDS, // these are override/recalculated in zig anyway, so it's a placeholder
+        bounds: DEFAULT_BOUNDS,
         props,
         sdf_texture_id: Textures.createSDF(),
         cache_texture_id: null,
