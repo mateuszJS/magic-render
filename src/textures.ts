@@ -131,8 +131,6 @@ async function resolveTexture(
         height: svgHeight,
         shapeAssets: getShapesZigAssets(shapesData, svgHeight),
       })
-
-      // onLoad is not called on purpose, it's unnecessary for shapes
       return
     }
 
@@ -160,7 +158,8 @@ async function resolveTexture(
     console.error(error)
     textures[textureId].texture = textureErrorPlaceholder
     onLoad?.({ error, width: 0, height: 0 })
-    // onLoad has to be called, otherwise caller outside will keep waiting
+    // onLoad has to be called, otherwise the Promise(waiting for onLoad)
+    // will not resolve and the caller will keep waiting
   } finally {
     texturesLoading--
     updateProcessing()

@@ -331,7 +331,7 @@ export default async function initCreator(
                       height,
                       lastSnapshot.width,
                       lastSnapshot.height
-                    ), // TODO: do it in zig only liek for shaoes
+                    ),
                     texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
                   },
                 })
