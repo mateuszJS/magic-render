@@ -1,4 +1,4 @@
-import getLoadingTexture from 'loadingTexture'
+import { getLoadingTexture, getErrorTexture } from 'loadingTexture'
 import { createTextureFromSource } from 'WebGPU/getTexture'
 import { parse, RootNode, ElementNode } from 'svg-parser'
 import createShapes from 'svgToShapes/createShapes'
@@ -30,7 +30,8 @@ function extractSizeFromSvgViewbox(viewbox: string) {
 
 let device: GPUDevice
 let textures: TextureSource[]
-let texturePlaceholder: GPUTexture
+let textureLoadingPlaceholder: GPUTexture
+let textureErrorPlaceholder: GPUTexture
 let updateProcessing: () => void
 let texturesLoading: number
 let presentationFormat: GPUTextureFormat
@@ -46,7 +47,8 @@ export function init(
   presentationFormat = _presentationFormat
   storageFormat = _storageFormat
   textures = []
-  texturePlaceholder = getLoadingTexture(device, presentationFormat)
+  textureLoadingPlaceholder = getLoadingTexture(device, presentationFormat)
+  textureErrorPlaceholder = getErrorTexture(device, presentationFormat)
   texturesLoading = 0
   updateProcessing = () => _updateProcessing(texturesLoading)
 
@@ -139,6 +141,7 @@ async function resolveTexture(
     onLoad?.(img.width, img.height, !existingTexture)
   } catch (err) {
     console.error(err)
+    textures[textureId].texture = textureErrorPlaceholder
   } finally {
     texturesLoading--
     updateProcessing()
@@ -152,7 +155,7 @@ export function getTexture(textureId: number): GPUTexture {
 }
 
 export function getTextureSafe(textureId: number): GPUTexture {
-  return getOptionTexture(textureId) ?? texturePlaceholder
+  return getOptionTexture(textureId) ?? textureLoadingPlaceholder
 }
 
 export function getOptionTexture(textureId: number): GPUTexture | undefined {

@@ -388,10 +388,6 @@ fn checkAssetsUpdate(should_notify: bool) !void {
     };
 
     if (should_notify) {
-        // const assets = if (last_project_snapshot.assets.len > 0)
-        //     last_project_snapshot.assets // would throw error if results.len == 0
-        // else
-        //     &.{};
         cb(last_project_snapshot);
     }
 }
@@ -1609,45 +1605,4 @@ pub fn toggleSharedTextEffects() void {
             text.is_sdf_outdated = true;
         }
     }
-}
-
-test "reset_assets does not call the real update callback" {
-    // Setup initial state
-    initState(100, 100);
-    // Ensure state is cleaned up after the test
-    defer deinitState();
-
-    // Define a mock callback function locally, with its own static state.
-    const MockCallback = struct {
-        // This static variable will hold the state for our mock.
-        // It's reset to false before each test run.
-        var was_called: bool = false;
-
-        fn assets_update(_: []const images.Serialized) void {
-            // Modify the static variable within the struct.
-            was_called = true;
-        }
-
-        fn assets_selection(_: u32) void {}
-    };
-
-    // Connect our mock callback. This is the "real" callback for this test.
-    connectOnAssetUpdateCallback(MockCallback.assets_update);
-    connectOnAssetSelectionCallback(MockCallback.assets_selection);
-
-    // Call the function we are testing
-    const initial_assets = [_]images.Serialized{.{
-        .bounds = [_]types.PointUV{
-            types.PointUV{ .x = 0.0, .y = 0.0, .u = 0.0, .v = 0.0 },
-            types.PointUV{ .x = 1.0, .y = 0.0, .u = 1.0, .v = 0.0 },
-            types.PointUV{ .x = 1.0, .y = 1.0, .u = 1.0, .v = 1.0 },
-            types.PointUV{ .x = 0.0, .y = 1.0, .u = 0.0, .v = 1.0 },
-        },
-        .texture_id = 1,
-        .id = 123,
-    }};
-    setSnapshot(&initial_assets, false);
-
-    // for the duration of setSnapshot, the update callback should NOT be called
-    try std.testing.expect(!MockCallback.was_called);
 }

@@ -40,8 +40,8 @@ const NO_ASSET_ID = 0 // used when we don't have asset id yet
 
 export default async function initCreator(
   initialProjectWidth: number, // we could also set size along setSnapshot, but
-  initialProjectHeight: number, // this way we can setup camera, whiel resetting asset
-  // we odn't know if camera should be updated or not(redo/udno doesnt update camera)
+  initialProjectHeight: number, // this way we can setup camera, while resetting asset
+  // we don't know if camera should be updated or not(redo/udno doesnt update camera)
   canvas: HTMLCanvasElement,
   uploadTexture: (url: string, onNewUrl: (newUrl: string) => void) => void,
   onAssetsUpdate: (snapshot: ProjectSnapshot) => void,
