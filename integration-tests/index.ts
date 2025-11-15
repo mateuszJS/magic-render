@@ -1,19 +1,12 @@
-import initCreator, { Point, SerializedOutputAsset } from '../src/index'
-import { camera } from '../src/pointer'
-
-export interface AssetBasics {
-  id: number
-  points: Point[]
-  url: string
-}
+import initCreator, { ProjectSnapshot } from '../src/index'
 
 declare global {
   interface Window {
-    assetsSnapshot: AssetBasics[]
+    lastSnapshot: ProjectSnapshot
   }
 }
 
-const assetsUpdatesHistory: SerializedOutputAsset[][] = [[]]
+const assetsUpdatesHistory: ProjectSnapshot[] = []
 
 async function test() {
   const canvas = document.querySelector<HTMLCanvasElement>('canvas')!
@@ -33,35 +26,10 @@ async function test() {
   const assetPropsForm = document.querySelector<HTMLFormElement>('#asset-props-popover')!
   const projectSizeForm = document.querySelector<HTMLFormElement>('#project-size-popover')!
 
-  window.assetsSnapshot = []
-  function setAssetSnapshot(assets: SerializedOutputAsset[]) {
-    const scale = (canvas.width * camera.zoom) / canvas.clientWidth
-
-    window.assetsSnapshot = assets.map<AssetBasics>((asset) => {
-      if ('paths' in asset) {
-        return {
-          id: asset.id,
-          url: 'cache',
-          points: [],
-          // points:
-          //   asset.cache === null
-          //     ? []
-          //     : asset.bounds.map((point) => ({
-          //         x: point.x * scale + camera.x,
-          //         y: point.y * scale + camera.y,
-          //       })),
-        }
-      }
-      return {
-        id: asset.id,
-        url: '',
-        points: [],
-        // points: asset.points.map((point) => ({
-        //   x: point.x * scale + camera.x,
-        //   y: point.y * scale + camera.y,
-        // })),
-      }
-    })
+  window.lastSnapshot = {
+    width: 0,
+    height: 0,
+    assets: [],
   }
 
   let currentHistoryIndex = 0
@@ -77,16 +45,16 @@ async function test() {
       // setNewUrl('new url')
       // }
     },
-    (assets) => {
-      setAssetSnapshot(assets)
+    (snapshot) => {
+      window.lastSnapshot = snapshot
       // we had to implement this whole history logic because there is no way
-      // to call creator.resetCanvas(newAssets) from test code file
+      // to call creator.setSnapshot(snapshot) from test code file
       if (currentHistoryIndex < assetsUpdatesHistory.length - 1) {
         assetsUpdatesHistory.splice(currentHistoryIndex + 1)
       }
-      assetsUpdatesHistory.push(assets)
+      assetsUpdatesHistory.push(snapshot)
       currentHistoryIndex = assetsUpdatesHistory.length - 1
-      console.log(assets)
+      console.log(snapshot)
     },
     (assetId) => {
       selectedAssetEl.textContent = assetId.toString()
@@ -125,35 +93,35 @@ async function test() {
     const { files } = event.target as HTMLInputElement
     if (!files) return
 
-    const urls = Array.from(files).map((file) => ({
-      url: URL.createObjectURL(file),
-    }))
+    const snapshot = {
+      width: window.lastSnapshot.width,
+      height: window.lastSnapshot.height,
+      assets: Array.from(files).map((file) => ({
+        url: URL.createObjectURL(file),
+      })),
+    }
 
-    creator.resetAssets(urls, true)
+    creator.setSnapshot(snapshot, true)
     startProjectInputFromImages.value = '' // reset input value to allow re-uploading the same file
   })
 
-  const startProjectInputFroMAssets = document.querySelector<HTMLInputElement>(
+  const startProjectInputFromAssets = document.querySelector<HTMLInputElement>(
     '#start-project-from-assets'
   )!
-  startProjectInputFroMAssets.addEventListener('change', (event) => {
+  startProjectInputFromAssets.addEventListener('change', (event) => {
     const { files } = event.target as HTMLInputElement
     if (!files) return
 
-    const PROJECT_SAMPLE = Array.from(files).map((file) => ({
-      url: URL.createObjectURL(file),
-      // prettier-ignore
-      matrix: [
-        1, 0, 0,
-        0, 1, 0,
-        0, 0, 1
-      ],
+    const PROJECT_SAMPLE = {
+      assets: Array.from(files).map((file) => ({
+        url: URL.createObjectURL(file),
+      })),
       width: 500,
       height: 500,
-    }))
+    }
 
-    creator.resetAssets(PROJECT_SAMPLE, true)
-    startProjectInputFroMAssets.value = '' // reset input value to allow re-uploading the same file
+    creator.setSnapshot(PROJECT_SAMPLE, true)
+    startProjectInputFromAssets.value = '' // reset input value to allow re-uploading the same file
   })
 
   removeAssetBtn.addEventListener('click', () => {
@@ -162,16 +130,16 @@ async function test() {
 
   undoBtn.addEventListener('click', () => {
     currentHistoryIndex = Math.max(0, currentHistoryIndex - 1)
-    const assets = assetsUpdatesHistory[currentHistoryIndex]
-    creator.resetAssets(assets)
-    setAssetSnapshot(assets)
+    const snapshot = assetsUpdatesHistory[currentHistoryIndex]
+    creator.setSnapshot(snapshot)
+    window.lastSnapshot = snapshot
   })
 
   redoBtn.addEventListener('click', () => {
     currentHistoryIndex = Math.min(assetsUpdatesHistory.length - 1, currentHistoryIndex + 1)
-    const assets = assetsUpdatesHistory[currentHistoryIndex]
-    creator.resetAssets(assets)
-    setAssetSnapshot(assets)
+    const snapshot = assetsUpdatesHistory[currentHistoryIndex]
+    creator.setSnapshot(snapshot)
+    window.lastSnapshot = snapshot
   })
 
   toolsSelect.addEventListener('change', (event) => {
@@ -210,7 +178,14 @@ async function test() {
     const formData = new FormData(projectSizeForm)
     const width = Number(formData.get('width'))
     const height = Number(formData.get('height'))
-    creator.updateProjectSize(width, height)
+    creator.setSnapshot(
+      {
+        assets: window.lastSnapshot.assets,
+        width,
+        height,
+      },
+      true
+    )
   })
 }
 
