@@ -23,6 +23,7 @@ import {
 } from './types'
 export * from './types'
 import { destroyCanvasTextures } from 'getCanvasRenderDescriptor'
+import setCamera from 'utils/setCamera'
 
 export interface CreatorAPI {
   addImage: (url: string) => void
@@ -96,12 +97,12 @@ export default async function initCreator(
     Logic.updateRenderScale(canvas.width / (canvas.clientWidth * camera.zoom))
   }
 
-  let wasInitialOffsetSet = false
+  let isCameraSet = false
+
   canvasSizeObserver(canvas, device, () => {
-    if (wasInitialOffsetSet === false) {
-      camera.x = (canvas.width - lastSnapshot.width) / 2
-      camera.y = (canvas.height - lastSnapshot.height) / 2
-      wasInitialOffsetSet = true
+    if (!isCameraSet) {
+      setCamera(lastSnapshot.width, lastSnapshot.height, 'fit', canvas, 100)
+      isCameraSet = true
     }
     updateRenderScale()
   })
