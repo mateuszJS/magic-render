@@ -35,8 +35,8 @@ async function test() {
   let currentHistoryIndex = 0
   let newTextures = 0
   const creator = await initCreator(
-    window.innerWidth / 2,
-    window.innerHeight / 2,
+    1000,
+    1650,
     canvas,
     (url, setNewUrl) => {
       setNewUrl(`${newTextures}-${url}`)

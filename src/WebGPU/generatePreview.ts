@@ -1,3 +1,4 @@
+import setCamera from 'utils/setCamera'
 import { camera } from '../pointer'
 import Logic from 'logic/index.zig'
 
@@ -24,12 +25,8 @@ export default async function generatePreview(
   })
 
   // setup viewport for the preview
-  const scale = size / Math.min(projectWidth, projectHeight)
   const cameraCopy = { ...camera }
-  camera.x = (previewCanvas.width - projectWidth * scale) / 2
-  camera.y = (previewCanvas.height - projectHeight * scale) / 2
-  camera.zoom = scale
-
+  setCamera(projectWidth, projectHeight, 'fill', previewCanvas)
   Logic.updateRenderScale(scaleFactor)
 
   capturePreview(previewCanvas, previewContext).then(() => {
