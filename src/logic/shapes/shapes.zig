@@ -439,15 +439,6 @@ pub const PickUniform = struct {
     dist_end: f32,
 };
 
-pub const SerializedInput = struct {
-    id: u32,
-    paths: []const []const Point,
-    props: asset_props.SerializedProps,
-    bounds: ?[4]PointUV,
-    sdf_texture_id: u32,
-    cache_texture_id: ?u32,
-};
-
 pub const Serialized = struct {
     id: u32,
     paths: []const []const Point,
