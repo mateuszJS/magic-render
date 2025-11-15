@@ -97,7 +97,7 @@ type ShapeAsset = {
   id: number
   paths: Point[][]
   props: ShapeProps
-  bounds: PointUV[] | null
+  bounds: PointUV[]
   sdf_texture_id: number
   cache_texture_id: number | null
 }

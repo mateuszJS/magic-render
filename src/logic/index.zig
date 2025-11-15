@@ -237,7 +237,7 @@ fn generateId() u32 {
     return id;
 }
 
-pub fn addImage(id_or_zero: u32, points: [4]types.PointUV, texture_id: u32) !void {
+fn addImage(id_or_zero: u32, points: [4]types.PointUV, texture_id: u32) !void {
     const id = if (id_or_zero == 0) generateId() else id_or_zero;
     const asset = Asset{
         .img = images.Image.new(id, points, texture_id),
@@ -250,7 +250,7 @@ pub fn addImage(id_or_zero: u32, points: [4]types.PointUV, texture_id: u32) !voi
 pub fn addShape(
     id_or_zero: u32,
     paths: []const []const types.Point,
-    bounds: ?[4]types.PointUV,
+    bounds: [4]types.PointUV,
     props: asset_props.SerializedProps,
     sdf_texture_id: u32,
     cache_texture_id: ?u32,
@@ -304,15 +304,6 @@ pub fn onUpdatePick(id: [4]u32) void {
         state.hovered_asset_id = AssetId.fromArray(id);
         // hovered_asset_id stores id of the ui transform element during transformations
     }
-}
-
-pub fn addShapeBegin() void {
-    on_asset_update_cb = null;
-}
-
-pub fn addShapeFinish() !void {
-    on_asset_update_cb = original_on_asset_update_cb;
-    try checkAssetsUpdate(true);
 }
 
 var last_project_snapshot = ProjectSnapshot{
@@ -541,7 +532,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             const id = try addShape(
                 0,
                 &.{},
-                null,
+                consts.DEFAULT_BOUNDS,
                 props,
                 create_sdf_texture(),
                 if (props.filter != null) create_cache_texture() else null,
@@ -1374,10 +1365,6 @@ pub fn renderPick() !void {
 }
 
 pub fn setSnapshot(snapshot: ProjectSnapshot, with_snapshot: bool) !void {
-    std.debug.print(
-        "Setting snapshot with {d} {d} {d} assets\n",
-        .{ snapshot.assets.len, snapshot.width, snapshot.height },
-    );
     state.width = snapshot.width;
     state.height = snapshot.height;
 

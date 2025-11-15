@@ -5,6 +5,7 @@ const texture_size = @import("texture_size.zig");
 const Point = @import("types.zig").Point;
 const PointUV = @import("types.zig").PointUV;
 const sdf = @import("sdf/sdf.zig");
+const consts = @import("consts.zig");
 
 var elements: std.AutoArrayHashMap(u32, shapes.Shape) = undefined;
 
@@ -21,7 +22,7 @@ pub fn importUiElement(
     const shape = try shapes.Shape.new(
         0,
         paths,
-        null,
+        consts.DEFAULT_BOUNDS,
         props,
         sdf_texture_id,
         0,
