@@ -116,8 +116,7 @@ function toRuntimeGradient(
 export default function collectShapesData(
   node: Node | string,
   defs: Defs,
-  parentTransform: number[] = IDENTITY_MATRIX,
-  uiElementType?: UiElementType
+  parentTransform: number[] = IDENTITY_MATRIX
 ): ShapeData[] {
   const shapes: ShapeData[] = []
 
@@ -265,7 +264,7 @@ export default function collectShapesData(
   }
 
   node.children.forEach((child) => {
-    shapes.push(...collectShapesData(child, defs, currTransform, uiElementType))
+    shapes.push(...collectShapesData(child, defs, currTransform))
   })
 
   return shapes

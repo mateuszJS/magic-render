@@ -22,7 +22,6 @@ declare module '*.zig' {
     max_texture_size: number,
     max_buffer_size: number
   ) => void
-  export const addImage: (maybe_asset_id: number, bounds: zig.PointUV[], texture_id: number) => void
   export const updateCache: VoidFunction
   export const addShape: (
     maybe_asset_id: number,
@@ -32,8 +31,6 @@ declare module '*.zig' {
     sdf_texture_id: number,
     cache_texture_id: null | number
   ) => number /* id */
-  export const addShapeBegin: VoidFunction
-  export const addShapeFinish: VoidFunction
   export const removeAsset: () => void
   export const setSnapshot: (snapshot: ZigProjectSnapshot, with_snapshot: boolean) => void
 

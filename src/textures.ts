@@ -1,12 +1,13 @@
 import { getLoadingTexture, getErrorTexture } from 'loadingTexture'
 import { createTextureFromSource } from 'WebGPU/getTexture'
 import { parse, RootNode, ElementNode } from 'svg-parser'
-import createShapes from 'svgToShapes/createShapes'
+import addUiElement from 'svgToShapes/addUiElement'
 import * as def from 'svgToShapes/definitions'
 import type { Defs } from 'svgToShapes/definitions'
-import * as Logic from './logic/index.zig'
 import RotateIcon from '../icons/rotate.svg'
 import collectShapesData from 'svgToShapes/collectShapesData'
+import { ZigAsset } from 'types'
+import getShapesZigAssets from 'svgToShapes/getShapesZigAssets'
 
 function getSvgSize(svgRoot: ElementNode, img?: HTMLImageElement) {
   const props = svgRoot.properties
@@ -64,7 +65,7 @@ function addIcon(id: UiElementType, svg: string) {
   def.collect(svgRoot, defs)
   def.resolveAll(defs)
   const shapesData = collectShapesData(svgRoot, defs)
-  createShapes(shapesData, height, id)
+  addUiElement(shapesData, id, height)
 }
 
 export interface TextureSource {
@@ -74,13 +75,21 @@ export interface TextureSource {
   data?: Uint8ClampedArray // it's time consuming to obtain data from a GPUTexture later
 }
 
-export function add(
-  url: string,
-  onLoad?: (width: number, height: number, isNew: boolean) => void
-): number {
+interface ImageExtractedData {
+  width: number
+  height: number
+  isNewTexture?: boolean
+  shapeAssets?: ZigAsset[]
+  error?: unknown
+}
+
+export function add(url: string, onLoad?: (data: ImageExtractedData) => void): number {
   const sameUrl = textures.find((t) => t.url === url)
   if (sameUrl) {
-    onLoad?.(sameUrl.texture!.width, sameUrl.texture!.height, false)
+    onLoad?.({
+      width: sameUrl.texture!.width,
+      height: sameUrl.texture!.height,
+    })
     return textures.indexOf(sameUrl)
   }
 
@@ -98,10 +107,11 @@ export function add(
 async function resolveTexture(
   url: string,
   textureId: number,
-  onLoad?: (width: number, height: number, isNew: boolean) => void
+  onLoad?: (data: ImageExtractedData) => void
 ) {
   try {
     const [img, svgTree] = await Promise.all([getImage(url), getSvgRoot(url)])
+
     let existingTexture: TextureSource | null = null
     if (svgTree) {
       const svgRoot = svgTree.children[0] as ElementNode
@@ -114,12 +124,13 @@ async function resolveTexture(
       const defs: Defs = {}
       def.collect(svgRoot, defs)
       def.resolveAll(defs)
-      Logic.addShapeBegin()
       const shapesData = collectShapesData(svgRoot, defs)
-      createShapes(shapesData, svgHeight)
-      Logic.addShapeFinish()
 
-      // onLoad is not called on purpose, it's unnecessary for shapes
+      onLoad?.({
+        width: svgWidth,
+        height: svgHeight,
+        shapeAssets: getShapesZigAssets(shapesData, svgHeight),
+      })
       return
     }
 
@@ -138,10 +149,17 @@ async function resolveTexture(
       textures[textureId].hash = hash
     }
 
-    onLoad?.(img.width, img.height, !existingTexture)
-  } catch (err) {
-    console.error(err)
+    onLoad?.({
+      width: img.width,
+      height: img.height,
+      isNewTexture: !existingTexture,
+    })
+  } catch (error) {
+    console.error(error)
     textures[textureId].texture = textureErrorPlaceholder
+    onLoad?.({ error, width: 0, height: 0 })
+    // onLoad has to be called, otherwise the Promise(waiting for onLoad)
+    // will not resolve and the caller will keep waiting
   } finally {
     texturesLoading--
     updateProcessing()

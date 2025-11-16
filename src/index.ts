@@ -101,7 +101,7 @@ export default async function initCreator(
 
   canvasSizeObserver(canvas, device, () => {
     if (!isCameraSet) {
-      setCamera(lastSnapshot.width, lastSnapshot.height, 'fit', canvas, 100)
+      setCamera(lastSnapshot.width, lastSnapshot.height, 'fit', canvas, 30)
       isCameraSet = true
     }
     updateRenderScale()
@@ -217,11 +217,36 @@ export default async function initCreator(
   })
 
   const addImage: CreatorAPI['addImage'] = (url) => {
-    const textureId = Textures.add(url, (width, height, isNew) => {
-      const points = getDefaultPoints(width, height, lastSnapshot.width, lastSnapshot.height)
-      Logic.addImage(NO_ASSET_ID /* no id yet, needs to be generated */, points, textureId)
+    const textureId = Textures.add(url, ({ width, height, isNewTexture, shapeAssets, error }) => {
+      if (error) throw error
 
-      if (isNew) {
+      if (shapeAssets) {
+        Logic.setSnapshot(
+          {
+            ...lastSnapshot,
+            assets: [...lastSnapshot.assets, ...shapeAssets],
+          },
+          true
+        )
+        return
+      }
+
+      const newAsset: ZigAsset = {
+        img: {
+          id: NO_ASSET_ID,
+          bounds: getDefaultPoints(width, height, lastSnapshot.width, lastSnapshot.height),
+          texture_id: textureId,
+        },
+      }
+      Logic.setSnapshot(
+        {
+          ...lastSnapshot,
+          assets: [...lastSnapshot.assets, newAsset],
+        },
+        true
+      )
+
+      if (isNewTexture) {
         uploadTexture(url, (newUrl) => {
           Textures.updateTextureUrl(textureId, newUrl)
           newAssetsSnapshot()
@@ -237,9 +262,9 @@ export default async function initCreator(
 
   const setSnapshot: CreatorAPI['setSnapshot'] = async (snapshot, withSnapshot = false) => {
     const results = await Promise.allSettled(
-      snapshot.assets.map<Promise<ZigAsset>>(
+      snapshot.assets.map<Promise<ZigAsset | ZigAsset[]>>(
         (asset) =>
-          new Promise((resolve) => {
+          new Promise((resolve, reject) => {
             if ('paths' in asset) {
               // it's a shape
               return resolve({
@@ -275,26 +300,43 @@ export default async function initCreator(
               })
             }
 
-            const textureId = Textures.add(asset.url, (width, height, isNew) => {
-              // we wait to add image once points are known. The other option was to add image first
-              // with "default" points and then update it once texture is loaded.
-              // However, that would cause issues with undo/redo since we would have history
-              // snapshot with "default" points and then update it to the real points.
-              if (isNew) {
-                uploadTexture(asset.url, (newUrl) => {
-                  Textures.updateTextureUrl(textureId, newUrl)
-                  newAssetsSnapshot()
+            const textureId = Textures.add(
+              asset.url,
+              ({ width, height, isNewTexture, shapeAssets, error }) => {
+                // we wait to add image once points are known. The other option was to add image first
+                // with "default" points and then update it once texture is loaded.
+                // However, that would cause issues with undo/redo since we would have history
+                // snapshot with "default" points and then update it to the real points.
+
+                if (error) {
+                  return reject(error)
+                }
+
+                if (shapeAssets) {
+                  return resolve(shapeAssets)
+                }
+
+                if (isNewTexture) {
+                  uploadTexture(asset.url, (newUrl) => {
+                    Textures.updateTextureUrl(textureId, newUrl)
+                    newAssetsSnapshot()
+                  })
+                }
+
+                return resolve({
+                  img: {
+                    id: NO_ASSET_ID,
+                    bounds: getDefaultPoints(
+                      width,
+                      height,
+                      lastSnapshot.width,
+                      lastSnapshot.height
+                    ),
+                    texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
+                  },
                 })
               }
-
-              return resolve({
-                img: {
-                  id: NO_ASSET_ID,
-                  bounds: getDefaultPoints(width, height, lastSnapshot.width, lastSnapshot.height), // TODO: do it in zig only liek for shaoes
-                  texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
-                },
-              })
-            })
+            )
           })
       )
     )
@@ -307,7 +349,7 @@ export default async function initCreator(
 
     const serializedAssets = results
       .filter((result) => result.status === 'fulfilled')
-      .map((result) => result.value)
+      .flatMap((result) => (Array.isArray(result.value) ? [...result.value] : [result.value]))
 
     Logic.setSnapshot({ ...snapshot, assets: serializedAssets }, withSnapshot)
     triggerGeneratePreview()
