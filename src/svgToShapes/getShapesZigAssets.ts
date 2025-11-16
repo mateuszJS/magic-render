@@ -1,8 +1,14 @@
-import { ZigAsset } from 'types'
+import { PointUV, ZigAsset } from 'types'
 import { ShapeData } from './collectShapesData'
 import { BoundingBox } from './boundingBox'
-import { DEFAULT_BOUNDS } from 'consts'
 import * as Textures from 'textures'
+
+export const DEFAULT_BOUNDS: PointUV[] = [
+  { x: 0, y: 1, u: 0, v: 1 },
+  { x: 1, y: 1, u: 1, v: 1 },
+  { x: 1, y: 0, u: 1, v: 0 },
+  { x: 0, y: 0, u: 0, v: 0 },
+]
 
 export default function getShapesZigAssets(shapesData: ShapeData[], maxY?: number): ZigAsset[] {
   if (!maxY) {
