@@ -622,7 +622,6 @@ pub fn onPointerDoubleClick() !void {
 pub fn onPointerLeave() !void {
     state.action = .None;
     state.hovered_asset_id = AssetId{};
-    snapshots.triggerNewSnapshot(true, true);
 }
 
 pub fn commitChanges() !void {
