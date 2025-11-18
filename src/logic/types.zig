@@ -2,6 +2,32 @@ const std = @import("std");
 const images = @import("images.zig");
 const shapes = @import("shapes/shapes.zig");
 const texts = @import("texts/texts.zig");
+const AssetId = @import("asset_id.zig").AssetId;
+
+pub const ActionType = enum {
+    Move,
+    None,
+    Transform,
+    TextSelection,
+};
+
+pub const Tool = enum(u16) {
+    None,
+    DrawShape,
+    EditShape,
+    Text,
+};
+
+pub const State = struct {
+    width: f32,
+    height: f32,
+    assets: std.AutoArrayHashMap(u32, Asset),
+    hovered_asset_id: AssetId,
+    selected_asset_id: AssetId,
+    action: ActionType,
+    tool: Tool,
+    last_pointer_coords: Point,
+};
 
 pub const Asset = union(enum) {
     img: images.Image,

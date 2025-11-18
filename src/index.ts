@@ -27,14 +27,14 @@ import setCamera from 'utils/setCamera'
 
 export interface CreatorAPI {
   addImage: (url: string) => void
-  setSnapshot: (snapshot: ProjectSnapshot, withSnapshot?: boolean) => void
+  setSnapshot: (snapshot: ProjectSnapshot, withSnapshot: boolean) => void
   removeAsset: VoidFunction
   destroy: VoidFunction
   setTool: (tool: CreatorTool) => void
   toggleSharedTextEffects: VoidFunction
   // we need to obtain live update!
-  updateAssetProps: (props: Partial<ShapeProps>) => void // updates properties of selected asset
-  updateAssetBounds: (bounds: PointUV[]) => void // updates bounds of selected asset
+  updateAssetProps: (props: Partial<ShapeProps>, commit: boolean) => void // updates properties of selected asset
+  updateAssetBounds: (bounds: PointUV[], commit: boolean) => void // updates bounds of selected asset
 }
 
 const NO_ASSET_ID = 0 // used when we don't have asset id yet
@@ -45,15 +45,11 @@ export default async function initCreator(
   // we don't know if camera should be updated or not(redo/udno doesnt update camera)
   canvas: HTMLCanvasElement,
   uploadTexture: (url: string, onNewUrl: (newUrl: string) => void) => void,
-  onAssetsUpdate: (snapshot: ProjectSnapshot) => void,
+  onSnapshotUpdate: (snapshot: ProjectSnapshot, commit: boolean) => void,
   onAssetSelect: (assetId: Id) => void,
   onIsProcessingFlagUpdate: (inProgress: boolean) => void,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void,
-  onUpdateTool: (tool: CreatorTool) => void,
-  onUpdateProps: (bounds: PointUV[] | null, props: Partial<ShapeProps> | null) => void
-  // called when properties/bounds of selected asset have been changed
-  // including modifications caused by calling "updateAssetProps"
-  // also called with null when no asset is selected
+  onUpdateTool: (tool: CreatorTool) => void
 ): Promise<CreatorAPI> {
   let texturesLoading = 0
   let isMouseEventProcessing = false
@@ -137,16 +133,16 @@ export default async function initCreator(
     }
   }
 
-  Logic.connectOnAssetUpdateCallback((snapshot) => {
+  Logic.connectOnAssetUpdateCallback((snapshot, commit) => {
     lastSnapshot = {
       width: snapshot.width,
       height: snapshot.height,
       assets: [...snapshot.assets],
     } // reassing to drop all references to Zig + make assets an actual array
-    newAssetsSnapshot()
+    newAssetsSnapshot(commit)
   })
 
-  function newAssetsSnapshot() {
+  function newAssetsSnapshot(commit: boolean) {
     // this function is not part of Logic.connect_on_asset_update_callback
     // only because once we update a texture url, we have to notify about the assets update
     const serializedAssetsTextureUrl = lastSnapshot.assets.map<SerializedAsset>((asset) => {
@@ -189,11 +185,11 @@ export default async function initCreator(
       }
     })
 
-    onAssetsUpdate({
-      ...lastSnapshot,
-      assets: serializedAssetsTextureUrl,
-    })
-    triggerGeneratePreview()
+    onSnapshotUpdate({ ...lastSnapshot, assets: serializedAssetsTextureUrl }, commit)
+
+    if (commit) {
+      triggerGeneratePreview()
+    }
   }
 
   Fonts.loadFont()
@@ -209,12 +205,6 @@ export default async function initCreator(
     Fonts.getKerning
   )
   Logic.onUpdateToolCallback(onUpdateTool)
-  Logic.connectSelectedAssetUpdates((bounds, props) => {
-    onUpdateProps(
-      bounds && serializeBounds([...bounds]), //
-      props && serializeShapeProps(props)
-    )
-  })
 
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = Textures.add(url, ({ width, height, isNewTexture, shapeAssets, error }) => {
@@ -249,7 +239,7 @@ export default async function initCreator(
       if (isNewTexture) {
         uploadTexture(url, (newUrl) => {
           Textures.updateTextureUrl(textureId, newUrl)
-          newAssetsSnapshot()
+          newAssetsSnapshot(true)
         })
       }
     })
@@ -260,7 +250,7 @@ export default async function initCreator(
     updateIsProcessingFlag()
   })
 
-  const setSnapshot: CreatorAPI['setSnapshot'] = async (snapshot, withSnapshot = false) => {
+  const setSnapshot: CreatorAPI['setSnapshot'] = async (snapshot, withSnapshot) => {
     const results = await Promise.allSettled(
       snapshot.assets.map<Promise<ZigAsset | ZigAsset[]>>(
         (asset) =>
@@ -319,7 +309,7 @@ export default async function initCreator(
                 if (isNewTexture) {
                   uploadTexture(asset.url, (newUrl) => {
                     Textures.updateTextureUrl(textureId, newUrl)
-                    newAssetsSnapshot()
+                    newAssetsSnapshot(true)
                   })
                 }
 
@@ -372,12 +362,8 @@ export default async function initCreator(
       Logic.setTool(tool)
     },
     toggleSharedTextEffects: Logic.toggleSharedTextEffects,
-    updateAssetProps: (props) => {
-      Logic.setSelectedAssetProps(props)
-    },
-    updateAssetBounds: (bounds) => {
-      Logic.setSelectedAssetBounds(bounds)
-    },
+    updateAssetProps: Logic.setSelectedAssetProps,
+    updateAssetBounds: Logic.setSelectedAssetBounds,
   }
 }
 

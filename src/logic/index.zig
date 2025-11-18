@@ -22,7 +22,9 @@ const AssetId = @import("asset_id.zig").AssetId;
 const Asset = @import("types.zig").Asset;
 const AssetSerialized = @import("types.zig").AssetSerialized;
 const asset_props = @import("asset_props.zig");
-const asset_observer = @import("asset_observer.zig");
+const snapshots = @import("snapshots.zig");
+const ActionType = @import("types.zig").ActionType;
+const Tool = @import("types.zig").Tool;
 
 const FillType = enum(u8) {
     Solid,
@@ -35,12 +37,6 @@ const Placement = struct {
     y: f32,
     width: f32,
     height: f32,
-};
-
-const ProjectSnapshot = struct {
-    width: f32,
-    height: f32,
-    assets: []const AssetSerialized,
 };
 
 const WebGpuPrograms = struct {
@@ -63,12 +59,8 @@ pub fn connectWebGpuPrograms(programs: *const WebGpuPrograms) void {
     web_gpu_programs = programs; // orelse WebGpuPrograms{};
 }
 
-var on_asset_update_cb: ?*const fn (ProjectSnapshot) void = undefined;
-var original_on_asset_update_cb: ?*const fn (ProjectSnapshot) void = undefined;
-
-pub fn connectOnAssetUpdateCallback(cb: *const fn (ProjectSnapshot) void) void {
-    on_asset_update_cb = cb;
-    original_on_asset_update_cb = cb;
+pub fn connectOnAssetUpdateCallback(cb: *const fn (snapshots.ProjectSnapshot, bool) void) void {
+    snapshots.passSnapshot = cb;
 }
 
 var on_asset_select_cb: *const fn ([4]u32) void = undefined;
@@ -148,39 +140,10 @@ pub fn connectCacheCallbacks(
     end_cache = end_cache_cb;
 }
 
-pub fn connectSelectedAssetUpdates(cb: asset_observer.NotifyWorldFn) void {
-    asset_observer.notifyWorld = cb;
-}
-
 pub const ASSET_ID_MIN: u32 = 1000;
 const MIN_NEW_CONTROL_POINT_DISTANCE = 10.0; // Minimum distance to consider a new control point
 
-const ActionType = enum {
-    Move,
-    None,
-    Transform,
-    TextSelection,
-};
-
-const Tool = enum(u16) {
-    None,
-    DrawShape,
-    EditShape,
-    Text,
-};
-
-const State = struct {
-    width: f32,
-    height: f32,
-    assets: std.AutoArrayHashMap(u32, Asset),
-    hovered_asset_id: AssetId,
-    selected_asset_id: AssetId,
-    action: ActionType,
-    tool: Tool,
-    last_pointer_coords: types.Point,
-};
-
-var state = State{
+var state = types.State{
     .width = 0,
     .height = 0,
     .assets = undefined,
@@ -243,8 +206,7 @@ fn addImage(id_or_zero: u32, points: [4]types.PointUV, texture_id: u32) !void {
         .img = images.Image.new(id, points, texture_id),
     };
     try state.assets.put(id, asset);
-
-    try checkAssetsUpdate(true);
+    snapshots.triggerNewSnapshot(true, true);
 }
 
 pub fn addShape(
@@ -267,7 +229,7 @@ pub fn addShape(
     );
     try state.assets.put(id, Asset{ .shape = shape });
 
-    try checkAssetsUpdate(true);
+    snapshots.triggerNewSnapshot(true, true);
     return id;
 }
 
@@ -289,97 +251,20 @@ fn addText(
         null,
     );
     try state.assets.put(id, Asset{ .text = text });
-    try checkAssetsUpdate(true);
+    snapshots.triggerNewSnapshot(true, true);
     return text;
 }
 
 pub fn removeAsset() !void {
     _ = state.assets.orderedRemove(state.selected_asset_id.getPrim());
     try setSelectedAsset(AssetId{});
-    try checkAssetsUpdate(true);
+    snapshots.triggerNewSnapshot(true, true);
 }
 
 pub fn onUpdatePick(id: [4]u32) void {
     if (state.action != .Transform) {
         state.hovered_asset_id = AssetId.fromArray(id);
         // hovered_asset_id stores id of the ui transform element during transformations
-    }
-}
-
-var last_project_snapshot = ProjectSnapshot{
-    .width = 0,
-    .height = 0,
-    .assets = &.{},
-};
-
-fn checkAssetsUpdate(should_notify: bool) !void {
-    const cb = on_asset_update_cb orelse return;
-
-    var new_assets_update = std.ArrayList(AssetSerialized).init(std.heap.page_allocator);
-    var iterator = state.assets.iterator();
-    while (iterator.next()) |asset_entry| {
-        switch (asset_entry.value_ptr.*) {
-            .img => |img| {
-                try new_assets_update.append(AssetSerialized{
-                    .img = img.serialize(),
-                });
-            },
-            .shape => |shape| {
-                try new_assets_update.append(AssetSerialized{
-                    .shape = try shape.serialize(std.heap.page_allocator),
-                });
-            },
-            .text => |text| {
-                try new_assets_update.append(AssetSerialized{
-                    .text = try text.serialize(std.heap.page_allocator),
-                });
-            },
-        }
-    }
-
-    const is_project_size_same = Utils.equalF32(last_project_snapshot.width, state.width) and Utils.equalF32(last_project_snapshot.height, state.height);
-
-    if (is_project_size_same and new_assets_update.items.len == last_project_snapshot.assets.len) {
-        var all_match = true;
-        for (new_assets_update.items, last_project_snapshot.assets) |new_asset, old_asset| {
-            switch (old_asset) {
-                .img => |old_img| {
-                    if (!old_img.compare(new_asset.img)) {
-                        all_match = false;
-                        break;
-                    }
-                },
-                .shape => |old_shape| {
-                    if (!old_shape.compare(new_asset.shape)) {
-                        all_match = false;
-                        break;
-                    }
-                },
-                .text => |old_text| {
-                    if (!old_text.compare(new_asset.text)) {
-                        all_match = false;
-                        break;
-                    }
-                },
-            }
-        }
-
-        if (all_match) {
-            new_assets_update.clearAndFree();
-            new_assets_update.deinit();
-            return;
-        }
-    }
-
-    std.heap.page_allocator.free(last_project_snapshot.assets);
-    last_project_snapshot = .{
-        .width = state.width,
-        .height = state.height,
-        .assets = try new_assets_update.toOwnedSlice(),
-    };
-
-    if (should_notify) {
-        cb(last_project_snapshot);
     }
 }
 
@@ -417,7 +302,6 @@ fn getSelectedText() ?*texts.Text {
 fn setSelectedAsset(id: AssetId) !void {
     try commitChanges();
     state.selected_asset_id = id;
-    asset_observer.triggerUpdate();
     on_asset_select_cb(id.serialize());
 }
 
@@ -432,7 +316,7 @@ pub fn updateTextContent(
         // IMPORTANT: do NOT free input_content,
         // also it's owned by Zigar/JS side! So hopefully it somehow handled there
         const results = try text.computeText(selection_start, selection_end);
-        try checkAssetsUpdate(true);
+        snapshots.triggerNewSnapshot(true, true);
         return results;
     } else {
         @panic("updateTextContent called but no text asset selected");
@@ -574,19 +458,17 @@ pub fn onPointerUp() !void {
             try setSelectedAsset(state.hovered_asset_id);
         } else {
             state.action = .None;
-            try checkAssetsUpdate(true);
+            snapshots.triggerNewSnapshot(true, true);
         }
     } else if (state.tool == Tool.DrawShape) {
-        try checkAssetsUpdate(true);
+        snapshots.triggerNewSnapshot(true, true);
         if (getSelectedShape()) |shape| {
             shape.onReleasePointer();
-            asset_observer.triggerUpdate();
         }
     } else if (state.tool == Tool.EditShape) {
-        try checkAssetsUpdate(true);
+        snapshots.triggerNewSnapshot(true, true);
         if (getSelectedShape()) |shape| {
             shape.onReleasePointer();
-            asset_observer.triggerUpdate();
         }
         // to remove sec, third, quat fields
         state.selected_asset_id = AssetId{ ._prim = state.selected_asset_id.getPrim() };
@@ -698,7 +580,7 @@ pub fn onPointerMove(x: f32, y: f32) !void {
                 point.y += offset.y;
             }
 
-            asset_observer.triggerUpdate();
+            snapshots.triggerNewSnapshot(true, false);
         },
         .Transform => {
             transform_ui.transformPoints(
@@ -723,7 +605,7 @@ pub fn onPointerMove(x: f32, y: f32) !void {
                 },
             }
 
-            asset_observer.triggerUpdate();
+            snapshots.triggerNewSnapshot(true, false);
         },
         .TextSelection => {},
         .None => {},
@@ -740,7 +622,7 @@ pub fn onPointerDoubleClick() !void {
 pub fn onPointerLeave() !void {
     state.action = .None;
     state.hovered_asset_id = AssetId{};
-    try checkAssetsUpdate(true);
+    snapshots.triggerNewSnapshot(true, true);
 }
 
 pub fn commitChanges() !void {
@@ -925,7 +807,7 @@ pub fn computeSdfs() !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                const is_throttle_event = ticks % 5 == 0;
+                const is_throttle_event = shared.ticks % 5 == 0;
                 // in the future we might do throttle depends on the number of selected shapes
                 // also instead of ticks we can do (ticks + shape.id) to avoid making all updates at once
                 const do_update = shape.outdated_sdf or (shape.should_update_sdf and is_throttle_event);
@@ -1364,11 +1246,11 @@ pub fn renderPick() !void {
     }
 }
 
-pub fn setSnapshot(snapshot: ProjectSnapshot, with_snapshot: bool) !void {
+pub fn setSnapshot(snapshot: snapshots.ProjectSnapshot, with_snapshot: bool) !void {
     state.width = snapshot.width;
     state.height = snapshot.height;
 
-    on_asset_update_cb = null;
+    snapshots.skip_snapshot = true;
     shapes.resetState();
     state.assets.clearAndFree();
 
@@ -1402,8 +1284,8 @@ pub fn setSnapshot(snapshot: ProjectSnapshot, with_snapshot: bool) !void {
     if (!state.assets.contains(state.selected_asset_id.getPrim())) {
         try setSelectedAsset(AssetId{});
     }
-    on_asset_update_cb = original_on_asset_update_cb;
-    try checkAssetsUpdate(with_snapshot);
+    snapshots.skip_snapshot = false;
+    snapshots.triggerNewSnapshot(with_snapshot, true);
 }
 
 pub fn deinitState() void {
@@ -1417,17 +1299,11 @@ pub fn deinitState() void {
     }
     state.assets.clearAndFree();
     UI.deinit();
-    std.heap.page_allocator.free(last_project_snapshot.assets);
-    last_project_snapshot = .{
-        .width = 0,
-        .height = 0,
-        .assets = &.{},
-    };
+    snapshots.deinit();
     state.selected_asset_id = AssetId{};
     state.hovered_asset_id = AssetId{};
     next_asset_id = ASSET_ID_MIN;
     web_gpu_programs = undefined;
-    on_asset_update_cb = undefined;
     // state itself is not destoyed as it will be reinitalized before usage
     // and has no reference to memory to free
 }
@@ -1455,15 +1331,12 @@ pub fn setTool(tool: Tool) !void {
     }
 }
 
-var ticks: u32 = 0; // it's like a time, but always increases by 1, used for performance optimizations
 pub fn tick(now: f32) !void {
-    ticks +%= 1;
-    shared.setTime(now);
-    const asset = if (getSelectedAsset()) |a| a.* else null; // to deref pointer
-    try asset_observer.loop(asset);
+    shared.tick(now);
+    try snapshots.loop(state);
 }
 
-pub fn setSelectedAssetProps(ser_props: asset_props.SerializedProps) !void {
+pub fn setSelectedAssetProps(ser_props: asset_props.SerializedProps, commit: bool) !void {
     if (getSelectedAsset()) |asset| {
         switch (asset.*) {
             .img => |img| {
@@ -1491,11 +1364,10 @@ pub fn setSelectedAssetProps(ser_props: asset_props.SerializedProps) !void {
         }
     }
 
-    try checkAssetsUpdate(true);
-    asset_observer.triggerUpdate();
+    snapshots.triggerNewSnapshot(true, commit);
 }
 
-pub fn setSelectedAssetBounds(bounds: [4]types.PointUV) !void {
+pub fn setSelectedAssetBounds(bounds: [4]types.PointUV, commit: bool) !void {
     // pub fn setSelectedAssetBounds(
     //     offset_x: f32,
     //     offset_y: f32,
@@ -1579,8 +1451,7 @@ pub fn setSelectedAssetBounds(bounds: [4]types.PointUV) !void {
         }
     }
 
-    try checkAssetsUpdate(true);
-    asset_observer.triggerUpdate();
+    snapshots.triggerNewSnapshot(true, commit);
 }
 
 pub fn toggleSharedTextEffects() void {

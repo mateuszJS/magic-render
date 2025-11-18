@@ -1,0 +1,8 @@
+While user does changes, like color, we want to show feedback in real time, how color changes when user moves sliders.
+
+At the same time we have to avoid creating a history snapshot everytime even smallest change happens, otherwise mentioned color sliders would produce hundreds if not thousands of history snapshots.
+
+The current solution consist of two parts:
+
+1. An additiona flag for `setSnapshot`, `updateAssetProps` or `updateAssetBounds`, boolean which indicated if it's "preview" -> avoid emitting a snapshot.
+2. Create a separate dedicated "previewSnapshot", flags for `setSnapshot`, `updateAssetProps`, `updateAssetBounds` stays the same but we produce a previewSnapshot, we do update this one when flag from point 1. equals true.
