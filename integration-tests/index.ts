@@ -25,6 +25,7 @@ async function test() {
   const assetBoundsForm = document.querySelector<HTMLFormElement>('#asset-bounds-popover')!
   const assetPropsForm = document.querySelector<HTMLFormElement>('#asset-props-popover')!
   const projectSizeForm = document.querySelector<HTMLFormElement>('#project-size-popover')!
+  const xSlider = document.querySelector<HTMLInputElement>('#x-slider')!
 
   window.lastSnapshot = {
     width: 0,
@@ -34,6 +35,7 @@ async function test() {
 
   let currentHistoryIndex = 0
   let newTextures = 0
+  let selectedAssetId = 0
   const creator = await initCreator(
     1000,
     1650,
@@ -45,8 +47,20 @@ async function test() {
       // setNewUrl('new url')
       // }
     },
-    (snapshot) => {
+    (snapshot, commit) => {
       window.lastSnapshot = snapshot
+
+      const selectedAsset = snapshot.assets.find((asset) => asset.id === selectedAssetId)
+
+      if (selectedAsset) {
+        assetBoundsTextarea.value = JSON.stringify(selectedAsset.bounds, null, 2)
+        if ('props' in selectedAsset) {
+          assetPropertiesTextarea.value = JSON.stringify(selectedAsset.props, null, 2)
+        }
+      }
+
+      if (!commit) return
+
       // we had to implement this whole history logic because there is no way
       // to call creator.setSnapshot(snapshot) from test code file
       if (currentHistoryIndex < assetsUpdatesHistory.length - 1) {
@@ -58,6 +72,7 @@ async function test() {
     },
     (assetId) => {
       selectedAssetEl.textContent = assetId.toString()
+      selectedAssetId = assetId[0]
     },
     (inProgress) => {
       isProcessingEventsEl.textContent = inProgress ? 'true' : 'false'
@@ -68,10 +83,6 @@ async function test() {
     (newTool) => {
       toolsSelect.value = newTool.toString()
       console.log(`new tool: ${newTool}`)
-    },
-    (bounds, props) => {
-      assetBoundsTextarea.value = JSON.stringify(bounds, null, 2)
-      assetPropertiesTextarea.value = JSON.stringify(props, null, 2)
     }
   )
 
@@ -131,14 +142,14 @@ async function test() {
   undoBtn.addEventListener('click', () => {
     currentHistoryIndex = Math.max(0, currentHistoryIndex - 1)
     const snapshot = assetsUpdatesHistory[currentHistoryIndex]
-    creator.setSnapshot(snapshot)
+    creator.setSnapshot(snapshot, false)
     window.lastSnapshot = snapshot
   })
 
   redoBtn.addEventListener('click', () => {
     currentHistoryIndex = Math.min(assetsUpdatesHistory.length - 1, currentHistoryIndex + 1)
     const snapshot = assetsUpdatesHistory[currentHistoryIndex]
-    creator.setSnapshot(snapshot)
+    creator.setSnapshot(snapshot, false)
     window.lastSnapshot = snapshot
   })
 
@@ -156,7 +167,7 @@ async function test() {
     const formData = new FormData(assetPropsForm)
     try {
       const newProps = JSON.parse(formData.get('code') as string)
-      creator.updateAssetProps(newProps)
+      creator.updateAssetProps(newProps, true)
     } catch (e) {
       alert('Cannot parse JSON: ' + (e as Error).message)
     }
@@ -167,7 +178,7 @@ async function test() {
     const formData = new FormData(assetBoundsForm)
     try {
       const newBounds = JSON.parse(formData.get('code') as string)
-      creator.updateAssetBounds(newBounds)
+      creator.updateAssetBounds(newBounds, true)
     } catch (e) {
       alert('Cannot parse JSON: ' + (e as Error).message)
     }
@@ -187,6 +198,28 @@ async function test() {
       true
     )
   })
+
+  const updateX = (commit: boolean) => {
+    const x = 50 - Number(xSlider.value)
+    const lastCommittedSnapshot = assetsUpdatesHistory[currentHistoryIndex]
+    const asset = lastCommittedSnapshot.assets.find((a) => a.id === selectedAssetId)
+    if (!asset) {
+      console.error('No selected asset found')
+      return
+    }
+    const bounds = asset.bounds
+
+    if (!bounds) throw new Error('Asset has no bounds defined')
+    console.log(x, commit)
+    const newBounds = bounds.map((point) => ({
+      ...point,
+      x: point.x + x,
+    }))
+    creator.updateAssetBounds(newBounds, commit)
+  }
+
+  xSlider.addEventListener('input', () => updateX(false))
+  xSlider.addEventListener('pointerup', () => updateX(true))
 }
 
 test()
