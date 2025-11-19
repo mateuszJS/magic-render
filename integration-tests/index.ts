@@ -201,8 +201,8 @@ async function test() {
 
   const updateX = (commit: boolean) => {
     const x = 50 - Number(xSlider.value)
-    const lastComittedSnapshot = assetsUpdatesHistory[currentHistoryIndex]
-    const asset = lastComittedSnapshot.assets.find((a) => a.id === selectedAssetId)
+    const lastCommittedSnapshot = assetsUpdatesHistory[currentHistoryIndex]
+    const asset = lastCommittedSnapshot.assets.find((a) => a.id === selectedAssetId)
     if (!asset) {
       console.error('No selected asset found')
       return

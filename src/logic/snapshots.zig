@@ -91,16 +91,16 @@ var last_project_snapshot = ProjectSnapshot{
 };
 
 // @param with_snapshot: while moving in history, we don't want to produce snapshots.
-// Otherwise we won't recognize what snapshot comes form undo/redo and what are actual changes which causes history cut
+// Otherwise we won't recognize what snapshot comes from undo/redo and what are actual changes which causes history cut
 
 // @param commit: whether the changes are permament(true) or it's just preview of changes(false)
 fn generateNewSnapshot(state: State) !void {
     if (with_snapshot == false and commit == false) {
-        @panic("checkAssetsUpdate called with with_snapshot == false and commit == false, so this function has NO effect");
+        @panic("generateNewSnapshot called with with_snapshot == false and commit == false, so this function has NO effect");
     }
     // we might consider different params/data structure, to be more precise about only 3 scenarios available
-    // 1. history update -> compare & save in zig, do no produce snapshot
-    // 2. preview of changes -> do no compare & save in zig but DO produce snapshot
+    // 1. history update -> compare & save in zig, do not produce snapshot
+    // 2. preview of changes -> do not compare & save in zig but DO produce snapshot
     // 3. normal/common changes -> with comparing & saving & generating a snapshot
 
     const curr_snapshot = try getCurrSnapshot(state);
