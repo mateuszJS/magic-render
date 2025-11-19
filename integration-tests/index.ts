@@ -25,6 +25,7 @@ async function test() {
   const assetBoundsForm = document.querySelector<HTMLFormElement>('#asset-bounds-popover')!
   const assetPropsForm = document.querySelector<HTMLFormElement>('#asset-props-popover')!
   const projectSizeForm = document.querySelector<HTMLFormElement>('#project-size-popover')!
+  const xSlider = document.querySelector<HTMLInputElement>('#x-slider')!
 
   window.lastSnapshot = {
     width: 0,
@@ -141,14 +142,14 @@ async function test() {
   undoBtn.addEventListener('click', () => {
     currentHistoryIndex = Math.max(0, currentHistoryIndex - 1)
     const snapshot = assetsUpdatesHistory[currentHistoryIndex]
-    creator.setSnapshot(snapshot, true)
+    creator.setSnapshot(snapshot, false)
     window.lastSnapshot = snapshot
   })
 
   redoBtn.addEventListener('click', () => {
     currentHistoryIndex = Math.min(assetsUpdatesHistory.length - 1, currentHistoryIndex + 1)
     const snapshot = assetsUpdatesHistory[currentHistoryIndex]
-    creator.setSnapshot(snapshot, true)
+    creator.setSnapshot(snapshot, false)
     window.lastSnapshot = snapshot
   })
 
@@ -197,6 +198,28 @@ async function test() {
       true
     )
   })
+
+  const updateX = (commit: boolean) => {
+    const x = 50 - Number(xSlider.value)
+    const lastComittedSnapshot = assetsUpdatesHistory[currentHistoryIndex]
+    const asset = lastComittedSnapshot.assets.find((a) => a.id === selectedAssetId)
+    if (!asset) {
+      console.error('No selected asset found')
+      return
+    }
+    const bounds = asset.bounds
+
+    if (!bounds) throw new Error('Asset has no bounds defined')
+    console.log(x, commit)
+    const newBounds = bounds.map((point) => ({
+      ...point,
+      x: point.x + x,
+    }))
+    creator.updateAssetBounds(newBounds, commit)
+  }
+
+  xSlider.addEventListener('input', () => updateX(false))
+  xSlider.addEventListener('pointerup', () => updateX(true))
 }
 
 test()

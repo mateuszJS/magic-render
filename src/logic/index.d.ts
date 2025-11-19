@@ -124,7 +124,7 @@ declare module '*.zig' {
     ) => void
   }) => void
   export const connectOnAssetUpdateCallback: (
-    cb: (snapshot: ZigProjectSnapshot, preview: boolean) => void
+    cb: (snapshot: ZigProjectSnapshot, commit: boolean) => void
   ) => void
   export const connectOnAssetSelectionCallback: (cb: (data: zig.Id) => void) => void
   export const connectCreateSdfTexture: (

@@ -27,7 +27,7 @@ import setCamera from 'utils/setCamera'
 
 export interface CreatorAPI {
   addImage: (url: string) => void
-  setSnapshot: (snapshot: ProjectSnapshot, withSnapshot: boolean) => void
+  setSnapshot: (snapshot: ProjectSnapshot, withSnapshot: boolean) => Promise<void>
   removeAsset: VoidFunction
   destroy: VoidFunction
   setTool: (tool: CreatorTool) => void
