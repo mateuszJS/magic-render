@@ -1,7 +1,7 @@
 const std = @import("std");
 const Types = @import("types.zig");
 const PointUV = Types.PointUV;
-const utils = @import("./utils.zig");
+const utils = @import("utils.zig");
 
 const SHADER_TRIANGLE_INDICES = [_]usize{
     0, 1, 2,

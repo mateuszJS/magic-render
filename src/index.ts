@@ -18,6 +18,7 @@ import {
   ProjectSnapshot,
   SerializedAsset,
   ShapeProps,
+  TypoProps,
   ZigAsset,
   ZigProjectSnapshot,
 } from './types'
@@ -31,7 +32,6 @@ export interface CreatorAPI {
   removeAsset: VoidFunction
   destroy: VoidFunction
   setTool: (tool: CreatorTool) => void
-  toggleSharedTextEffects: VoidFunction
   // we need to obtain live update!
   updateAssetProps: (props: Partial<ShapeProps>, commit: boolean) => void // updates properties of selected asset
   updateAssetBounds: (bounds: PointUV[], commit: boolean) => void // updates bounds of selected asset
@@ -177,8 +177,9 @@ export default async function initCreator(
           id: asset.text.id,
           content: asset.text.content ?? '',
           bounds: serializeBounds([...asset.text.bounds]),
-          font_size: asset.text.font_size,
+          typo_props: serializeTypoProps(asset.text.typo_props),
           props: serializeShapeProps(asset.text.props),
+          sdf_texture_id: asset.text.sdf_texture_id,
         }
       } else {
         throw Error('Unknown asset type')
@@ -273,8 +274,9 @@ export default async function initCreator(
                   id: asset.id || NO_ASSET_ID,
                   content: asset.content,
                   bounds: asset.bounds,
-                  font_size: asset.font_size,
+                  typo_props: asset.typo_props,
                   props: asset.props,
+                  sdf_texture_id: asset.sdf_texture_id,
                 },
               })
             }
@@ -361,7 +363,6 @@ export default async function initCreator(
       onUpdateTool(tool)
       Logic.setTool(tool)
     },
-    toggleSharedTextEffects: Logic.toggleSharedTextEffects,
     updateAssetProps: Logic.setSelectedAssetProps,
     updateAssetBounds: Logic.setSelectedAssetBounds,
   }
@@ -392,5 +393,13 @@ function serializeShapeProps(props: ShapeProps): ShapeProps {
         }
       : null,
     opacity: props.opacity,
+  }
+}
+
+function serializeTypoProps(props: TypoProps): TypoProps {
+  return {
+    font_size: props.font_size,
+    line_height: props.line_height,
+    is_sdf_shared: props.is_sdf_shared,
   }
 }

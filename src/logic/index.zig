@@ -5,14 +5,14 @@ const lines = @import("lines.zig");
 const triangles = @import("triangles.zig");
 const transform_ui = @import("transform_ui.zig");
 const zigar = @import("zigar");
-const shapes = @import("./shapes/shapes.zig");
+const shapes = @import("shapes/shapes.zig");
 const rects = @import("rects.zig");
 const bounding_box = @import("shapes/bounding_box.zig");
 const shared = @import("shared.zig");
 const texture_size = @import("texture_size.zig");
-const Utils = @import("utils.zig");
+const utils = @import("utils.zig");
 const Matrix3x3 = @import("matrix.zig").Matrix3x3;
-const PathUtils = @import("shapes/path_utils.zig");
+const path_utils = @import("shapes/path_utils.zig");
 const consts = @import("consts.zig");
 const UI = @import("ui.zig");
 const texts = @import("texts/texts.zig");
@@ -25,6 +25,8 @@ const asset_props = @import("asset_props.zig");
 const snapshots = @import("snapshots.zig");
 const ActionType = @import("types.zig").ActionType;
 const Tool = @import("types.zig").Tool;
+const typography_props = @import("texts/typography_props.zig");
+const js_glue = @import("js_glue.zig");
 
 const FillType = enum(u8) {
     Solid,
@@ -68,14 +70,12 @@ pub fn connectOnAssetSelectionCallback(cb: *const fn ([4]u32) void) void {
     on_asset_select_cb = cb;
 }
 
-var create_sdf_texture: *const fn () u32 = undefined;
-var create_compute_depth_texture: *const fn (u32, u32) u32 = undefined;
 pub fn connectCreateSdfTexture(
     create_sdf: *const fn () u32,
     create_compute_depth: *const fn (u32, u32) u32,
 ) void {
-    create_sdf_texture = create_sdf;
-    create_compute_depth_texture = create_compute_depth;
+    js_glue.create_sdf_texture = create_sdf;
+    js_glue.create_compute_depth_texture = create_compute_depth;
 }
 
 var on_update_tool: *const fn (u16) void = undefined;
@@ -237,8 +237,9 @@ fn addText(
     id_or_zero: u32,
     content: []const u8,
     bounds: [4]types.PointUV,
-    font_size: f32,
     props: asset_props.SerializedProps,
+    typo_props: typography_props.Serialized,
+    sdf_texture_id: ?u32,
 ) !texts.Text {
     const id = if (id_or_zero == 0) generateId() else id_or_zero;
     const text = try texts.Text.new(
@@ -246,9 +247,9 @@ fn addText(
         id,
         content,
         bounds,
-        font_size,
         props,
-        null,
+        typo_props,
+        sdf_texture_id,
     );
     try state.assets.put(id, Asset{ .text = text });
     snapshots.triggerNewSnapshot(true, true);
@@ -358,13 +359,19 @@ fn createText(x: f32, y: f32) !texts.Text {
         },
     };
 
+    const typo_props = typography_props.Serialized{
+        .font_size = 72,
+        .line_height = 1.2,
+        .is_sdf_shared = true,
+    };
+
     return try addText(
         id,
         try std.heap.wasm_allocator.dupe(u8, "H"),
-        // "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
         bounds,
-        72,
         props,
+        typo_props,
+        null,
     );
 }
 
@@ -418,7 +425,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                 &.{},
                 consts.DEFAULT_BOUNDS,
                 props,
-                create_sdf_texture(),
+                js_glue.create_sdf_texture(),
                 if (props.filter != null) create_cache_texture() else null,
             );
             try setSelectedAsset(AssetId{ ._prim = id });
@@ -520,13 +527,13 @@ pub fn onPointerMove(x: f32, y: f32) !void {
 
                     const option_index = if (i == 0 and path.closed) points.len - 1 else if (i > 0) i - 1 else null;
                     if (option_index) |index| {
-                        if (!PathUtils.isStraightLineHandle(points[index])) {
+                        if (!path_utils.isStraightLineHandle(points[index])) {
                             points[index].x += diff.x;
                             points[index].y += diff.y;
                         }
                     }
                     if (i + 1 < points.len - 1) {
-                        if (!PathUtils.isStraightLineHandle(points[i + 1])) {
+                        if (!path_utils.isStraightLineHandle(points[i + 1])) {
                             points[i + 1].x += diff.x;
                             points[i + 1].y += diff.y;
                         }
@@ -542,14 +549,14 @@ pub fn onPointerMove(x: f32, y: f32) !void {
                     };
 
                     if (option_index) |index| {
-                        const opposite_handler = PathUtils.getOppositeHandle(
+                        const opposite_handler = path_utils.getOppositeHandle(
                             cp,
                             points[i],
                         );
 
                         const dist = opposite_handler.distance(points[index]);
                         if (dist < 1.0) {
-                            points[index] = PathUtils.getOppositeHandle(
+                            points[index] = path_utils.getOppositeHandle(
                                 cp,
                                 pointer,
                             );
@@ -739,7 +746,7 @@ fn requestCharsSdfs() !void {
                         const ch_d = try fonts.get(0, char);
 
                         ch_d.request_size(
-                            text.font_size,
+                            text.typo_props.font_size,
                             padding,
                         );
                     }
@@ -770,7 +777,7 @@ pub fn computeSdfs() !void {
                 const ch_w = font_size * ch_d.width;
                 const ch_h = font_size * ch_d.height;
 
-                const bounds = Utils.createBounds(ch_w, ch_h);
+                const bounds = utils.createBounds(ch_w, ch_h);
                 const padding = font_size * ch_d.*.max_ratio_padding_to_font_size;
                 const sdf_dims = sdf.getSdfTextureDims(bounds, padding);
 
@@ -784,7 +791,7 @@ pub fn computeSdfs() !void {
                 const points = try allocator.dupe(types.Point, ch_d.points);
 
                 for (points) |*point| {
-                    if (PathUtils.isStraightLineHandle(point.*)) continue;
+                    if (path_utils.isStraightLineHandle(point.*)) continue;
                     point.x = (point.x * real_viewport_font_size) + viewport_padding;
                     point.y = (point.y * real_viewport_font_size) + viewport_padding;
                 }
@@ -841,8 +848,10 @@ pub fn computeSdfs() !void {
                 shape.should_update_sdf = false;
             },
             .text => |*text| {
-                if (text.sdf_texture_id) |text_sdf_texture_id| {
+                if (text.typo_props.is_sdf_shared) {
                     if (!text.is_sdf_outdated) continue;
+
+                    const text_sdf_texture_id = text.getSdfTextureId();
 
                     const text_padding = sdf.getSdfPadding(text.props.sdf_effects.items);
                     const sdf_dims = sdf.getSdfTextureDims(
@@ -853,7 +862,7 @@ pub fn computeSdfs() !void {
 
                     const bounds_height = text.bounds[0].distance(text.bounds[3]);
 
-                    const compute_depth_texture_id = create_compute_depth_texture(
+                    const compute_depth_texture_id = js_glue.create_compute_depth_texture(
                         @intFromFloat(sdf_dims.size.w),
                         @intFromFloat(sdf_dims.size.h),
                     );
@@ -870,7 +879,7 @@ pub fn computeSdfs() !void {
                             const ch_d = try fonts.get(0, char);
 
                             if (ch_d.sdf_texture_id) |char_sdf_texture_id| {
-                                const char_padding = text.font_size * ch_d.max_ratio_padding_to_font_size;
+                                const char_padding = text.typo_props.font_size * ch_d.max_ratio_padding_to_font_size;
 
                                 const start_x = vertex.relative_bounds[3].x - char_padding;
                                 const start_y = bounds_height + vertex.relative_bounds[3].y - char_padding;
@@ -1050,7 +1059,9 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
             .text => |*text| {
                 const is_typing_ui = state.tool == .Text and state.selected_asset_id.getPrim() == text.id;
 
-                if (text.sdf_texture_id) |sdf_texture_id| {
+                if (text.typo_props.is_sdf_shared) {
+                    const text_sdf_texture_id = text.getSdfTextureId();
+
                     const padding = sdf.getSdfPadding(text.props.sdf_effects.items);
                     for (text.props.sdf_effects.items) |effect| {
                         const text_bounds = sdf.getDrawBounds(
@@ -1061,7 +1072,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                         web_gpu_programs.draw_shape(
                             &text_bounds,
                             text.getDrawUniform(effect, text.sdf_scale),
-                            sdf_texture_id,
+                            text_sdf_texture_id,
                         );
                     }
 
@@ -1076,14 +1087,14 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
 
                 for (text.text_vertex.items, 0..) |vertex, i| {
                     if (vertex.char) |char| {
-                        if (text.sdf_texture_id == null) {
+                        if (!text.typo_props.is_sdf_shared) {
                             const ch_d = try fonts.get(0, char);
 
                             if (ch_d.sdf_texture_id) |sdf_texture_id| {
                                 for (text.props.sdf_effects.items) |effect| {
-                                    const bounds = vertex.getBoundsVertex(text.font_size * ch_d.max_ratio_padding_to_font_size, matrix);
+                                    const bounds = vertex.getBoundsVertex(text.typo_props.font_size * ch_d.max_ratio_padding_to_font_size, matrix);
                                     const char_sdf_viewport_font_size = ch_d.max_font_size * ch_d.sdf_scale;
-                                    const sdf_scale = char_sdf_viewport_font_size / text.font_size;
+                                    const sdf_scale = char_sdf_viewport_font_size / text.typo_props.font_size;
 
                                     web_gpu_programs.draw_shape(
                                         &bounds,
@@ -1123,7 +1134,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                         else
                             types.Point{
                                 .x = 0,
-                                .y = -text.font_size * text.line_height,
+                                .y = -text.typo_props.font_size * text.typo_props.line_height,
                             };
                     if (text.addCaretDrawVertex(position)) |buffer| {
                         try vertex_triangles_buffer.appendSlice(&buffer);
@@ -1273,8 +1284,9 @@ pub fn setSnapshot(snapshot: snapshots.ProjectSnapshot, with_snapshot: bool) !vo
                     text.id,
                     text.content orelse "",
                     text.bounds,
-                    text.font_size,
                     text.props,
+                    text.typo_props,
+                    text.sdf_texture_id,
                 );
             },
         }
@@ -1335,7 +1347,7 @@ pub fn tick(now: f32) !void {
     try snapshots.loop(state);
 }
 
-pub fn setSelectedAssetProps(ser_props: asset_props.SerializedProps, commit: bool) !void {
+pub fn setSelectedAssetProps(serialized_props: asset_props.SerializedProps, commit: bool) !void {
     if (getSelectedAsset()) |asset| {
         switch (asset.*) {
             .img => |img| {
@@ -1343,20 +1355,20 @@ pub fn setSelectedAssetProps(ser_props: asset_props.SerializedProps, commit: boo
                 // img.props = props;
             },
             .shape => |*shape| {
-                shape.props = try asset_props.deserializeProps(ser_props, std.heap.page_allocator);
-                if (ser_props.filter == null and shape.cache_texture_id != null) {
+                shape.props = try asset_props.deserializeProps(serialized_props, std.heap.page_allocator);
+                if (serialized_props.filter == null and shape.cache_texture_id != null) {
                     // TODO: https://github.com/mateuszJS/magic-render/issues/204
                     // destroy_texture(shape.cache_texture_id);
 
                     shape.cache_texture_id = null;
-                } else if (ser_props.filter != null and shape.cache_texture_id == null) {
+                } else if (serialized_props.filter != null and shape.cache_texture_id == null) {
                     shape.cache_texture_id = create_cache_texture();
                 }
                 shape.outdated_sdf = true;
             },
             .text => |*text| {
-                text.props = try asset_props.deserializeProps(ser_props, std.heap.page_allocator);
-                if (text.sdf_texture_id != null) {
+                text.props = try asset_props.deserializeProps(serialized_props, std.heap.page_allocator);
+                if (text.typo_props.is_sdf_shared) {
                     text.is_sdf_outdated = true;
                 }
             },
@@ -1451,15 +1463,4 @@ pub fn setSelectedAssetBounds(bounds: [4]types.PointUV, commit: bool) !void {
     }
 
     snapshots.triggerNewSnapshot(true, commit);
-}
-
-pub fn toggleSharedTextEffects() void {
-    if (getSelectedText()) |text| {
-        if (text.sdf_texture_id != null) {
-            text.sdf_texture_id = null;
-        } else {
-            text.sdf_texture_id = create_sdf_texture();
-            text.is_sdf_outdated = true;
-        }
-    }
 }

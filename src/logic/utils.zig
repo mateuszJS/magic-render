@@ -1,5 +1,5 @@
 const math = @import("std").math;
-const consts = @import("./consts.zig");
+const consts = @import("consts.zig");
 const PointUV = @import("types.zig").PointUV;
 
 pub fn findMidAngle(angle1: f32, angle2: f32) f32 {

@@ -1,6 +1,5 @@
 const std = @import("std");
 const Point = @import("types.zig").Point;
-const Utils = @import("utils.zig");
 const triangles = @import("triangles.zig");
 
 fn getPoints(start: anytype, end: anytype, width: f32, rounded: f32) [4]triangles.RoundCorner {

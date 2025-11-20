@@ -13,6 +13,8 @@ const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const sdf = @import("../sdf/sdf.zig");
 const asset_props = @import("../asset_props.zig");
 const fill = @import("../sdf/fill.zig");
+const typography_props = @import("typography_props.zig");
+const js_glue = @import("../js_glue.zig");
 
 const ENTER_CHAR_CODE: u21 = 0xa;
 const SOFT_BREAK_MARKER: u21 = 0x2060;
@@ -55,29 +57,29 @@ pub const ComputeTextResult = struct {
 pub const Text = struct {
     id: u32,
     content: []const u8,
-    font_size: f32,
     bounds: [4]PointUV,
-    line_height: f32 = 1.2, // line height multiplier
     text_vertex: std.ArrayList(CharVertex),
 
     sdf_texture_id: ?u32 = null,
     sdf_scale: f32 = 1.0,
     is_sdf_outdated: bool = true,
+
     props: asset_props.Props,
+    typo_props: typography_props.Props,
 
     pub fn new(
         allocator: std.mem.Allocator,
         id: u32,
         content: []const u8,
         bounds: [4]PointUV,
-        font_size: f32,
         input_props: asset_props.SerializedProps,
+        input_typo_props: typography_props.Serialized,
         sdf_texture_id: ?u32,
     ) !Text {
         var text = Text{
             .id = id,
             .content = content,
-            .font_size = font_size,
+            .typo_props = typography_props.deserialize(input_typo_props),
             .bounds = bounds,
             .text_vertex = std.ArrayList(CharVertex).init(allocator),
             .props = try asset_props.deserializeProps(input_props, allocator),
@@ -90,11 +92,12 @@ pub const Text = struct {
     }
 
     fn getDrawRelativeBounds(self: Text, x: f32, y: f32, width: f32, height: f32, origin: Point) [4]PointUV {
-        const w = width * self.font_size;
-        const h = height * self.font_size;
+        const size = self.typo_props.font_size;
+        const w = width * size;
+        const h = height * size;
         const p = Point{
-            .x = origin.x + x * self.font_size,
-            .y = origin.y + y * self.font_size,
+            .x = origin.x + x * size,
+            .y = origin.y + y * size,
         };
         return [_]PointUV{
             .{ .x = p.x, .y = p.y + h, .u = 0.0, .v = 1.0 },
@@ -113,7 +116,7 @@ pub const Text = struct {
 
         self.text_vertex.clearAndFree();
 
-        const lh = self.font_size * self.line_height;
+        const lh = self.typo_props.font_size * self.typo_props.line_height;
         const max_text_width = self.bounds[0].distance(self.bounds[1]);
         var longest_line: f32 = 0.0;
         var next_pos = Point{ .x = 0, .y = -lh };
@@ -142,11 +145,11 @@ pub const Text = struct {
             if (new_selection_end == 0 and cp_index >= selection_end) new_selection_end = self.text_vertex.items.len;
 
             const char_details = try fonts.get(0, cp);
-            const char_width = (char_details.x + char_details.width) * self.font_size;
+            const char_width = (char_details.x + char_details.width) * self.typo_props.font_size;
 
             var space_before = if (option_prev_cp) |prev_cp| b: {
                 const kerning = try fonts.get_kerning(0, prev_cp, cp);
-                break :b kerning * self.font_size;
+                break :b kerning * self.typo_props.font_size;
             } else 0.0;
 
             const exceeded_max_width = (next_pos.x + space_before + char_width) > max_text_width;
@@ -257,7 +260,7 @@ pub const Text = struct {
             ch_vertex.origin.x,
             ch_vertex.origin.y,
             ch_vertex.relative_bounds[1].x - ch_vertex.origin.x,
-            self.font_size * self.line_height,
+            self.typo_props.font_size * self.typo_props.line_height,
             0.0,
             .{ 0, 100, 100, 100 },
         );
@@ -271,7 +274,7 @@ pub const Text = struct {
         const matrix = Matrix3x3.getMatrixFromRectangleNoScale(self.bounds);
         const relative_end = Point{
             .x = relative_start.x,
-            .y = relative_start.y + self.font_size * self.line_height,
+            .y = relative_start.y + self.typo_props.font_size * self.typo_props.line_height,
         };
 
         const CARET_BLINK_INTERVAL_MS = 700;
@@ -309,6 +312,14 @@ pub const Text = struct {
         }
 
         return null;
+    }
+
+    pub fn getSdfTextureId(self: *Text) u32 {
+        return if (self.sdf_texture_id) |sdf_texture_id| sdf_texture_id else b: {
+            const sdf_tex_id = js_glue.create_sdf_texture();
+            self.sdf_texture_id = sdf_tex_id;
+            break :b sdf_tex_id;
+        };
     }
 
     pub fn addPickVertex(
@@ -358,7 +369,7 @@ pub const Text = struct {
                     vertex.origin.x - left_additional_offset,
                     vertex.origin.y,
                     half_width + left_additional_offset,
-                    self.line_height * self.font_size,
+                    self.typo_props.line_height * self.typo_props.font_size,
                     0.0,
                     .{ self.id, valid_pick_index, 0, 0 },
                 ));
@@ -374,7 +385,7 @@ pub const Text = struct {
                     char_x,
                     vertex.origin.y,
                     half_width + right_additional_offset,
-                    self.line_height * self.font_size,
+                    self.typo_props.line_height * self.typo_props.font_size,
                     0.0,
                     .{ self.id, valid_pick_index + 1, 0, 0 },
                 ));
@@ -413,9 +424,10 @@ pub const Text = struct {
         return Serialized{
             .id = self.id,
             .content = self.content,
-            .font_size = self.font_size,
             .bounds = self.bounds,
             .props = props,
+            .typo_props = self.typo_props.serialize(),
+            .sdf_texture_id = self.sdf_texture_id,
         };
     }
 };
@@ -425,14 +437,15 @@ pub const Serialized = struct {
     content: ?[]const u8, // it's a null pointer exception for case when content is empty, we allow null
     // to avoid throwing the exception by Zigar
     bounds: [4]PointUV,
-    font_size: f32,
     props: asset_props.SerializedProps,
+    typo_props: typography_props.Serialized,
+    sdf_texture_id: ?u32,
 
     pub fn compare(self: Serialized, other: Serialized) bool {
         const all_match = self.id == other.id and
-            self.font_size == other.font_size and
             self.props.compare(other.props) and
             utils.compareBounds(self.bounds, other.bounds) and
+            self.typo_props.compare(other.typo_props) and
             std.mem.eql(u8, self.content orelse &.{}, other.content orelse &.{});
 
         return all_match;

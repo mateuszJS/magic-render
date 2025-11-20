@@ -1,8 +1,8 @@
 const std = @import("std");
-const sdf = @import("./sdf/sdf.zig");
-const fill = @import("./sdf/fill.zig");
-const types = @import("./types.zig");
-const utils = @import("./utils.zig");
+const sdf = @import("sdf/sdf.zig");
+const fill = @import("sdf/fill.zig");
+const types = @import("types.zig");
+const utils = @import("utils.zig");
 
 pub const SerializedSdfEffect = struct {
     dist_start: f32,

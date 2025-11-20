@@ -54,6 +54,12 @@ export type ShapeProps = {
   opacity: number
 }
 
+export type TypoProps = {
+  font_size: number
+  line_height: number
+  is_sdf_shared: boolean
+}
+
 export type SerializedImage = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   bounds?: PointUV[]
@@ -74,8 +80,9 @@ export type SerializedText = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   content: string
   bounds: PointUV[]
-  font_size: number
   props: ShapeProps
+  typo_props: TypoProps
+  sdf_texture_id: number | null
 }
 
 export type SerializedAsset = SerializedImage | SerializedShape | SerializedText
@@ -106,8 +113,9 @@ type TextAsset = {
   id: number
   content: string | null
   bounds: PointUV[]
-  font_size: number
   props: ShapeProps
+  typo_props: TypoProps
+  sdf_texture_id: number | null
 }
 
 export type ZigAsset = { img: ImageAsset } | { shape: ShapeAsset } | { text: TextAsset }

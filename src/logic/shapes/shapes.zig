@@ -11,7 +11,7 @@ const shared = @import("../shared.zig");
 const images = @import("../images.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const consts = @import("../consts.zig");
-const PathUtils = @import("path_utils.zig");
+const path_utils = @import("path_utils.zig");
 const fill = @import("../sdf/fill.zig");
 const sdf = @import("../sdf/sdf.zig");
 const AssetId = @import("../asset_id.zig").AssetId;
@@ -157,7 +157,7 @@ pub const Shape = struct {
                 if (dist > CREATE_HANDLE_THRESHOLD) {
                     self.updateLastHandle(p);
                 } else {
-                    self.updateLastHandle(PathUtils.STRAIGHT_LINE_HANDLE);
+                    self.updateLastHandle(path_utils.STRAIGHT_LINE_HANDLE);
                 }
             }
         } else {
@@ -201,7 +201,7 @@ pub const Shape = struct {
         // Normalize points to [0,1] range
         for (self.paths.items) |*path| {
             for (path.points.items) |*p| {
-                if (PathUtils.isStraightLineHandle(p.*)) continue;
+                if (path_utils.isStraightLineHandle(p.*)) continue;
                 p.x = (p.x - box.min_x) / new_width;
                 p.y = (p.y - box.min_y) / new_height;
             }
@@ -218,7 +218,7 @@ pub const Shape = struct {
 
     fn updateLastHandle(self: *Shape, absolute_point: Point) void {
         if (active_path_index) |i| {
-            const point = if (PathUtils.isStraightLineHandle(absolute_point)) b: {
+            const point = if (path_utils.isStraightLineHandle(absolute_point)) b: {
                 break :b absolute_point;
             } else b: {
                 const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
@@ -268,7 +268,7 @@ pub const Shape = struct {
 
         if (self.preview_point) |point| {
             if (!is_handle_preview) {
-                const buffer = PathUtils.getVertexDrawSkeletonPoint(true, point, false);
+                const buffer = path_utils.getVertexDrawSkeletonPoint(true, point, false);
                 try skeleton_buffer.appendSlice(&buffer);
             }
         }
@@ -277,7 +277,7 @@ pub const Shape = struct {
     }
 
     pub fn getSkeletonUniform(self: Shape) sdf.DrawUniform {
-        const stroke_width = PathUtils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.render_scale;
+        const stroke_width = path_utils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.render_scale;
         return sdf.DrawUniform{
             .solid = .{
                 .dist_start = stroke_width * 0.5,
@@ -324,7 +324,7 @@ pub const Shape = struct {
             try path.getClosedPathPoints(&points, preview_p);
         }
 
-        PathUtils.prepareHalfStraightLines(points.items);
+        path_utils.prepareHalfStraightLines(points.items);
 
         return points.toOwnedSlice();
     }
