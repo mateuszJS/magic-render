@@ -54,23 +54,23 @@ export type ShapeProps = {
   opacity: number
 }
 
-export type SerializedInputImage = {
+export type SerializedImage = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   bounds?: PointUV[]
   url: string
   texture_id?: number
 }
 
-export type SerializedInputShape = {
+export type SerializedShape = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   paths: Point[][]
   props: ShapeProps
+  bounds: PointUV[]
   sdf_texture_id?: number
   cache_texture_id?: number | null
-  bounds: PointUV[]
 }
 
-export type SerializedInputText = {
+export type SerializedText = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   content: string
   bounds: PointUV[]
@@ -78,36 +78,7 @@ export type SerializedInputText = {
   props: ShapeProps
 }
 
-export type SerializedInputAsset = SerializedInputImage | SerializedInputShape | SerializedInputText
-
-export type SerializedOutputImage = {
-  id: number // not needed while loading project but useful for undo/redo to maintain selection
-  bounds: PointUV[]
-  url: string
-  texture_id: number
-}
-
-export type SerializedOutputShape = {
-  id: number // not needed while loading project but useful for undo/redo to maintain selection
-  paths: Point[][]
-  props: ShapeProps
-  bounds: PointUV[]
-  sdf_texture_id: number
-  cache_texture_id: number | null
-}
-
-export type SerializedOutputText = {
-  id: number // not needed while loading project but useful for undo/redo to maintain selection
-  content: string
-  bounds: PointUV[]
-  font_size: number
-  props: ShapeProps
-}
-
-export type SerializedOutputAsset =
-  | SerializedOutputImage
-  | SerializedOutputShape
-  | SerializedOutputText
+export type SerializedAsset = SerializedImage | SerializedShape | SerializedText
 
 export enum CreatorTool {
   SelectAsset = 0,
@@ -126,7 +97,7 @@ type ShapeAsset = {
   id: number
   paths: Point[][]
   props: ShapeProps
-  bounds: PointUV[] | null
+  bounds: PointUV[]
   sdf_texture_id: number
   cache_texture_id: number | null
 }
@@ -140,3 +111,15 @@ type TextAsset = {
 }
 
 export type ZigAsset = { img: ImageAsset } | { shape: ShapeAsset } | { text: TextAsset }
+
+export interface ZigProjectSnapshot {
+  width: number
+  height: number
+  assets: ZigAsset[]
+}
+
+export interface ProjectSnapshot {
+  width: number
+  height: number
+  assets: SerializedAsset[]
+}

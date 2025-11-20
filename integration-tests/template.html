@@ -27,16 +27,26 @@
       min-height: 0;
     }
 
+    aside {
+      overflow-y: scroll;
+    }
+
     aside>* {
       display: block;
       padding: 0.7rem 0;
       border-top: 1px solid #777;
+      overflow-x: hidden;
     }
 
     [popover] {
       margin: 0;
       inset: auto;
-      position-area: right;
+      position-area: top right;
+
+      &:popover-open {
+        display: flex;
+        flex-direction: column;
+      }
 
       textarea {
         width: 250px;
@@ -54,6 +64,7 @@
     <p>Selected asset: <span id="selected-asset-id">0</span></p>
     <p>Is processing events: <span id="is-processing-events">false</span></p>
     <div><button id="remove-btn">Remove Asset</button></div>
+    <div><label>X Position<input type="range" id="x-slider" min="0" max="100" value="50" /></label></div>
     <div><button id="undo-btn">Undo</button></div>
     <div><button id="redo-btn">Redo</button></div>
     <div>
@@ -70,18 +81,26 @@
     </div>
     <div>
       <button popovertarget="asset-bounds-popover">Asset Bounds</button>
-      <form id="asset-bounds-popover" popover>
-        <div><b>Asset Coords:</b></div>
+      <form id="asset-bounds-popover" popover="manual">
+        <b>Asset Coords:</b>
         <textarea name="code" id="asset-bounds-content"></textarea>
-        <div><button>Apply</button></div>
+        <button>Apply</button>
       </form>
     </div>
     <div>
       <button popovertarget="asset-props-popover">Asset Props</button>
-      <form id="asset-props-popover" popover>
-        <div><b>Asset Props:</b></div>
+      <form id="asset-props-popover" popover="manual">
+        <b>Asset Props:</b>
         <textarea name="code" id="asset-props-content"></textarea>
-        <div><button>Apply</button></div>
+        <button>Apply</button>
+      </form>
+    </div>
+    <div>
+      <button popovertarget="project-size-popover">Project Size</button>
+      <form id="project-size-popover" popover>
+        <b>Project Size:</b>
+        <div><input name="width" type="number" /> x <input name="height" type="number" /></div>
+        <button>Apply</button>
       </form>
     </div>
     <div>

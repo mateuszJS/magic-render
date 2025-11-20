@@ -1,6 +1,11 @@
 import getMultisampleTexture from './getMultisampleTexture'
-import getDepthTexture from './getDepthTexture'
+// import getDepthTexture from './getDepthTexture'
 let multisampleTexture: GPUTexture | undefined
+
+export function destroyCanvasTextures() {
+  multisampleTexture?.destroy()
+  multisampleTexture = undefined
+}
 
 export default function getCanvasRenderDescriptor(context: GPUCanvasContext, device: GPUDevice) {
   // here we need to render that texture into canvas
@@ -19,8 +24,8 @@ export default function getCanvasRenderDescriptor(context: GPUCanvasContext, dev
     label: 'our render to canvas renderPass',
     colorAttachments: [
       {
-        view: multisampleTexture.createView(),
-        resolveTarget: canvasTexture.createView(), // resolveTarget is used to resolve multisample texture into single sample texture
+        view: multisampleTexture.createView({ label: 'multisample texture view' }), // we draw to this texture first
+        resolveTarget: canvasTexture.createView({ label: 'canvas texture view' }), // resolveTarget is used to resolve multisample texture into single sample texture
         clearValue: [0, 0, 0, 1],
         loadOp: 'clear', // before rendering clear the texture to value "clear". Other option is "load" to load existing content of the texture into GPU so we can draw over it
         storeOp: 'store', // to store the result of what we draw, other option is "discard"

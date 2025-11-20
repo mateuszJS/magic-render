@@ -157,10 +157,7 @@ export default function runCreator(
   device.queue.submit([encoder.finish()])
 
   /*===========MAIN LOOP FUNCTION===============*/
-  function draw(
-    now: DOMHighResTimeStamp,
-    preview?: { canvas: HTMLCanvasElement; ctx: GPUCanvasContext; onCapture: VoidFunction }
-  ) {
+  function draw(now: DOMHighResTimeStamp, previewCtx?: GPUCanvasContext) {
     Logic.tick(now)
 
     encoder = device.createCommandEncoder({
@@ -173,20 +170,19 @@ export default function runCreator(
 
     Logic.updateCache()
 
-    const canvasDescriptor = getCanvasRenderDescriptor(preview?.ctx || context, device)
+    const canvasDescriptor = getCanvasRenderDescriptor(previewCtx || context, device)
     renderPass = encoder.beginRenderPass(canvasDescriptor)
 
-    const matrix = getCanvasMatrix(preview?.canvas || creatorCanvas)
+    const matrix = getCanvasMatrix(previewCtx?.canvas || creatorCanvas)
     device.queue.writeBuffer(canvasMatrix.buffer, 0, matrix)
     // time = performance.now()
-    Logic.renderDraw()
+    Logic.renderDraw(!!previewCtx)
     renderPass.end()
 
-    if (preview) {
+    if (previewCtx) {
       const commandBuffer = encoder.finish()
       device.queue.submit([commandBuffer])
       destroyGpuObjects()
-      preview.onCapture()
       return
     }
 
@@ -225,12 +221,12 @@ export default function runCreator(
     cancelAnimationFrame(rafId)
   }
 
-  const capturePreview = (canvas: HTMLCanvasElement, ctx: GPUCanvasContext) =>
-    new Promise<void>((resolve) => {
-      stopRAF()
-      draw(performance.now(), { canvas, ctx, onCapture: resolve })
-      rafId = requestAnimationFrame(draw)
-    })
+  const capturePreview = (previewCtx: GPUCanvasContext, collectAndCleanup: VoidFunction) => {
+    stopRAF()
+    draw(performance.now(), previewCtx)
+    collectAndCleanup()
+    rafId = requestAnimationFrame(draw)
+  }
 
   return {
     stopRAF,

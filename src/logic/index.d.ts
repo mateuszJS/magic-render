@@ -14,13 +14,14 @@ type ShapeDrawUniform =
   | { radial: PointerDataView }
 
 declare module '*.zig' {
+  import { ZigProjectSnapshot } from 'types'
+
   export const initState: (
     width: number,
     height: number,
     max_texture_size: number,
     max_buffer_size: number
   ) => void
-  export const addImage: (maybe_asset_id: number, bounds: zig.PointUV[], texture_id: number) => void
   export const updateCache: VoidFunction
   export const addShape: (
     maybe_asset_id: number,
@@ -30,10 +31,8 @@ declare module '*.zig' {
     sdf_texture_id: number,
     cache_texture_id: null | number
   ) => number /* id */
-  export const addShapeBegin: VoidFunction
-  export const addShapeFinish: VoidFunction
   export const removeAsset: () => void
-  export const resetAssets: (assets: zig.ZigAsset[], with_snapshot: boolean) => void
+  export const setSnapshot: (snapshot: ZigProjectSnapshot, with_snapshot: boolean) => void
 
   export const onUpdatePick: (id: zig.Id) => void
   export const onPointerDown: (x: number, y: number) => void
@@ -124,7 +123,9 @@ declare module '*.zig' {
       sdf_texture_id: number
     ) => void
   }) => void
-  export const connectOnAssetUpdateCallback: (cb: (data: zig.ZigAsset[]) => void) => void
+  export const connectOnAssetUpdateCallback: (
+    cb: (snapshot: ZigProjectSnapshot, commit: boolean) => void
+  ) => void
   export const connectOnAssetSelectionCallback: (cb: (data: zig.Id) => void) => void
   export const connectCreateSdfTexture: (
     createSdfTexture: () => number,
@@ -134,9 +135,6 @@ declare module '*.zig' {
     create_cache_texture: () => number,
     start_cache: (texture_id: number, box: zig.BoundingBox, width: number, height: number) => void,
     end_cache: VoidFunction
-  ) => void
-  export const connectSelectedAssetUpdates: (
-    on_selected_asset_update: (bounds: zig.PointUV[] | null, props: zig.ShapeProps | null) => void
   ) => void
   export const connectTyping: (
     enable: (text: string) => void,
@@ -150,7 +148,7 @@ declare module '*.zig' {
 
   export const tick: (time: DOMHighResTimeStamp) => void
   export const computeSdfs: VoidFunction
-  export const renderDraw: VoidFunction
+  export const renderDraw: (is_ui_hidden: boolean) => void
   export const renderPick: VoidFunction
   export const deinitState: VoidFunction
   export const setTool: (tool: number) => void
@@ -163,6 +161,6 @@ declare module '*.zig' {
   export const generateUiElementsSdf: VoidFunction
 
   export const toggleSharedTextEffects: VoidFunction
-  export const setSelectedAssetProps: (props: Partial<zig.ShapeProps>) => void
-  export const setSelectedAssetBounds: (bounds: zig.PointUV[]) => void
+  export const setSelectedAssetProps: (props: Partial<zig.ShapeProps>, commit: boolean) => void
+  export const setSelectedAssetBounds: (bounds: zig.PointUV[], commit: boolean) => void
 }

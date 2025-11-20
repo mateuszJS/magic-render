@@ -1,19 +1,12 @@
-import initCreator, { Point, SerializedOutputAsset } from '../src/index'
-import { camera } from '../src/pointer'
-
-export interface AssetBasics {
-  id: number
-  points: Point[]
-  url: string
-}
+import initCreator, { ProjectSnapshot } from '../src/index'
 
 declare global {
   interface Window {
-    assetsSnapshot: AssetBasics[]
+    lastSnapshot: ProjectSnapshot
   }
 }
 
-const assetsUpdatesHistory: SerializedOutputAsset[][] = [[]]
+const assetsUpdatesHistory: ProjectSnapshot[] = []
 
 async function test() {
   const canvas = document.querySelector<HTMLCanvasElement>('canvas')!
@@ -31,41 +24,21 @@ async function test() {
     document.querySelector<HTMLTextAreaElement>('#asset-props-content')!
   const assetBoundsForm = document.querySelector<HTMLFormElement>('#asset-bounds-popover')!
   const assetPropsForm = document.querySelector<HTMLFormElement>('#asset-props-popover')!
+  const projectSizeForm = document.querySelector<HTMLFormElement>('#project-size-popover')!
+  const xSlider = document.querySelector<HTMLInputElement>('#x-slider')!
 
-  window.assetsSnapshot = []
-  function setAssetSnapshot(assets: SerializedOutputAsset[]) {
-    const scale = (canvas.width * camera.zoom) / canvas.clientWidth
-
-    window.assetsSnapshot = assets.map<AssetBasics>((asset) => {
-      if ('paths' in asset) {
-        return {
-          id: asset.id,
-          url: 'cache',
-          points: [],
-          // points:
-          //   asset.cache === null
-          //     ? []
-          //     : asset.bounds.map((point) => ({
-          //         x: point.x * scale + camera.x,
-          //         y: point.y * scale + camera.y,
-          //       })),
-        }
-      }
-      return {
-        id: asset.id,
-        url: '',
-        points: [],
-        // points: asset.points.map((point) => ({
-        //   x: point.x * scale + camera.x,
-        //   y: point.y * scale + camera.y,
-        // })),
-      }
-    })
+  window.lastSnapshot = {
+    width: 0,
+    height: 0,
+    assets: [],
   }
 
   let currentHistoryIndex = 0
   let newTextures = 0
+  let selectedAssetId = 0
   const creator = await initCreator(
+    1000,
+    1650,
     canvas,
     (url, setNewUrl) => {
       setNewUrl(`${newTextures}-${url}`)
@@ -74,19 +47,32 @@ async function test() {
       // setNewUrl('new url')
       // }
     },
-    (assets) => {
-      setAssetSnapshot(assets)
+    (snapshot, commit) => {
+      window.lastSnapshot = snapshot
+
+      const selectedAsset = snapshot.assets.find((asset) => asset.id === selectedAssetId)
+
+      if (selectedAsset) {
+        assetBoundsTextarea.value = JSON.stringify(selectedAsset.bounds, null, 2)
+        if ('props' in selectedAsset) {
+          assetPropertiesTextarea.value = JSON.stringify(selectedAsset.props, null, 2)
+        }
+      }
+
+      if (!commit) return
+
       // we had to implement this whole history logic because there is no way
-      // to call creator.resetCanvas(newAssets) from test code file
+      // to call creator.setSnapshot(snapshot) from test code file
       if (currentHistoryIndex < assetsUpdatesHistory.length - 1) {
         assetsUpdatesHistory.splice(currentHistoryIndex + 1)
       }
-      assetsUpdatesHistory.push(assets)
+      assetsUpdatesHistory.push(snapshot)
       currentHistoryIndex = assetsUpdatesHistory.length - 1
-      console.log(assets)
+      console.log(snapshot)
     },
     (assetId) => {
       selectedAssetEl.textContent = assetId.toString()
+      selectedAssetId = assetId[0]
     },
     (inProgress) => {
       isProcessingEventsEl.textContent = inProgress ? 'true' : 'false'
@@ -97,10 +83,6 @@ async function test() {
     (newTool) => {
       toolsSelect.value = newTool.toString()
       console.log(`new tool: ${newTool}`)
-    },
-    (bounds, props) => {
-      assetBoundsTextarea.value = JSON.stringify(bounds, null, 2)
-      assetPropertiesTextarea.value = JSON.stringify(props, null, 2)
     }
   )
 
@@ -122,35 +104,35 @@ async function test() {
     const { files } = event.target as HTMLInputElement
     if (!files) return
 
-    const urls = Array.from(files).map((file) => ({
-      url: URL.createObjectURL(file),
-    }))
+    const snapshot = {
+      width: window.lastSnapshot.width,
+      height: window.lastSnapshot.height,
+      assets: Array.from(files).map((file) => ({
+        url: URL.createObjectURL(file),
+      })),
+    }
 
-    creator.resetAssets(urls, true)
+    creator.setSnapshot(snapshot, true)
     startProjectInputFromImages.value = '' // reset input value to allow re-uploading the same file
   })
 
-  const startProjectInputFroMAssets = document.querySelector<HTMLInputElement>(
+  const startProjectInputFromAssets = document.querySelector<HTMLInputElement>(
     '#start-project-from-assets'
   )!
-  startProjectInputFroMAssets.addEventListener('change', (event) => {
+  startProjectInputFromAssets.addEventListener('change', (event) => {
     const { files } = event.target as HTMLInputElement
     if (!files) return
 
-    const PROJECT_SAMPLE = Array.from(files).map((file) => ({
-      url: URL.createObjectURL(file),
-      // prettier-ignore
-      matrix: [
-        1, 0, 0,
-        0, 1, 0,
-        0, 0, 1
-      ],
+    const PROJECT_SAMPLE = {
+      assets: Array.from(files).map((file) => ({
+        url: URL.createObjectURL(file),
+      })),
       width: 500,
       height: 500,
-    }))
+    }
 
-    creator.resetAssets(PROJECT_SAMPLE, true)
-    startProjectInputFroMAssets.value = '' // reset input value to allow re-uploading the same file
+    creator.setSnapshot(PROJECT_SAMPLE, true)
+    startProjectInputFromAssets.value = '' // reset input value to allow re-uploading the same file
   })
 
   removeAssetBtn.addEventListener('click', () => {
@@ -159,16 +141,16 @@ async function test() {
 
   undoBtn.addEventListener('click', () => {
     currentHistoryIndex = Math.max(0, currentHistoryIndex - 1)
-    const assets = assetsUpdatesHistory[currentHistoryIndex]
-    creator.resetAssets(assets)
-    setAssetSnapshot(assets)
+    const snapshot = assetsUpdatesHistory[currentHistoryIndex]
+    creator.setSnapshot(snapshot, false)
+    window.lastSnapshot = snapshot
   })
 
   redoBtn.addEventListener('click', () => {
     currentHistoryIndex = Math.min(assetsUpdatesHistory.length - 1, currentHistoryIndex + 1)
-    const assets = assetsUpdatesHistory[currentHistoryIndex]
-    creator.resetAssets(assets)
-    setAssetSnapshot(assets)
+    const snapshot = assetsUpdatesHistory[currentHistoryIndex]
+    creator.setSnapshot(snapshot, false)
+    window.lastSnapshot = snapshot
   })
 
   toolsSelect.addEventListener('change', (event) => {
@@ -185,7 +167,7 @@ async function test() {
     const formData = new FormData(assetPropsForm)
     try {
       const newProps = JSON.parse(formData.get('code') as string)
-      creator.updateAssetProps(newProps)
+      creator.updateAssetProps(newProps, true)
     } catch (e) {
       alert('Cannot parse JSON: ' + (e as Error).message)
     }
@@ -196,11 +178,48 @@ async function test() {
     const formData = new FormData(assetBoundsForm)
     try {
       const newBounds = JSON.parse(formData.get('code') as string)
-      creator.updateAssetBounds(newBounds)
+      creator.updateAssetBounds(newBounds, true)
     } catch (e) {
       alert('Cannot parse JSON: ' + (e as Error).message)
     }
   })
+
+  projectSizeForm.addEventListener('submit', function (e) {
+    e.preventDefault()
+    const formData = new FormData(projectSizeForm)
+    const width = Number(formData.get('width'))
+    const height = Number(formData.get('height'))
+    creator.setSnapshot(
+      {
+        assets: window.lastSnapshot.assets,
+        width,
+        height,
+      },
+      true
+    )
+  })
+
+  const updateX = (commit: boolean) => {
+    const x = 50 - Number(xSlider.value)
+    const lastCommittedSnapshot = assetsUpdatesHistory[currentHistoryIndex]
+    const asset = lastCommittedSnapshot.assets.find((a) => a.id === selectedAssetId)
+    if (!asset) {
+      console.error('No selected asset found')
+      return
+    }
+    const bounds = asset.bounds
+
+    if (!bounds) throw new Error('Asset has no bounds defined')
+    console.log(x, commit)
+    const newBounds = bounds.map((point) => ({
+      ...point,
+      x: point.x + x,
+    }))
+    creator.updateAssetBounds(newBounds, commit)
+  }
+
+  xSlider.addEventListener('input', () => updateX(false))
+  xSlider.addEventListener('pointerup', () => updateX(true))
 }
 
 test()

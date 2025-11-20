@@ -70,7 +70,7 @@ pub const Shape = struct {
     pub fn new(
         id: u32,
         input_paths: []const []const Point,
-        input_bounds: ?[4]PointUV,
+        input_bounds: [4]PointUV,
         input_props: asset_props.SerializedProps,
         sdf_texture_id: u32,
         cache_texture_id: ?u32,
@@ -93,7 +93,7 @@ pub const Shape = struct {
             .sdf_texture_id = sdf_texture_id,
             .outdated_sdf = true,
             .should_update_sdf = false,
-            .bounds = input_bounds orelse consts.DEFAULT_BOUNDS,
+            .bounds = input_bounds,
             .cache_texture_id = cache_texture_id,
             .outdated_cache = true,
         };

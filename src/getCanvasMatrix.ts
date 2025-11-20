@@ -1,7 +1,7 @@
 import mat4 from 'utils/mat4'
 import { camera } from 'pointer'
 
-export default function getCanvasMatrix(canvas: HTMLCanvasElement) {
+export default function getCanvasMatrix(canvas: HTMLCanvasElement | OffscreenCanvas) {
   const ortho = mat4.ortho(
     0, // left
     canvas.width, // right
