@@ -123,7 +123,9 @@ declare module '*.zig' {
       sdf_texture_id: number
     ) => void
   }) => void
-  export const connectOnAssetUpdateCallback: (cb: (snapshot: ZigProjectSnapshot) => void) => void
+  export const connectOnAssetUpdateCallback: (
+    cb: (snapshot: ZigProjectSnapshot, commit: boolean) => void
+  ) => void
   export const connectOnAssetSelectionCallback: (cb: (data: zig.Id) => void) => void
   export const connectCreateSdfTexture: (
     createSdfTexture: () => number,
@@ -133,9 +135,6 @@ declare module '*.zig' {
     create_cache_texture: () => number,
     start_cache: (texture_id: number, box: zig.BoundingBox, width: number, height: number) => void,
     end_cache: VoidFunction
-  ) => void
-  export const connectSelectedAssetUpdates: (
-    on_selected_asset_update: (bounds: zig.PointUV[] | null, props: zig.ShapeProps | null) => void
   ) => void
   export const connectTyping: (
     enable: (text: string) => void,
@@ -162,6 +161,6 @@ declare module '*.zig' {
   export const generateUiElementsSdf: VoidFunction
 
   export const toggleSharedTextEffects: VoidFunction
-  export const setSelectedAssetProps: (props: Partial<zig.ShapeProps>) => void
-  export const setSelectedAssetBounds: (bounds: zig.PointUV[]) => void
+  export const setSelectedAssetProps: (props: Partial<zig.ShapeProps>, commit: boolean) => void
+  export const setSelectedAssetBounds: (bounds: zig.PointUV[], commit: boolean) => void
 }
