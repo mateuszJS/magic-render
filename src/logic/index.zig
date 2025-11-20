@@ -1355,6 +1355,7 @@ pub fn setSelectedAssetProps(serialized_props: asset_props.SerializedProps, comm
                 // img.props = props;
             },
             .shape => |*shape| {
+                shape.props.deinit();
                 shape.props = try asset_props.deserializeProps(serialized_props, std.heap.page_allocator);
                 if (serialized_props.filter == null and shape.cache_texture_id != null) {
                     // TODO: https://github.com/mateuszJS/magic-render/issues/204
@@ -1367,6 +1368,7 @@ pub fn setSelectedAssetProps(serialized_props: asset_props.SerializedProps, comm
                 shape.outdated_sdf = true;
             },
             .text => |*text| {
+                text.props.deinit();
                 text.props = try asset_props.deserializeProps(serialized_props, std.heap.page_allocator);
                 if (text.typo_props.is_sdf_shared) {
                     text.is_sdf_outdated = true;

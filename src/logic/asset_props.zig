@@ -35,6 +35,13 @@ pub const Props = struct {
             .opacity = self.opacity,
         };
     }
+
+    pub fn deinit(self: *Props) void {
+        for (self.sdf_effects.items) |*effect| {
+            effect.fill.deinit();
+        }
+        self.sdf_effects.deinit();
+    }
 };
 
 pub const SerializedProps = struct {

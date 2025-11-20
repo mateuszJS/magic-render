@@ -77,9 +77,9 @@ async function test() {
       window.lastSnapshot.assets.some((asset) => {
         if (asset.id === selectedAssetId && 'content' in asset) {
           sharedTextEffects.checked = asset.typo_props.is_sdf_shared
+          return true
         }
-
-        return asset
+        return false
       })
     },
     (inProgress) => {
