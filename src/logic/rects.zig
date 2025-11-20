@@ -1,6 +1,5 @@
 const Point = @import("types.zig").Point;
 const PointUV = @import("types.zig").PointUV;
-const Utils = @import("utils.zig");
 const math = @import("std").math;
 const std = @import("std");
 const triangles = @import("triangles.zig");

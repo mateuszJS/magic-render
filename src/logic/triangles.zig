@@ -1,6 +1,6 @@
 const Point = @import("types.zig").Point;
 const PointUV = @import("types.zig").PointUV;
-const Utils = @import("utils.zig");
+const utils = @import("utils.zig");
 const math = @import("std").math;
 const std = @import("std");
 
@@ -86,9 +86,9 @@ pub fn getRoundCornerVector(index: usize, points: [NUM_OF_POINTS]Point, radius: 
 
     const p_to_pa = p.angleTo(pa);
     const p_to_pb = p.angleTo(pb);
-    const mid_angle_p = Utils.findMidAngle(p_to_pa, p_to_pb);
+    const mid_angle_p = utils.findMidAngle(p_to_pa, p_to_pb);
 
-    const half_of_mid_angle_p = Utils.angleDifference(mid_angle_p, p_to_pa);
+    const half_of_mid_angle_p = utils.angleDifference(mid_angle_p, p_to_pa);
     const p0_circle_offset = radius / math.sin(half_of_mid_angle_p); // Pythagorean theorem
     const p_circle = Point{
         .x = p.x + math.cos(mid_angle_p) * p0_circle_offset,

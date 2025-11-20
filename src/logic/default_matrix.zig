@@ -1,4 +1,4 @@
-const Matrix3x3 = @import("./matrix.zig").Matrix3x3;
+const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 const std = @import("std");
 
 pub fn getDefaultMatrix(

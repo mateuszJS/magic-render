@@ -73,6 +73,14 @@ async function test() {
     (assetId) => {
       selectedAssetEl.textContent = assetId.toString()
       selectedAssetId = assetId[0]
+
+      window.lastSnapshot.assets.some((asset) => {
+        if (asset.id === selectedAssetId && 'content' in asset) {
+          sharedTextEffects.checked = asset.typo_props.is_sdf_shared
+          return true
+        }
+        return false
+      })
     },
     (inProgress) => {
       isProcessingEventsEl.textContent = inProgress ? 'true' : 'false'
@@ -159,7 +167,26 @@ async function test() {
   })
 
   sharedTextEffects.addEventListener('change', () => {
-    creator.toggleSharedTextEffects()
+    const newAssets = window.lastSnapshot.assets.map((asset) => {
+      if (asset.id === selectedAssetId && 'content' in asset) {
+        return {
+          ...asset,
+          typo_props: {
+            ...asset.typo_props,
+            is_sdf_shared: sharedTextEffects.checked,
+          },
+        }
+      }
+
+      return asset
+    })
+    creator.setSnapshot(
+      {
+        ...window.lastSnapshot,
+        assets: newAssets,
+      },
+      true
+    )
   })
 
   assetPropsForm.addEventListener('submit', function (e) {

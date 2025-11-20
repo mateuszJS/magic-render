@@ -1,6 +1,6 @@
 // This module is responsible to generate snapshots
 
-const Utils = @import("utils.zig");
+const utils = @import("utils.zig");
 const AssetSerialized = @import("types.zig").AssetSerialized;
 const State = @import("types.zig").State;
 const shared = @import("shared.zig");
@@ -107,7 +107,7 @@ fn generateNewSnapshot(state: State) !void {
 
     if (commit) {
         // if it's not a commit, then we do not care about limiting snapshots
-        const is_project_size_same = Utils.equalF32(last_project_snapshot.width, state.width) and Utils.equalF32(last_project_snapshot.height, state.height);
+        const is_project_size_same = utils.equalF32(last_project_snapshot.width, state.width) and utils.equalF32(last_project_snapshot.height, state.height);
         if (is_project_size_same and curr_snapshot.assets.len == last_project_snapshot.assets.len) {
             var all_match = true;
 

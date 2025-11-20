@@ -1,8 +1,8 @@
 const std = @import("std");
-const sdf = @import("./sdf/sdf.zig");
-const fill = @import("./sdf/fill.zig");
-const types = @import("./types.zig");
-const utils = @import("./utils.zig");
+const sdf = @import("sdf/sdf.zig");
+const fill = @import("sdf/fill.zig");
+const types = @import("types.zig");
+const utils = @import("utils.zig");
 
 pub const SerializedSdfEffect = struct {
     dist_start: f32,
@@ -34,6 +34,13 @@ pub const Props = struct {
             .filter = self.filter,
             .opacity = self.opacity,
         };
+    }
+
+    pub fn deinit(self: *Props) void {
+        for (self.sdf_effects.items) |*effect| {
+            effect.fill.deinit();
+        }
+        self.sdf_effects.deinit();
     }
 };
 

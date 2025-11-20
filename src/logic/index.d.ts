@@ -160,7 +160,6 @@ declare module '*.zig' {
   ) => void
   export const generateUiElementsSdf: VoidFunction
 
-  export const toggleSharedTextEffects: VoidFunction
   export const setSelectedAssetProps: (props: Partial<zig.ShapeProps>, commit: boolean) => void
   export const setSelectedAssetBounds: (bounds: zig.PointUV[], commit: boolean) => void
 }
