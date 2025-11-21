@@ -1,26 +1,7 @@
 const std = @import("std");
 const chars = @import("chars.zig");
 const Point = @import("../types.zig").Point;
-
-pub const SerializedCharDetails = struct {
-    points: []const Point = &.{},
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-    sdf_texture_id: ?u32,
-
-    pub fn setPaths(self: *SerializedCharDetails, points: []const Point) !void {
-        self.points =
-            if (points.len > 0)
-                try std.heap.page_allocator.dupe(Point, points)
-            else
-                &.{};
-    }
-};
-
-pub var getCharData: *const fn (u32, u21) SerializedCharDetails = undefined;
-pub var getKerning: *const fn (u21, u21) f32 = undefined;
+const js_glue = @import("../js_glue.zig");
 
 pub var fonts: std.AutoArrayHashMap(u32, chars.Chars) = undefined;
 
@@ -36,7 +17,7 @@ pub fn get(font_id: u32, c: u21) !*chars.Details {
     if (details) |d| {
         return d;
     } else {
-        const char = getCharData(font_id, c);
+        const char = js_glue.getCharData(font_id, c);
 
         const d = try std.heap.page_allocator.create(chars.Details);
         d.* = chars.Details{
@@ -60,7 +41,7 @@ pub fn get_kerning(font_id: u32, c1: u21, c2: u21) !f32 {
     if (details.kerning.get(c2)) |k| {
         return k;
     } else {
-        const k = getKerning(c1, c2);
+        const k = js_glue.getKerning(c1, c2);
         try details.kerning.put(c2, k);
         return k;
     }

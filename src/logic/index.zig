@@ -70,20 +70,14 @@ pub fn connectOnAssetSelectionCallback(cb: *const fn ([4]u32) void) void {
     on_asset_select_cb = cb;
 }
 
-pub fn connectCreateSdfTexture(
-    create_sdf: *const fn () u32,
-    create_compute_depth: *const fn (u32, u32) u32,
-) void {
-    js_glue.create_sdf_texture = create_sdf;
-    js_glue.create_compute_depth_texture = create_compute_depth;
-}
+pub const connectCreateSdfTexture = js_glue.connectCreateSdfTexture;
 
 var on_update_tool: *const fn (u16) void = undefined;
 pub fn onUpdateToolCallback(cb: *const fn (u16) void) void {
     on_update_tool = cb;
 }
 
-pub const SerializedCharDetails = fonts.SerializedCharDetails;
+pub const SerializedCharDetails = js_glue.SerializedCharDetails;
 
 pub const TextCallback = fn (text: []const u8) void;
 var enable_typing: *const TextCallback = undefined;
@@ -96,15 +90,15 @@ pub fn connectTyping(
     disable: *const fn () void,
     update_content: *const TextCallback,
     update_selection: *const fn (u32, u32) void,
-    get_char_data: *const fn (u32, u21) fonts.SerializedCharDetails,
+    get_char_data: *const fn (u32, u21) SerializedCharDetails,
     get_kerning: *const fn (u21, u21) f32,
 ) void {
     enable_typing = enable;
     disable_typing = disable;
     update_text_content = update_content;
     update_text_selection = update_selection;
-    fonts.getCharData = get_char_data;
-    fonts.getKerning = get_kerning;
+    js_glue.getCharData = get_char_data;
+    js_glue.getKerning = get_kerning;
 }
 
 pub const @"meta(zigar)" = struct {
@@ -361,6 +355,7 @@ fn createText(x: f32, y: f32) !texts.Text {
 
     const typo_props = typography_props.Serialized{
         .font_size = 72,
+        .font_family_id = 0,
         .line_height = 1.2,
         .is_sdf_shared = true,
     };

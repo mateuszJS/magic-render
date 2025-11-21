@@ -1,5 +1,7 @@
-import fontFile from '../icons/GoogleSans-Regular.ttf'
+import fontFile from '../icons/Outfit.woff2'
+// import fontFile from '../icons/GoogleSans-Regular.ttf'
 import opentype from 'opentype.js'
+import * as fontkit from 'fontkit'
 import type { Font } from 'opentype.js'
 import parsePathData from 'svgToShapes/parsePathData'
 import * as Textures from 'textures'
@@ -10,11 +12,28 @@ const DEFAULT_SPACE = 250 // expressed in font units
 const ENTER = 10
 
 let font: Font
+let fontkitFont: fontkit.Font | fontkit.FontCollection
+const x = 10
 
 export async function loadFont() {
   try {
-    const buffer = fetch(fontFile).then((res) => res.arrayBuffer())
-    font = opentype.parse(await buffer)
+    // <input type=file accept=".woff2" onchange="files[0].arrayBuffer().then(buf=>form.size.innerText=Module.decompress(buf).length)">
+    // if (1 === 2 + x) {
+    const res = await fetch(fontFile)
+    const buffer = await res.arrayBuffer()
+    fontkitFont = fontkit.create(new Uint8Array(buffer) as Buffer<ArrayBufferLike>)
+    console.log(fontkitFont)
+    console.log((fontkitFont as unknown as { _decompress: () => void })._decompress())
+    const b = (fontkitFont as unknown as { stream: { buffer: Uint8Array } }).stream.buffer.buffer
+    console.log(b)
+    font = opentype.parse(b)
+    // }
+    // const response = await fetch(fontFile)
+    // const arrayBuffer = await response.arrayBuffer()
+    // const buf = new Uint8Array(arrayBuffer) as Buffer<ArrayBufferLike>
+    // fontkitFont = fontkit.create(buf)
+    // console.log(fontkitFont)
+    // fontkitFont = (await fontkit.open(fontFile)) as fontkit.Font
   } catch (err) {
     console.error('Failed to load font', err)
   }
@@ -31,6 +50,10 @@ export function getKerning(charA: number, charB: number): number {
 
 export function getCharData(font_id: number, char_code: number): Logic.SerializedCharDetails {
   const char = String.fromCharCode(char_code)
+
+  // const glyph = fontkitFont.glyphForCodePoint(char_code)
+  // console.log(glyph)
+
   const path = font.getPath(char, 0, 0, 1)
   const d = path.toPathData(5)
   const paths = parsePathData(d)

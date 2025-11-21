@@ -56,6 +56,7 @@ export type ShapeProps = {
 
 export type TypoProps = {
   font_size: number
+  font_family_id: number
   line_height: number
   is_sdf_shared: boolean
 }
