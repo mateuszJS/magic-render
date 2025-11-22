@@ -1353,6 +1353,17 @@ pub fn tick(now: f32) !void {
     try snapshots.loop(state);
 }
 
+pub fn setSelectedAssetTypoProps(serialized: typography_props.Serialized, commit: bool) void {
+    if (getSelectedText()) |text| {
+        text.typo_props = typography_props.deserialize(serialized);
+        if (text.typo_props.is_sdf_shared) {
+            text.is_sdf_outdated = true;
+        }
+    }
+
+    snapshots.triggerNewSnapshot(true, commit);
+}
+
 pub fn setSelectedAssetProps(serialized_props: asset_props.SerializedProps, commit: bool) !void {
     if (getSelectedAsset()) |asset| {
         switch (asset.*) {

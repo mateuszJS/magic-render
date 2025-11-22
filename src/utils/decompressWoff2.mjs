@@ -1620,10 +1620,10 @@ var decodeBase64 =
         return output
       }
 function intArrayFromBase64(s) {
-  if (typeof ENVIRONMENT_IS_NODE === 'boolean' && ENVIRONMENT_IS_NODE) {
-    var buf = Buffer.from(s, 'base64')
-    return new Uint8Array(buf['buffer'], buf['byteOffset'], buf['byteLength'])
-  }
+  // if (typeof ENVIRONMENT_IS_NODE === 'boolean' && ENVIRONMENT_IS_NODE) {
+  //   var buf = Buffer.from(s, 'base64')
+  //   return new Uint8Array(buf['buffer'], buf['byteOffset'], buf['byteLength'])
+  // }
   try {
     var decoded = decodeBase64(s)
     var bytes = new Uint8Array(decoded.length)

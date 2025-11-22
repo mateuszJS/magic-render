@@ -277,23 +277,10 @@ async function test() {
       return
     }
 
-    const newAssets = lastCommittedSnapshot.assets.map((asset) => {
-      if (asset === selectedAsset) {
-        return {
-          ...asset,
-          typo_props: {
-            ...asset.typo_props,
-            font_family_id: fontFamilyId,
-          },
-        }
-      }
-
-      return asset
-    })
-    creator.setSnapshot(
+    creator.updateAssetTypoProps(
       {
-        ...window.lastSnapshot,
-        assets: newAssets,
+        ...selectedAsset.typo_props,
+        font_family_id: fontFamilyId,
       },
       true
     )

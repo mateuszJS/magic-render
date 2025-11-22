@@ -33,7 +33,8 @@ export interface CreatorAPI {
   destroy: VoidFunction
   setTool: (tool: CreatorTool) => void
   // we need to obtain live update!
-  updateAssetProps: (props: Partial<ShapeProps>, commit: boolean) => void // updates properties of selected asset
+  updateAssetTypoProps: (props: TypoProps, commit: boolean) => void // updates typography properties of selected asset
+  updateAssetProps: (props: ShapeProps, commit: boolean) => void // updates properties of selected asset
   updateAssetBounds: (bounds: PointUV[], commit: boolean) => void // updates bounds of selected asset
 }
 
@@ -369,6 +370,10 @@ export default async function initCreator(
     },
     updateAssetProps: Logic.setSelectedAssetProps,
     updateAssetBounds: Logic.setSelectedAssetBounds,
+    updateAssetTypoProps: (typoProps, commit) => {
+      Fonts.loadFont(getFontUrl(typoProps.font_family_id), typoProps.font_family_id)
+      Logic.setSelectedAssetTypoProps(typoProps, commit)
+    },
   }
 }
 
