@@ -637,7 +637,8 @@ pub fn commitChanges() !void {
         shapes.resetState();
     }
 
-    if (state.tool == Tool.Text) {
+    const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
+    if (is_text_area_enabled) {
         disable_typing();
         texts.caret_position = 0;
         texts.selection_end_position = 0;
@@ -1527,6 +1528,5 @@ pub fn onBlurTextArea() void {
         state.selected_asset_id = AssetId.fromArray(.{ state.selected_asset_id.getPrim(), 0, 0, 0 });
         texts.caret_position = 0;
         texts.selection_end_position = 0;
-        disable_typing();
     }
 }

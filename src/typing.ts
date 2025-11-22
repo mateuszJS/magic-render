@@ -93,6 +93,11 @@ function onCopy(this: HTMLTextAreaElement, event: ClipboardEvent) {
   event.preventDefault()
 }
 
+function onBlur() {
+  Logic.onBlurTextArea()
+  disable()
+}
+
 export function enable(text: string): void {
   if (!textarea) {
     const newEl = document.createElement('textarea')
@@ -107,9 +112,7 @@ export function enable(text: string): void {
     newEl.addEventListener('input', onInput)
     newEl.addEventListener('selectionchange', onSelect)
     newEl.addEventListener('copy', onCopy)
-    newEl.addEventListener('blur', () => {
-      Logic.onBlurTextArea()
-    })
+    newEl.addEventListener('blur', onBlur)
 
     textarea = newEl
   }
@@ -120,6 +123,8 @@ export function enable(text: string): void {
 
 export function disable(): void {
   if (textarea) {
+    textarea.removeEventListener('blur', onBlur)
+    // otherwise removeChild will trigger onblur listener
     document.body.removeChild(textarea)
     textarea = null
   }
