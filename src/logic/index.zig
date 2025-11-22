@@ -91,14 +91,14 @@ pub fn connectTyping(
     update_content: *const TextCallback,
     update_selection: *const fn (u32, u32) void,
     getCharData: *const fn (u32, u21) SerializedCharDetails,
-    get_kerning: *const fn (u21, u21) f32,
+    getKerning: *const fn (u32, u21, u21) f32,
 ) void {
     enable_typing = enable;
     disable_typing = disable;
     update_text_content = update_content;
     update_text_selection = update_selection;
     js_glue.getCharData = getCharData;
-    js_glue.getKerning = get_kerning;
+    js_glue.getKerning = getKerning;
 }
 
 pub const @"meta(zigar)" = struct {
@@ -1483,7 +1483,10 @@ pub fn addFont(font_id: u32) !void {
             .shape => {},
             .text => |*text| {
                 if (text.typo_props.font_family_id == font_id) {
+                    // if (text.id == state.selected_asset_id.getPrim() and state.tool == .Text) {
+                    // use texts.caret_position and texts.selection_end_position
                     _ = try text.computeText(0, 0);
+                    // }
                 }
             },
         }

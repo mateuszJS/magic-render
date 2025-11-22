@@ -156,7 +156,7 @@ pub const Text = struct {
             const char_width = (char_details.x + char_details.width) * self.typo_props.font_size;
 
             var space_before = if (option_prev_cp) |prev_cp| b: {
-                const kerning = try fonts.get_kerning(self.typo_props.font_family_id, prev_cp, cp);
+                const kerning = try fonts.getKerning(self.typo_props.font_family_id, prev_cp, cp);
                 break :b kerning * self.typo_props.font_size;
             } else 0.0;
 

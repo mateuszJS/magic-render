@@ -44,7 +44,7 @@ export function getKerning(fontId: number, charA: number, charB: number): number
   const font = fonts.get(fontId)
 
   if (!font) {
-    return 0
+    throw Error('getKerning, font not loaded yet, font id: ' + fontId)
   }
 
   const ca = String.fromCharCode(charA)

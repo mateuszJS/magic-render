@@ -36,12 +36,12 @@ pub fn get(font_id: u32, c: u21) !*chars.Details {
     }
 }
 
-pub fn get_kerning(font_id: u32, c1: u21, c2: u21) !f32 {
+pub fn getKerning(font_id: u32, c1: u21, c2: u21) !f32 {
     var details = try get(font_id, c1);
     if (details.kerning.get(c2)) |k| {
         return k;
     } else {
-        const k = js_glue.getKerning(c1, c2);
+        const k = js_glue.getKerning(font_id, c1, c2);
         try details.kerning.put(c2, k);
         return k;
     }
