@@ -1,3 +1,5 @@
+// Source: https://github.com/fontello/wawoff2/blob/master/build/decompress_binding.js
+
 var Module = typeof Module !== 'undefined' ? Module : {}
 var moduleOverrides = {}
 var key
@@ -7,16 +9,16 @@ for (key in Module) {
   }
 }
 var arguments_ = []
-var thisProgram = './this.program'
-var quit_ = function (status, toThrow) {
-  throw toThrow
-}
+// var thisProgram = './this.program'
+// var quit_ = function (status, toThrow) {
+//   throw toThrow
+// }
 var ENVIRONMENT_IS_WEB = typeof window === 'object'
 var ENVIRONMENT_IS_WORKER = typeof importScripts === 'function'
-var ENVIRONMENT_IS_NODE =
-  typeof process === 'object' &&
-  typeof process.versions === 'object' &&
-  typeof process.versions.node === 'string'
+// var ENVIRONMENT_IS_NODE =
+//   typeof process === 'object' &&
+//   typeof process.versions === 'object' &&
+//   typeof process.versions.node === 'string'
 var scriptDirectory = ''
 function locateFile(path) {
   if (Module['locateFile']) {
@@ -25,69 +27,70 @@ function locateFile(path) {
   return scriptDirectory + path
 }
 var read_, readAsync, readBinary, setWindowTitle
-function logExceptionOnExit(e) {
-  if (e instanceof ExitStatus) return
-  var toLog = e
-  err('exiting due to exception: ' + toLog)
-}
-var nodeFS
-var nodePath
-if (ENVIRONMENT_IS_NODE) {
-  if (ENVIRONMENT_IS_WORKER) {
-    scriptDirectory = require('path').dirname(scriptDirectory) + '/'
-  } else {
-    scriptDirectory = __dirname + '/'
-  }
-  read_ = function shell_read(filename, binary) {
-    var ret = tryParseAsDataURI(filename)
-    if (ret) {
-      return binary ? ret : ret.toString()
-    }
-    if (!nodeFS) nodeFS = require('fs')
-    if (!nodePath) nodePath = require('path')
-    filename = nodePath['normalize'](filename)
-    return nodeFS['readFileSync'](filename, binary ? null : 'utf8')
-  }
-  readBinary = function readBinary(filename) {
-    var ret = read_(filename, true)
-    if (!ret.buffer) {
-      ret = new Uint8Array(ret)
-    }
-    assert(ret.buffer)
-    return ret
-  }
-  readAsync = function readAsync(filename, onload, onerror) {
-    var ret = tryParseAsDataURI(filename)
-    if (ret) {
-      onload(ret)
-    }
-    if (!nodeFS) nodeFS = require('fs')
-    if (!nodePath) nodePath = require('path')
-    filename = nodePath['normalize'](filename)
-    nodeFS['readFile'](filename, function (err, data) {
-      if (err) onerror(err)
-      else onload(data.buffer)
-    })
-  }
-  if (process['argv'].length > 1) {
-    thisProgram = process['argv'][1].replace(/\\/g, '/')
-  }
-  arguments_ = process['argv'].slice(2)
-  if (typeof module !== 'undefined') {
-    module['exports'] = Module
-  }
-  quit_ = function (status, toThrow) {
-    if (keepRuntimeAlive()) {
-      process['exitCode'] = status
-      throw toThrow
-    }
-    logExceptionOnExit(toThrow)
-    process['exit'](status)
-  }
-  Module['inspect'] = function () {
-    return '[Emscripten Module object]'
-  }
-} else if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
+// function logExceptionOnExit(e) {
+//   if (e instanceof ExitStatus) return
+//   var toLog = e
+//   err('exiting due to exception: ' + toLog)
+// }
+// var nodeFS
+// var nodePath
+// if (ENVIRONMENT_IS_NODE) {
+//   if (ENVIRONMENT_IS_WORKER) {
+//     scriptDirectory = require('path').dirname(scriptDirectory) + '/'
+//   } else {
+//     scriptDirectory = __dirname + '/'
+//   }
+//   read_ = function shell_read(filename, binary) {
+//     var ret = tryParseAsDataURI(filename)
+//     if (ret) {
+//       return binary ? ret : ret.toString()
+//     }
+//     if (!nodeFS) nodeFS = require('fs')
+//     if (!nodePath) nodePath = require('path')
+//     filename = nodePath['normalize'](filename)
+//     return nodeFS['readFileSync'](filename, binary ? null : 'utf8')
+//   }
+//   readBinary = function readBinary(filename) {
+//     var ret = read_(filename, true)
+//     if (!ret.buffer) {
+//       ret = new Uint8Array(ret)
+//     }
+//     assert(ret.buffer)
+//     return ret
+//   }
+//   readAsync = function readAsync(filename, onload, onerror) {
+//     var ret = tryParseAsDataURI(filename)
+//     if (ret) {
+//       onload(ret)
+//     }
+//     if (!nodeFS) nodeFS = require('fs')
+//     if (!nodePath) nodePath = require('path')
+//     filename = nodePath['normalize'](filename)
+//     nodeFS['readFile'](filename, function (err, data) {
+//       if (err) onerror(err)
+//       else onload(data.buffer)
+//     })
+//   }
+//   if (process['argv'].length > 1) {
+//     thisProgram = process['argv'][1].replace(/\\/g, '/')
+//   }
+//   arguments_ = process['argv'].slice(2)
+//   if (typeof module !== 'undefined') {
+//     module['exports'] = Module
+//   }
+//   quit_ = function (status, toThrow) {
+//     if (keepRuntimeAlive()) {
+//       process['exitCode'] = status
+//       throw toThrow
+//     }
+//     logExceptionOnExit(toThrow)
+//     process['exit'](status)
+//   }
+//   Module['inspect'] = function () {
+//     return '[Emscripten Module object]'
+//   }
+// } else
+if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
   if (ENVIRONMENT_IS_WORKER) {
     scriptDirectory = self.location.href
   } else if (typeof document !== 'undefined' && document.currentScript) {
@@ -156,19 +159,18 @@ if (ENVIRONMENT_IS_NODE) {
   setWindowTitle = function (title) {
     document.title = title
   }
-} else {
 }
-var out = Module['print'] || console.log.bind(console)
-var err = Module['printErr'] || console.warn.bind(console)
+var out = console.log
+var err = console.warn
 for (key in moduleOverrides) {
   if (moduleOverrides.hasOwnProperty(key)) {
     Module[key] = moduleOverrides[key]
   }
 }
 moduleOverrides = null
-if (Module['arguments']) arguments_ = Module['arguments']
-if (Module['thisProgram']) thisProgram = Module['thisProgram']
-if (Module['quit']) quit_ = Module['quit']
+// if (Module['arguments']) arguments_ = Module['arguments']
+// if (Module['thisProgram']) thisProgram = Module['thisProgram']
+// if (Module['quit']) quit_ = Module['quit']
 var wasmBinary
 if (Module['wasmBinary']) wasmBinary = Module['wasmBinary']
 var noExitRuntime = Module['noExitRuntime'] || true
