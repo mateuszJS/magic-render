@@ -308,7 +308,7 @@ pub fn updateTextContent(
     if (option_text) |text| {
         text.content = try std.heap.wasm_allocator.dupe(u8, input_content);
         // IMPORTANT: do NOT free input_content,
-        // also it's owned by Zigar/JS side! So hopefully it somehow handled there
+        // It's owned by Zigar/JS side, so hopefully it's gonna somehow handled there
         const results = try text.computeText(selection_start, selection_end);
         snapshots.triggerNewSnapshot(true, true);
         return results;
@@ -595,13 +595,16 @@ pub fn onPointerMove(x: f32, y: f32) !void {
                     shape.should_update_sdf = true;
                 },
                 .text => |*text| {
-                    const result = try text.computeText(
+                    _ = try text.computeText(
                         texts.caret_position,
                         texts.selection_end_position,
                     );
 
-                    if (state.tool == .Text) {
-                        update_text_content(result.content);
+                    const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
+                    if (is_text_area_enabled) {
+                        // This is NOT possible for now
+                        // update_text_content(result.content);
+                        @panic("Text asset should not be transformable in Text tool");
                     }
                 },
             }
@@ -1353,9 +1356,20 @@ pub fn tick(now: f32) !void {
     try snapshots.loop(state);
 }
 
-pub fn setSelectedAssetTypoProps(serialized: typography_props.Serialized, commit: bool) void {
+pub fn setSelectedAssetTypoProps(serialized: typography_props.Serialized, commit: bool) !void {
     if (getSelectedText()) |text| {
         text.typo_props = typography_props.deserialize(serialized);
+        const result = try text.computeText(0, 0);
+
+        const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
+
+        if (is_text_area_enabled) {
+            // although this should not really happen, if user changes font proeprties,
+            // then it's not longer in typing tool in the textbox
+            update_text_content(result.content);
+            // new soft breaks might appear after font change
+        }
+
         if (text.typo_props.is_sdf_shared) {
             text.is_sdf_outdated = true;
         }
@@ -1474,7 +1488,8 @@ pub fn setSelectedAssetBounds(bounds: [4]types.PointUV, commit: bool) !void {
                     texts.selection_end_position,
                 );
 
-                if (state.tool == .Text) {
+                const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
+                if (is_text_area_enabled) {
                     update_text_content(result.content);
                 }
             },
@@ -1494,12 +1509,24 @@ pub fn addFont(font_id: u32) !void {
             .shape => {},
             .text => |*text| {
                 if (text.typo_props.font_family_id == font_id) {
-                    // if (text.id == state.selected_asset_id.getPrim() and state.tool == .Text) {
-                    // use texts.caret_position and texts.selection_end_position
-                    _ = try text.computeText(0, 0);
-                    // }
+                    const result = try text.computeText(0, 0);
+                    const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
+                    if (is_text_area_enabled and text.id == state.selected_asset_id.getPrim()) {
+                        // new soft breaks might appear after font change
+                        update_text_content(result.content);
+                    }
                 }
             },
         }
+    }
+}
+
+pub fn onBlurTextArea() void {
+    if (state.tool == .Text) {
+        // leave typing mode, focus is not longer in text area
+        state.selected_asset_id = AssetId.fromArray(.{ state.selected_asset_id.getPrim(), 0, 0, 0 });
+        texts.caret_position = 0;
+        texts.selection_end_position = 0;
+        disable_typing();
     }
 }

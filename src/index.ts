@@ -177,7 +177,7 @@ export default async function initCreator(
       } else if ('text' in asset && asset.text) {
         return {
           id: asset.text.id,
-          content: asset.text.content ?? '',
+          content: Typing.sanitizeContent(asset.text.content),
           bounds: serializeBounds([...asset.text.bounds]),
           typo_props: serializeTypoProps(asset.text.typo_props),
           props: serializeShapeProps(asset.text.props),

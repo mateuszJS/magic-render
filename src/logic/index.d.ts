@@ -165,4 +165,5 @@ declare module '*.zig' {
   export const setSelectedAssetTypoProps: (typo_props: TypoProps, commit: boolean) => void
 
   export const addFont: (font_id: number) => void
+  export const onBlurTextArea: VoidFunction
 }

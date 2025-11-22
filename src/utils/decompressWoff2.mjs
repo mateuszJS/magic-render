@@ -26,7 +26,7 @@ function locateFile(path) {
   }
   return scriptDirectory + path
 }
-var read_, readAsync, readBinary, setWindowTitle
+var readAsync, readBinary
 // function logExceptionOnExit(e) {
 //   if (e instanceof ExitStatus) return
 //   var toLog = e
@@ -105,20 +105,20 @@ if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
     scriptDirectory = ''
   }
   {
-    read_ = function (url) {
-      try {
-        var xhr = new XMLHttpRequest()
-        xhr.open('GET', url, false)
-        xhr.send(null)
-        return xhr.responseText
-      } catch (err) {
-        var data = tryParseAsDataURI(url)
-        if (data) {
-          return intArrayToString(data)
-        }
-        throw err
-      }
-    }
+    // read_ = function (url) {
+    //   try {
+    //     var xhr = new XMLHttpRequest()
+    //     xhr.open('GET', url, false)
+    //     xhr.send(null)
+    //     return xhr.responseText
+    //   } catch (err) {
+    //     var data = tryParseAsDataURI(url)
+    //     if (data) {
+    //       return intArrayToString(data)
+    //     }
+    //     throw err
+    //   }
+    // }
     if (ENVIRONMENT_IS_WORKER) {
       readBinary = function (url) {
         try {
@@ -155,9 +155,6 @@ if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
       xhr.onerror = onerror
       xhr.send(null)
     }
-  }
-  setWindowTitle = function (title) {
-    document.title = title
   }
 }
 var out = console.log
