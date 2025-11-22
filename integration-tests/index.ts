@@ -1,4 +1,17 @@
 import initCreator, { ProjectSnapshot } from '../src/index'
+import FontEBGaramond from './EBGaramond-VariableFont_wght.ttf'
+import FontGoogleSans from './GoogleSans-Regular.ttf'
+import OutfitWoff2 from './Outfit.woff2'
+import OutfitBoldTtf from './Outfit-Bold.ttf'
+import OutfitThinTtf from './Outfit-Light.ttf'
+
+const fontsDictionary: Record<number, string> = {
+  0: FontEBGaramond,
+  1: FontGoogleSans,
+  2: OutfitWoff2,
+  3: OutfitBoldTtf,
+  4: OutfitThinTtf,
+}
 
 declare global {
   interface Window {
@@ -26,6 +39,7 @@ async function test() {
   const assetPropsForm = document.querySelector<HTMLFormElement>('#asset-props-popover')!
   const projectSizeForm = document.querySelector<HTMLFormElement>('#project-size-popover')!
   const xSlider = document.querySelector<HTMLInputElement>('#x-slider')!
+  const fontFamilySelect = document.querySelector<HTMLSelectElement>('#font-family-select')!
 
   window.lastSnapshot = {
     width: 0,
@@ -91,6 +105,11 @@ async function test() {
     (newTool) => {
       toolsSelect.value = newTool.toString()
       console.log(`new tool: ${newTool}`)
+    },
+    (fontId) => {
+      const font = fontsDictionary[fontId]
+      if (!font) throw Error('Unknown font id: ' + fontId)
+      return font
     }
   )
 
@@ -247,6 +266,25 @@ async function test() {
 
   xSlider.addEventListener('input', () => updateX(false))
   xSlider.addEventListener('pointerup', () => updateX(true))
+
+  fontFamilySelect.addEventListener('change', () => {
+    const fontFamilyId = Number(fontFamilySelect.value)
+    const lastCommittedSnapshot = assetsUpdatesHistory[currentHistoryIndex]
+    const selectedAsset = lastCommittedSnapshot.assets.find((a) => a.id === selectedAssetId)
+
+    if (!selectedAsset || !('content' in selectedAsset)) {
+      console.error('No selected text asset found')
+      return
+    }
+
+    creator.updateAssetTypoProps(
+      {
+        ...selectedAsset.typo_props,
+        font_family_id: fontFamilyId,
+      },
+      true
+    )
+  })
 }
 
 test()

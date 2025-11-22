@@ -33,7 +33,8 @@ export interface CreatorAPI {
   destroy: VoidFunction
   setTool: (tool: CreatorTool) => void
   // we need to obtain live update!
-  updateAssetProps: (props: Partial<ShapeProps>, commit: boolean) => void // updates properties of selected asset
+  updateAssetTypoProps: (props: TypoProps, commit: boolean) => void // updates typography properties of selected asset
+  updateAssetProps: (props: ShapeProps, commit: boolean) => void // updates properties of selected asset
   updateAssetBounds: (bounds: PointUV[], commit: boolean) => void // updates bounds of selected asset
 }
 
@@ -49,7 +50,8 @@ export default async function initCreator(
   onAssetSelect: (assetId: Id) => void,
   onIsProcessingFlagUpdate: (inProgress: boolean) => void,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void,
-  onUpdateTool: (tool: CreatorTool) => void
+  onUpdateTool: (tool: CreatorTool) => void,
+  getFontUrl: (fontId: number) => string
 ): Promise<CreatorAPI> {
   let texturesLoading = 0
   let isMouseEventProcessing = false
@@ -175,7 +177,7 @@ export default async function initCreator(
       } else if ('text' in asset && asset.text) {
         return {
           id: asset.text.id,
-          content: asset.text.content ?? '',
+          content: Typing.sanitizeContent(asset.text.content),
           bounds: serializeBounds([...asset.text.bounds]),
           typo_props: serializeTypoProps(asset.text.typo_props),
           props: serializeShapeProps(asset.text.props),
@@ -192,8 +194,6 @@ export default async function initCreator(
       triggerGeneratePreview()
     }
   }
-
-  Fonts.loadFont()
 
   Logic.connectOnAssetSelectionCallback((id) => onAssetSelect([...id] as Id))
   Logic.connectCreateSdfTexture(Textures.createSDF, Textures.createComputeDepthTexture)
@@ -251,6 +251,8 @@ export default async function initCreator(
     updateIsProcessingFlag()
   })
 
+  Fonts.loadFont(getFontUrl(0), 0)
+
   const setSnapshot: CreatorAPI['setSnapshot'] = async (snapshot, withSnapshot) => {
     const results = await Promise.allSettled(
       snapshot.assets.map<Promise<ZigAsset | ZigAsset[]>>(
@@ -269,6 +271,9 @@ export default async function initCreator(
                 },
               })
             } else if ('content' in asset) {
+              const fontId = asset.typo_props.font_family_id
+              Fonts.loadFont(getFontUrl(fontId), fontId)
+
               return resolve({
                 text: {
                   id: asset.id || NO_ASSET_ID,
@@ -365,6 +370,10 @@ export default async function initCreator(
     },
     updateAssetProps: Logic.setSelectedAssetProps,
     updateAssetBounds: Logic.setSelectedAssetBounds,
+    updateAssetTypoProps: (typoProps, commit) => {
+      Fonts.loadFont(getFontUrl(typoProps.font_family_id), typoProps.font_family_id)
+      Logic.setSelectedAssetTypoProps(typoProps, commit)
+    },
   }
 }
 
@@ -399,6 +408,7 @@ function serializeShapeProps(props: ShapeProps): ShapeProps {
 function serializeTypoProps(props: TypoProps): TypoProps {
   return {
     font_size: props.font_size,
+    font_family_id: props.font_family_id,
     line_height: props.line_height,
     is_sdf_shared: props.is_sdf_shared,
   }

@@ -70,20 +70,14 @@ pub fn connectOnAssetSelectionCallback(cb: *const fn ([4]u32) void) void {
     on_asset_select_cb = cb;
 }
 
-pub fn connectCreateSdfTexture(
-    create_sdf: *const fn () u32,
-    create_compute_depth: *const fn (u32, u32) u32,
-) void {
-    js_glue.create_sdf_texture = create_sdf;
-    js_glue.create_compute_depth_texture = create_compute_depth;
-}
+pub const connectCreateSdfTexture = js_glue.connectCreateSdfTexture;
 
 var on_update_tool: *const fn (u16) void = undefined;
 pub fn onUpdateToolCallback(cb: *const fn (u16) void) void {
     on_update_tool = cb;
 }
 
-pub const SerializedCharDetails = fonts.SerializedCharDetails;
+pub const SerializedCharDetails = js_glue.SerializedCharDetails;
 
 pub const TextCallback = fn (text: []const u8) void;
 var enable_typing: *const TextCallback = undefined;
@@ -96,15 +90,15 @@ pub fn connectTyping(
     disable: *const fn () void,
     update_content: *const TextCallback,
     update_selection: *const fn (u32, u32) void,
-    get_char_data: *const fn (u32, u21) fonts.SerializedCharDetails,
-    get_kerning: *const fn (u21, u21) f32,
+    getCharData: *const fn (u32, u21) SerializedCharDetails,
+    getKerning: *const fn (u32, u21, u21) f32,
 ) void {
     enable_typing = enable;
     disable_typing = disable;
     update_text_content = update_content;
     update_text_selection = update_selection;
-    fonts.getCharData = get_char_data;
-    fonts.getKerning = get_kerning;
+    js_glue.getCharData = getCharData;
+    js_glue.getKerning = getKerning;
 }
 
 pub const @"meta(zigar)" = struct {
@@ -162,7 +156,6 @@ pub fn initState(width: f32, height: f32, texture_max_size: f32, max_buffer_size
     state.assets = std.AutoArrayHashMap(u32, Asset).init(std.heap.page_allocator);
     UI.init();
     fonts.init();
-    try fonts.new(0);
 }
 
 pub fn updateRenderScale(scale: f32) !void {
@@ -315,7 +308,7 @@ pub fn updateTextContent(
     if (option_text) |text| {
         text.content = try std.heap.wasm_allocator.dupe(u8, input_content);
         // IMPORTANT: do NOT free input_content,
-        // also it's owned by Zigar/JS side! So hopefully it somehow handled there
+        // It's owned by Zigar/JS side, so hopefully it's gonna somehow handled there
         const results = try text.computeText(selection_start, selection_end);
         snapshots.triggerNewSnapshot(true, true);
         return results;
@@ -361,6 +354,7 @@ fn createText(x: f32, y: f32) !texts.Text {
 
     const typo_props = typography_props.Serialized{
         .font_size = 72,
+        .font_family_id = 0,
         .line_height = 1.2,
         .is_sdf_shared = true,
     };
@@ -601,13 +595,16 @@ pub fn onPointerMove(x: f32, y: f32) !void {
                     shape.should_update_sdf = true;
                 },
                 .text => |*text| {
-                    const result = try text.computeText(
+                    _ = try text.computeText(
                         texts.caret_position,
                         texts.selection_end_position,
                     );
 
-                    if (state.tool == .Text) {
-                        update_text_content(result.content);
+                    const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
+                    if (is_text_area_enabled) {
+                        // This is NOT possible for now
+                        // update_text_content(result.content);
+                        @panic("Text asset should not be transformable in Text tool");
                     }
                 },
             }
@@ -739,11 +736,15 @@ fn requestCharsSdfs() !void {
             .text => |*text| {
                 if (!text.is_sdf_outdated) continue;
 
+                if (!fonts.fonts.contains(text.typo_props.font_family_id)) {
+                    continue;
+                }
+
                 const padding = sdf.getSdfPadding(text.props.sdf_effects.items);
 
                 for (text.text_vertex.items) |vertex| {
                     if (vertex.char) |char| {
-                        const ch_d = try fonts.get(0, char);
+                        const ch_d = try fonts.get(text.typo_props.font_family_id, char);
 
                         ch_d.request_size(
                             text.typo_props.font_size,
@@ -851,6 +852,10 @@ pub fn computeSdfs() !void {
                 if (text.typo_props.is_sdf_shared) {
                     if (!text.is_sdf_outdated) continue;
 
+                    if (!fonts.fonts.contains(text.typo_props.font_family_id)) {
+                        continue;
+                    }
+
                     const text_sdf_texture_id = text.getSdfTextureId();
 
                     const text_padding = sdf.getSdfPadding(text.props.sdf_effects.items);
@@ -876,7 +881,7 @@ pub fn computeSdfs() !void {
 
                     for (text.text_vertex.items) |vertex| {
                         if (vertex.char) |char| {
-                            const ch_d = try fonts.get(0, char);
+                            const ch_d = try fonts.get(text.typo_props.font_family_id, char);
 
                             if (ch_d.sdf_texture_id) |char_sdf_texture_id| {
                                 const char_padding = text.typo_props.font_size * ch_d.max_ratio_padding_to_font_size;
@@ -1057,6 +1062,10 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 }
             },
             .text => |*text| {
+                if (!fonts.fonts.contains(text.typo_props.font_family_id)) {
+                    continue;
+                }
+
                 const is_typing_ui = state.tool == .Text and state.selected_asset_id.getPrim() == text.id;
 
                 if (text.typo_props.is_sdf_shared) {
@@ -1088,7 +1097,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 for (text.text_vertex.items, 0..) |vertex, i| {
                     if (vertex.char) |char| {
                         if (!text.typo_props.is_sdf_shared) {
-                            const ch_d = try fonts.get(0, char);
+                            const ch_d = try fonts.get(text.typo_props.font_family_id, char);
 
                             if (ch_d.sdf_texture_id) |sdf_texture_id| {
                                 for (text.props.sdf_effects.items) |effect| {
@@ -1347,6 +1356,28 @@ pub fn tick(now: f32) !void {
     try snapshots.loop(state);
 }
 
+pub fn setSelectedAssetTypoProps(serialized: typography_props.Serialized, commit: bool) !void {
+    if (getSelectedText()) |text| {
+        text.typo_props = typography_props.deserialize(serialized);
+        const result = try text.computeText(0, 0);
+
+        const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
+
+        if (is_text_area_enabled) {
+            // although this should not really happen, if user changes font proeprties,
+            // then it's not longer in typing tool in the textbox
+            update_text_content(result.content);
+            // new soft breaks might appear after font change
+        }
+
+        if (text.typo_props.is_sdf_shared) {
+            text.is_sdf_outdated = true;
+        }
+    }
+
+    snapshots.triggerNewSnapshot(true, commit);
+}
+
 pub fn setSelectedAssetProps(serialized_props: asset_props.SerializedProps, commit: bool) !void {
     if (getSelectedAsset()) |asset| {
         switch (asset.*) {
@@ -1457,7 +1488,8 @@ pub fn setSelectedAssetBounds(bounds: [4]types.PointUV, commit: bool) !void {
                     texts.selection_end_position,
                 );
 
-                if (state.tool == .Text) {
+                const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
+                if (is_text_area_enabled) {
                     update_text_content(result.content);
                 }
             },
@@ -1465,4 +1497,36 @@ pub fn setSelectedAssetBounds(bounds: [4]types.PointUV, commit: bool) !void {
     }
 
     snapshots.triggerNewSnapshot(true, commit);
+}
+
+pub fn addFont(font_id: u32) !void {
+    try fonts.new(font_id);
+
+    var iterator = state.assets.iterator();
+    while (iterator.next()) |asset| {
+        switch (asset.value_ptr.*) {
+            .img => {},
+            .shape => {},
+            .text => |*text| {
+                if (text.typo_props.font_family_id == font_id) {
+                    const result = try text.computeText(0, 0);
+                    const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
+                    if (is_text_area_enabled and text.id == state.selected_asset_id.getPrim()) {
+                        // new soft breaks might appear after font change
+                        update_text_content(result.content);
+                    }
+                }
+            },
+        }
+    }
+}
+
+pub fn onBlurTextArea() void {
+    if (state.tool == .Text) {
+        // leave typing mode, focus is not longer in text area
+        state.selected_asset_id = AssetId.fromArray(.{ state.selected_asset_id.getPrim(), 0, 0, 0 });
+        texts.caret_position = 0;
+        texts.selection_end_position = 0;
+        disable_typing();
+    }
 }

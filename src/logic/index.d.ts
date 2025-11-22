@@ -14,7 +14,7 @@ type ShapeDrawUniform =
   | { radial: PointerDataView }
 
 declare module '*.zig' {
-  import { ZigProjectSnapshot } from 'types'
+  import { ZigProjectSnapshot, TypoProps, ShapeProps } from 'types'
 
   export const initState: (
     width: number,
@@ -160,6 +160,10 @@ declare module '*.zig' {
   ) => void
   export const generateUiElementsSdf: VoidFunction
 
-  export const setSelectedAssetProps: (props: Partial<zig.ShapeProps>, commit: boolean) => void
+  export const setSelectedAssetProps: (props: ShapeProps, commit: boolean) => void
   export const setSelectedAssetBounds: (bounds: zig.PointUV[], commit: boolean) => void
+  export const setSelectedAssetTypoProps: (typo_props: TypoProps, commit: boolean) => void
+
+  export const addFont: (font_id: number) => void
+  export const onBlurTextArea: VoidFunction
 }

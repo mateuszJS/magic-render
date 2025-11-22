@@ -5,6 +5,11 @@ const SOFT_BREAK_PATTERN = /\u2060\n/g
 
 let textarea: HTMLTextAreaElement | null = null
 
+export function sanitizeContent(text: string | null): string {
+  if (text === null) return ''
+  return text.replace(SOFT_BREAK_PATTERN, '')
+}
+
 export function isEnabled(): boolean {
   return textarea !== null
 }
@@ -83,7 +88,7 @@ function onSelect(this: HTMLTextAreaElement) {
 
 function onCopy(this: HTMLTextAreaElement, event: ClipboardEvent) {
   const selection = this.value.substring(this.selectionStart, this.selectionEnd)
-  const sanitizedSelection = selection?.toString().replace(SOFT_BREAK_PATTERN, '') ?? ''
+  const sanitizedSelection = sanitizeContent(selection)
   event.clipboardData?.setData('text/plain', sanitizedSelection)
   event.preventDefault()
 }
@@ -102,6 +107,9 @@ export function enable(text: string): void {
     newEl.addEventListener('input', onInput)
     newEl.addEventListener('selectionchange', onSelect)
     newEl.addEventListener('copy', onCopy)
+    newEl.addEventListener('blur', () => {
+      Logic.onBlurTextArea()
+    })
 
     textarea = newEl
   }

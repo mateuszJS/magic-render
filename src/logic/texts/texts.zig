@@ -112,6 +112,14 @@ pub const Text = struct {
         selection_start: usize,
         selection_end: usize,
     ) !ComputeTextResult {
+        if (!fonts.fonts.contains(self.typo_props.font_family_id)) {
+            return .{
+                .content = self.content,
+                .selection_start = 0,
+                .selection_end = 0,
+            };
+        }
+
         var updated_content = std.ArrayList(u21).init(std.heap.page_allocator);
 
         self.text_vertex.clearAndFree();
@@ -144,11 +152,11 @@ pub const Text = struct {
             if (new_selection_start == 0 and cp_index >= selection_start) new_selection_start = self.text_vertex.items.len;
             if (new_selection_end == 0 and cp_index >= selection_end) new_selection_end = self.text_vertex.items.len;
 
-            const char_details = try fonts.get(0, cp);
+            const char_details = try fonts.get(self.typo_props.font_family_id, cp);
             const char_width = (char_details.x + char_details.width) * self.typo_props.font_size;
 
             var space_before = if (option_prev_cp) |prev_cp| b: {
-                const kerning = try fonts.get_kerning(0, prev_cp, cp);
+                const kerning = try fonts.getKerning(self.typo_props.font_family_id, prev_cp, cp);
                 break :b kerning * self.typo_props.font_size;
             } else 0.0;
 
