@@ -385,7 +385,6 @@ function preRun() {
   callRuntimeCallbacks(__ATPRERUN__)
 }
 function initRuntime() {
-  runtimeInitialized = true
   callRuntimeCallbacks(__ATINIT__)
 }
 function postRun() {
