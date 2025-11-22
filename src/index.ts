@@ -49,7 +49,8 @@ export default async function initCreator(
   onAssetSelect: (assetId: Id) => void,
   onIsProcessingFlagUpdate: (inProgress: boolean) => void,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void,
-  onUpdateTool: (tool: CreatorTool) => void
+  onUpdateTool: (tool: CreatorTool) => void,
+  getFontUrl: (fontId: number) => string
 ): Promise<CreatorAPI> {
   let texturesLoading = 0
   let isMouseEventProcessing = false
@@ -193,8 +194,6 @@ export default async function initCreator(
     }
   }
 
-  Fonts.loadFont()
-
   Logic.connectOnAssetSelectionCallback((id) => onAssetSelect([...id] as Id))
   Logic.connectCreateSdfTexture(Textures.createSDF, Textures.createComputeDepthTexture)
   Logic.connectTyping(
@@ -251,6 +250,8 @@ export default async function initCreator(
     updateIsProcessingFlag()
   })
 
+  Fonts.loadFont(getFontUrl(0), 0)
+
   const setSnapshot: CreatorAPI['setSnapshot'] = async (snapshot, withSnapshot) => {
     const results = await Promise.allSettled(
       snapshot.assets.map<Promise<ZigAsset | ZigAsset[]>>(
@@ -269,6 +270,9 @@ export default async function initCreator(
                 },
               })
             } else if ('content' in asset) {
+              const fontId = asset.typo_props.font_family_id
+              Fonts.loadFont(getFontUrl(fontId), fontId)
+
               return resolve({
                 text: {
                   id: asset.id || NO_ASSET_ID,

@@ -162,4 +162,6 @@ declare module '*.zig' {
 
   export const setSelectedAssetProps: (props: Partial<zig.ShapeProps>, commit: boolean) => void
   export const setSelectedAssetBounds: (bounds: zig.PointUV[], commit: boolean) => void
+
+  export const addFont: (font_id: number) => void
 }

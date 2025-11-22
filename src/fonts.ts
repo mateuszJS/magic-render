@@ -1,4 +1,3 @@
-import fontFile from '../icons/Outfit.woff2'
 import opentype from 'opentype.js'
 import parsePathData from 'svgToShapes/parsePathData'
 import * as Textures from 'textures'
@@ -9,26 +8,45 @@ import decompressWoff2 from 'utils/decompressWoff2.mjs'
 const DEFAULT_SPACE = 250 // expressed in font units
 const ENTER = 10
 
-let font: opentype.Font
+const fonts = new Map<number, opentype.Font | null>()
 
-export async function loadFont() {
+export async function loadFont(url: string, fontId: number) {
+  if (fonts.has(fontId)) {
+    return
+  }
+
+  fonts.set(fontId, null)
+  let fontBuffer: ArrayBuffer | null = null
   try {
-    const res = await fetch(fontFile)
-    const buffer = await res.arrayBuffer()
-    const deocmpreassed = decompressWoff2.decompress(buffer)
-
-    // Create a copy of the buffer because deocmpreassed is a view into WASM memory
-    // and .buffer would return the whole WASM heap
-    const fontBuffer = deocmpreassed.slice(0).buffer
-
-    console.log('deocmpreassed', deocmpreassed)
-    font = opentype.parse(fontBuffer)
+    const res = await fetch(url)
+    fontBuffer = await res.arrayBuffer()
+    fonts.set(fontId, opentype.parse(fontBuffer))
+    Logic.addFont(fontId)
   } catch (err) {
-    console.error('Failed to load font', err)
+    if (
+      err instanceof Error &&
+      err.message.includes('Unsupported OpenType signature wOF2') &&
+      fontBuffer
+    ) {
+      const deocmpreassed = decompressWoff2.decompress(fontBuffer)
+      // Create a copy of the buffer because deocmpreassed is a view into WASM memory
+      // and .buffer would return the whole WASM heap
+      fontBuffer = deocmpreassed.slice(0).buffer
+      fonts.set(fontId, opentype.parse(fontBuffer))
+      Logic.addFont(fontId)
+    } else {
+      console.error('Failed to load font', err)
+    }
   }
 }
 
-export function getKerning(charA: number, charB: number): number {
+export function getKerning(fontId: number, charA: number, charB: number): number {
+  const font = fonts.get(fontId)
+
+  if (!font) {
+    return 0
+  }
+
   const ca = String.fromCharCode(charA)
   const cb = String.fromCharCode(charB)
   const leftGlyph = font.charToGlyph(ca)
@@ -37,12 +55,14 @@ export function getKerning(charA: number, charB: number): number {
   return font_units / font.unitsPerEm
 }
 
-export function getCharData(font_id: number, char_code: number): Logic.SerializedCharDetails {
+export function getCharData(fontId: number, char_code: number): Logic.SerializedCharDetails {
+  const font = fonts.get(fontId)
+
+  if (!font) {
+    throw Error('getCharData, font not loaded yet, font id: ' + fontId)
+  }
+
   const char = String.fromCharCode(char_code)
-
-  // const glyph = fontkitFont.glyphForCodePoint(char_code)
-  // console.log(glyph)
-
   const path = font.getPath(char, 0, 0, 1)
   const d = path.toPathData(5)
   const paths = parsePathData(d)

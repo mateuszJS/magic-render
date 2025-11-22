@@ -90,14 +90,14 @@ pub fn connectTyping(
     disable: *const fn () void,
     update_content: *const TextCallback,
     update_selection: *const fn (u32, u32) void,
-    get_char_data: *const fn (u32, u21) SerializedCharDetails,
+    getCharData: *const fn (u32, u21) SerializedCharDetails,
     get_kerning: *const fn (u21, u21) f32,
 ) void {
     enable_typing = enable;
     disable_typing = disable;
     update_text_content = update_content;
     update_text_selection = update_selection;
-    js_glue.getCharData = get_char_data;
+    js_glue.getCharData = getCharData;
     js_glue.getKerning = get_kerning;
 }
 
@@ -156,7 +156,6 @@ pub fn initState(width: f32, height: f32, texture_max_size: f32, max_buffer_size
     state.assets = std.AutoArrayHashMap(u32, Asset).init(std.heap.page_allocator);
     UI.init();
     fonts.init();
-    try fonts.new(0);
 }
 
 pub fn updateRenderScale(scale: f32) !void {
@@ -734,11 +733,15 @@ fn requestCharsSdfs() !void {
             .text => |*text| {
                 if (!text.is_sdf_outdated) continue;
 
+                if (!fonts.fonts.contains(text.typo_props.font_family_id)) {
+                    continue;
+                }
+
                 const padding = sdf.getSdfPadding(text.props.sdf_effects.items);
 
                 for (text.text_vertex.items) |vertex| {
                     if (vertex.char) |char| {
-                        const ch_d = try fonts.get(0, char);
+                        const ch_d = try fonts.get(text.typo_props.font_family_id, char);
 
                         ch_d.request_size(
                             text.typo_props.font_size,
@@ -846,6 +849,10 @@ pub fn computeSdfs() !void {
                 if (text.typo_props.is_sdf_shared) {
                     if (!text.is_sdf_outdated) continue;
 
+                    if (!fonts.fonts.contains(text.typo_props.font_family_id)) {
+                        continue;
+                    }
+
                     const text_sdf_texture_id = text.getSdfTextureId();
 
                     const text_padding = sdf.getSdfPadding(text.props.sdf_effects.items);
@@ -871,7 +878,7 @@ pub fn computeSdfs() !void {
 
                     for (text.text_vertex.items) |vertex| {
                         if (vertex.char) |char| {
-                            const ch_d = try fonts.get(0, char);
+                            const ch_d = try fonts.get(text.typo_props.font_family_id, char);
 
                             if (ch_d.sdf_texture_id) |char_sdf_texture_id| {
                                 const char_padding = text.typo_props.font_size * ch_d.max_ratio_padding_to_font_size;
@@ -1052,6 +1059,10 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 }
             },
             .text => |*text| {
+                if (!fonts.fonts.contains(text.typo_props.font_family_id)) {
+                    continue;
+                }
+
                 const is_typing_ui = state.tool == .Text and state.selected_asset_id.getPrim() == text.id;
 
                 if (text.typo_props.is_sdf_shared) {
@@ -1083,7 +1094,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 for (text.text_vertex.items, 0..) |vertex, i| {
                     if (vertex.char) |char| {
                         if (!text.typo_props.is_sdf_shared) {
-                            const ch_d = try fonts.get(0, char);
+                            const ch_d = try fonts.get(text.typo_props.font_family_id, char);
 
                             if (ch_d.sdf_texture_id) |sdf_texture_id| {
                                 for (text.props.sdf_effects.items) |effect| {
@@ -1460,4 +1471,21 @@ pub fn setSelectedAssetBounds(bounds: [4]types.PointUV, commit: bool) !void {
     }
 
     snapshots.triggerNewSnapshot(true, commit);
+}
+
+pub fn addFont(font_id: u32) !void {
+    try fonts.new(font_id);
+
+    var iterator = state.assets.iterator();
+    while (iterator.next()) |asset| {
+        switch (asset.value_ptr.*) {
+            .img => {},
+            .shape => {},
+            .text => |*text| {
+                if (text.typo_props.font_family_id == font_id) {
+                    _ = try text.computeText(0, 0);
+                }
+            },
+        }
+    }
 }
