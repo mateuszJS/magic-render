@@ -90,74 +90,73 @@ var readAsync, readBinary
 //     return '[Emscripten Module object]'
 //   }
 // } else
-if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
+
+if (ENVIRONMENT_IS_WORKER) {
+  scriptDirectory = self.location.href
+} else if (typeof document !== 'undefined' && document.currentScript) {
+  scriptDirectory = document.currentScript.src
+}
+if (scriptDirectory.indexOf('blob:') !== 0) {
+  scriptDirectory = scriptDirectory.substr(
+    0,
+    scriptDirectory.replace(/[?#].*/, '').lastIndexOf('/') + 1
+  )
+} else {
+  scriptDirectory = ''
+}
+{
+  // read_ = function (url) {
+  //   try {
+  //     var xhr = new XMLHttpRequest()
+  //     xhr.open('GET', url, false)
+  //     xhr.send(null)
+  //     return xhr.responseText
+  //   } catch (err) {
+  //     var data = tryParseAsDataURI(url)
+  //     if (data) {
+  //       return intArrayToString(data)
+  //     }
+  //     throw err
+  //   }
+  // }
   if (ENVIRONMENT_IS_WORKER) {
-    scriptDirectory = self.location.href
-  } else if (typeof document !== 'undefined' && document.currentScript) {
-    scriptDirectory = document.currentScript.src
-  }
-  if (scriptDirectory.indexOf('blob:') !== 0) {
-    scriptDirectory = scriptDirectory.substr(
-      0,
-      scriptDirectory.replace(/[?#].*/, '').lastIndexOf('/') + 1
-    )
-  } else {
-    scriptDirectory = ''
-  }
-  {
-    // read_ = function (url) {
-    //   try {
-    //     var xhr = new XMLHttpRequest()
-    //     xhr.open('GET', url, false)
-    //     xhr.send(null)
-    //     return xhr.responseText
-    //   } catch (err) {
-    //     var data = tryParseAsDataURI(url)
-    //     if (data) {
-    //       return intArrayToString(data)
-    //     }
-    //     throw err
-    //   }
-    // }
-    if (ENVIRONMENT_IS_WORKER) {
-      readBinary = function (url) {
-        try {
-          var xhr = new XMLHttpRequest()
-          xhr.open('GET', url, false)
-          xhr.responseType = 'arraybuffer'
-          xhr.send(null)
-          return new Uint8Array(xhr.response)
-        } catch (err) {
-          var data = tryParseAsDataURI(url)
-          if (data) {
-            return data
-          }
-          throw err
-        }
-      }
-    }
-    readAsync = function (url, onload, onerror) {
-      var xhr = new XMLHttpRequest()
-      xhr.open('GET', url, true)
-      xhr.responseType = 'arraybuffer'
-      xhr.onload = function () {
-        if (xhr.status == 200 || (xhr.status == 0 && xhr.response)) {
-          onload(xhr.response)
-          return
-        }
+    readBinary = function (url) {
+      try {
+        var xhr = new XMLHttpRequest()
+        xhr.open('GET', url, false)
+        xhr.responseType = 'arraybuffer'
+        xhr.send(null)
+        return new Uint8Array(xhr.response)
+      } catch (err) {
         var data = tryParseAsDataURI(url)
         if (data) {
-          onload(data.buffer)
-          return
+          return data
         }
-        onerror()
+        throw err
       }
-      xhr.onerror = onerror
-      xhr.send(null)
     }
   }
+  readAsync = function (url, onload, onerror) {
+    var xhr = new XMLHttpRequest()
+    xhr.open('GET', url, true)
+    xhr.responseType = 'arraybuffer'
+    xhr.onload = function () {
+      if (xhr.status == 200 || (xhr.status == 0 && xhr.response)) {
+        onload(xhr.response)
+        return
+      }
+      var data = tryParseAsDataURI(url)
+      if (data) {
+        onload(data.buffer)
+        return
+      }
+      onerror()
+    }
+    xhr.onerror = onerror
+    xhr.send(null)
+  }
 }
-var out = console.log
+
 var err = console.warn
 for (key in moduleOverrides) {
   if (moduleOverrides.hasOwnProperty(key)) {
@@ -370,16 +369,12 @@ function updateGlobalBufferAndViews(buf) {
   Module['HEAPF32'] = HEAPF32 = new Float32Array(buf)
   Module['HEAPF64'] = HEAPF64 = new Float64Array(buf)
 }
-var INITIAL_MEMORY = Module['INITIAL_MEMORY'] || 16777216
+
 var wasmTable
 var __ATPRERUN__ = []
 var __ATINIT__ = []
 var __ATPOSTRUN__ = []
-var runtimeInitialized = false
-var runtimeKeepaliveCounter = 0
-function keepRuntimeAlive() {
-  return noExitRuntime || runtimeKeepaliveCounter > 0
-}
+
 function preRun() {
   if (Module['preRun']) {
     if (typeof Module['preRun'] == 'function') Module['preRun'] = [Module['preRun']]

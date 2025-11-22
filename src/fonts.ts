@@ -28,10 +28,10 @@ export async function loadFont(url: string, fontId: number) {
       err.message.includes('Unsupported OpenType signature wOF2') &&
       fontBuffer
     ) {
-      const deocmpreassed = decompressWoff2.decompress(fontBuffer)
-      // Create a copy of the buffer because deocmpreassed is a view into WASM memory
+      const decompressed = decompressWoff2.decompress(fontBuffer)
+      // Create a copy of the buffer because decompressed is a view into WASM memory
       // and .buffer would return the whole WASM heap
-      fontBuffer = deocmpreassed.slice(0).buffer
+      fontBuffer = decompressed.slice(0).buffer
       fonts.set(fontId, opentype.parse(fontBuffer))
       Logic.addFont(fontId)
     } else {

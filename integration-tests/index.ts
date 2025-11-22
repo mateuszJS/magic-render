@@ -1,13 +1,13 @@
 import initCreator, { ProjectSnapshot } from '../src/index'
 import FontEBGaramond from './EBGaramond-VariableFont_wght.ttf'
-import FontGoogleSand from './GoogleSans-Regular.ttf'
+import FontGoogleSans from './GoogleSans-Regular.ttf'
 import OutfitWoff2 from './Outfit.woff2'
 import OutfitBoldTtf from './Outfit-Bold.ttf'
 import OutfitThinTtf from './Outfit-Light.ttf'
 
 const fontsDictionary: Record<number, string> = {
   0: FontEBGaramond,
-  1: FontGoogleSand,
+  1: FontGoogleSans,
   2: OutfitWoff2,
   3: OutfitBoldTtf,
   4: OutfitThinTtf,

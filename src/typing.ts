@@ -107,16 +107,15 @@ export function enable(text: string): void {
     newEl.addEventListener('input', onInput)
     newEl.addEventListener('selectionchange', onSelect)
     newEl.addEventListener('copy', onCopy)
+    newEl.addEventListener('blur', () => {
+      Logic.onBlurTextArea()
+    })
 
     textarea = newEl
   }
 
   textarea.focus()
   updateContent(text)
-
-  textarea.addEventListener('blur', () => {
-    Logic.onBlurTextArea()
-  })
 }
 
 export function disable(): void {
