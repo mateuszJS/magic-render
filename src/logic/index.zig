@@ -135,6 +135,7 @@ pub fn connectCacheCallbacks(
 }
 
 pub const ASSET_ID_MIN: u32 = 1000;
+pub const INFINITE_DISTANCE = std.math.floatMax(f32); // purely for SDF effects
 const MIN_NEW_CONTROL_POINT_DISTANCE = 10.0; // Minimum distance to consider a new control point
 
 var state = types.State{
@@ -1302,6 +1303,7 @@ pub fn setSnapshot(snapshot: snapshots.ProjectSnapshot, with_snapshot: bool) !vo
         }
     }
 
+    // deselect asset if it's removed (was not present in the snapshot)
     if (!state.assets.contains(state.selected_asset_id.getPrim())) {
         try setSelectedAsset(AssetId{});
     }
