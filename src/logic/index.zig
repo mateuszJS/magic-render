@@ -331,7 +331,7 @@ fn createText(x: f32, y: f32) !texts.Text {
     const props = asset_props.SerializedProps{
         .sdf_effects = &.{
             .{
-                .dist_start = std.math.floatMax(f32),
+                .dist_start = INFINITE_DISTANCE,
                 .dist_end = 0,
                 .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
             },
@@ -398,7 +398,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             const props = asset_props.SerializedProps{
                 .sdf_effects = &.{
                     .{
-                        .dist_start = std.math.floatMax(f32),
+                        .dist_start = INFINITE_DISTANCE,
                         .dist_end = 0,
                         .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
                     },

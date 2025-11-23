@@ -36,8 +36,8 @@ export interface CreatorAPI {
   updateAssetTypoProps: (props: TypoProps, commit: boolean) => void // updates typography properties of selected asset
   updateAssetProps: (props: ShapeProps, commit: boolean) => void // updates properties of selected asset
   updateAssetBounds: (bounds: PointUV[], commit: boolean) => void // updates bounds of selected asset
-  INFINITE_DISTANCE_THRESHOLD: number
-  INFINITE_DISTANCE: number
+  INFINITE_DISTANCE_THRESHOLD: number // threshold value for considering a distance as "infinite" in SDF fill effects
+  INFINITE_DISTANCE: number // maximum f32 value, used for SDF fill effects
 }
 
 const NO_ASSET_ID = 0 // used when we don't have asset id yet
@@ -377,6 +377,7 @@ export default async function initCreator(
       Logic.setSelectedAssetTypoProps(typoProps, commit)
     },
     INFINITE_DISTANCE_THRESHOLD: Logic.INFINITE_DISTANCE * 0.9,
+    // 90% of INFINITE_DISTANCE to provide a margin for floating-point errors
     INFINITE_DISTANCE: Logic.INFINITE_DISTANCE,
   }
 }
