@@ -166,4 +166,6 @@ declare module '*.zig' {
 
   export const addFont: (font_id: number) => void
   export const onBlurTextArea: VoidFunction
+
+  export const INFINITE_DISTANCE: number
 }
