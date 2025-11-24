@@ -12,6 +12,7 @@ type ShapeDrawUniform =
   | { solid: PointerDataView }
   | { linear: PointerDataView }
   | { radial: PointerDataView }
+  | { program_id: number }
 
 declare module '*.zig' {
   import { ZigProjectSnapshot, TypoProps, ShapeProps } from 'types'

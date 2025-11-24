@@ -45,7 +45,11 @@ export type RadialGradient = {
 export type SdfEffect = {
   dist_start: number
   dist_end: number
-  fill: { linear: LinearGradient } | { radial: RadialGradient } | { solid: Color }
+  fill:
+    | { linear: LinearGradient }
+    | { radial: RadialGradient }
+    | { solid: Color }
+    | { programCode: string }
 }
 
 export type ShapeProps = {
@@ -61,14 +65,16 @@ export type TypoProps = {
   is_sdf_shared: boolean
 }
 
-export type SerializedImage = {
+/* type WITHOUT prefix "Zig" are used in API */
+
+export type Image = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   bounds?: PointUV[]
   url: string
   texture_id?: number
 }
 
-export type SerializedShape = {
+export type Shape = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   paths: Point[][]
   props: ShapeProps
@@ -77,7 +83,7 @@ export type SerializedShape = {
   cache_texture_id?: number | null
 }
 
-export type SerializedText = {
+export type Text = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   content: string
   bounds: PointUV[]
@@ -86,7 +92,13 @@ export type SerializedText = {
   sdf_texture_id: number | null
 }
 
-export type SerializedAsset = SerializedImage | SerializedShape | SerializedText
+export type Asset = Image | Shape | Text
+
+export interface ProjectSnapshot {
+  width: number
+  height: number
+  assets: Asset[]
+}
 
 export enum CreatorTool {
   SelectAsset = 0,
@@ -95,40 +107,52 @@ export enum CreatorTool {
   Text = 3,
 }
 
-type ImageAsset = {
+/* type with prefix "Zig" mirrors the data coming from/to the zig module */
+
+export type ZigSdfEffect = {
+  dist_start: number
+  dist_end: number
+  fill:
+    | { linear: LinearGradient }
+    | { radial: RadialGradient }
+    | { solid: Color }
+    | { program_id: number }
+}
+
+export type ZigShapeProps = {
+  sdf_effects: ZigSdfEffect[]
+  filter: { gaussianBlur: Point } | null
+  opacity: number
+}
+
+type ZigImage = {
   id: number
   bounds: PointUV[]
   texture_id: number
 }
 
-type ShapeAsset = {
+type ZigShape = {
   id: number
   paths: Point[][]
-  props: ShapeProps
+  props: ZigShapeProps
   bounds: PointUV[]
   sdf_texture_id: number
   cache_texture_id: number | null
 }
 
-type TextAsset = {
+type ZigText = {
   id: number
   content: string | null
   bounds: PointUV[]
-  props: ShapeProps
+  props: ZigShapeProps
   typo_props: TypoProps
   sdf_texture_id: number | null
 }
 
-export type ZigAsset = { img: ImageAsset } | { shape: ShapeAsset } | { text: TextAsset }
+export type ZigAsset = { img: ZigImage } | { shape: ZigShape } | { text: ZigText }
 
 export interface ZigProjectSnapshot {
   width: number
   height: number
   assets: ZigAsset[]
-}
-
-export interface ProjectSnapshot {
-  width: number
-  height: number
-  assets: SerializedAsset[]
 }

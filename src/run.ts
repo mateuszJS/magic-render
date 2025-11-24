@@ -24,6 +24,8 @@ import { pointer } from 'pointer'
 import * as Textures from 'textures'
 import { endCache, startCache } from 'WebGPU/textureCache'
 import { BoundingBox, Point } from 'types'
+import assertUnreachable from 'utils/assertUnreachable'
+import { getCustomProgram } from 'customPrograms'
 
 let renderPass: GPURenderPassEncoder
 export function updateRenderPass(newRenderPass: GPURenderPassEncoder) {
@@ -49,10 +51,6 @@ export default function runCreator(
     },
     endCache
   )
-
-  // let time = 0
-  // let total = 0
-  // let samplesCount = 0
   Logic.connectWebGpuPrograms({
     draw_texture: (vertex_data, texture_id) => {
       drawTexture(renderPass, vertex_data.dataView, Textures.getTextureSafe(texture_id))
@@ -60,13 +58,6 @@ export default function runCreator(
     draw_triangle: (vertex_data) => {
       const dataView = vertex_data['*'].dataView
       drawTriangle(renderPass, dataView)
-      /*
-      samplesCount++
-      total += performance.now() - time
-      if (samplesCount % 100 === 0) {
-        console.log('Average draw time:', total / samplesCount)
-      }
-      */
     },
     compute_shape: (curves_data, width, height, textureId) => {
       const curvesDataView = curves_data['*'].dataView
@@ -110,17 +101,20 @@ export default function runCreator(
     draw_shape: (bound_box_data, uniform_data, textureId) => {
       let program
       let uniform
-      if ('linear' in uniform_data && uniform_data.linear) {
+      if ('linear' in uniform_data) {
         program = drawLinearGradientShape
         uniform = uniform_data.linear
-      } else if ('radial' in uniform_data && uniform_data.radial) {
+      } else if ('radial' in uniform_data) {
         program = drawRadialGradientShape
         uniform = uniform_data.radial
-      } else if ('solid' in uniform_data && uniform_data.solid) {
+      } else if ('solid' in uniform_data) {
         program = drawSolidShape
         uniform = uniform_data.solid
+      } else if ('program_id' in uniform_data) {
+        program = getCustomProgram(uniform_data.program_id).callback
+        uniform = { dataView: new DataView(new ArrayBuffer()) }
       } else {
-        throw Error('Unsupported shape uniform type')
+        assertUnreachable(uniform_data)
       }
 
       const boundBoxDataView = bound_box_data['*'].dataView
