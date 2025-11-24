@@ -1293,7 +1293,7 @@ pub fn setSnapshot(snapshot: snapshots.ProjectSnapshot, with_snapshot: bool) !vo
             .text => |text| {
                 _ = try addText(
                     text.id,
-                    text.content orelse "", // should always be provided, important to be null in real life execution
+                    text.content orelse "", // should always be provided in real-life executions
                     text.bounds,
                     text.props,
                     text.typo_props,
