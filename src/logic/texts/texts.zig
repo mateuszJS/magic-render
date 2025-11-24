@@ -78,7 +78,7 @@ pub const Text = struct {
     ) !Text {
         var text = Text{
             .id = id,
-            .content = content,
+            .content = try allocator.dupe(u8, content),
             .typo_props = typography_props.deserialize(input_typo_props),
             .bounds = bounds,
             .text_vertex = std.ArrayList(CharVertex).init(allocator),
@@ -244,7 +244,7 @@ pub const Text = struct {
             try updated_content_bytes.appendSlice(utf8_buffer[0..utf8_len]);
         }
 
-        std.heap.wasm_allocator.free(self.content); // free previous content
+        std.heap.page_allocator.free(self.content); // free previous content
         self.content = try updated_content_bytes.toOwnedSlice();
 
         self.is_sdf_outdated = true;

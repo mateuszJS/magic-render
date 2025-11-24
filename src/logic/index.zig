@@ -307,7 +307,7 @@ pub fn updateTextContent(
 ) !texts.ComputeTextResult {
     const option_text = getSelectedText();
     if (option_text) |text| {
-        text.content = try std.heap.wasm_allocator.dupe(u8, input_content);
+        text.content = try std.heap.page_allocator.dupe(u8, input_content);
         // IMPORTANT: do NOT free input_content,
         // It's owned by Zigar/JS side, so hopefully it's gonna somehow handled there
         const results = try text.computeText(selection_start, selection_end);
@@ -362,7 +362,7 @@ fn createText(x: f32, y: f32) !texts.Text {
 
     return try addText(
         id,
-        try std.heap.wasm_allocator.dupe(u8, "H"),
+        "Type here",
         bounds,
         props,
         typo_props,
@@ -1293,7 +1293,7 @@ pub fn setSnapshot(snapshot: snapshots.ProjectSnapshot, with_snapshot: bool) !vo
             .text => |text| {
                 _ = try addText(
                     text.id,
-                    text.content orelse "",
+                    text.content orelse "", // should always be provided, important to be null in real life execution
                     text.bounds,
                     text.props,
                     text.typo_props,
