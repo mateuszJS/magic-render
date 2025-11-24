@@ -307,6 +307,7 @@ pub fn updateTextContent(
 ) !texts.ComputeTextResult {
     const option_text = getSelectedText();
     if (option_text) |text| {
+        std.heap.page_allocator.free(text.content);
         text.content = try std.heap.page_allocator.dupe(u8, input_content);
         // IMPORTANT: do NOT free input_content,
         // It's owned by Zigar/JS side, so hopefully it's gonna somehow handled there
