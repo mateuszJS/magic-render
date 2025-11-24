@@ -24,8 +24,8 @@ import { pointer } from 'pointer'
 import * as Textures from 'textures'
 import { endCache, startCache } from 'WebGPU/textureCache'
 import { BoundingBox, Point } from 'types'
-import assertUnreachable from 'utils/assertUnreachable'
 import { getCustomProgram } from 'customPrograms'
+import assertUnreachable from 'utils/assertUnreachable'
 
 let renderPass: GPURenderPassEncoder
 export function updateRenderPass(newRenderPass: GPURenderPassEncoder) {
@@ -101,18 +101,19 @@ export default function runCreator(
     draw_shape: (bound_box_data, uniform_data, textureId) => {
       let program
       let uniform
-      if ('linear' in uniform_data) {
+      if ('linear' in uniform_data && uniform_data.linear) {
         program = drawLinearGradientShape
         uniform = uniform_data.linear
-      } else if ('radial' in uniform_data) {
+      } else if ('radial' in uniform_data && uniform_data.radial) {
         program = drawRadialGradientShape
         uniform = uniform_data.radial
-      } else if ('solid' in uniform_data) {
+      } else if ('solid' in uniform_data && uniform_data.solid) {
         program = drawSolidShape
         uniform = uniform_data.solid
-      } else if ('program_id' in uniform_data) {
-        program = getCustomProgram(uniform_data.program_id).callback
-        uniform = { dataView: new DataView(new ArrayBuffer()) }
+      } else if ('program' in uniform_data && uniform_data.program) {
+        const programId = uniform_data.program.dataView.getUint32(0, true)
+        program = getCustomProgram(programId).callback
+        uniform = uniform_data.program
       } else {
         assertUnreachable(uniform_data)
       }

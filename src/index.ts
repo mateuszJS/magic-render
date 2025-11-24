@@ -25,6 +25,7 @@ export * from './types'
 import { destroyCanvasTextures } from 'getCanvasRenderDescriptor'
 import setCamera from 'utils/setCamera'
 import { toBounds, toShapeProps, toTypoProps, toZigShapeProps } from 'convert'
+import { setCallbackCompilationError } from 'customPrograms'
 
 export interface CreatorAPI {
   addImage: (url: string) => void
@@ -53,7 +54,8 @@ export default async function initCreator(
   onIsProcessingFlagUpdate: (inProgress: boolean) => void,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void,
   onUpdateTool: (tool: CreatorTool) => void,
-  getFontUrl: (fontId: number) => string
+  getFontUrl: (fontId: number) => string,
+  onProgramCompilationError: (info: GPUCompilationInfo) => void
 ): Promise<CreatorAPI> {
   let texturesLoading = 0
   let isMouseEventProcessing = false
@@ -208,6 +210,7 @@ export default async function initCreator(
     Fonts.getKerning
   )
   Logic.onUpdateToolCallback(onUpdateTool)
+  setCallbackCompilationError(onProgramCompilationError)
 
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = Textures.add(url, ({ width, height, isNewTexture, shapeAssets, error }) => {
@@ -370,7 +373,9 @@ export default async function initCreator(
       onUpdateTool(tool)
       Logic.setTool(tool)
     },
-    updateAssetProps: Logic.setSelectedAssetProps,
+    updateAssetProps: (props, commit) => {
+      Logic.setSelectedAssetProps(toZigShapeProps(props), commit)
+    },
     updateAssetBounds: Logic.setSelectedAssetBounds,
     updateAssetTypoProps: (typoProps, commit) => {
       Fonts.loadFont(getFontUrl(typoProps.font_family_id), typoProps.font_family_id)

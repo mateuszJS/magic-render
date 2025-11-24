@@ -6,13 +6,6 @@ const std = @import("std");
 const shared = @import("../shared.zig");
 const consts = @import("../consts.zig");
 
-// pub const Padding = struct {
-//     left: f32,
-//     right: f32,
-//     top: f32,
-//     bottom: f32,
-// };
-
 pub const Effect = struct {
     dist_start: f32,
     dist_end: f32,
@@ -23,6 +16,7 @@ pub const DrawUniform = union(enum) {
     solid: UniformSolid,
     linear: UniformLinearGradient,
     radial: UniformRadialGradient,
+    program: UniformProgram,
 };
 
 const UniformSolid = extern struct {
@@ -30,6 +24,13 @@ const UniformSolid = extern struct {
     dist_end: f32,
     padding: [2]u32 = .{ 0, 0 },
     color: @Vector(4, f32),
+};
+
+const UniformProgram = extern struct {
+    program_id: u32,
+    dist_start: f32,
+    dist_end: f32,
+    sdf_scale: f32,
 };
 
 const UniformGradientStop = extern struct {
@@ -121,6 +122,16 @@ pub fn getDrawUniform(sdf_effect: Effect, sdf_scale: f32, opacity: f32) DrawUnif
                     .destination = gradient.destination,
                     .stops = stops,
                     .radius_ratio = gradient.radius_ratio,
+                },
+            };
+        },
+        .program_id => |id| {
+            return DrawUniform{
+                .program = .{
+                    .program_id = id,
+                    .dist_start = sdf_effect.dist_start * sdf_scale,
+                    .dist_end = sdf_effect.dist_end * sdf_scale,
+                    .sdf_scale = sdf_scale,
                 },
             };
         },

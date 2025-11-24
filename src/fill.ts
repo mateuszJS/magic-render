@@ -1,12 +1,12 @@
 import { getCustomProgram, getCustomProgramId } from 'customPrograms'
-import { SdfEffect, ZigSdfEffect } from 'types'
+import { Fill, ZigFill } from 'types'
 import assertUnreachable from 'utils/assertUnreachable'
 
-export function toFill(fill: ZigSdfEffect['fill']): SdfEffect['fill'] {
-  if ('solid' in fill) {
+export function toFill(fill: ZigFill): Fill {
+  if ('solid' in fill && fill.solid) {
     return { solid: [...fill.solid] }
   }
-  if ('linear' in fill) {
+  if ('linear' in fill && fill.linear) {
     return {
       linear: {
         start: {
@@ -24,7 +24,7 @@ export function toFill(fill: ZigSdfEffect['fill']): SdfEffect['fill'] {
       },
     }
   }
-  if ('radial' in fill) {
+  if ('radial' in fill && fill.radial) {
     return {
       radial: {
         center: {
@@ -44,17 +44,27 @@ export function toFill(fill: ZigSdfEffect['fill']): SdfEffect['fill'] {
     }
   }
 
-  if ('program_id' in fill) {
-    return { programCode: getCustomProgram(fill.program_id).code }
+  if ('program_id' in fill && typeof fill.program_id === 'number') {
+    return {
+      program: {
+        code: getCustomProgram(fill.program_id).code,
+        id: fill.program_id,
+      },
+    }
   }
 
   assertUnreachable(fill)
 }
 
-export function toZigFill(fill: SdfEffect['fill']): ZigSdfEffect['fill'] {
+// Zigar input and outptu type ar not compatible
+// ZigFill is comaptible with output, but input needs to specify only one value on enum,
+// otherwise the error occurs "Only one property of SerializedFill can be given a value"
+// That's why this function overrides types to ZigFIll
+export function toZigFill(fill: Fill): ZigFill {
   if ('solid' in fill) {
-    return { solid: [...fill.solid] }
+    return { solid: [...fill.solid] } as ZigFill
   }
+
   if ('linear' in fill) {
     return {
       linear: {
@@ -71,8 +81,9 @@ export function toZigFill(fill: SdfEffect['fill']): ZigSdfEffect['fill'] {
           color: [...stop.color],
         })),
       },
-    }
+    } as ZigFill
   }
+
   if ('radial' in fill) {
     return {
       radial: {
@@ -90,11 +101,13 @@ export function toZigFill(fill: SdfEffect['fill']): ZigSdfEffect['fill'] {
           color: [...stop.color],
         })),
       },
-    }
+    } as ZigFill
   }
 
-  if ('programCode' in fill) {
-    return { program_id: getCustomProgramId(fill.programCode) }
+  if ('program' in fill) {
+    return {
+      program_id: getCustomProgramId(fill.program.id, fill.program.code),
+    } as ZigFill
   }
 
   assertUnreachable(fill)

@@ -42,14 +42,21 @@ export type RadialGradient = {
   destination: Point
 }
 
+type Program = {
+  code: string
+  id?: number
+}
+
+export type Fill =
+  | { linear: LinearGradient }
+  | { radial: RadialGradient }
+  | { solid: Color }
+  | { program: Program }
+
 export type SdfEffect = {
   dist_start: number
   dist_end: number
-  fill:
-    | { linear: LinearGradient }
-    | { radial: RadialGradient }
-    | { solid: Color }
-    | { programCode: string }
+  fill: Fill
 }
 
 export type ShapeProps = {
@@ -109,14 +116,19 @@ export enum CreatorTool {
 
 /* type with prefix "Zig" mirrors the data coming from/to the zig module */
 
+export type ZigFill = OneOf<{
+  // Partial is only to allow object with one proeprtyy, which zigar allows
+  // but zig always returns all fields filled with null except one field with actual value
+  solid: Color
+  linear: LinearGradient
+  radial: RadialGradient
+  program_id: number
+}>
+
 export type ZigSdfEffect = {
   dist_start: number
   dist_end: number
-  fill:
-    | { linear: LinearGradient }
-    | { radial: RadialGradient }
-    | { solid: Color }
-    | { program_id: number }
+  fill: ZigFill
 }
 
 export type ZigShapeProps = {

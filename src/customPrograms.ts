@@ -9,26 +9,59 @@ interface CustomProgram {
 
 const customPrograms = new Map<number, CustomProgram>()
 
-function createProgram(code: string): CustomProgram {
-  const callback = getDrawShape(
-    device,
-    presentationFormat,
-    code.replace('${CUSTOM_PROGRAM_CODE}', customProgramWrapper),
-    0
-  )
-
-  return { code, callback }
+let compilationErrorCallback: (info: GPUCompilationInfo) => void = () => {}
+export function setCallbackCompilationError(callback: (info: GPUCompilationInfo) => void): void {
+  compilationErrorCallback = callback
 }
 
-export function getCustomProgramId(programCode: string): number {
-  for (const [id, program] of customPrograms) {
-    if (program.code === programCode) {
+let altProgramOnErr: ReturnType<typeof getDrawShape> | null = null
+function getAlternativeProgramOnError() {
+  if (!altProgramOnErr) {
+    altProgramOnErr = getDrawShape(
+      device,
+      presentationFormat,
+      customProgramWrapper.replace(
+        '${CUSTOM_PROGRAM_CODE}',
+        'let s=20.0;let p=floor(uv*s);let c=(p.x+p.y)%2.0;color=vec4f(c,c,c,1);'
+      ),
+      4 * 4
+    )
+  }
+  return altProgramOnErr
+}
+
+function createProgram(code: string): CustomProgram {
+  const result = {
+    code,
+    callback: (() => {}) as ReturnType<typeof getDrawShape>,
+  }
+
+  result.callback = getDrawShape(
+    device,
+    presentationFormat,
+    customProgramWrapper.replace('${CUSTOM_PROGRAM_CODE}', code),
+    4 * 4,
+    (info) => {
+      if (info.messages.some((msg) => msg.type === 'error')) {
+        result.callback = getAlternativeProgramOnError()
+        compilationErrorCallback(info)
+      }
+    }
+  )
+  return result
+}
+
+let programIdCounter = 0
+export function getCustomProgramId(id: number | undefined, code: string): number {
+  if (typeof id === 'number') {
+    const program = customPrograms.get(id)
+    if (program && program.code === code) {
       return id
     }
   }
 
-  const newId = customPrograms.size
-  customPrograms.set(newId, createProgram(programCode))
+  const newId = programIdCounter++
+  customPrograms.set(newId, createProgram(code))
   return newId
 }
 

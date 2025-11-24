@@ -13,4 +13,8 @@ declare global {
     type ShapeProps = types.ShapeProps
     type ZigAsset = types.ZigAsset
   }
+
+  type OneOf<T> = {
+    [K in keyof T]: { [P in K]: T[P] } & { [P in Exclude<keyof T, K>]: null }
+  }[keyof T]
 }

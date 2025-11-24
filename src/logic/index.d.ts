@@ -8,14 +8,15 @@ type PointerDataView = {
   dataView: DataView<ArrayBuffer>
 }
 
-type ShapeDrawUniform =
-  | { solid: PointerDataView }
-  | { linear: PointerDataView }
-  | { radial: PointerDataView }
-  | { program_id: number }
+type ShapeDrawUniform = OneOf<{
+  solid: PointerDataView
+  linear: PointerDataView
+  radial: PointerDataView
+  program: PointerDataView
+}>
 
 declare module '*.zig' {
-  import { ZigProjectSnapshot, TypoProps, ShapeProps } from 'types'
+  import { ZigProjectSnapshot, TypoProps, ZigShapeProps } from 'types'
 
   export const initState: (
     width: number,
@@ -161,7 +162,7 @@ declare module '*.zig' {
   ) => void
   export const generateUiElementsSdf: VoidFunction
 
-  export const setSelectedAssetProps: (props: ShapeProps, commit: boolean) => void
+  export const setSelectedAssetProps: (props: ZigShapeProps, commit: boolean) => void
   export const setSelectedAssetBounds: (bounds: zig.PointUV[], commit: boolean) => void
   export const setSelectedAssetTypoProps: (typo_props: TypoProps, commit: boolean) => void
 
