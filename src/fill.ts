@@ -56,10 +56,10 @@ export function toFill(fill: ZigFill): Fill {
   assertUnreachable(fill)
 }
 
-// Zigar input and outptu type ar not compatible
-// ZigFill is comaptible with output, but input needs to specify only one value on enum,
+// Zigar input and output type are not compatible
+// ZigFill is compatible with output, but input needs to specify only one value on enum,
 // otherwise the error occurs "Only one property of SerializedFill can be given a value"
-// That's why this function overrides types to ZigFIll
+// That's why this function overrides types to ZigFill
 export function toZigFill(fill: Fill): ZigFill {
   if ('solid' in fill) {
     return { solid: [...fill.solid] } as ZigFill

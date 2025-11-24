@@ -1,4 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default function assertUnreachable(x: never): never {
-  throw new Error("Didn't expect to get here")
+  throw new Error(`Unreachable code executed with value: ${JSON.stringify(x)}`)
 }

@@ -17,4 +17,6 @@ fn getColor(sdf: vec4f, world_uv: vec2f, uv: vec2f) -> vec4f {
   
   return color;
 }
-  // "program":{"code": "color=vec4f(abs(signed_distance*0.01),path_t%1,angle/6.24,1);"}
+
+// example of custom program code:
+// "program":{"code": "color=vec4f(abs(signed_distance*0.01),path_t%1,angle/6.24,1);"}
