@@ -117,8 +117,6 @@ export enum CreatorTool {
 /* type with prefix "Zig" mirrors the data coming from/to the zig module */
 
 export type ZigFill = OneOf<{
-  // Partial is only to allow object with one property, which zigar allows
-  // but zig always returns all fields filled with null except one field with actual value
   solid: Color
   linear: LinearGradient
   radial: RadialGradient
