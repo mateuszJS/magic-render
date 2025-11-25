@@ -1,6 +1,6 @@
+import { device, presentationFormat } from 'WebGPU/device'
+
 function createTexture(
-  device: GPUDevice,
-  presentationFormat: GPUTextureFormat,
   textureData: Uint8Array<ArrayBuffer>,
   textureWidth: number,
   textureHeight: number
@@ -21,10 +21,7 @@ function createTexture(
   return texture
 }
 
-export function getLoadingTexture(
-  device: GPUDevice,
-  presentationFormat: GPUTextureFormat
-): GPUTexture {
+export function getLoadingTexture(): GPUTexture {
   const textureWidth = 5
   const textureHeight = 7
   const _ = [255, 0, 0, 255] // red
@@ -41,13 +38,10 @@ export function getLoadingTexture(
     _, _, _, _, _,
   ].flat())
 
-  return createTexture(device, presentationFormat, textureData, textureWidth, textureHeight)
+  return createTexture(textureData, textureWidth, textureHeight)
 }
 
-export function getErrorTexture(
-  device: GPUDevice,
-  presentationFormat: GPUTextureFormat
-): GPUTexture {
+export function getErrorTexture(): GPUTexture {
   const textureWidth = 5
   const textureHeight = 7
   const _ = [0, 0, 0, 255] // black
@@ -63,5 +57,5 @@ export function getErrorTexture(
     _, _, _, _, _,
   ].flat())
 
-  return createTexture(device, presentationFormat, textureData, textureWidth, textureHeight)
+  return createTexture(textureData, textureWidth, textureHeight)
 }

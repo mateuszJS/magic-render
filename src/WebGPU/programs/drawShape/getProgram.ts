@@ -5,12 +5,17 @@ export default function getDrawShape(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
   fragmentShader: string,
-  uniformSize: number
+  uniformSize: number,
+  onCompilation?: (info: GPUCompilationInfo) => void
 ) {
   const shaderModule = device.createShaderModule({
     label: 'drawShape shader',
     code: baseCode + fragmentShader,
   })
+
+  if (onCompilation) {
+    shaderModule.getCompilationInfo().then(onCompilation)
+  }
 
   const uniformBufferSize = uniformSize * 4
 

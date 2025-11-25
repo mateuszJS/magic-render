@@ -1,5 +1,5 @@
 import canvasSizeObserver from 'WebGPU/canvasSizeObserver'
-import getDevice from 'WebGPU/getDevice'
+import setupDevice, { device, presentationFormat } from 'WebGPU/device'
 import initPrograms from 'WebGPU/programs/initPrograms'
 import runCreator from 'run'
 import * as Logic from './logic/index.zig'
@@ -8,7 +8,6 @@ import getDefaultPoints from 'utils/getDefaultPoints'
 import * as Textures from 'textures'
 import throttle from 'utils/throttle'
 import generatePreview from 'WebGPU/generatePreview'
-import sanitizeFill from 'sanitizeFill'
 import * as Typing from 'typing'
 import * as Fonts from 'fonts'
 import {
@@ -16,7 +15,7 @@ import {
   Id,
   PointUV,
   ProjectSnapshot,
-  SerializedAsset,
+  Asset,
   ShapeProps,
   TypoProps,
   ZigAsset,
@@ -25,6 +24,8 @@ import {
 export * from './types'
 import { destroyCanvasTextures } from 'getCanvasRenderDescriptor'
 import setCamera from 'utils/setCamera'
+import { toBounds, toShapeProps, toTypoProps, toZigShapeProps } from 'convert'
+import { setCallbackCompilationError } from 'customPrograms'
 
 export interface CreatorAPI {
   addImage: (url: string) => void
@@ -53,7 +54,8 @@ export default async function initCreator(
   onIsProcessingFlagUpdate: (inProgress: boolean) => void,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void,
   onUpdateTool: (tool: CreatorTool) => void,
-  getFontUrl: (fontId: number) => string
+  getFontUrl: (fontId: number) => string,
+  onProgramCompilationError: (info: GPUCompilationInfo) => void
 ): Promise<CreatorAPI> {
   let texturesLoading = 0
   let isMouseEventProcessing = false
@@ -67,7 +69,7 @@ export default async function initCreator(
     onIsProcessingFlagUpdate(texturesLoading > 0 || isMouseEventProcessing)
   }
   let isDestroyed = false
-  const { device, presentationFormat, storageFormat } = await getDevice()
+  await setupDevice()
 
   Logic.initState(
     lastSnapshot.width,
@@ -76,7 +78,7 @@ export default async function initCreator(
     device.limits.maxBufferSize
   )
 
-  Textures.init(device, presentationFormat, storageFormat, (texLoadings) => {
+  Textures.init((texLoadings) => {
     texturesLoading = texLoadings
     updateIsProcessingFlag()
     triggerGeneratePreview()
@@ -149,13 +151,13 @@ export default async function initCreator(
   function newAssetsSnapshot(commit: boolean) {
     // this function is not part of Logic.connect_on_asset_update_callback
     // only because once we update a texture url, we have to notify about the assets update
-    const serializedAssetsTextureUrl = lastSnapshot.assets.map<SerializedAsset>((asset) => {
+    const assets = lastSnapshot.assets.map<Asset>((asset) => {
       if ('img' in asset && asset.img) {
         const img = asset.img
         return {
           id: img.id,
           texture_id: img.texture_id,
-          bounds: serializeBounds([...img.bounds]),
+          bounds: toBounds([...img.bounds]),
           url: Textures.getUrl(img.texture_id),
         }
       } else if ('shape' in asset && asset.shape) {
@@ -171,8 +173,8 @@ export default async function initCreator(
               y: point.y,
             }))
           ),
-          bounds: serializeBounds([...shape.bounds]),
-          props: serializeShapeProps(shape.props),
+          bounds: toBounds([...shape.bounds]),
+          props: toShapeProps(shape.props),
           sdf_texture_id: shape.sdf_texture_id,
           cache_texture_id: shape.cache_texture_id,
         }
@@ -180,9 +182,9 @@ export default async function initCreator(
         return {
           id: asset.text.id,
           content: Typing.sanitizeContent(asset.text.content),
-          bounds: serializeBounds([...asset.text.bounds]),
-          typo_props: serializeTypoProps(asset.text.typo_props),
-          props: serializeShapeProps(asset.text.props),
+          bounds: toBounds([...asset.text.bounds]),
+          typo_props: toTypoProps(asset.text.typo_props),
+          props: toShapeProps(asset.text.props),
           sdf_texture_id: asset.text.sdf_texture_id,
         }
       } else {
@@ -190,7 +192,7 @@ export default async function initCreator(
       }
     })
 
-    onSnapshotUpdate({ ...lastSnapshot, assets: serializedAssetsTextureUrl }, commit)
+    onSnapshotUpdate({ ...lastSnapshot, assets }, commit)
 
     if (commit) {
       triggerGeneratePreview()
@@ -208,6 +210,7 @@ export default async function initCreator(
     Fonts.getKerning
   )
   Logic.onUpdateToolCallback(onUpdateTool)
+  setCallbackCompilationError(onProgramCompilationError)
 
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = Textures.add(url, ({ width, height, isNewTexture, shapeAssets, error }) => {
@@ -266,7 +269,7 @@ export default async function initCreator(
                 shape: {
                   id: asset.id || NO_ASSET_ID,
                   paths: asset.paths,
-                  props: asset.props,
+                  props: toZigShapeProps(asset.props),
                   bounds: asset.bounds,
                   sdf_texture_id: asset.sdf_texture_id || Textures.createSDF(),
                   cache_texture_id: asset.cache_texture_id || null,
@@ -282,7 +285,7 @@ export default async function initCreator(
                   content: asset.content,
                   bounds: asset.bounds,
                   typo_props: asset.typo_props,
-                  props: asset.props,
+                  props: toZigShapeProps(asset.props),
                   sdf_texture_id: asset.sdf_texture_id,
                 },
               })
@@ -370,7 +373,9 @@ export default async function initCreator(
       onUpdateTool(tool)
       Logic.setTool(tool)
     },
-    updateAssetProps: Logic.setSelectedAssetProps,
+    updateAssetProps: (props, commit) => {
+      Logic.setSelectedAssetProps(toZigShapeProps(props), commit)
+    },
     updateAssetBounds: Logic.setSelectedAssetBounds,
     updateAssetTypoProps: (typoProps, commit) => {
       Fonts.loadFont(getFontUrl(typoProps.font_family_id), typoProps.font_family_id)
@@ -379,42 +384,5 @@ export default async function initCreator(
     INFINITE_DISTANCE_THRESHOLD: Logic.INFINITE_DISTANCE * 0.9,
     // 90% of INFINITE_DISTANCE to provide a margin for floating-point errors
     INFINITE_DISTANCE: Logic.INFINITE_DISTANCE,
-  }
-}
-
-function serializeBounds(bounds: PointUV[]): PointUV[] {
-  return bounds.map((point) => ({
-    x: point.x,
-    y: point.y,
-    u: point.u,
-    v: point.v,
-  }))
-}
-
-function serializeShapeProps(props: ShapeProps): ShapeProps {
-  return {
-    sdf_effects: [...props.sdf_effects].map((effect) => ({
-      dist_start: effect.dist_start,
-      dist_end: effect.dist_end,
-      fill: sanitizeFill(effect.fill),
-    })),
-    filter: props.filter?.gaussianBlur
-      ? {
-          gaussianBlur: {
-            x: props.filter.gaussianBlur.x,
-            y: props.filter.gaussianBlur.y,
-          },
-        }
-      : null,
-    opacity: props.opacity,
-  }
-}
-
-function serializeTypoProps(props: TypoProps): TypoProps {
-  return {
-    font_size: props.font_size,
-    font_family_id: props.font_family_id,
-    line_height: props.line_height,
-    is_sdf_shared: props.is_sdf_shared,
   }
 }

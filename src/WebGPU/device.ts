@@ -1,4 +1,8 @@
-export default async function getDevice() {
+export let device: GPUDevice
+export let presentationFormat: GPUTextureFormat
+export let storageFormat: GPUTextureFormat
+
+export default async function setup() {
   if (!navigator.gpu) {
     throw Error('this browser does not support WebGPU')
   }
@@ -10,7 +14,7 @@ export default async function getDevice() {
   }
   const hasBGRA8unormStorage = adapter.features.has('bgra8unorm-storage')
 
-  const device = await adapter.requestDevice({
+  device = await adapter.requestDevice({
     requiredFeatures: hasBGRA8unormStorage ? ['bgra8unorm-storage'] : [],
     label: 'id: ' + Date.now(),
   })
@@ -24,10 +28,6 @@ export default async function getDevice() {
     }
   })
 
-  const presentationFormat = navigator.gpu.getPreferredCanvasFormat()
-  const storageFormat = hasBGRA8unormStorage
-    ? navigator.gpu.getPreferredCanvasFormat()
-    : 'rgba8unorm'
-
-  return { device, presentationFormat, storageFormat }
+  presentationFormat = navigator.gpu.getPreferredCanvasFormat()
+  storageFormat = hasBGRA8unormStorage ? navigator.gpu.getPreferredCanvasFormat() : 'rgba8unorm'
 }

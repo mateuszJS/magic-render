@@ -8,6 +8,7 @@ import RotateIcon from '../icons/rotate.svg'
 import collectShapesData from 'svgToShapes/collectShapesData'
 import { ZigAsset } from 'types'
 import getShapesZigAssets from 'svgToShapes/getShapesZigAssets'
+import { device, storageFormat } from 'WebGPU/device'
 
 function getSvgSize(svgRoot: ElementNode, img?: HTMLImageElement) {
   const props = svgRoot.properties
@@ -29,27 +30,16 @@ function extractSizeFromSvgViewbox(viewbox: string) {
   return null
 }
 
-let device: GPUDevice
 let textures: TextureSource[]
 let textureLoadingPlaceholder: GPUTexture
 let textureErrorPlaceholder: GPUTexture
 let updateProcessing: () => void
 let texturesLoading: number
-let presentationFormat: GPUTextureFormat
-let storageFormat: GPUTextureFormat
 
-export function init(
-  _device: GPUDevice,
-  _presentationFormat: GPUTextureFormat,
-  _storageFormat: GPUTextureFormat,
-  _updateProcessing: (loadingTextures: number) => void
-): void {
-  device = _device
-  presentationFormat = _presentationFormat
-  storageFormat = _storageFormat
+export function init(_updateProcessing: (loadingTextures: number) => void): void {
   textures = []
-  textureLoadingPlaceholder = getLoadingTexture(device, presentationFormat)
-  textureErrorPlaceholder = getErrorTexture(device, presentationFormat)
+  textureLoadingPlaceholder = getLoadingTexture()
+  textureErrorPlaceholder = getErrorTexture()
   texturesLoading = 0
   updateProcessing = () => _updateProcessing(texturesLoading)
 
@@ -142,7 +132,7 @@ async function resolveTexture(
     if (existingTexture !== null) {
       textures[textureId] = existingTexture
     } else {
-      textures[textureId].texture = createTextureFromSource(device, presentationFormat, img, {
+      textures[textureId].texture = createTextureFromSource(img, {
         flipY: true,
       })
       textures[textureId].data = data

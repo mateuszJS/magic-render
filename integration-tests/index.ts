@@ -110,6 +110,9 @@ async function test() {
       const font = fontsDictionary[fontId]
       if (!font) throw Error('Unknown font id: ' + fontId)
       return font
+    },
+    (info) => {
+      console.error('Program compilation error:', info)
     }
   )
 

@@ -1,3 +1,4 @@
+import { device, presentationFormat } from 'WebGPU/device'
 import createCheckedImageData from './createCheckedImageData'
 import generateMipmapsArray from './generateMimapsArray'
 
@@ -108,12 +109,7 @@ export function attachSlice(
   // }
 }
 
-export function createTextureFromSource(
-  device: GPUDevice,
-  presentationFormat: GPUTextureFormat,
-  source: TextureSource,
-  options: Options = {}
-) {
+export function createTextureFromSource(source: TextureSource, options: Options = {}) {
   const texture = device.createTexture({
     label: 'createTextureFromSource',
     format: presentationFormat,
@@ -124,12 +120,11 @@ export function createTextureFromSource(
       GPUTextureUsage.COPY_DST |
       GPUTextureUsage.RENDER_ATTACHMENT,
   })
-  copySourceToTexture(device, texture, source, options)
+  copySourceToTexture(texture, source, options)
   return texture
 }
 
 function copySourceToTexture(
-  device: GPUDevice,
   texture: GPUTexture,
   source: TextureSource,
   { flipY, depthOrArrayLayers }: Options = {}
@@ -157,12 +152,7 @@ export async function loadImageBitmap(url: string) {
   })
 }
 
-export async function createTextureFromImage(
-  device: GPUDevice,
-  presentationFormat: GPUTextureFormat,
-  url: string,
-  options: Options
-) {
+export async function createTextureFromImage(url: string, options: Options) {
   const imgBitmap = await loadImageBitmap(url)
-  return createTextureFromSource(device, presentationFormat, imgBitmap, options)
+  return createTextureFromSource(imgBitmap, options)
 }

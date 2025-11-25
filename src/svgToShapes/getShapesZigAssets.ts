@@ -2,6 +2,7 @@ import { PointUV, ZigAsset } from 'types'
 import { ShapeData } from './collectShapesData'
 import { BoundingBox } from './boundingBox'
 import * as Textures from 'textures'
+import { toZigShapeProps } from 'convert'
 
 export const DEFAULT_BOUNDS: PointUV[] = [
   { x: 0, y: 1, u: 0, v: 1 },
@@ -28,7 +29,7 @@ export default function getShapesZigAssets(shapesData: ShapeData[], maxY?: numbe
         id: 0,
         paths: correctedPaths,
         bounds: DEFAULT_BOUNDS,
-        props,
+        props: toZigShapeProps(props),
         sdf_texture_id: Textures.createSDF(),
         cache_texture_id: null,
       },

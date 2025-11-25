@@ -24,6 +24,8 @@ import { pointer } from 'pointer'
 import * as Textures from 'textures'
 import { endCache, startCache } from 'WebGPU/textureCache'
 import { BoundingBox, Point } from 'types'
+import { getCustomProgram } from 'customPrograms'
+import assertUnreachable from 'utils/assertUnreachable'
 
 let renderPass: GPURenderPassEncoder
 export function updateRenderPass(newRenderPass: GPURenderPassEncoder) {
@@ -49,10 +51,6 @@ export default function runCreator(
     },
     endCache
   )
-
-  // let time = 0
-  // let total = 0
-  // let samplesCount = 0
   Logic.connectWebGpuPrograms({
     draw_texture: (vertex_data, texture_id) => {
       drawTexture(renderPass, vertex_data.dataView, Textures.getTextureSafe(texture_id))
@@ -60,13 +58,6 @@ export default function runCreator(
     draw_triangle: (vertex_data) => {
       const dataView = vertex_data['*'].dataView
       drawTriangle(renderPass, dataView)
-      /*
-      samplesCount++
-      total += performance.now() - time
-      if (samplesCount % 100 === 0) {
-        console.log('Average draw time:', total / samplesCount)
-      }
-      */
     },
     compute_shape: (curves_data, width, height, textureId) => {
       const curvesDataView = curves_data['*'].dataView
@@ -119,8 +110,12 @@ export default function runCreator(
       } else if ('solid' in uniform_data && uniform_data.solid) {
         program = drawSolidShape
         uniform = uniform_data.solid
+      } else if ('program' in uniform_data && uniform_data.program) {
+        const programId = uniform_data.program.dataView.getUint32(0, true)
+        program = getCustomProgram(programId).callback
+        uniform = uniform_data.program
       } else {
-        throw Error('Unsupported shape uniform type')
+        assertUnreachable(uniform_data)
       }
 
       const boundBoxDataView = bound_box_data['*'].dataView

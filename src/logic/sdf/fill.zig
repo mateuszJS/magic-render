@@ -34,6 +34,7 @@ pub const SerializedFill = union(enum) {
     linear: SerializedLinearGradient,
     radial: SerializedRadialGradient,
     solid: [4]f32,
+    program_id: u32,
 
     pub fn compare(self: SerializedFill, other: SerializedFill) bool {
         return switch (self) {
@@ -83,6 +84,10 @@ pub const SerializedFill = union(enum) {
                 },
                 else => false,
             },
+            .program_id => |id| switch (other) {
+                .program_id => |other_id| return id == other_id,
+                else => false,
+            },
         };
     }
 };
@@ -104,6 +109,7 @@ pub const Fill = union(enum) {
     linear: LinearGradient,
     radial: RadialGradient,
     solid: [4]f32,
+    program_id: u32,
 
     pub fn new(input: SerializedFill, allocator: std.mem.Allocator) !Fill {
         return switch (input) {
@@ -145,6 +151,11 @@ pub const Fill = union(enum) {
                     },
                 };
             },
+            .program_id => |id| {
+                return Fill{
+                    .program_id = id,
+                };
+            },
         };
     }
 
@@ -174,6 +185,11 @@ pub const Fill = union(enum) {
                     },
                 };
             },
+            .program_id => |id| {
+                return SerializedFill{
+                    .program_id = id,
+                };
+            },
         };
     }
 
@@ -182,6 +198,7 @@ pub const Fill = union(enum) {
             .solid => {},
             .linear => |*g| g.stops.deinit(),
             .radial => |*g| g.stops.deinit(),
+            .program_id => {},
         }
     }
 };
