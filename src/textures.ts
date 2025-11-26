@@ -6,8 +6,8 @@ import * as def from 'svgToShapes/definitions'
 import type { Defs } from 'svgToShapes/definitions'
 import RotateIcon from '../icons/rotate.svg'
 import collectShapesData from 'svgToShapes/collectShapesData'
-import { ZigAsset } from 'types'
-import getShapesZigAssets from 'svgToShapes/getShapesZigAssets'
+import { Asset } from 'types'
+import getShapesAssets from 'svgToShapes/getShapesAssets'
 import { device, storageFormat } from 'WebGPU/device'
 
 function getSvgSize(svgRoot: ElementNode, img?: HTMLImageElement) {
@@ -69,7 +69,7 @@ interface ImageExtractedData {
   width: number
   height: number
   isNewTexture?: boolean
-  shapeAssets?: ZigAsset[]
+  shapeAssets?: Asset[]
   error?: unknown
 }
 
@@ -119,7 +119,7 @@ async function resolveTexture(
       onLoad?.({
         width: svgWidth,
         height: svgHeight,
-        shapeAssets: getShapesZigAssets(shapesData, svgHeight),
+        shapeAssets: getShapesAssets(shapesData, svgHeight),
       })
       return
     }

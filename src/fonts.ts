@@ -8,9 +8,15 @@ import decompressWoff2 from 'utils/decompressWoff2.mjs'
 const DEFAULT_SPACE = 250 // expressed in font units
 const ENTER = 10
 
-const fonts = new Map<number, opentype.Font | null>()
+let fonts: Map<number, opentype.Font | null>
+let getFontUrl: (fontId: number) => string
 
-export async function loadFont(url: string, fontId: number) {
+export function init(getFontUrlFn: (fontId: number) => string) {
+  fonts = new Map<number, opentype.Font | null>()
+  getFontUrl = getFontUrlFn
+}
+
+export async function loadFont(fontId: number) {
   if (fonts.has(fontId)) {
     return
   }
@@ -18,6 +24,7 @@ export async function loadFont(url: string, fontId: number) {
   fonts.set(fontId, null)
   let fontBuffer: ArrayBuffer | null = null
   try {
+    const url = getFontUrl(fontId)
     const res = await fetch(url)
     fontBuffer = await res.arrayBuffer()
     fonts.set(fontId, opentype.parse(fontBuffer))

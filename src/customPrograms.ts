@@ -1,7 +1,7 @@
 import getDrawShape from 'WebGPU/programs/drawShape/getProgram'
 import customProgramWrapper from 'WebGPU/programs/drawShape/custom-program-wrapper.wgsl'
 import { device, presentationFormat } from 'WebGPU/device'
-import { CustomProgramError } from 'types'
+import { Asset, CustomProgramError, SdfEffect } from 'types'
 
 interface CustomProgram {
   code: string
@@ -15,16 +15,18 @@ some point in the future(e.g. during setSnapshot) */
 let customPrograms: Map<number, CustomProgram>
 let altProgramOnErr: ReturnType<typeof getDrawShape> | null
 let programIdCounter: number
+let updateSnapshot: VoidFunction = () => {}
+let invalidateCache: (programId: number) => void = () => {}
 
-export function init(): void {
+export function init(
+  newInvalidateCache: typeof invalidateCache,
+  newUpdateSnapshot: typeof updateSnapshot
+): void {
   customPrograms = new Map<number, CustomProgram>()
   altProgramOnErr = null
   programIdCounter = 0
-}
-
-let triggerSnapshotsUpdate: (programId: number) => void = () => {}
-export function setTriggerSnapshotsUpdateCallback(callback: typeof triggerSnapshotsUpdate): void {
-  triggerSnapshotsUpdate = callback
+  invalidateCache = newInvalidateCache
+  updateSnapshot = newUpdateSnapshot
 }
 
 function getAlternativeProgramOnError() {
@@ -64,10 +66,13 @@ function createProgram(
     (info) => {
       const errors = info.messages.filter((msg) => msg.type === 'error')
       if (errors.length > 0) {
-        program.errors = errors
+        setTimeout(() => {
+          program.errors = errors
+          updateSnapshot()
+        }, 100)
       } else {
         program.callback = compiledProgramCb
-        triggerSnapshotsUpdate(newId)
+        invalidateCache(newId)
       }
     }
   )
@@ -98,4 +103,39 @@ export function getCustomProgram(programId: number): CustomProgram {
   const program = customPrograms.get(programId)
   if (!program) throw Error('Unknown program id: ' + programId)
   return program
+}
+
+export function getAssetsWithError(assets: Asset[]) {
+  return assets.map<Asset>((asset) => {
+    if ('props' in asset) {
+      for (const effect of asset.props.sdf_effects) {
+        if ('program' in effect.fill && typeof effect.fill.program.id === 'number') {
+          const program = getCustomProgram(effect.fill.program.id)
+          const newEffects: SdfEffect[] = asset.props.sdf_effects.map((eff) => {
+            if ('program' in eff.fill && typeof eff.fill.program.id === 'number') {
+              return {
+                ...eff,
+                fill: {
+                  ...eff.fill,
+                  program: {
+                    ...eff.fill.program,
+                    errors: program.errors,
+                  },
+                },
+              } satisfies SdfEffect
+            }
+            return eff
+          })
+          return {
+            ...asset,
+            props: {
+              ...asset.props,
+              sdf_effects: newEffects,
+            },
+          }
+        }
+      }
+    }
+    return asset
+  })
 }

@@ -1,4 +1,4 @@
-import { toFill, toZigFill } from 'fill'
+import { toFill, toZigFill } from 'snapshots/fill'
 import { PointUV, ShapeProps, TypoProps, ZigShapeProps } from 'types'
 
 export function toBounds(bounds: PointUV[]): PointUV[] {

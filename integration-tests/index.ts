@@ -50,9 +50,11 @@ async function test() {
   let currentHistoryIndex = 0
   let newTextures = 0
   let selectedAssetId = 0
+  const projectWidth = 1000
+  const projectHeight = 1650
   const creator = await initCreator(
-    1000,
-    1650,
+    projectWidth,
+    projectHeight,
     canvas,
     (url, setNewUrl) => {
       setNewUrl(`${newTextures}-${url}`)
@@ -113,13 +115,22 @@ async function test() {
     }
   )
 
+  creator.setSnapshot(
+    {
+      width: projectWidth,
+      height: projectHeight,
+      assets: [],
+    },
+    true
+  )
+
   const addImageInput = document.querySelector<HTMLInputElement>('#add-image')!
   addImageInput.addEventListener('change', (event) => {
     const { files } = event.target as HTMLInputElement
     if (!files) return
 
     const url = URL.createObjectURL(files[0])
-    creator.addImage(url)
+    creator.addImages([url])
 
     addImageInput.value = '' // reset input value to allow re-uploading the same file
   })
