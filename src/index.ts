@@ -25,7 +25,7 @@ export * from './types'
 import { destroyCanvasTextures } from 'getCanvasRenderDescriptor'
 import setCamera from 'utils/setCamera'
 import { toBounds, toShapeProps, toTypoProps, toZigShapeProps } from 'convert'
-import { setCallbackCompilationError } from 'customPrograms'
+import * as CustomPrograms from 'customPrograms'
 
 export interface CreatorAPI {
   addImage: (url: string) => void
@@ -54,11 +54,12 @@ export default async function initCreator(
   onIsProcessingFlagUpdate: (inProgress: boolean) => void,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void,
   onUpdateTool: (tool: CreatorTool) => void,
-  getFontUrl: (fontId: number) => string,
-  onProgramCompilationError: (info: GPUCompilationInfo) => void
+  getFontUrl: (fontId: number) => string
 ): Promise<CreatorAPI> {
   let texturesLoading = 0
   let isMouseEventProcessing = false
+
+  let snapshotWaitingCalls: Array<(snapshot: ZigProjectSnapshot) => void> | null = [] // to delay calls until initial snapshot is ready
   let lastSnapshot: ZigProjectSnapshot = {
     width: initialProjectWidth,
     height: initialProjectHeight,
@@ -68,6 +69,15 @@ export default async function initCreator(
   function updateIsProcessingFlag() {
     onIsProcessingFlagUpdate(texturesLoading > 0 || isMouseEventProcessing)
   }
+
+  function withSnapshotReady(cb: (snapshot: ZigProjectSnapshot) => void) {
+    if (snapshotWaitingCalls) {
+      snapshotWaitingCalls.push(cb)
+    } else {
+      cb(lastSnapshot)
+    }
+  }
+
   let isDestroyed = false
   await setupDevice()
 
@@ -83,6 +93,8 @@ export default async function initCreator(
     updateIsProcessingFlag()
     triggerGeneratePreview()
   })
+
+  CustomPrograms.init()
 
   // rotation doesnt work
   const context = canvas.getContext('webgpu')
@@ -145,6 +157,12 @@ export default async function initCreator(
       height: snapshot.height,
       assets: [...snapshot.assets],
     } // reassing to drop all references to Zig + make assets an actual array
+
+    if (snapshotWaitingCalls) {
+      snapshotWaitingCalls.forEach((cb) => cb(lastSnapshot))
+      snapshotWaitingCalls = null
+    }
+
     newAssetsSnapshot(commit)
   })
 
@@ -210,7 +228,27 @@ export default async function initCreator(
     Fonts.getKerning
   )
   Logic.onUpdateToolCallback(onUpdateTool)
-  setCallbackCompilationError(onProgramCompilationError)
+
+  CustomPrograms.setTriggerSnapshotsUpdateCallback((programId) => {
+    withSnapshotReady((snapshot) => {
+      const assetIds = snapshot.assets
+        .filter((asset) => {
+          const props =
+            'shape' in asset ? asset.shape?.props : 'text' in asset ? asset.text?.props : null
+          if (!props) return false
+          return [...props.sdf_effects].some(
+            (effect) => 'program_id' in effect.fill && effect.fill.program_id === programId
+          )
+        })
+        .map((asset) => {
+          if ('shape' in asset) return asset.shape.id
+          if ('text' in asset) return asset.text.id
+          throw Error('Only shape and text assets can have custom programs')
+        })
+
+      Logic.invalidateCache(assetIds)
+    })
+  })
 
   const addImage: CreatorAPI['addImage'] = (url) => {
     const textureId = Textures.add(url, ({ width, height, isNewTexture, shapeAssets, error }) => {

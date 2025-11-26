@@ -170,4 +170,6 @@ declare module '*.zig' {
   export const onBlurTextArea: VoidFunction
 
   export const INFINITE_DISTANCE: number
+
+  export const invalidateCache: (ids: number[]) => void
 }

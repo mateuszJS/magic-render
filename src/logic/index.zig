@@ -1533,3 +1533,17 @@ pub fn onBlurTextArea() void {
         texts.selection_end_position = 0;
     }
 }
+
+pub fn invalidateCache(ids: []const u32) void {
+    for (ids) |id| {
+        if (state.assets.getPtr(id)) |asset| {
+            switch (asset.*) {
+                .img => {},
+                .shape => |*shape| {
+                    shape.outdated_cache = true;
+                },
+                .text => {},
+            }
+        }
+    }
+}
