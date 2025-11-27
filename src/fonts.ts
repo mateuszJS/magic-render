@@ -81,11 +81,11 @@ export function getCharData(fontId: number, char_code: number): Logic.Serialized
   const path = font.getPath(char, 0, 0, 1)
   const d = path.toPathData(5)
 
-  // just in case characters is created out of multiple overlapping paths
-  // we have to intersect and unite them
-  // otherwise SDF paths will messed because of within shape path
-  // by intersection & union we ensure it's only outline,
-  // not paths inside shapes
+  // in case a character is created out of multiple overlapping paths,
+  // we have to intersect and unite them;
+  // otherwise SDF paths will become incorrect because of the within-shape path.
+  // By intersection & union we ensure it's only the outline,
+  // not paths inside shapes.
   paper.project.activeLayer.removeChildren()
   const item = new paper.CompoundPath(d)
   const unitedItem = item.unite(item)
