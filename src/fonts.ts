@@ -90,6 +90,9 @@ export function getCharData(fontId: number, char_code: number): Logic.Serialized
   const item = new paper.CompoundPath(d)
   const unitedItem = item.unite(item)
   const unitedPathData = unitedItem.pathData
+  // Clean up Paper.js items to prevent memory leaks
+  item.remove()
+  unitedItem.remove()
 
   const paths = parsePathData(unitedPathData)
   const correctedPaths: Point[] = []
