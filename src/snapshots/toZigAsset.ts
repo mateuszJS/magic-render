@@ -2,7 +2,6 @@ import { Asset, ZigAsset } from 'types'
 import { toZigShapeProps } from './convert'
 import { NO_ASSET_ID } from 'consts'
 import * as Textures from 'textures'
-import * as Fonts from 'fonts'
 
 export default function toZigAsset(asset: Asset): ZigAsset {
   if ('paths' in asset) {
@@ -18,9 +17,6 @@ export default function toZigAsset(asset: Asset): ZigAsset {
       },
     }
   } else if ('content' in asset) {
-    const fontId = asset.typo_props.font_family_id
-    Fonts.loadFont(fontId)
-
     return {
       text: {
         id: asset.id || NO_ASSET_ID,
@@ -45,5 +41,5 @@ export default function toZigAsset(asset: Asset): ZigAsset {
   }
 
   console.error(asset)
-  throw Error('unknwon asset scenario')
+  throw Error('unknown asset scenario')
 }

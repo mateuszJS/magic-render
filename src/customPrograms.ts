@@ -9,8 +9,10 @@ interface CustomProgram {
   errors: CustomProgramError[]
 }
 
-/* we assume that one code is assosiated with an id, if code changes,
-id has to be updated as well. Old, unused id should be cleaned up at
+/* we assume that one code is associated with one id, if code changes,
+id has to be updated as well. The callback does not have to represent actual code.
+Callback holds last/aletnative successfully compiled code.
+Old, unused id should be cleaned up at
 some point in the future(e.g. during setSnapshot) */
 let customPrograms: Map<number, CustomProgram>
 let altProgramOnErr: ReturnType<typeof getDrawShape> | null
@@ -105,39 +107,35 @@ export function getCustomProgram(programId: number): CustomProgram {
   return program
 }
 
-export function getAssetsWithError(assets: Asset[]) {
-  return assets.map<Asset>((asset) => {
-    if ('props' in asset) {
-      for (const effect of asset.props.sdf_effects) {
-        if ('program' in effect.fill && typeof effect.fill.program.id === 'number') {
-          const program = getCustomProgram(effect.fill.program.id)
-          const newEffects: SdfEffect[] = asset.props.sdf_effects.map((eff) => {
-            if ('program' in eff.fill && typeof eff.fill.program.id === 'number') {
-              return {
-                ...eff,
-                fill: {
-                  ...eff.fill,
-                  program: {
-                    ...eff.fill.program,
-                    errors: program.errors,
-                  },
-                },
-              } satisfies SdfEffect
-            }
-            return eff
-          })
-          return {
-            ...asset,
-            props: {
-              ...asset.props,
-              sdf_effects: newEffects,
-            },
-          }
-        }
-      }
+function getEffectWithError(effect: SdfEffect): SdfEffect {
+  if ('program' in effect.fill && typeof effect.fill.program.id === 'number') {
+    const program = getCustomProgram(effect.fill.program.id)
+    return {
+      ...effect,
+      fill: {
+        ...effect.fill,
+        program: {
+          ...effect.fill.program,
+          errors: program.errors,
+        },
+      },
     }
-    return asset
-  })
+  }
+  return effect
+}
+
+export function getAssetsWithError(assets: Asset[]) {
+  return assets.map<Asset>((asset) =>
+    'props' in asset
+      ? {
+          ...asset,
+          props: {
+            ...asset.props,
+            sdf_effects: asset.props.sdf_effects.map(getEffectWithError),
+          },
+        }
+      : asset
+  )
 }
 
 export function getAssetIdsByProgramId(assets: Asset[], programId: number): number[] {

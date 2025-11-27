@@ -89,7 +89,7 @@ export default async function initCreator(
 
   const onProgramError = () => {
     Snapshots.withSnapshotReady((snapshot) => {
-      // out aim is to notify UI about errors
+      // our aim is to notify UI about errors
       // Nothing has changed, so no error were provided!
       const assetsWithErrors = CustomPrograms.getAssetsWithError(snapshot.assets)
       onSnapshotUpdate(

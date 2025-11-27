@@ -2,6 +2,7 @@ import { PointUV, Asset } from 'types'
 import { ShapeData } from './collectShapesData'
 import { BoundingBox } from './boundingBox'
 import * as Textures from 'textures'
+import { NO_ASSET_ID } from 'consts'
 
 export const DEFAULT_BOUNDS: PointUV[] = [
   { x: 0, y: 1, u: 0, v: 1 },
@@ -24,7 +25,7 @@ export default function getShapesZigAssets(shapesData: ShapeData[], maxY?: numbe
     const correctedPaths = paths.map((path) => path.map((p) => ({ x: p.x, y: maxY - p.y })))
 
     return {
-      id: 0,
+      id: NO_ASSET_ID,
       paths: correctedPaths,
       bounds: DEFAULT_BOUNDS,
       props,
