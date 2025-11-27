@@ -139,3 +139,23 @@ export function getAssetsWithError(assets: Asset[]) {
     return asset
   })
 }
+
+export function getAssetIdsByProgramId(assets: Asset[], programId: number): number[] {
+  console.log(assets, programId)
+  return assets
+    .filter((asset) => {
+      if ('props' in asset) {
+        return [...asset.props.sdf_effects].some(
+          (effect) => 'program' in effect.fill && effect.fill.program.id === programId
+        )
+      }
+      return false
+    })
+    .map(
+      (asset) =>
+        asset.id ||
+        (() => {
+          throw Error('Asset id is missing')
+        })()
+    )
+}

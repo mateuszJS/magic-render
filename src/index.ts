@@ -82,23 +82,7 @@ export default async function initCreator(
 
   const onProgramUpdate = (programId: number) => {
     Snapshots.withSnapshotReady((snapshot) => {
-      const assetIds = snapshot.assets
-        .filter((asset) => {
-          if ('props' in asset) {
-            return [...asset.props.sdf_effects].some(
-              (effect) => 'program_id' in effect.fill && effect.fill.program_id === programId
-            )
-          }
-          return false
-        })
-        .map(
-          (asset) =>
-            asset.id ||
-            (() => {
-              throw Error('Asset id is missing')
-            })()
-        )
-
+      const assetIds = CustomPrograms.getAssetIdsByProgramId(snapshot.assets, programId)
       Logic.invalidateCache(assetIds)
     })
   }
@@ -259,7 +243,6 @@ export default async function initCreator(
 
     Snapshots.withSnapshotReady((snapshot) => {
       const assets = [...snapshot.assets, ...serializedAssets].map<ZigAsset>(toZigAsset)
-      console.log(assets)
       Logic.setSnapshot({ ...snapshot, assets }, true)
       triggerGeneratePreview()
     })
