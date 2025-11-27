@@ -45,10 +45,12 @@ export function toFill(fill: ZigFill): Fill {
   }
 
   if ('program_id' in fill && typeof fill.program_id === 'number') {
+    const program = getCustomProgram(fill.program_id)
     return {
       program: {
-        code: getCustomProgram(fill.program_id).code,
+        code: program.code,
         id: fill.program_id,
+        errors: program.errors,
       },
     }
   }

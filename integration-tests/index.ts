@@ -50,9 +50,11 @@ async function test() {
   let currentHistoryIndex = 0
   let newTextures = 0
   let selectedAssetId = 0
+  const projectWidth = 1000
+  const projectHeight = 1650
   const creator = await initCreator(
-    1000,
-    1650,
+    projectWidth,
+    projectHeight,
     canvas,
     (url, setNewUrl) => {
       setNewUrl(`${newTextures}-${url}`)
@@ -110,10 +112,16 @@ async function test() {
       const font = fontsDictionary[fontId]
       if (!font) throw Error('Unknown font id: ' + fontId)
       return font
-    },
-    (info) => {
-      console.error('Program compilation error:', info)
     }
+  )
+
+  creator.setSnapshot(
+    {
+      width: projectWidth,
+      height: projectHeight,
+      assets: [],
+    },
+    true
   )
 
   const addImageInput = document.querySelector<HTMLInputElement>('#add-image')!
@@ -122,7 +130,7 @@ async function test() {
     if (!files) return
 
     const url = URL.createObjectURL(files[0])
-    creator.addImage(url)
+    creator.addImages([url])
 
     addImageInput.value = '' // reset input value to allow re-uploading the same file
   })

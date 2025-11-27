@@ -45,6 +45,7 @@ export type RadialGradient = {
 type Program = {
   code: string
   id?: number
+  errors?: CustomProgramError[]
 }
 
 export type Fill =
@@ -166,3 +167,5 @@ export interface ZigProjectSnapshot {
   height: number
   assets: ZigAsset[]
 }
+
+export type CustomProgramError = GPUCompilationMessage

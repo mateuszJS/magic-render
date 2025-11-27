@@ -1533,3 +1533,21 @@ pub fn onBlurTextArea() void {
         texts.selection_end_position = 0;
     }
 }
+
+// Invalidates cache for given asset ids
+// Useful when a resource is ready to be rendered, e.g. image, font, program finished compiling
+// but that resource loading did not trigger a change in asset serialized state
+// so you have to explicitly invalidate cache to re-render with newest resource version
+pub fn invalidateCache(ids: []const u32) void {
+    for (ids) |id| {
+        if (state.assets.getPtr(id)) |asset| {
+            switch (asset.*) {
+                .img => {},
+                .shape => |*shape| {
+                    shape.outdated_cache = true;
+                },
+                .text => {},
+            }
+        }
+    }
+}
