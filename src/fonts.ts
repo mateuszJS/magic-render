@@ -5,6 +5,8 @@ import * as Textures from 'textures'
 import * as Logic from 'logic/index.zig'
 import { Point } from 'types'
 import decompressWoff2 from 'utils/decompressWoff2.mjs'
+import { isStraightHandle } from 'svgToShapes/utils'
+import { STRAIGHT_LINE_HANDLE } from 'svgToShapes/const'
 
 const DEFAULT_SPACE = 250 // expressed in font units
 const ENTER = 10
@@ -77,11 +79,13 @@ export function getCharData(fontId: number, char_code: number): Logic.Serialized
 
   const char = String.fromCharCode(char_code)
   const path = font.getPath(char, 0, 0, 1)
-  if (char === 'T') {
-    console.log(char, path)
-  }
   const d = path.toPathData(5)
 
+  // just in case characters is created out of multiple overlapping paths
+  // we have to intersect and unite them
+  // otherwise SDF paths will messed because of within shape path
+  // by intersection & union we ensure it's only outline,
+  // not paths inside shapes
   paper.project.activeLayer.removeChildren()
   const item = new paper.CompoundPath(d)
   const unitedItem = item.unite(item)
@@ -94,7 +98,9 @@ export function getCharData(fontId: number, char_code: number): Logic.Serialized
 
   paths.forEach((path) => {
     for (let i = 0; i < path.length; i += 3) {
-      const reflected = path.slice(i, i + 4).map((p) => ({ x: p.x - x1, y: -(p.y - y2) }))
+      const reflected = path
+        .slice(i, i + 4)
+        .map((p) => (isStraightHandle(p) ? STRAIGHT_LINE_HANDLE : { x: p.x - x1, y: -(p.y - y2) }))
       correctedPaths.push(...reflected)
     }
     correctedPaths.splice(-1)
