@@ -18,16 +18,16 @@ let customPrograms: Map<number, CustomProgram>
 let altProgramOnErr: ReturnType<typeof getDrawShape> | null
 let programIdCounter: number
 let updateSnapshot: VoidFunction = () => {}
-let invalidateCache: (programId: number) => void = () => {}
+let onProgramUpdate: (programId: number) => void = () => {}
 
 export function init(
-  newInvalidateCache: typeof invalidateCache,
+  newOnProgramUpdate: typeof onProgramUpdate,
   newUpdateSnapshot: typeof updateSnapshot
 ): void {
   customPrograms = new Map<number, CustomProgram>()
   altProgramOnErr = null
   programIdCounter = 0
-  invalidateCache = newInvalidateCache
+  onProgramUpdate = newOnProgramUpdate
   updateSnapshot = newUpdateSnapshot
 }
 
@@ -74,7 +74,7 @@ function createProgram(
         }, 100)
       } else {
         program.callback = compiledProgramCb
-        invalidateCache(newId)
+        onProgramUpdate(newId)
       }
     }
   )
