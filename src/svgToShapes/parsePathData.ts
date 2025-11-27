@@ -282,6 +282,14 @@ function commandsToPoints(commands: PathCommand[]): Point[][] {
       }
 
       case 'z': {
+        // ClosePath - draw a straight line to start if not already there
+        if (
+          Math.abs(currentPoint.x - pathStart.x) > 1e-5 ||
+          Math.abs(currentPoint.y - pathStart.y) > 1e-5
+        ) {
+          currentPoints.push(STRAIGHT_LINE_HANDLE, STRAIGHT_LINE_HANDLE, { ...pathStart })
+        }
+
         currentPoint = pathStart
         lastCubicHandle = null
         lastQuadControl = null

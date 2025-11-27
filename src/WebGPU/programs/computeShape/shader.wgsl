@@ -369,6 +369,10 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
   // Count total crossings and check if odd
   let crossing_count = abs(total_crossings);
   let is_inside = (crossing_count % 2) == 1;
+
+  // if you would like to use non zero rule, uncomment below
+  // let is_inside = total_crossings != 0;
+
   let signed_dist = select(-min_distance, min_distance, is_inside);
   // let pixel_gradient = fwidth(signed_dist);
   

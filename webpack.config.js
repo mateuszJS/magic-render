@@ -27,6 +27,10 @@ const baseConfig = {
   resolve: {
     extensions: ['.ts', '.js', '.wgsl', '.jpg', '.png', '.zig', '.woff2', '.ttf'],
     modules: [path.resolve(__dirname, 'src'), 'node_modules'],
+    alias: {
+      // to load only needed parts of paper.js
+      paper: 'paper/dist/paper-core.js',
+    },
     /* useful with absolute imports, "src" dir now takes precedence over "node_modules" */
   },
   output: {

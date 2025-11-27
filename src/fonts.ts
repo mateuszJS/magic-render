@@ -1,9 +1,12 @@
 import opentype from 'opentype.js'
+import paper from 'paper'
 import parsePathData from 'svgToShapes/parsePathData'
 import * as Textures from 'textures'
 import * as Logic from 'logic/index.zig'
 import { Point } from 'types'
 import decompressWoff2 from 'utils/decompressWoff2.mjs'
+import { isStraightHandle } from 'svgToShapes/utils'
+import { STRAIGHT_LINE_HANDLE } from 'svgToShapes/const'
 
 const DEFAULT_SPACE = 250 // expressed in font units
 const ENTER = 10
@@ -14,6 +17,7 @@ let getFontUrl: (fontId: number) => string
 export function init(getFontUrlFn: (fontId: number) => string) {
   fonts = new Map<number, opentype.Font | null>()
   getFontUrl = getFontUrlFn
+  paper.setup(new paper.Size(1, 1))
 }
 
 export async function loadFont(fontId: number) {
@@ -76,14 +80,30 @@ export function getCharData(fontId: number, char_code: number): Logic.Serialized
   const char = String.fromCharCode(char_code)
   const path = font.getPath(char, 0, 0, 1)
   const d = path.toPathData(5)
-  const paths = parsePathData(d)
+
+  // in case a character is created out of multiple overlapping paths,
+  // we have to intersect and unite them;
+  // otherwise SDF paths will become incorrect because of the within-shape path.
+  // By intersection & union we ensure it's only the outline,
+  // not paths inside shapes.
+  paper.project.activeLayer.removeChildren()
+  const item = new paper.CompoundPath(d)
+  const unitedItem = item.unite(item)
+  const unitedPathData = unitedItem.pathData
+  // Clean up Paper.js items to prevent memory leaks
+  item.remove()
+  unitedItem.remove()
+
+  const paths = parsePathData(unitedPathData)
   const correctedPaths: Point[] = []
 
   const { x1, x2, y1, y2 } = path.getBoundingBox()
 
   paths.forEach((path) => {
     for (let i = 0; i < path.length; i += 3) {
-      const reflected = path.slice(i, i + 4).map((p) => ({ x: p.x - x1, y: -(p.y - y2) }))
+      const reflected = path
+        .slice(i, i + 4)
+        .map((p) => (isStraightHandle(p) ? STRAIGHT_LINE_HANDLE : { x: p.x - x1, y: -(p.y - y2) }))
       correctedPaths.push(...reflected)
     }
     correctedPaths.splice(-1)

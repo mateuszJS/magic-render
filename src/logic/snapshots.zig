@@ -39,7 +39,6 @@ pub fn triggerNewSnapshot(with_snapshot_param: bool, commit_param: bool) void {
     if (first_call_tick == null) {
         first_call_tick = shared.ticks;
     }
-    std.debug.print("triggerNewSnapshot called: with_snapshot = {}, commit = {}\n", .{ with_snapshot, commit });
 }
 
 pub fn loop(state: State) !void {
@@ -105,11 +104,9 @@ fn generateNewSnapshot(state: State) !void {
     // 3. normal/common changes -> with comparing & saving & generating a snapshot
 
     const curr_snapshot = try getCurrSnapshot(state);
-    std.debug.print("generateNewSnapshot: with_snapshot = {}, commit = {}\n", .{ with_snapshot, commit });
     if (commit) {
         // if it's not a commit, then we do not care about limiting snapshots
         const is_project_size_same = utils.equalF32(last_project_snapshot.width, state.width) and utils.equalF32(last_project_snapshot.height, state.height);
-        std.debug.print("generateNewSnapshot: is_project_size_same = {}, prev width: {d}, new width {d}\n", .{ is_project_size_same, last_project_snapshot.width, state.width });
         if (is_project_size_same and curr_snapshot.assets.len == last_project_snapshot.assets.len) {
             var all_match = true;
 
@@ -135,7 +132,7 @@ fn generateNewSnapshot(state: State) !void {
                     },
                 }
             }
-            std.debug.print("generateNewSnapshot: all_match = {}\n", .{all_match});
+
             if (all_match) {
                 std.heap.page_allocator.free(curr_snapshot.assets);
                 return;
