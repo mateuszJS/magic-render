@@ -11,7 +11,7 @@ interface CustomProgram {
 
 /* we assume that one code is associated with one id, if code changes,
 id has to be updated as well. The callback does not have to represent actual code.
-Callback holds last/aletnative successfully compiled code.
+Callback holds last/alternative successfully compiled code.
 Old, unused id should be cleaned up at
 some point in the future(e.g. during setSnapshot) */
 let customPrograms: Map<number, CustomProgram>
