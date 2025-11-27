@@ -257,7 +257,6 @@ export default async function initCreator(
 
   const setSnapshot: CreatorAPI['setSnapshot'] = async (snapshot, withSnapshot) => {
     const assets = snapshot.assets.map<ZigAsset>(toZigAsset)
-    console.log('setSnapshot', snapshot, assets, withSnapshot)
     Logic.setSnapshot({ ...snapshot, assets }, withSnapshot)
     triggerGeneratePreview()
   }

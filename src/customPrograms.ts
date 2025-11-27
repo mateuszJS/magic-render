@@ -139,7 +139,6 @@ export function getAssetsWithError(assets: Asset[]) {
 }
 
 export function getAssetIdsByProgramId(assets: Asset[], programId: number): number[] {
-  console.log(assets, programId)
   return assets
     .filter((asset) => {
       if ('props' in asset) {
