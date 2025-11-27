@@ -1,4 +1,5 @@
 import opentype from 'opentype.js'
+import paper from 'paper'
 import parsePathData from 'svgToShapes/parsePathData'
 import * as Textures from 'textures'
 import * as Logic from 'logic/index.zig'
@@ -14,6 +15,7 @@ let getFontUrl: (fontId: number) => string
 export function init(getFontUrlFn: (fontId: number) => string) {
   fonts = new Map<number, opentype.Font | null>()
   getFontUrl = getFontUrlFn
+  paper.setup(new paper.Size(1, 1))
 }
 
 export async function loadFont(fontId: number) {
@@ -75,8 +77,17 @@ export function getCharData(fontId: number, char_code: number): Logic.Serialized
 
   const char = String.fromCharCode(char_code)
   const path = font.getPath(char, 0, 0, 1)
+  if (char === 'T') {
+    console.log(char, path)
+  }
   const d = path.toPathData(5)
-  const paths = parsePathData(d)
+
+  paper.project.activeLayer.removeChildren()
+  const item = new paper.CompoundPath(d)
+  const unitedItem = item.unite(item)
+  const unitedPathData = unitedItem.pathData
+
+  const paths = parsePathData(unitedPathData)
   const correctedPaths: Point[] = []
 
   const { x1, x2, y1, y2 } = path.getBoundingBox()
