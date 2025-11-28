@@ -171,7 +171,7 @@ export interface ZigProjectSnapshot {
 export type CustomProgramError = GPUCompilationMessage
 
 export interface CreatorAPI {
-  addImages: (urls: string[]) => void
+  addImages: (urls: string[]) => Promise<void>
   setSnapshot: (snapshot: ProjectSnapshot, withSnapshot: boolean) => Promise<void>
   removeAsset: VoidFunction
   destroy: VoidFunction
