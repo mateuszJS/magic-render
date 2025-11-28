@@ -59,13 +59,16 @@
     "zigar-loader": "^0.14.1"
   },
   "exports": {
+    "./package.json": "./package.json",
     ".": {
       "types": "./lib/types/index.d.ts",
-      "import": "./lib/index.mjs"
+      "import": "./lib/index.mjs",
+      "require": "./lib/index.mjs"
     },
     "./types": {
       "types": "./lib/types/types.d.ts",
-      "import": "./lib/types.mjs"
+      "import": "./lib/types.mjs",
+      "require": "./lib/types.mjs"
     }
   },
   "type": "module",
