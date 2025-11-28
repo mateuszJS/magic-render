@@ -1,4 +1,5 @@
-import initCreator, { ProjectSnapshot } from '../src/index'
+import initCreator from '../src/index'
+import type { ProjectSnapshot } from '../src/types'
 import FontEBGaramond from './EBGaramond-VariableFont_wght.ttf'
 import FontGoogleSans from './GoogleSans-Regular.ttf'
 import OutfitWoff2 from './Outfit.woff2'

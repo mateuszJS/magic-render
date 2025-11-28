@@ -33,6 +33,10 @@ const baseConfig = {
     },
     /* useful with absolute imports, "src" dir now takes precedence over "node_modules" */
   },
+  entry: {
+    index: './src/index.ts',
+    types: './src/types.ts',
+  },
   output: {
     filename: '[name].mjs',
     library: {
@@ -104,7 +108,6 @@ const baseConfig = {
 
 const libConfig = {
   ...baseConfig,
-  entry: { index: './src/index.ts' },
   output: {
     ...baseConfig.output,
     path: path.resolve(__dirname, 'lib'),
@@ -114,7 +117,7 @@ const libConfig = {
 // Test config
 const testConfig = {
   ...baseConfig,
-  entry: { integrationTest: './integration-tests/index.ts' },
+  entry: { ...baseConfig.entry, integrationTest: './integration-tests/index.ts' },
   output: {
     ...baseConfig.output,
     path: path.resolve(__dirname, 'lib-test'),

@@ -10,17 +10,7 @@ import throttle from 'utils/throttle'
 import generatePreview from 'WebGPU/generatePreview'
 import * as Typing from 'typing'
 import * as Fonts from 'fonts'
-import {
-  Asset,
-  CreatorTool,
-  Id,
-  PointUV,
-  ProjectSnapshot,
-  ShapeProps,
-  TypoProps,
-  ZigAsset,
-} from './types'
-export * from './types'
+import { Asset, CreatorAPI, CreatorTool, Id, ProjectSnapshot, ZigAsset } from './types'
 import { destroyCanvasTextures } from 'getCanvasRenderDescriptor'
 import setCamera from 'utils/setCamera'
 import { toZigShapeProps } from 'snapshots/convert'
@@ -28,20 +18,6 @@ import * as CustomPrograms from 'customPrograms'
 import * as Snapshots from 'snapshots/snapshots'
 import toZigAsset from 'snapshots/toZigAsset'
 import { NO_ASSET_ID } from 'consts'
-
-export interface CreatorAPI {
-  addImages: (urls: string[]) => void
-  setSnapshot: (snapshot: ProjectSnapshot, withSnapshot: boolean) => Promise<void>
-  removeAsset: VoidFunction
-  destroy: VoidFunction
-  setTool: (tool: CreatorTool) => void
-  // we need to obtain live update!
-  updateAssetTypoProps: (props: TypoProps, commit: boolean) => void // updates typography properties of selected asset
-  updateAssetProps: (props: ShapeProps, commit: boolean) => void // updates properties of selected asset
-  updateAssetBounds: (bounds: PointUV[], commit: boolean) => void // updates bounds of selected asset
-  INFINITE_DISTANCE_THRESHOLD: number // threshold value for considering a distance as "infinite" in SDF fill effects
-  INFINITE_DISTANCE: number // maximum f32 value, used for SDF fill effects
-}
 
 export default async function initCreator(
   initialProjectWidth: number, // we could also set size along setSnapshot, but
