@@ -104,7 +104,10 @@ const baseConfig = {
 
 const libConfig = {
   ...baseConfig,
-  entry: { index: './src/index.ts' },
+  entry: {
+    index: './src/index.ts',
+    types: './src/types.ts',
+  },
   output: {
     ...baseConfig.output,
     path: path.resolve(__dirname, 'lib'),

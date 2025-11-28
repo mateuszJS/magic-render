@@ -169,3 +169,17 @@ export interface ZigProjectSnapshot {
 }
 
 export type CustomProgramError = GPUCompilationMessage
+
+export interface CreatorAPI {
+  addImages: (urls: string[]) => Promise<void>
+  setSnapshot: (snapshot: ProjectSnapshot, withSnapshot: boolean) => Promise<void>
+  removeAsset: VoidFunction
+  destroy: VoidFunction
+  setTool: (tool: CreatorTool) => void
+  // we need to obtain live update!
+  updateAssetTypoProps: (props: TypoProps, commit: boolean) => void // updates typography properties of selected asset
+  updateAssetProps: (props: ShapeProps, commit: boolean) => void // updates properties of selected asset
+  updateAssetBounds: (bounds: PointUV[], commit: boolean) => void // updates bounds of selected asset
+  INFINITE_DISTANCE_THRESHOLD: number // threshold value for considering a distance as "infinite" in SDF fill effects
+  INFINITE_DISTANCE: number // maximum f32 value, used for SDF fill effects
+}
