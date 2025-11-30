@@ -27,13 +27,13 @@ export function toFill(fill: ZigFill): Fill {
   if ('radial' in fill && fill.radial) {
     return {
       radial: {
-        center: {
-          x: fill.radial.center.x,
-          y: fill.radial.center.y,
+        start: {
+          x: fill.radial.start.x,
+          y: fill.radial.start.y,
         },
-        destination: {
-          x: fill.radial.destination.x,
-          y: fill.radial.destination.y,
+        end: {
+          x: fill.radial.end.x,
+          y: fill.radial.end.y,
         },
         radius_ratio: fill.radial.radius_ratio,
         stops: [...fill.radial.stops].map((stop) => ({
@@ -89,13 +89,13 @@ export function toZigFill(fill: Fill): ZigFill {
   if ('radial' in fill) {
     return {
       radial: {
-        center: {
-          x: fill.radial.center.x,
-          y: fill.radial.center.y,
+        start: {
+          x: fill.radial.start.x,
+          y: fill.radial.start.y,
         },
-        destination: {
-          x: fill.radial.destination.x,
-          y: fill.radial.destination.y,
+        end: {
+          x: fill.radial.end.x,
+          y: fill.radial.end.y,
         },
         radius_ratio: fill.radial.radius_ratio,
         stops: [...fill.radial.stops].map((stop) => ({

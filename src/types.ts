@@ -35,11 +35,8 @@ export type LinearGradient = {
   stops: GradientStop[]
 }
 
-export type RadialGradient = {
+export type RadialGradient = LinearGradient & {
   radius_ratio: number
-  stops: GradientStop[]
-  center: Point
-  destination: Point
 }
 
 type Program = {

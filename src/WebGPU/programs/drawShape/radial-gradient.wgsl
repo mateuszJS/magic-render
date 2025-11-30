@@ -8,8 +8,8 @@ struct Uniform {
   dist_end: f32,
   stops_count: u32,
   radius_ratio: f32, // vertical radius / horizontal radius (to create ellipse)
-  center: vec2f,    // Center point of radial gradient
-  destination: vec2f,    // because we have scale, the angle between center an destination is visible in the gradient!
+  start: vec2f,    // start point of radial gradient
+  end: vec2f,    // because we have scale, the angle between start and end is visible in the gradient!
   stops: array<Stop, 10>,
 };
 
@@ -24,16 +24,16 @@ fn getColor(sdf: vec4f, world_uv: vec2f, uv: vec2f) -> vec4f {
     return u.stops[0u].color;
   }
 
-  // Calculate offset from center
-  let offset = uv - u.center;
+  // Calculate offset from start
+  let offset = uv - u.start;
   
-  // Vector from center to destination encodes major axis direction and length
-  let dest_offset = u.destination - u.center;
+  // Vector from start to end encodes major axis direction and length
+  let dest_offset = u.end - u.start;
   let hr = length(dest_offset);
   let inv_hr = 1.0 / max(hr, 1e-8);
   let inv_vr = inv_hr / max(u.radius_ratio, 1e-8);
 
-  // Orthonormal basis aligned with gradient: u along destination, v perpendicular
+  // Orthonormal basis aligned with gradient: u along end, v perpendicular
   let u_dir = dest_offset * inv_hr;              // normalized major axis
   let v_dir = vec2f(-u_dir.y, u_dir.x);         // normalized minor axis
 
@@ -41,7 +41,7 @@ fn getColor(sdf: vec4f, world_uv: vec2f, uv: vec2f) -> vec4f {
   let scaled_x = dot(offset, u_dir) * inv_hr;   // == dot(offset, dest_offset) * inv_hr^2
   let scaled_y = dot(offset, v_dir) * inv_vr;   // divide by vertical radius
   
-  // Calculate normalized distance (0 at center, 1 at edge of ellipse)
+  // Calculate normalized distance (0 at start, 1 at edge of ellipse)
   let normalized_dist = sqrt(scaled_x * scaled_x + scaled_y * scaled_y);
   let t_uv = clamp(normalized_dist, 0.0, 1.0);
 

@@ -54,8 +54,8 @@ const UniformRadialGradient = extern struct {
     dist_end: f32,
     stops_count: u32,
     radius_ratio: f32,
-    center: Point,
-    destination: Point, // rx, ry for elliptical gradients
+    start: Point,
+    end: Point, // rx, ry for elliptical gradients
     stops: [10]UniformGradientStop,
 };
 
@@ -118,8 +118,8 @@ pub fn getDrawUniform(sdf_effect: Effect, sdf_scale: f32, opacity: f32) DrawUnif
                     .dist_start = sdf_effect.dist_start * sdf_scale,
                     .dist_end = sdf_effect.dist_end * sdf_scale,
                     .stops_count = gradient.stops.items.len,
-                    .center = gradient.center,
-                    .destination = gradient.destination,
+                    .start = gradient.start,
+                    .end = gradient.end,
                     .stops = stops,
                     .radius_ratio = gradient.radius_ratio,
                 },
