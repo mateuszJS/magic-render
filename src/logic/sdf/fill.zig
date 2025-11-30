@@ -25,8 +25,8 @@ const SerializedLinearGradient = struct {
 
 const SerializedRadialGradient = struct {
     radius_ratio: f32,
-    center: Point,
-    destination: Point,
+    start: Point,
+    end: Point,
     stops: []GradientStop,
 };
 
@@ -68,8 +68,8 @@ pub const SerializedFill = union(enum) {
             .radial => |g| switch (other) {
                 .radial => |other_g| {
                     if (!utils.equalF32(g.radius_ratio, other_g.radius_ratio) or
-                        !utils.equalBoundPoint(g.center, other_g.center) or
-                        !utils.equalBoundPoint(g.destination, other_g.destination))
+                        !utils.equalBoundPoint(g.start, other_g.start) or
+                        !utils.equalBoundPoint(g.end, other_g.end))
                     {
                         return false;
                     }
@@ -100,8 +100,8 @@ pub const LinearGradient = struct {
 
 pub const RadialGradient = struct {
     radius_ratio: f32,
-    center: Point,
-    destination: Point,
+    start: Point,
+    end: Point,
     stops: std.ArrayList(GradientStop),
 };
 
@@ -144,8 +144,8 @@ pub const Fill = union(enum) {
 
                 return Fill{
                     .radial = .{
-                        .center = gradient.center,
-                        .destination = gradient.destination,
+                        .start = gradient.start,
+                        .end = gradient.end,
                         .radius_ratio = gradient.radius_ratio,
                         .stops = stops,
                     },
@@ -178,8 +178,8 @@ pub const Fill = union(enum) {
             .radial => |g| {
                 return SerializedFill{
                     .radial = .{
-                        .center = g.center,
-                        .destination = g.destination,
+                        .start = g.start,
+                        .end = g.end,
                         .radius_ratio = g.radius_ratio,
                         .stops = g.stops.items,
                     },

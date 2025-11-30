@@ -104,8 +104,8 @@ function toRuntimeGradient(
     return {
       radial: {
         stops,
-        center,
-        destination,
+        start: center,
+        end: destination,
         radius_ratio: ratio,
       },
     }
