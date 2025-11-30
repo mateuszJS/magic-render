@@ -9,7 +9,7 @@ struct Uniform {
   stops_count: u32,
   radius_ratio: f32, // vertical radius / horizontal radius (to create ellipse)
   start: vec2f,    // start point of radial gradient
-  end: vec2f,    // because we have scale, the angle between start an end is visible in the gradient!
+  end: vec2f,    // because we have scale, the angle between start and end is visible in the gradient!
   stops: array<Stop, 10>,
 };
 
