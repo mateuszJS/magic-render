@@ -180,29 +180,34 @@ export default function initMouseController(
   })
   // pointer.zoom = clamp(pointer.zoom + event.deltaY * 0.01, 0.1, 100)
 
-  document.body.addEventListener('keydown', (event) => {
+  canvas.addEventListener('keydown', (event) => {
     const notTypingKeys = event.ctrlKey || event.code === 'AltLeft' || event.code === 'AltRight'
     if (Typing.isEnabled() && !notTypingKeys) return
 
+    const isInputFocused =
+      document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA'
+
     switch (event.key) {
       case ' ':
-        event.preventDefault()
+        if (isInputFocused) return
+
         if (mouseMode !== MouseMode.Pan) {
           canvas.style.cursor = 'grab'
           mouseMode = MouseMode.Pan
         }
         break
       case 'Alt':
-        event.preventDefault()
         mouseMode = MouseMode.Zoom
         break
       case 'Escape':
-        event.preventDefault()
         Logic.commitChanges()
         break
       case '=':
         // case '+':
         // Zoom in with Ctrl/Cmd + Plus
+
+        if (isInputFocused) return
+
         if (event.ctrlKey || event.metaKey) {
           event.preventDefault()
           const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
@@ -213,6 +218,9 @@ export default function initMouseController(
       case '-':
         // case '_':
         // Zoom out with Ctrl/Cmd/Shift + Minus
+
+        if (isInputFocused) return
+
         if (event.ctrlKey || event.metaKey || event.shiftKey) {
           event.preventDefault()
           const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
@@ -226,7 +234,7 @@ export default function initMouseController(
     }
   })
 
-  document.body.addEventListener('keyup', (event) => {
+  canvas.addEventListener('keyup', (event) => {
     if (event.key === ' ' || event.key === 'Alt') {
       mouseMode = MouseMode.None
     }

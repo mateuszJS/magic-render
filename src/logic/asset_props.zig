@@ -25,7 +25,7 @@ pub const Props = struct {
             try effects_list.append(SerializedSdfEffect{
                 .dist_start = effect.dist_start,
                 .dist_end = effect.dist_end,
-                .fill = effect.fill.serialize(),
+                .fill = try effect.fill.serialize(allocator),
             });
         }
 
@@ -66,11 +66,10 @@ pub const SerializedProps = struct {
 
         if (self.sdf_effects.len != other.sdf_effects.len) return false;
 
-        for (self.sdf_effects, 0..) |effect, i| {
-            const other_effect = other.sdf_effects[i];
-            if (!utils.equalF32(effect.dist_start, other_effect.dist_start)) return false;
-            if (!utils.equalF32(effect.dist_end, other_effect.dist_end)) return false;
-            if (!effect.fill.compare(other_effect.fill)) return false;
+        for (self.sdf_effects, other.sdf_effects) |effect_a, effect_b| {
+            if (!utils.equalF32(effect_a.dist_start, effect_b.dist_start)) return false;
+            if (!utils.equalF32(effect_a.dist_end, effect_b.dist_end)) return false;
+            if (!effect_a.fill.compare(effect_b.fill)) return false;
         }
 
         return true;

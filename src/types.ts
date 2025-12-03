@@ -1,20 +1,20 @@
-export interface HTMLInputEvent extends Event {
+export type HTMLInputEvent = Event & {
   target: HTMLInputElement & EventTarget
 }
 
-export interface Point {
+export type Point = {
   x: number
   y: number
 }
 
-export interface PointUV {
+export type PointUV = {
   x: number
   y: number
   u: number
   v: number
 }
 
-export interface BoundingBox {
+export type BoundingBox = {
   min_x: number
   min_y: number
   max_x: number
@@ -99,7 +99,7 @@ export type Text = {
 
 export type Asset = Image | Shape | Text
 
-export interface ProjectSnapshot {
+export type ProjectSnapshot = {
   width: number
   height: number
   assets: Asset[]
@@ -159,15 +159,21 @@ type ZigText = {
 
 export type ZigAsset = { img: ZigImage } | { shape: ZigShape } | { text: ZigText }
 
-export interface ZigProjectSnapshot {
+export type ZigProjectSnapshot = {
   width: number
   height: number
   assets: ZigAsset[]
 }
 
-export type CustomProgramError = GPUCompilationMessage
+export type CustomProgramError = {
+  length: number
+  lineNum: number
+  linePos: number
+  message: string
+  offset: number
+}
 
-export interface CreatorAPI {
+export type CreatorAPI = {
   addImages: (urls: string[]) => Promise<void>
   setSnapshot: (snapshot: ProjectSnapshot, withSnapshot: boolean) => Promise<void>
   removeAsset: VoidFunction
