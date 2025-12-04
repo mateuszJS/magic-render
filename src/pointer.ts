@@ -34,10 +34,15 @@ export const pointer = {
 export default function initMouseController(
   canvas: HTMLCanvasElement,
   onZoom: VoidFunction,
-  onStartProcessing: VoidFunction
+  onStartProcessing: VoidFunction,
+  abortSignal: AbortSignal
 ) {
   pointer.x = OUTSIDE_CANVAS
   pointer.y = OUTSIDE_CANVAS
+
+  const eventOptions: AddEventListenerOptions = {
+    signal: abortSignal,
+  }
 
   function getZigAbsolutePointer(): [number, number] {
     return [
@@ -53,91 +58,111 @@ export default function initMouseController(
     pointer.y = (e.clientY - rect.top) * scale
   }
 
-  canvas.addEventListener('mouseleave', () => {
-    onStartProcessing()
-    canvas.style.cursor = 'default'
+  canvas.addEventListener(
+    'mouseleave',
+    () => {
+      onStartProcessing()
+      canvas.style.cursor = 'default'
 
-    const update = () => {
-      pointer.x = OUTSIDE_CANVAS
-      pointer.y = OUTSIDE_CANVAS
-      Logic.onPointerLeave()
-    }
-    if (pointer.afterPickEventsQueue.length > 0) {
-      pointer.afterPickEventsQueue.push({
-        requireNewPick: false,
-        cb: update,
-      })
-    } else {
-      update()
-    }
-  })
-
-  canvas.addEventListener('dblclick', () => {
-    Logic.onPointerDoubleClick()
-  })
-
-  canvas.addEventListener('mousemove', (e) => {
-    if (panCameraStart) {
-      updatePointer(e)
-
-      camera.x = pointer.x - panCameraStart.x
-      camera.y = -(pointer.y - panCameraStart.y)
-      return
-    }
-
-    onStartProcessing()
-
-    const move = () => {
-      updatePointer(e)
-      Logic.onPointerMove(...getZigAbsolutePointer())
-    }
-    if (pointer.afterPickEventsQueue.length > 0) {
-      pointer.afterPickEventsQueue.push({
-        requireNewPick: false,
-        cb: move,
-      })
-    } else {
-      move()
-    }
-  })
-
-  canvas.addEventListener('mousedown', (e) => {
-    if (mouseMode === MouseMode.Pan) {
-      updatePointer(e)
-      panCameraStart = {
-        x: pointer.x - camera.x,
-        y: pointer.y + camera.y,
+      const update = () => {
+        pointer.x = OUTSIDE_CANVAS
+        pointer.y = OUTSIDE_CANVAS
+        Logic.onPointerLeave()
       }
-      canvas.style.cursor = 'grabbing'
-      return
-    }
-    panCameraStart = null
+      if (pointer.afterPickEventsQueue.length > 0) {
+        pointer.afterPickEventsQueue.push({
+          requireNewPick: false,
+          cb: update,
+        })
+      } else {
+        update()
+      }
+    },
+    eventOptions
+  )
 
-    onStartProcessing()
+  canvas.addEventListener(
+    'dblclick',
+    () => {
+      Logic.onPointerDoubleClick()
+    },
+    eventOptions
+  )
 
-    updatePointer(e)
-    pointer.afterPickEventsQueue.push({
-      requireNewPick: true,
-      cb: Logic.onPointerDown.bind(null, ...getZigAbsolutePointer()),
-    })
-  })
+  canvas.addEventListener(
+    'mousemove',
+    (e) => {
+      if (panCameraStart) {
+        updatePointer(e)
 
-  canvas.addEventListener('mouseup', () => {
-    mouseMode = MouseMode.None
-    panCameraStart = null
-    canvas.style.cursor = 'default'
+        camera.x = pointer.x - panCameraStart.x
+        camera.y = -(pointer.y - panCameraStart.y)
+        return
+      }
 
-    onStartProcessing()
+      onStartProcessing()
 
-    if (pointer.afterPickEventsQueue.length > 0) {
+      const move = () => {
+        updatePointer(e)
+        Logic.onPointerMove(...getZigAbsolutePointer())
+      }
+      if (pointer.afterPickEventsQueue.length > 0) {
+        pointer.afterPickEventsQueue.push({
+          requireNewPick: false,
+          cb: move,
+        })
+      } else {
+        move()
+      }
+    },
+    eventOptions
+  )
+
+  canvas.addEventListener(
+    'mousedown',
+    (e) => {
+      if (mouseMode === MouseMode.Pan) {
+        updatePointer(e)
+        panCameraStart = {
+          x: pointer.x - camera.x,
+          y: pointer.y + camera.y,
+        }
+        canvas.style.cursor = 'grabbing'
+        return
+      }
+      panCameraStart = null
+
+      onStartProcessing()
+
+      updatePointer(e)
       pointer.afterPickEventsQueue.push({
-        requireNewPick: false,
-        cb: Logic.onPointerUp,
+        requireNewPick: true,
+        cb: Logic.onPointerDown.bind(null, ...getZigAbsolutePointer()),
       })
-    } else {
-      Logic.onPointerUp()
-    }
-  })
+    },
+    eventOptions
+  )
+
+  canvas.addEventListener(
+    'mouseup',
+    () => {
+      mouseMode = MouseMode.None
+      panCameraStart = null
+      canvas.style.cursor = 'default'
+
+      onStartProcessing()
+
+      if (pointer.afterPickEventsQueue.length > 0) {
+        pointer.afterPickEventsQueue.push({
+          requireNewPick: false,
+          cb: Logic.onPointerUp,
+        })
+      } else {
+        Logic.onPointerUp()
+      }
+    },
+    eventOptions
+  )
 
   /* zoom functionality shared between wheel and keyboard */
   function performZoom(zoomDelta: number, centerX: number, centerY: number) {
@@ -163,85 +188,98 @@ export default function initMouseController(
   }
 
   /* panning , supports both scroll and touch, expect Safari */
-  canvas.addEventListener('wheel', (event) => {
-    updatePointer(event)
-    event.preventDefault()
-    if (mouseMode === MouseMode.Zoom) {
-      const delta = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : -event.deltaX
-      zoom(delta)
-    } else {
-      if (event.ctrlKey) {
-        zoom(event.deltaY * camera.zoom)
+  canvas.addEventListener(
+    'wheel',
+    (event) => {
+      updatePointer(event)
+      event.preventDefault()
+      if (mouseMode === MouseMode.Zoom) {
+        const delta = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : -event.deltaX
+        zoom(delta)
       } else {
-        camera.x -= event.deltaX
-        camera.y += event.deltaY
+        if (event.ctrlKey) {
+          zoom(event.deltaY * camera.zoom)
+        } else {
+          camera.x -= event.deltaX
+          camera.y += event.deltaY
+        }
       }
-    }
-  })
+    },
+    eventOptions
+  )
   // pointer.zoom = clamp(pointer.zoom + event.deltaY * 0.01, 0.1, 100)
+  // add abort signal to key's events
+  document.body.addEventListener(
+    'keydown',
+    (event) => {
+      const notTypingKeys = event.ctrlKey || event.code === 'AltLeft' || event.code === 'AltRight'
+      if (Typing.isEnabled() && !notTypingKeys) return
 
-  canvas.addEventListener('keydown', (event) => {
-    const notTypingKeys = event.ctrlKey || event.code === 'AltLeft' || event.code === 'AltRight'
-    if (Typing.isEnabled() && !notTypingKeys) return
+      const isInputFocused =
+        document.activeElement?.tagName === 'INPUT' ||
+        document.activeElement?.tagName === 'TEXTAREA'
 
-    const isInputFocused =
-      document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA'
+      switch (event.key) {
+        case ' ':
+          if (isInputFocused) return
 
-    switch (event.key) {
-      case ' ':
-        if (isInputFocused) return
+          if (mouseMode !== MouseMode.Pan) {
+            canvas.style.cursor = 'grab'
+            mouseMode = MouseMode.Pan
+          }
+          break
+        case 'Alt':
+          mouseMode = MouseMode.Zoom
+          break
+        case 'Escape':
+          Logic.commitChanges()
+          break
+        case '=':
+          // case '+':
+          // Zoom in with Ctrl/Cmd + Plus
 
-        if (mouseMode !== MouseMode.Pan) {
-          canvas.style.cursor = 'grab'
-          mouseMode = MouseMode.Pan
+          if (isInputFocused) return
+
+          if (event.ctrlKey || event.metaKey) {
+            event.preventDefault()
+            const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
+            const centerY = pointer.y !== OUTSIDE_CANVAS ? pointer.y : canvas.height / 2
+            performZoom(0.1, centerX, centerY)
+          }
+          break
+        case '-':
+          // case '_':
+          // Zoom out with Ctrl/Cmd/Shift + Minus
+
+          if (isInputFocused) return
+
+          if (event.ctrlKey || event.metaKey || event.shiftKey) {
+            event.preventDefault()
+            const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
+            const centerY = pointer.y !== OUTSIDE_CANVAS ? pointer.y : canvas.height / 2
+            performZoom(-0.1, centerX, centerY)
+          }
+          break
+        case 'Meta': {
+          // update the way transform works
         }
-        break
-      case 'Alt':
-        mouseMode = MouseMode.Zoom
-        break
-      case 'Escape':
-        Logic.commitChanges()
-        break
-      case '=':
-        // case '+':
-        // Zoom in with Ctrl/Cmd + Plus
-
-        if (isInputFocused) return
-
-        if (event.ctrlKey || event.metaKey) {
-          event.preventDefault()
-          const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
-          const centerY = pointer.y !== OUTSIDE_CANVAS ? pointer.y : canvas.height / 2
-          performZoom(0.1, centerX, centerY)
-        }
-        break
-      case '-':
-        // case '_':
-        // Zoom out with Ctrl/Cmd/Shift + Minus
-
-        if (isInputFocused) return
-
-        if (event.ctrlKey || event.metaKey || event.shiftKey) {
-          event.preventDefault()
-          const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
-          const centerY = pointer.y !== OUTSIDE_CANVAS ? pointer.y : canvas.height / 2
-          performZoom(-0.1, centerX, centerY)
-        }
-        break
-      case 'Meta': {
-        // update the way transform works
       }
-    }
-  })
+    },
+    eventOptions
+  )
 
-  canvas.addEventListener('keyup', (event) => {
-    if (event.key === ' ' || event.key === 'Alt') {
-      mouseMode = MouseMode.None
-    }
-    if (event.key === ' ' && panCameraStart === null) {
-      canvas.style.cursor = 'default'
-    }
-  })
+  document.body.addEventListener(
+    'keyup',
+    (event) => {
+      if (event.key === ' ' || event.key === 'Alt') {
+        mouseMode = MouseMode.None
+      }
+      if (event.key === ' ' && panCameraStart === null) {
+        canvas.style.cursor = 'default'
+      }
+    },
+    eventOptions
+  )
 
   // The code below is from mozzila MDN docs, and it's a good base once we can test on mobile
 

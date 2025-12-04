@@ -34,6 +34,7 @@ export default async function initCreator(
 ): Promise<CreatorAPI> {
   let texturesLoading = 0
   let isMouseEventProcessing = false
+  const abortController = new AbortController()
 
   function updateIsProcessingFlag() {
     onIsProcessingFlagUpdate(texturesLoading > 0 || isMouseEventProcessing)
@@ -108,10 +109,15 @@ export default async function initCreator(
 
   initPrograms(device, presentationFormat)
 
-  initMouseController(canvas, updateRenderScale, () => {
-    isMouseEventProcessing = true
-    updateIsProcessingFlag()
-  })
+  initMouseController(
+    canvas,
+    updateRenderScale,
+    () => {
+      isMouseEventProcessing = true
+      updateIsProcessingFlag()
+    },
+    abortController.signal
+  )
 
   const throttledPreviewGenerator = throttle(() => {
     if (isDestroyed || texturesLoading > 0) return
@@ -243,6 +249,7 @@ export default async function initCreator(
     setSnapshot,
     destroy: () => {
       isDestroyed = true
+      abortController.abort()
       stopRAF()
       Logic.deinitState()
       context.unconfigure()

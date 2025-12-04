@@ -11,9 +11,16 @@ interface CustomProgram {
 }
 
 const CUSTOM_CODE_PLACEHOLDER = '${CUSTOM_PROGRAM_CODE}'
-const TOTAL_CUSTOM_CODE_BASE = drawShapeShaderBase + customProgramWrapper
-const CUSTOM_PROGRAM_STRING_OFFSET = TOTAL_CUSTOM_CODE_BASE.indexOf(CUSTOM_CODE_PLACEHOLDER)
-const BEFORE_CUSTOM_PROGRAM_CODE = TOTAL_CUSTOM_CODE_BASE.slice(0, CUSTOM_PROGRAM_STRING_OFFSET)
+const CUSTOM_CODE_TOTAL_BASE = drawShapeShaderBase + customProgramWrapper
+
+const CUSTOM_PROGRAM_STRING_OFFSET = CUSTOM_CODE_TOTAL_BASE.indexOf(CUSTOM_CODE_PLACEHOLDER)
+if (CUSTOM_PROGRAM_STRING_OFFSET === -1) {
+  throw Error(
+    `string: "${CUSTOM_CODE_PLACEHOLDER}" was not found in custom progrma template: ${CUSTOM_CODE_TOTAL_BASE}`
+  )
+}
+
+const BEFORE_CUSTOM_PROGRAM_CODE = CUSTOM_CODE_TOTAL_BASE.slice(0, CUSTOM_PROGRAM_STRING_OFFSET)
 const BEFORE_CUSTOM_PROGRAM_CODE_LINES = BEFORE_CUSTOM_PROGRAM_CODE.split('\n').length - 1
 
 /* we assume that one code is associated with one id, if code changes,
