@@ -2,12 +2,26 @@ import getDrawShape from 'WebGPU/programs/drawShape/getProgram'
 import customProgramWrapper from 'WebGPU/programs/drawShape/custom-program-wrapper.wgsl'
 import { device, presentationFormat } from 'WebGPU/device'
 import { Asset, CustomProgramError, SdfEffect } from 'types'
+import drawShapeShaderBase from 'WebGPU/programs/drawShape/base.wgsl'
 
 interface CustomProgram {
   code: string
   callback: ReturnType<typeof getDrawShape>
   errors: CustomProgramError[]
 }
+
+const CUSTOM_CODE_PLACEHOLDER = '${CUSTOM_PROGRAM_CODE}'
+const CUSTOM_CODE_TOTAL_BASE = drawShapeShaderBase + customProgramWrapper
+
+const CUSTOM_PROGRAM_STRING_OFFSET = CUSTOM_CODE_TOTAL_BASE.indexOf(CUSTOM_CODE_PLACEHOLDER)
+if (CUSTOM_PROGRAM_STRING_OFFSET === -1) {
+  throw Error(
+    `string: "${CUSTOM_CODE_PLACEHOLDER}" was not found in custom progrma template: ${CUSTOM_CODE_TOTAL_BASE}`
+  )
+}
+
+const BEFORE_CUSTOM_PROGRAM_CODE = CUSTOM_CODE_TOTAL_BASE.slice(0, CUSTOM_PROGRAM_STRING_OFFSET)
+const BEFORE_CUSTOM_PROGRAM_CODE_LINES = BEFORE_CUSTOM_PROGRAM_CODE.split('\n').length - 1
 
 /* we assume that one code is associated with one id, if code changes,
 id has to be updated as well. The callback does not have to represent actual code.
@@ -37,7 +51,7 @@ function getAlternativeProgramOnError() {
       device,
       presentationFormat,
       customProgramWrapper.replace(
-        '${CUSTOM_PROGRAM_CODE}',
+        CUSTOM_CODE_PLACEHOLDER,
         'let s=20.0;let p=floor(uv*s);let c=(p.x+p.y)%2.0;color=vec4f(c,c,c,1);'
       ),
       4 * 4,
@@ -68,10 +82,14 @@ function createProgram(
     (info) => {
       const errors = info.messages.filter((msg) => msg.type === 'error')
       if (errors.length > 0) {
-        setTimeout(() => {
-          program.errors = errors
-          updateSnapshot()
-        }, 100)
+        program.errors = errors.map<CustomProgramError>((err) => ({
+          length: err.length,
+          lineNum: err.lineNum - BEFORE_CUSTOM_PROGRAM_CODE_LINES,
+          linePos: err.linePos,
+          message: err.message,
+          offset: err.offset - CUSTOM_PROGRAM_STRING_OFFSET,
+        }))
+        updateSnapshot()
       } else {
         program.callback = compiledProgramCb
         onProgramUpdate(newId)

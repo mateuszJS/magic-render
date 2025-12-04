@@ -419,7 +419,7 @@ pub const Text = struct {
             try effects_list.append(asset_props.SerializedSdfEffect{
                 .dist_start = effect.dist_start,
                 .dist_end = effect.dist_end,
-                .fill = effect.fill.serialize(),
+                .fill = try effect.fill.serialize(allocator),
             });
         }
 

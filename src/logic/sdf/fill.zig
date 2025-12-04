@@ -9,8 +9,8 @@ pub const GradientStop = extern struct {
     pub fn compare(self: GradientStop, other: GradientStop) bool {
         if (!utils.equalF32(self.offset, other.offset)) return false;
 
-        for (self.color, 0..) |c, i| {
-            if (!utils.equalF32(c, other.color[i])) return false;
+        for (self.color, other.color) |color_a, color_b| {
+            if (!utils.equalF32(color_a, color_b)) return false;
         }
 
         return true;
@@ -40,8 +40,8 @@ pub const SerializedFill = union(enum) {
         return switch (self) {
             .solid => |color| switch (other) {
                 .solid => |other_color| {
-                    for (color, 0..) |c, i| {
-                        if (!utils.equalF32(c, other_color[i])) return false;
+                    for (color, other_color) |component_a, component_b| {
+                        if (!utils.equalF32(component_a, component_b)) return false;
                     }
                     return true;
                 },
@@ -56,9 +56,8 @@ pub const SerializedFill = union(enum) {
                     }
 
                     if (g.stops.len != other_g.stops.len) return false;
-
-                    for (g.stops, 0..) |stop, i| {
-                        if (!stop.compare(other_g.stops[i])) return false;
+                    for (g.stops, other_g.stops) |stop_a, stop_b| {
+                        if (!stop_a.compare(stop_b)) return false;
                     }
 
                     return true;
@@ -159,7 +158,7 @@ pub const Fill = union(enum) {
         };
     }
 
-    pub fn serialize(self: Fill) SerializedFill {
+    pub fn serialize(self: Fill, allocator: std.mem.Allocator) !SerializedFill {
         return switch (self) {
             .solid => |color| {
                 return SerializedFill{
@@ -171,7 +170,7 @@ pub const Fill = union(enum) {
                     .linear = .{
                         .start = g.start,
                         .end = g.end,
-                        .stops = g.stops.items,
+                        .stops = try allocator.dupe(GradientStop, g.stops.items),
                     },
                 };
             },
