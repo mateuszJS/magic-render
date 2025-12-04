@@ -165,9 +165,6 @@ pub const Fill = union(enum) {
                     .solid = color,
                 };
             },
-            // TODO: create a test that verifies that there is no memory shared between
-            // snapshot and actual, full data asset
-            // go though all fields and verify there is no two same addresses
             .linear => |g| {
                 return SerializedFill{
                     .linear = .{
