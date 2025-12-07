@@ -44,13 +44,14 @@ export default function runCreator(
 
   const pickManager = new PickManager(device)
 
-  Logic.connectCacheCallbacks(
+  Logic.glueJsTextureCache(
     Textures.createCacheTexture,
     (texture_id: number, box: BoundingBox, width: number, height: number) => {
       startCache(device, encoder, texture_id, box, width, height)
     },
     endCache
   )
+
   Logic.connectWebGpuPrograms({
     draw_texture: (vertex_data, texture_id) => {
       drawTexture(renderPass, vertex_data.dataView, Textures.getTextureSafe(texture_id))

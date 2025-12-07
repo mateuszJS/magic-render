@@ -10,10 +10,18 @@ import throttle from 'utils/throttle'
 import generatePreview from 'WebGPU/generatePreview'
 import * as Typing from 'typing'
 import * as Fonts from 'fonts'
-import { Asset, CreatorAPI, CreatorTool, Id, ProjectSnapshot, ZigAsset } from './types'
+import {
+  Asset,
+  CreatorAPI,
+  CreatorTool,
+  Id,
+  ProjectSnapshot,
+  ZigAsset,
+  ZigProjectSnapshot,
+} from './types'
 import { destroyCanvasTextures } from 'getCanvasRenderDescriptor'
 import setCamera from 'utils/setCamera'
-import { toZigEffects, toZigShapeProps } from 'snapshots/convert'
+import { toZigEffects } from 'snapshots/convert'
 import * as CustomPrograms from 'customPrograms'
 import * as Snapshots from 'snapshots/snapshots'
 import toZigAsset from 'snapshots/toZigAsset'
@@ -142,10 +150,20 @@ export default async function initCreator(
     }
   }
 
-  Logic.connectOnAssetUpdateCallback((snapshot, commit) => {
+  const onAssetUpdate = (snapshot: ZigProjectSnapshot, commit: boolean) => {
     Snapshots.saveSnapshot(snapshot)
     newAssetsSnapshot(commit)
-  })
+  }
+
+  Logic.glueJsGeneral(
+    onAssetUpdate,
+    (id) => onAssetSelect([...id] as Id),
+    onUpdateTool,
+    Textures.createSDF,
+    Textures.createComputeDepthTexture,
+    Fonts.getCharData,
+    Fonts.getKerning
+  )
 
   function newAssetsSnapshot(commit: boolean) {
     // this function is not part of Logic.connect_on_asset_update_callback
@@ -156,17 +174,7 @@ export default async function initCreator(
     }
   }
 
-  Logic.connectOnAssetSelectionCallback((id) => onAssetSelect([...id] as Id))
-  Logic.connectCreateSdfTexture(Textures.createSDF, Textures.createComputeDepthTexture)
-  Logic.connectTyping(
-    Typing.enable,
-    Typing.disable,
-    Typing.updateContent,
-    Typing.updateSelection,
-    Fonts.getCharData,
-    Fonts.getKerning
-  )
-  Logic.onUpdateToolCallback(onUpdateTool)
+  Logic.connectTyping(Typing.enable, Typing.disable, Typing.updateContent, Typing.updateSelection)
 
   const addImages: CreatorAPI['addImages'] = async (urls) => {
     const results = await Promise.allSettled(
@@ -261,7 +269,7 @@ export default async function initCreator(
       Logic.setTool(tool)
     },
     updateAssetProps: (props, effects, commit) => {
-      Logic.setSelectedAssetProps(toZigShapeProps(props), toZigEffects(effects), commit)
+      Logic.setSelectedAssetProps(props, toZigEffects(effects), commit)
     },
     updateAssetBounds: Logic.setSelectedAssetBounds,
     updateAssetTypoProps: (typoProps, commit) => {
