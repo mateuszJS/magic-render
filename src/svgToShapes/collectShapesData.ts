@@ -11,11 +11,12 @@ import {
 import * as radialGradient from './radialGradient'
 import { Def, Defs, DefStop } from './definitions'
 import getProps from './getProps'
-import { Point, SdfEffect, ShapeProps } from 'types'
+import { Point, Fill, Effect, ShapeProps } from 'types'
 
 export interface ShapeData {
   paths: Point[][]
   props: ShapeProps
+  effects: Effect[]
   boundingBox: BoundingBox
 }
 
@@ -28,11 +29,7 @@ function applyLinearTransform(x: number, y: number, m: number[]): Point {
 }
 
 // Convert stops (apply opacity) and bake transform. Here we assume gradientUnits=userSpaceOnUse.
-function toRuntimeGradient(
-  def: Def,
-  boundingBox: BoundingBox,
-  overrideAlpha = 1
-): SdfEffect['fill'] | null {
+function toRuntimeGradient(def: Def, boundingBox: BoundingBox, overrideAlpha = 1): Fill | null {
   if (def.type !== 'linear-gradient' && def.type !== 'radial-gradient') {
     console.error('toRuntimeGradient receive definition which is not a gradient!')
     return null
@@ -163,16 +160,17 @@ export default function collectShapesData(
       const boundingBox = getBoundingBox(paths)
 
       const serializedProps: ShapeProps = {
-        sdf_effects: [],
-        filter: null,
+        blur: null,
         opacity: 1,
       }
+      const serializedEffects = []
+
       // fill/stroke: color or url(#id)
       if (props.fill) {
         const fillOpacity = getNum(props['fill-opacity'], 1)
         const fill = String(props.fill)
         const m = fill.match(/^url\(#([^)]+)\)$/)
-        let serializedFill: SdfEffect['fill'] | null = null
+        let serializedFill: Fill | null = null
 
         if (m) {
           const def = defs[m[1]]
@@ -188,7 +186,7 @@ export default function collectShapesData(
         }
 
         if (serializedFill) {
-          serializedProps.sdf_effects.push({
+          serializedEffects.push({
             dist_start: Number.MAX_SAFE_INTEGER,
             dist_end: 0,
             fill: serializedFill,
@@ -200,7 +198,7 @@ export default function collectShapesData(
         const color = String(props.stroke) || '#000'
         const width = getNum(props['stroke-width'], 1)
         const m = color.match(/^url\(#([^)]+)\)$/)
-        let serializedFill: SdfEffect['fill'] | null = null
+        let serializedFill: Fill | null = null
 
         if (m) {
           const def = defs[m[1]]
@@ -216,7 +214,7 @@ export default function collectShapesData(
         }
 
         if (serializedFill) {
-          serializedProps.sdf_effects.push({
+          serializedEffects.push({
             dist_start: width / 2,
             dist_end: -width / 2,
             fill: serializedFill,
@@ -231,11 +229,9 @@ export default function collectShapesData(
         if (m) {
           const def = defs[m[1]]
           if (def?.stdDeviation) {
-            serializedProps.filter = {
-              gaussianBlur: {
-                x: def.stdDeviation[0],
-                y: def.stdDeviation[1],
-              },
+            serializedProps.blur = {
+              x: def.stdDeviation[0],
+              y: def.stdDeviation[1],
             }
           }
         }
@@ -258,6 +254,7 @@ export default function collectShapesData(
       shapes.push({
         paths: transformedPaths,
         props: serializedProps,
+        effects: serializedEffects,
         boundingBox,
       })
     }

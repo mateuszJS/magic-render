@@ -21,7 +21,7 @@ export default function getShapesZigAssets(shapesData: ShapeData[], maxY?: numbe
     maxY = totalBB.max_y
   }
 
-  return shapesData.map(({ paths, props }) => {
+  return shapesData.map(({ paths, props, effects }) => {
     const correctedPaths = paths.map((path) => path.map((p) => ({ x: p.x, y: maxY - p.y })))
 
     return {
@@ -29,6 +29,7 @@ export default function getShapesZigAssets(shapesData: ShapeData[], maxY?: numbe
       paths: correctedPaths,
       bounds: DEFAULT_BOUNDS,
       props,
+      effects,
       sdf_texture_id: Textures.createSDF(),
       cache_texture_id: null,
     }

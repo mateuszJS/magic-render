@@ -4,7 +4,7 @@ const asset_props = @import("asset_props.zig");
 const texture_size = @import("texture_size.zig");
 const Point = @import("types.zig").Point;
 const PointUV = @import("types.zig").PointUV;
-const sdf = @import("sdf/sdf.zig");
+const sdf_drawing = @import("sdf/drawing.zig");
 const consts = @import("consts.zig");
 const INFINITE_DISTANCE = @import("index.zig").INFINITE_DISTANCE;
 
@@ -19,12 +19,13 @@ pub fn importUiElement(
     paths: []const []const Point,
     sdf_texture_id: u32,
 ) !void {
-    const props = asset_props.SerializedProps{};
+    const props = asset_props.Props{};
     const shape = try shapes.Shape.new(
         0,
         paths,
         consts.DEFAULT_BOUNDS,
         props,
+        &.{},
         sdf_texture_id,
         0,
         std.heap.page_allocator,
@@ -42,8 +43,8 @@ pub fn generateUiElementsSdf(compute_shape: *const fn ([]const Point, u32, u32, 
         var shape = entry.value_ptr;
         const option_points = try shape.getRelativePoints(allocator);
         if (option_points) |points| {
-            const sdf_padding = sdf.getSdfPadding(shape.props.sdf_effects.items);
-            const bounds = sdf.getBoundsWithPadding(
+            const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+            const bounds = sdf_drawing.getBoundsWithPadding(
                 shape.bounds,
                 sdf_padding,
                 1,
@@ -76,11 +77,11 @@ pub const DrawVertex = struct {
 
 pub fn draw(
     dataset: []DrawVertex,
-    draw_shape: *const fn ([]const PointUV, sdf.DrawUniform, u32) void,
+    draw_shape: *const fn ([]const PointUV, sdf_drawing.DrawUniform, u32) void,
 ) !void {
     for (dataset) |data| {
         if (elements.get(@intFromEnum(data.icon))) |shape| {
-            const uniform = sdf.DrawUniform{
+            const uniform = sdf_drawing.DrawUniform{
                 .solid = .{
                     .dist_start = INFINITE_DISTANCE,
                     .dist_end = 0,

@@ -13,9 +13,10 @@ const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const consts = @import("../consts.zig");
 const path_utils = @import("path_utils.zig");
 const fill = @import("../sdf/fill.zig");
-const sdf = @import("../sdf/sdf.zig");
+const sdf_drawing = @import("../sdf/drawing.zig");
 const AssetId = @import("../asset_id.zig").AssetId;
 const asset_props = @import("../asset_props.zig");
+const sdf_effect = @import("../sdf/effect.zig");
 
 const CREATE_HANDLE_THRESHOLD = 10.0;
 // above this distance two handles are created around control point
@@ -49,6 +50,7 @@ pub const Shape = struct {
     id: u32,
     paths: std.ArrayList(Path),
     props: asset_props.Props,
+    effects: std.ArrayList(sdf_effect.Effect),
     bounds: [4]PointUV,
 
     sdf_scale: f32 = 1.0,
@@ -71,7 +73,8 @@ pub const Shape = struct {
         id: u32,
         input_paths: []const []const Point,
         input_bounds: [4]PointUV,
-        input_props: asset_props.SerializedProps,
+        props: asset_props.Props,
+        input_effects: []const sdf_effect.Serialized,
         sdf_texture_id: u32,
         cache_texture_id: ?u32,
         allocator: std.mem.Allocator,
@@ -89,7 +92,8 @@ pub const Shape = struct {
         var shape = Shape{
             .id = id,
             .paths = paths_list,
-            .props = try asset_props.deserializeProps(input_props, allocator),
+            .props = props,
+            .effects = try sdf_effect.deserialize(input_effects, allocator),
             .sdf_texture_id = sdf_texture_id,
             .outdated_sdf = true,
             .should_update_sdf = false,
@@ -276,9 +280,9 @@ pub const Shape = struct {
         return skeleton_buffer.toOwnedSlice();
     }
 
-    pub fn getSkeletonUniform(self: Shape) sdf.DrawUniform {
+    pub fn getSkeletonUniform(self: Shape) sdf_drawing.DrawUniform {
         const stroke_width = path_utils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.render_scale;
-        return sdf.DrawUniform{
+        return sdf_drawing.DrawUniform{
             .solid = .{
                 .dist_start = stroke_width * 0.5,
                 .dist_end = -stroke_width * 0.5,
@@ -329,16 +333,16 @@ pub const Shape = struct {
         return points.toOwnedSlice();
     }
 
-    pub fn getPickUniform(self: Shape, sdf_effect: sdf.Effect) PickUniform {
+    pub fn getPickUniform(self: Shape, effect: sdf_effect.Effect) PickUniform {
         return PickUniform{
-            .dist_start = sdf_effect.dist_start * self.sdf_scale,
-            .dist_end = sdf_effect.dist_end * self.sdf_scale,
+            .dist_start = effect.dist_start * self.sdf_scale,
+            .dist_end = effect.dist_end * self.sdf_scale,
         };
     }
 
-    pub fn getDrawUniform(self: Shape, sdf_effect: sdf.Effect) sdf.DrawUniform {
-        return sdf.getDrawUniform(
-            sdf_effect,
+    pub fn getDrawUniform(self: Shape, effect: sdf_effect.Effect) sdf_drawing.DrawUniform {
+        return sdf_drawing.getDrawUniform(
+            effect,
             self.sdf_scale,
             self.props.opacity,
         );
@@ -374,7 +378,7 @@ pub const Shape = struct {
             self.bounds[0].distance(self.bounds[3]),
         );
 
-        const padding = sdf.getSdfPadding(self.props.sdf_effects.items);
+        const padding = sdf_drawing.getSdfPadding(self.effects.items);
         for (points) |*point| {
             const scaled = scale.get(point);
             point.x = padding + scaled.x;
@@ -385,8 +389,8 @@ pub const Shape = struct {
     }
 
     pub fn getPickBounds(self: Shape) [6]images.PickVertex {
-        const sdf_padding = sdf.getSdfPadding(self.props.sdf_effects.items);
-        const bounds = sdf.getDrawBounds(self.bounds, sdf_padding, null);
+        const sdf_padding = sdf_drawing.getSdfPadding(self.effects.items);
+        const bounds = sdf_drawing.getDrawBounds(self.bounds, sdf_padding, null);
         var buffer: [6]images.PickVertex = undefined;
         for (bounds, 0..) |b, i| {
             buffer[i] = .{
@@ -398,9 +402,9 @@ pub const Shape = struct {
     }
 
     pub fn getFilterMargin(self: Shape) Point {
-        return if (self.props.filter) |filter| Point{
-            .x = 3 * filter.gaussianBlur.x,
-            .y = 3 * filter.gaussianBlur.y,
+        return if (self.props.blur) |blur| Point{
+            .x = 3 * blur.x,
+            .y = 3 * blur.y,
         } else consts.POINT_ZERO;
     }
 
@@ -414,8 +418,9 @@ pub const Shape = struct {
         return Serialized{
             .id = self.id,
             .paths = try paths_list.toOwnedSlice(),
-            .props = try self.props.serialize(allocator),
             .bounds = self.bounds,
+            .props = self.props,
+            .effects = try sdf_effect.serialize(self.effects, allocator),
             .sdf_texture_id = self.sdf_texture_id,
             .cache_texture_id = self.cache_texture_id,
         };
@@ -426,11 +431,7 @@ pub const Shape = struct {
             path.deinit();
         }
         self.paths.deinit();
-
-        for (self.props.sdf_effects.items) |*effect| {
-            effect.fill.deinit();
-        }
-        self.props.sdf_effects.deinit();
+        sdf_effect.deinit(self.effects);
     }
 };
 
@@ -442,8 +443,9 @@ pub const PickUniform = struct {
 pub const Serialized = struct {
     id: u32,
     paths: []const []const Point,
-    props: asset_props.SerializedProps,
     bounds: [4]PointUV,
+    props: asset_props.Props,
+    effects: []sdf_effect.Serialized,
     sdf_texture_id: u32,
     cache_texture_id: ?u32,
 
@@ -460,6 +462,7 @@ pub const Serialized = struct {
         const all_match = self.id == other.id and
             self.paths.len == other.paths.len and
             self.props.compare(other.props) and
+            sdf_effect.compareSerialized(self.effects, other.effects) and
             utils.compareBounds(self.bounds, other.bounds);
 
         if (!all_match) {

@@ -16,7 +16,7 @@ type ShapeDrawUniform = OneOf<{
 }>
 
 declare module '*.zig' {
-  import { ZigProjectSnapshot, TypoProps, ZigShapeProps } from 'types'
+  import { ZigProjectSnapshot, TypoProps, ZigShapeProps, ZigEffect } from 'types'
 
   export const initState: (
     width: number,
@@ -162,7 +162,11 @@ declare module '*.zig' {
   ) => void
   export const generateUiElementsSdf: VoidFunction
 
-  export const setSelectedAssetProps: (props: ZigShapeProps, commit: boolean) => void
+  export const setSelectedAssetProps: (
+    props: ZigShapeProps,
+    effects: ZigEffect[],
+    commit: boolean
+  ) => void
   export const setSelectedAssetBounds: (bounds: zig.PointUV[], commit: boolean) => void
   export const setSelectedAssetTypoProps: (typo_props: TypoProps, commit: boolean) => void
 

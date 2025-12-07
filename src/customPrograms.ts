@@ -1,7 +1,7 @@
 import getDrawShape from 'WebGPU/programs/drawShape/getProgram'
 import customProgramWrapper from 'WebGPU/programs/drawShape/custom-program-wrapper.wgsl'
 import { device, presentationFormat } from 'WebGPU/device'
-import { Asset, CustomProgramError, SdfEffect } from 'types'
+import { Asset, CustomProgramError, Effect } from 'types'
 import drawShapeShaderBase from 'WebGPU/programs/drawShape/base.wgsl'
 
 interface CustomProgram {
@@ -125,7 +125,7 @@ export function getCustomProgram(programId: number): CustomProgram {
   return program
 }
 
-function getEffectWithError(effect: SdfEffect): SdfEffect {
+function getEffectWithError(effect: Effect): Effect {
   if ('program' in effect.fill && typeof effect.fill.program.id === 'number') {
     const program = getCustomProgram(effect.fill.program.id)
     return {
@@ -147,10 +147,7 @@ export function getAssetsWithError(assets: Asset[]) {
     'props' in asset
       ? {
           ...asset,
-          props: {
-            ...asset.props,
-            sdf_effects: asset.props.sdf_effects.map(getEffectWithError),
-          },
+          effects: asset.effects.map(getEffectWithError),
         }
       : asset
   )
@@ -160,7 +157,7 @@ export function getAssetIdsByProgramId(assets: Asset[], programId: number): numb
   return assets
     .filter((asset) => {
       if ('props' in asset) {
-        return [...asset.props.sdf_effects].some(
+        return asset.effects.some(
           (effect) => 'program' in effect.fill && effect.fill.program.id === programId
         )
       }

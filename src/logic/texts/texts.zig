@@ -10,11 +10,12 @@ const rects = @import("../rects.zig");
 const shared = @import("../shared.zig");
 const lines = @import("../lines.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
-const sdf = @import("../sdf/sdf.zig");
+const sdf_drawing = @import("../sdf/drawing.zig");
 const asset_props = @import("../asset_props.zig");
 const fill = @import("../sdf/fill.zig");
 const typography_props = @import("typography_props.zig");
 const js_glue = @import("../js_glue.zig");
+const sdf_effect = @import("../sdf/effect.zig");
 
 const ENTER_CHAR_CODE: u21 = 0xa;
 const SOFT_BREAK_MARKER: u21 = 0x2060;
@@ -65,6 +66,7 @@ pub const Text = struct {
     is_sdf_outdated: bool = true,
 
     props: asset_props.Props,
+    effects: std.ArrayList(sdf_effect.Effect),
     typo_props: typography_props.Props,
 
     pub fn new(
@@ -72,7 +74,8 @@ pub const Text = struct {
         id: u32,
         content: []const u8,
         bounds: [4]PointUV,
-        input_props: asset_props.SerializedProps,
+        props: asset_props.Props,
+        input_effects: []const sdf_effect.Serialized,
         input_typo_props: typography_props.Serialized,
         sdf_texture_id: ?u32,
     ) !Text {
@@ -82,7 +85,8 @@ pub const Text = struct {
             .typo_props = typography_props.deserialize(input_typo_props),
             .bounds = bounds,
             .text_vertex = std.ArrayList(CharVertex).init(allocator),
-            .props = try asset_props.deserializeProps(input_props, allocator),
+            .props = props,
+            .effects = try sdf_effect.deserialize(input_effects, allocator),
             .sdf_texture_id = sdf_texture_id,
         };
 
@@ -405,35 +409,30 @@ pub const Text = struct {
         return triangles_buffer.toOwnedSlice();
     }
 
-    pub fn getDrawUniform(self: Text, sdf_effect: sdf.Effect, sdf_scale: f32) sdf.DrawUniform {
-        return sdf.getDrawUniform(
-            sdf_effect,
+    pub fn getDrawUniform(self: Text, effects: sdf_effect.Effect, sdf_scale: f32) sdf_drawing.DrawUniform {
+        return sdf_drawing.getDrawUniform(
+            effects,
             sdf_scale,
             self.props.opacity,
         );
     }
 
     pub fn serialize(self: Text, allocator: std.mem.Allocator) !Serialized {
-        var effects_list = std.ArrayList(asset_props.SerializedSdfEffect).init(allocator);
-        for (self.props.sdf_effects.items) |effect| {
-            try effects_list.append(asset_props.SerializedSdfEffect{
+        var effects_list = std.ArrayList(sdf_effect.Serialized).init(allocator);
+        for (self.effects.items) |effect| {
+            try effects_list.append(sdf_effect.Serialized{
                 .dist_start = effect.dist_start,
                 .dist_end = effect.dist_end,
                 .fill = try effect.fill.serialize(allocator),
             });
         }
 
-        const props = asset_props.SerializedProps{
-            .sdf_effects = try effects_list.toOwnedSlice(),
-            .filter = self.props.filter,
-            .opacity = self.props.opacity,
-        };
-
         return Serialized{
             .id = self.id,
             .content = self.content,
             .bounds = self.bounds,
-            .props = props,
+            .props = self.props,
+            .effects = try effects_list.toOwnedSlice(),
             .typo_props = self.typo_props.serialize(),
             .sdf_texture_id = self.sdf_texture_id,
         };
@@ -445,7 +444,8 @@ pub const Serialized = struct {
     content: ?[]const u8, // it's a null pointer exception for case when content is empty, we allow null
     // to avoid throwing the exception by Zigar
     bounds: [4]PointUV,
-    props: asset_props.SerializedProps,
+    props: asset_props.Props,
+    effects: []sdf_effect.Serialized,
     typo_props: typography_props.Serialized,
     sdf_texture_id: ?u32,
 
@@ -454,6 +454,7 @@ pub const Serialized = struct {
             self.props.compare(other.props) and
             utils.compareBounds(self.bounds, other.bounds) and
             self.typo_props.compare(other.typo_props) and
+            sdf_effect.compareSerialized(self.effects, other.effects) and
             std.mem.eql(u8, self.content orelse &.{}, other.content orelse &.{});
 
         return all_match;

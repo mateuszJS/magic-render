@@ -51,15 +51,14 @@ export type Fill =
   | { solid: Color }
   | { program: Program }
 
-export type SdfEffect = {
+export type Effect = {
   dist_start: number
   dist_end: number
   fill: Fill
 }
 
 export type ShapeProps = {
-  sdf_effects: SdfEffect[]
-  filter: { gaussianBlur: Point } | null
+  blur: Point | null
   opacity: number
 }
 
@@ -82,8 +81,9 @@ export type Image = {
 export type Shape = {
   id?: number // not needed while loading project but useful for undo/redo to maintain selection
   paths: Point[][]
-  props: ShapeProps
   bounds: PointUV[]
+  props: ShapeProps
+  effects: Effect[]
   sdf_texture_id?: number
   cache_texture_id?: number | null
 }
@@ -93,6 +93,7 @@ export type Text = {
   content: string
   bounds: PointUV[]
   props: ShapeProps
+  effects: Effect[]
   typo_props: TypoProps
   sdf_texture_id: number | null
 }
@@ -121,15 +122,14 @@ export type ZigFill = OneOf<{
   program_id: number
 }>
 
-export type ZigSdfEffect = {
+export type ZigEffect = {
   dist_start: number
   dist_end: number
   fill: ZigFill
 }
 
 export type ZigShapeProps = {
-  sdf_effects: ZigSdfEffect[]
-  filter: { gaussianBlur: Point } | null
+  blur: Point | null
   opacity: number
 }
 
@@ -142,8 +142,9 @@ type ZigImage = {
 type ZigShape = {
   id: number
   paths: Point[][]
-  props: ZigShapeProps
   bounds: PointUV[]
+  props: ZigShapeProps
+  effects: ZigEffect[]
   sdf_texture_id: number
   cache_texture_id: number | null
 }
@@ -153,6 +154,7 @@ type ZigText = {
   content: string | null
   bounds: PointUV[]
   props: ZigShapeProps
+  effects: ZigEffect[]
   typo_props: TypoProps
   sdf_texture_id: number | null
 }
@@ -181,7 +183,7 @@ export type CreatorAPI = {
   setTool: (tool: CreatorTool) => void
   // we need to obtain live update!
   updateAssetTypoProps: (props: TypoProps, commit: boolean) => void // updates typography properties of selected asset
-  updateAssetProps: (props: ShapeProps, commit: boolean) => void // updates properties of selected asset
+  updateAssetProps: (props: ShapeProps, effects: Effect[], commit: boolean) => void // updates properties of selected asset
   updateAssetBounds: (bounds: PointUV[], commit: boolean) => void // updates bounds of selected asset
   INFINITE_DISTANCE_THRESHOLD: number // threshold value for considering a distance as "infinite" in SDF fill effects
   INFINITE_DISTANCE: number // maximum f32 value, used for SDF fill effects

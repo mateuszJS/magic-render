@@ -5,12 +5,7 @@ const fill = @import("fill.zig");
 const std = @import("std");
 const shared = @import("../shared.zig");
 const consts = @import("../consts.zig");
-
-pub const Effect = struct {
-    dist_start: f32,
-    dist_end: f32,
-    fill: fill.Fill,
-};
+const Effect = @import("effect.zig").Effect;
 
 pub const DrawUniform = union(enum) {
     solid: UniformSolid,
@@ -138,11 +133,11 @@ pub fn getDrawUniform(sdf_effect: Effect, sdf_scale: f32, opacity: f32) DrawUnif
     }
 }
 
-pub fn getSdfPadding(sdf_effects: []Effect) f32 {
+pub fn getSdfPadding(effects: []Effect) f32 {
     var padding: f32 = 0.0;
     // because of skeleton render, we cannot od less than zero
 
-    for (sdf_effects) |effect| {
+    for (effects) |effect| {
         if (effect.dist_end > 9999999) {
             std.debug.print("SDF effect dist_end should NOT be a large positive number!\n effect: {any}\n", .{effect});
             @panic("SDF effect dist_end should NOT be a large positive number!");
@@ -157,7 +152,7 @@ pub fn getSdfPadding(sdf_effects: []Effect) f32 {
 }
 
 pub fn getBoundsWithPadding(bounds: [4]PointUV, sdf_padding: f32, scale: f32, filter_margin: ?Point) [4]PointUV {
-    // const sdf_padding = sdf.getSdfPadding(self.props.sdf_effects.items);
+    // const sdf_padding = sdf.getSdfPadding(self.effects.items);
     var padding = Point{
         .x = sdf_padding,
         .y = sdf_padding,

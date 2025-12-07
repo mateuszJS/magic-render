@@ -1,5 +1,5 @@
 import { Asset, ProjectSnapshot, ZigProjectSnapshot } from 'types'
-import { toBounds, toShapeProps, toTypoProps } from './convert'
+import { toBounds, toEffects, toShapeProps, toTypoProps } from './convert'
 import * as Typing from 'typing'
 import * as Textures from 'textures'
 import * as Fonts from 'fonts'
@@ -49,6 +49,7 @@ export function saveSnapshot(snapshot: ZigProjectSnapshot) {
         ),
         bounds: toBounds([...shape.bounds]),
         props: toShapeProps(shape.props),
+        effects: toEffects(shape.effects),
         sdf_texture_id: shape.sdf_texture_id,
         cache_texture_id: shape.cache_texture_id,
       }
@@ -63,6 +64,7 @@ export function saveSnapshot(snapshot: ZigProjectSnapshot) {
         bounds: toBounds([...asset.text.bounds]),
         typo_props: toTypoProps(asset.text.typo_props),
         props: toShapeProps(asset.text.props),
+        effects: toEffects(asset.text.effects),
         sdf_texture_id: asset.text.sdf_texture_id,
       }
     } else {
