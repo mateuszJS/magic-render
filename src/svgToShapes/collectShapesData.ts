@@ -11,11 +11,11 @@ import {
 import * as radialGradient from './radialGradient'
 import { Def, Defs, DefStop } from './definitions'
 import getProps from './getProps'
-import { Point, Fill, Effect, ShapeProps } from 'types'
+import { Point, Fill, Effect, BasicProps } from 'types'
 
 export interface ShapeData {
   paths: Point[][]
-  props: ShapeProps
+  props: BasicProps
   effects: Effect[]
   boundingBox: BoundingBox
 }
@@ -159,7 +159,7 @@ export default function collectShapesData(
     if (paths) {
       const boundingBox = getBoundingBox(paths)
 
-      const serializedProps: ShapeProps = {
+      const serializedProps: BasicProps = {
         blur: null,
         opacity: 1,
       }

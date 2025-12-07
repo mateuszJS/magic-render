@@ -328,7 +328,7 @@ pub const Text = struct {
 
     pub fn getSdfTextureId(self: *Text) u32 {
         return if (self.sdf_texture_id) |sdf_texture_id| sdf_texture_id else b: {
-            const sdf_tex_id = js_glue.create_sdf_texture();
+            const sdf_tex_id = js_glue.createSdfTexture();
             self.sdf_texture_id = sdf_tex_id;
             break :b sdf_tex_id;
         };

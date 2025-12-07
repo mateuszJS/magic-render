@@ -16,7 +16,16 @@ type ShapeDrawUniform = OneOf<{
 }>
 
 declare module '*.zig' {
-  import { ZigProjectSnapshot, TypoProps, ZigShapeProps, ZigEffect } from 'types'
+  import {
+    Point,
+    PointUV,
+    Id,
+    ZigProjectSnapshot,
+    TypoProps,
+    BasicProps,
+    ZigEffect,
+    BoundingBox,
+  } from 'types'
 
   export const initState: (
     width: number,
@@ -25,23 +34,14 @@ declare module '*.zig' {
     max_buffer_size: number
   ) => void
   export const updateCache: VoidFunction
-  export const addShape: (
-    maybe_asset_id: number,
-    paths: zig.Point[][],
-    bounds: zig.PointUV[] | null,
-    props: Partial<zig.ShapeProps>,
-    sdf_texture_id: number,
-    cache_texture_id: null | number
-  ) => number /* id */
   export const removeAsset: () => void
   export const setSnapshot: (snapshot: ZigProjectSnapshot, with_snapshot: boolean) => void
 
-  export const onUpdatePick: (id: zig.Id) => void
+  export const onUpdatePick: (id: Id) => void
   export const onPointerDown: (x: number, y: number) => void
   export const onPointerUp: () => void
   export const onPointerMove: (x: number, y: number) => void
   export const onPointerDoubleClick: VoidFunction
-  export const onUpdateToolCallback: (cb: (new_tool: number) => void) => void
   export const onPointerLeave: VoidFunction
   export const commitChanges: VoidFunction
   export const updateRenderScale: (render_scale: number) => void
@@ -62,7 +62,7 @@ declare module '*.zig' {
     width: number
     height: number
     sdf_texture_id: number | null
-    setPaths(paths: zig.Point[]): void // we have to call std.mem.Allocator.dupe() to allocate permament memory in zig
+    setPaths(paths: Point[]): void // we have to call std.mem.Allocator.dupe() to allocate permament memory in zig
   }
 
   export const SerializedCharDetails: new ({
@@ -79,9 +79,9 @@ declare module '*.zig' {
     sdf_texture_id: number | null
   }) => SerializedCharDetails
 
-  export const Point: new ({ x, y }: { x: number; y: number }) => zig.Point
+  export const Point: new ({ x, y }: { x: number; y: number }) => Point
 
-  export const PtrI32: new (p: zig.Point[][]) => zig.Point[][]
+  export const PtrI32: new (p: Point[][]) => Point[][]
 
   export const connectWebGpuPrograms: (programs: {
     draw_texture: (vertex_data: PointerDataView, texture_id: number) => void
@@ -125,26 +125,27 @@ declare module '*.zig' {
       sdf_texture_id: number
     ) => void
   }) => void
-  export const connectOnAssetUpdateCallback: (
-    cb: (snapshot: ZigProjectSnapshot, commit: boolean) => void
-  ) => void
-  export const connectOnAssetSelectionCallback: (cb: (data: zig.Id) => void) => void
-  export const connectCreateSdfTexture: (
+  export function glueJsGeneral(
+    onAssetUpdate: (snapshot: ZigProjectSnapshot, commit: boolean) => void,
+    onAssetSelection: (data: Id) => void,
+    onUpdateTool: (new_tool: number) => void,
     createSdfTexture: () => number,
-    createComputeDepthTexture: (width: number, height: number) => number
-  ) => void
-  export const connectCacheCallbacks: (
-    create_cache_texture: () => number,
-    start_cache: (texture_id: number, box: zig.BoundingBox, width: number, height: number) => void,
-    end_cache: VoidFunction
-  ) => void
+    createComputeDepthTexture: (width: number, height: number) => number,
+    getCharData: (font_id: number, char_code: number) => SerializedCharDetails,
+    getKerning: (font_id: number, char_code_a: number, char_code_b: number) => number
+  ): void
+
+  export function glueJsTextureCache(
+    createCacheTexture: () => number,
+    startCache: (texture_id: number, box: BoundingBox, width: number, height: number) => void,
+    endCache: VoidFunction
+  ): void
+
   export const connectTyping: (
     enable: (text: string) => void,
     disable: VoidFunction,
     updateContent: (text: string) => void,
-    updateSelection: (start: number, end: number) => void,
-    getCharData: (font_id: number, char_code: number) => SerializedCharDetails,
-    getKerning: (font_id: number, char_code_a: number, char_code_b: number) => number
+    updateSelection: (start: number, end: number) => void
   ) => void
   export const setCaretPosition: (selection_start: number, selection_end: number) => void
 
@@ -157,17 +158,17 @@ declare module '*.zig' {
 
   export const importUiElement: (
     id: UiElementType,
-    paths: zig.Point[][],
+    paths: Point[][],
     sdf_texture_id: number
   ) => void
   export const generateUiElementsSdf: VoidFunction
 
   export const setSelectedAssetProps: (
-    props: ZigShapeProps,
+    props: BasicProps,
     effects: ZigEffect[],
     commit: boolean
   ) => void
-  export const setSelectedAssetBounds: (bounds: zig.PointUV[], commit: boolean) => void
+  export const setSelectedAssetBounds: (bounds: PointUV[], commit: boolean) => void
   export const setSelectedAssetTypoProps: (typo_props: TypoProps, commit: boolean) => void
 
   export const addFont: (font_id: number) => void

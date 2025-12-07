@@ -62,20 +62,22 @@ pub fn connectWebGpuPrograms(programs: *const WebGpuPrograms) void {
     web_gpu_programs = programs; // orelse WebGpuPrograms{};
 }
 
-pub fn connectOnAssetUpdateCallback(cb: *const fn (snapshots.ProjectSnapshot, bool) void) void {
-    snapshots.passSnapshot = cb;
-}
-
-var on_asset_select_cb: *const fn ([4]u32) void = undefined;
-pub fn connectOnAssetSelectionCallback(cb: *const fn ([4]u32) void) void {
-    on_asset_select_cb = cb;
-}
-
-pub const connectCreateSdfTexture = js_glue.connectCreateSdfTexture;
-
-var on_update_tool: *const fn (u16) void = undefined;
-pub fn onUpdateToolCallback(cb: *const fn (u16) void) void {
-    on_update_tool = cb;
+pub fn glueJsGeneral(
+    onAssetUpdate: *const fn (snapshots.ProjectSnapshot, bool) void,
+    onAssetSelection: *const fn ([4]u32) void,
+    onUpdateTool: *const fn (u16) void,
+    createSdfTexture: *const fn () u32,
+    createComputeDepthTexture: *const fn (u32, u32) u32,
+    getCharData: *const fn (u32, u21) SerializedCharDetails,
+    getKerning: *const fn (u32, u21, u21) f32,
+) void {
+    snapshots.passSnapshot = onAssetUpdate;
+    js_glue.onAssetSelection = onAssetSelection;
+    js_glue.onUpdateTool = onUpdateTool;
+    js_glue.createSdfTexture = createSdfTexture;
+    js_glue.createComputeDepthTexture = createComputeDepthTexture;
+    js_glue.getCharData = getCharData;
+    js_glue.getKerning = getKerning;
 }
 
 pub const SerializedCharDetails = js_glue.SerializedCharDetails;
@@ -91,15 +93,11 @@ pub fn connectTyping(
     disable: *const fn () void,
     update_content: *const TextCallback,
     update_selection: *const fn (u32, u32) void,
-    getCharData: *const fn (u32, u21) SerializedCharDetails,
-    getKerning: *const fn (u32, u21, u21) f32,
 ) void {
     enable_typing = enable;
     disable_typing = disable;
     update_text_content = update_content;
     update_text_selection = update_selection;
-    js_glue.getCharData = getCharData;
-    js_glue.getKerning = getKerning;
 }
 
 pub const @"meta(zigar)" = struct {
@@ -121,18 +119,14 @@ pub const @"meta(zigar)" = struct {
     }
 };
 
-var create_cache_texture: *const fn () u32 = undefined;
-var start_cache: *const fn (u32, bounding_box.BoundingBox, f32, f32) void = undefined;
-var end_cache: *const fn () void = undefined;
-
-pub fn connectCacheCallbacks(
-    create_cache_texture_cb: *const fn () u32,
-    start_cache_cb: *const fn (u32, bounding_box.BoundingBox, f32, f32) void,
-    end_cache_cb: *const fn () void,
+pub fn glueJsTextureCache(
+    createCacheTexture: *const fn () u32,
+    startCache: *const fn (u32, bounding_box.BoundingBox, f32, f32) void,
+    endCache: *const fn () void,
 ) void {
-    create_cache_texture = create_cache_texture_cb;
-    start_cache = start_cache_cb;
-    end_cache = end_cache_cb;
+    js_glue.createCacheTexture = createCacheTexture;
+    js_glue.startCache = startCache;
+    js_glue.endCache = endCache;
 }
 
 pub const ASSET_ID_MIN: u32 = 1000;
@@ -204,7 +198,7 @@ fn addImage(id_or_zero: u32, points: [4]types.PointUV, texture_id: u32) !void {
     snapshots.triggerNewSnapshot(true, true);
 }
 
-pub fn addShape(
+fn addShape(
     id_or_zero: u32,
     paths: []const []const types.Point,
     bounds: [4]types.PointUV,
@@ -302,7 +296,7 @@ fn getSelectedText() ?*texts.Text {
 fn setSelectedAsset(id: AssetId) !void {
     try commitChanges();
     state.selected_asset_id = id;
-    on_asset_select_cb(id.serialize());
+    js_glue.onAssetSelection(id.serialize());
 }
 
 pub fn updateTextContent(
@@ -426,8 +420,8 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                 consts.DEFAULT_BOUNDS,
                 props,
                 effects,
-                js_glue.create_sdf_texture(),
-                if (props.blur != null) create_cache_texture() else null,
+                js_glue.createSdfTexture(),
+                if (props.blur != null) js_glue.createCacheTexture() else null,
             );
             try setSelectedAsset(AssetId{ ._prim = id });
         }
@@ -626,7 +620,7 @@ pub fn onPointerMove(x: f32, y: f32) !void {
 pub fn onPointerDoubleClick() !void {
     if (state.tool == .None and getSelectedText() != null) {
         try setTool(Tool.Text);
-        on_update_tool(@intFromEnum(Tool.Text));
+        js_glue.onUpdateTool(@intFromEnum(Tool.Text));
     }
 }
 
@@ -875,7 +869,7 @@ pub fn computeSdfs() !void {
 
                     const bounds_height = text.bounds[0].distance(text.bounds[3]);
 
-                    const compute_depth_texture_id = js_glue.create_compute_depth_texture(
+                    const compute_depth_texture_id = js_glue.createComputeDepthTexture(
                         @intFromFloat(sdf_dims.size.w),
                         @intFromFloat(sdf_dims.size.h),
                     );
@@ -933,7 +927,7 @@ pub fn updateCache() void {
                     if (!shape.outdated_cache) continue;
 
                     const cache_texture_id: u32 = if (shape.cache_texture_id) |id| id else b: {
-                        const id = create_cache_texture();
+                        const id = js_glue.createCacheTexture();
                         shape.cache_texture_id = id;
                         break :b id;
                     };
@@ -962,7 +956,7 @@ pub fn updateCache() void {
                         .max_x = size.w,
                         .max_y = size.h,
                     };
-                    start_cache(cache_texture_id, bb, size.w, size.h);
+                    js_glue.startCache(cache_texture_id, bb, size.w, size.h);
 
                     // sigma * 3 -> half of gaussian filter size, does not work in 100% cases but almost
                     const p = types.Point{
@@ -988,7 +982,7 @@ pub fn updateCache() void {
                         );
                     }
 
-                    end_cache();
+                    js_glue.endCache();
 
                     // Calculate dynamic iterations based on sigma to maintain consistent blur strength
                     const maxSigma = @max(sigma.x, sigma.y);
@@ -1406,7 +1400,7 @@ pub fn setSelectedAssetProps(props: asset_props.Props, serialized_effects: []con
 
                     shape.cache_texture_id = null;
                 } else if (props.blur != null and shape.cache_texture_id == null) {
-                    shape.cache_texture_id = create_cache_texture();
+                    shape.cache_texture_id = js_glue.createCacheTexture();
                 }
                 shape.outdated_sdf = true;
             },

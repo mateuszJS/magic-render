@@ -1,5 +1,5 @@
 import { toFill, toZigFill } from 'snapshots/fill'
-import { Effect, PointUV, ShapeProps, TypoProps, ZigEffect, ZigShapeProps } from 'types'
+import { Effect, PointUV, BasicProps, TypoProps, ZigEffect } from 'types'
 
 export function toBounds(bounds: PointUV[]): PointUV[] {
   return bounds.map((point) => ({
@@ -26,7 +26,8 @@ export function toZigEffects(effects: Effect[]): ZigEffect[] {
   }))
 }
 
-export function toShapeProps(props: ZigShapeProps): ShapeProps {
+// BasicProps are shared between API & Zig
+export function toBasicProps(props: BasicProps): BasicProps {
   return {
     blur: props.blur
       ? {
@@ -44,17 +45,5 @@ export function toTypoProps(props: TypoProps): TypoProps {
     font_family_id: props.font_family_id,
     line_height: props.line_height,
     is_sdf_shared: props.is_sdf_shared,
-  }
-}
-
-export function toZigShapeProps(props: ShapeProps): ZigShapeProps {
-  return {
-    blur: props.blur
-      ? {
-          x: props.blur.x,
-          y: props.blur.y,
-        }
-      : null,
-    opacity: props.opacity,
   }
 }

@@ -1,18 +1,17 @@
 const std = @import("std");
 const types = @import("types.zig");
+const bounding_box = @import("shapes/bounding_box.zig");
 
-pub var create_sdf_texture: *const fn () u32 = undefined;
-pub var create_compute_depth_texture: *const fn (u32, u32) u32 = undefined;
+pub var onAssetSelection: *const fn ([4]u32) void = undefined;
+pub var onUpdateTool: *const fn (u16) void = undefined;
+pub var createSdfTexture: *const fn () u32 = undefined;
+pub var createComputeDepthTexture: *const fn (u32, u32) u32 = undefined;
 pub var getCharData: *const fn (u32, u21) SerializedCharDetails = undefined;
 pub var getKerning: *const fn (u32, u21, u21) f32 = undefined;
 
-pub fn connectCreateSdfTexture(
-    create_sdf: *const fn () u32,
-    create_compute_depth: *const fn (u32, u32) u32,
-) void {
-    create_sdf_texture = create_sdf;
-    create_compute_depth_texture = create_compute_depth;
-}
+pub var createCacheTexture: *const fn () u32 = undefined;
+pub var startCache: *const fn (u32, bounding_box.BoundingBox, f32, f32) void = undefined;
+pub var endCache: *const fn () void = undefined;
 
 pub const SerializedCharDetails = struct {
     points: []const types.Point = &.{},
