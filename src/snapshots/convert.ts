@@ -26,7 +26,7 @@ export function toZigEffects(effects: Effect[]): ZigEffect[] {
   }))
 }
 
-// BasicProsp are shared between API & Zig
+// BasicProps are shared between API & Zig
 export function toBasicProps(props: BasicProps): BasicProps {
   return {
     blur: props.blur

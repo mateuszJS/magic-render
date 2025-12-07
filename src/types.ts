@@ -63,7 +63,7 @@ export type BasicProps = {
   opacity: number
 }
 
-// same for Zig and API
+// Same for Zig and API
 export type TypoProps = {
   font_size: number
   font_family_id: number
