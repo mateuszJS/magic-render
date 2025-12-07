@@ -180,7 +180,7 @@ pub const Fill = union(enum) {
                         .start = g.start,
                         .end = g.end,
                         .radius_ratio = g.radius_ratio,
-                        .stops = g.stops.items,
+                        .stops = try allocator.dupe(GradientStop, g.stops.items),
                     },
                 };
             },

@@ -1,5 +1,5 @@
 import { Asset, ZigAsset } from 'types'
-import { toZigShapeProps } from './convert'
+import { toZigEffects, toZigShapeProps } from './convert'
 import { NO_ASSET_ID } from 'consts'
 import * as Textures from 'textures'
 
@@ -10,8 +10,9 @@ export default function toZigAsset(asset: Asset): ZigAsset {
       shape: {
         id: asset.id || NO_ASSET_ID,
         paths: asset.paths,
-        props: toZigShapeProps(asset.props),
         bounds: asset.bounds,
+        props: toZigShapeProps(asset.props),
+        effects: toZigEffects(asset.effects),
         sdf_texture_id: asset.sdf_texture_id || Textures.createSDF(),
         cache_texture_id: asset.cache_texture_id || null,
       },
@@ -24,6 +25,7 @@ export default function toZigAsset(asset: Asset): ZigAsset {
         bounds: asset.bounds,
         typo_props: asset.typo_props,
         props: toZigShapeProps(asset.props),
+        effects: toZigEffects(asset.effects),
         sdf_texture_id: asset.sdf_texture_id,
       },
     }

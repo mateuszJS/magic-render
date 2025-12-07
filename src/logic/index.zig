@@ -16,7 +16,7 @@ const path_utils = @import("shapes/path_utils.zig");
 const consts = @import("consts.zig");
 const UI = @import("ui.zig");
 const texts = @import("texts/texts.zig");
-const sdf = @import("sdf/sdf.zig");
+const sdf_drawing = @import("sdf/drawing.zig");
 const fonts = @import("texts/fonts.zig");
 const AssetId = @import("asset_id.zig").AssetId;
 const Asset = @import("types.zig").Asset;
@@ -27,6 +27,7 @@ const ActionType = @import("types.zig").ActionType;
 const Tool = @import("types.zig").Tool;
 const typography_props = @import("texts/typography_props.zig");
 const js_glue = @import("js_glue.zig");
+const sdf_effect = @import("sdf/effect.zig");
 
 const FillType = enum(u8) {
     Solid,
@@ -48,7 +49,7 @@ const WebGpuPrograms = struct {
     clear_sdf: *const fn (u32, u32, u32, u32) void,
     combine_sdf: *const fn (u32, u32, u32, Placement) void,
     draw_blur: *const fn (u32, u32, u32, u32, f32, f32) void,
-    draw_shape: *const fn ([]const types.PointUV, sdf.DrawUniform, u32) void,
+    draw_shape: *const fn ([]const types.PointUV, sdf_drawing.DrawUniform, u32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
     pick_triangle: *const fn ([]const triangles.PickInstance) void,
     pick_shape: *const fn ([]const images.PickVertex, shapes.PickUniform, u32) void,
@@ -167,8 +168,8 @@ pub fn updateRenderScale(scale: f32) !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                const sdf_padding = sdf.getSdfPadding(shape.props.sdf_effects.items);
-                const new_sdf_dims = sdf.getSdfTextureDims(
+                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+                const new_sdf_dims = sdf_drawing.getSdfTextureDims(
                     shape.bounds,
                     sdf_padding,
                 );
@@ -207,7 +208,8 @@ pub fn addShape(
     id_or_zero: u32,
     paths: []const []const types.Point,
     bounds: [4]types.PointUV,
-    props: asset_props.SerializedProps,
+    props: asset_props.Props,
+    effects: []const sdf_effect.Serialized,
     sdf_texture_id: u32,
     cache_texture_id: ?u32,
 ) !u32 {
@@ -217,6 +219,7 @@ pub fn addShape(
         paths,
         bounds,
         props,
+        effects,
         sdf_texture_id,
         cache_texture_id,
         std.heap.page_allocator,
@@ -231,7 +234,8 @@ fn addText(
     id_or_zero: u32,
     content: []const u8,
     bounds: [4]types.PointUV,
-    props: asset_props.SerializedProps,
+    props: asset_props.Props,
+    effects: []const sdf_effect.Serialized,
     typo_props: typography_props.Serialized,
     sdf_texture_id: ?u32,
 ) !texts.Text {
@@ -242,6 +246,7 @@ fn addText(
         content,
         bounds,
         props,
+        effects,
         typo_props,
         sdf_texture_id,
     );
@@ -329,28 +334,26 @@ fn createText(x: f32, y: f32) !texts.Text {
         .{ .x = x, .y = y - 1.0, .u = 0.0, .v = 0.0 },
     };
 
-    const props = asset_props.SerializedProps{
-        .sdf_effects = &.{
-            .{
-                .dist_start = INFINITE_DISTANCE,
-                .dist_end = 0,
-                .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
-            },
-            .{
-                .dist_start = 3,
-                .dist_end = 1.5,
-                .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
-            },
-            .{
-                .dist_start = -6,
-                .dist_end = -8,
-                .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
-            },
-            .{
-                .dist_start = -12,
-                .dist_end = -18,
-                .fill = .{ .solid = .{ 1.0, 1.0, 0.0, 1.0 } },
-            },
+    const effects: []const sdf_effect.Serialized = &.{
+        .{
+            .dist_start = INFINITE_DISTANCE,
+            .dist_end = 0,
+            .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
+        },
+        .{
+            .dist_start = 3,
+            .dist_end = 1.5,
+            .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
+        },
+        .{
+            .dist_start = -6,
+            .dist_end = -8,
+            .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
+        },
+        .{
+            .dist_start = -12,
+            .dist_end = -18,
+            .fill = .{ .solid = .{ 1.0, 1.0, 0.0, 1.0 } },
         },
     };
 
@@ -365,7 +368,8 @@ fn createText(x: f32, y: f32) !texts.Text {
         id,
         "Type here",
         bounds,
-        props,
+        asset_props.Props{},
+        effects,
         typo_props,
         null,
     );
@@ -396,33 +400,34 @@ pub fn onPointerDown(x: f32, y: f32) !void {
         state.action = .TextSelection;
     } else if (state.tool == Tool.DrawShape) {
         if (getSelectedShape() == null) {
-            const props = asset_props.SerializedProps{
-                .sdf_effects = &.{
-                    .{
-                        .dist_start = INFINITE_DISTANCE,
-                        .dist_end = 0,
-                        .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
-                    },
-                    .{
-                        .dist_start = 26,
-                        .dist_end = 24,
-                        .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
-                    },
-                    .{
-                        .dist_start = -30,
-                        .dist_end = -32,
-                        .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
-                    },
+            const props = asset_props.Props{
+                .blur = .{ .x = 30, .y = 30 },
+            };
+            const effects: []const sdf_effect.Serialized = &.{
+                .{
+                    .dist_start = INFINITE_DISTANCE,
+                    .dist_end = 0,
+                    .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
                 },
-                .filter = .{ .gaussianBlur = .{ .x = 30, .y = 30 } },
+                .{
+                    .dist_start = 26,
+                    .dist_end = 24,
+                    .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
+                },
+                .{
+                    .dist_start = -30,
+                    .dist_end = -32,
+                    .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
+                },
             };
             const id = try addShape(
                 0,
                 &.{},
                 consts.DEFAULT_BOUNDS,
                 props,
+                effects,
                 js_glue.create_sdf_texture(),
-                if (props.filter != null) create_cache_texture() else null,
+                if (props.blur != null) create_cache_texture() else null,
             );
             try setSelectedAsset(AssetId{ ._prim = id });
         }
@@ -743,7 +748,7 @@ fn requestCharsSdfs() !void {
                     continue;
                 }
 
-                const padding = sdf.getSdfPadding(text.props.sdf_effects.items);
+                const padding = sdf_drawing.getSdfPadding(text.effects.items);
 
                 for (text.text_vertex.items) |vertex| {
                     if (vertex.char) |char| {
@@ -783,7 +788,7 @@ pub fn computeSdfs() !void {
 
                 const bounds = utils.createBounds(ch_w, ch_h);
                 const padding = font_size * ch_d.*.max_ratio_padding_to_font_size;
-                const sdf_dims = sdf.getSdfTextureDims(bounds, padding);
+                const sdf_dims = sdf_drawing.getSdfTextureDims(bounds, padding);
 
                 ch_d.sdf_scale = sdf_dims.scale;
                 ch_d.max_requested_viewport_font_size = font_size / shared.render_scale;
@@ -825,8 +830,8 @@ pub fn computeSdfs() !void {
 
                 const option_points = try shape.getRelativePoints(allocator);
                 if (option_points) |points| {
-                    const sdf_padding = sdf.getSdfPadding(shape.props.sdf_effects.items);
-                    const sdf_dims = sdf.getSdfTextureDims(
+                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+                    const sdf_dims = sdf_drawing.getSdfTextureDims(
                         shape.bounds,
                         sdf_padding,
                     );
@@ -861,8 +866,8 @@ pub fn computeSdfs() !void {
 
                     const text_sdf_texture_id = text.getSdfTextureId();
 
-                    const text_padding = sdf.getSdfPadding(text.props.sdf_effects.items);
-                    const sdf_dims = sdf.getSdfTextureDims(
+                    const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
+                    const sdf_dims = sdf_drawing.getSdfTextureDims(
                         text.bounds,
                         text_padding,
                     );
@@ -924,7 +929,7 @@ pub fn updateCache() void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                if (shape.props.filter) |filter| {
+                if (shape.props.blur) |blur| {
                     if (!shape.outdated_cache) continue;
 
                     const cache_texture_id: u32 = if (shape.cache_texture_id) |id| id else b: {
@@ -933,8 +938,8 @@ pub fn updateCache() void {
                         break :b id;
                     };
 
-                    const sdf_padding = sdf.getSdfPadding(shape.props.sdf_effects.items);
-                    const bounds = sdf.getBoundsWithPadding(
+                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+                    const bounds = sdf_drawing.getBoundsWithPadding(
                         shape.bounds,
                         sdf_padding,
                         1 / shared.render_scale,
@@ -944,7 +949,7 @@ pub fn updateCache() void {
                     const size, const sigma, const cache_scale = texture_size.get_safe_blur_dims(
                         init_width,
                         bounds,
-                        filter.gaussianBlur,
+                        blur,
                     );
 
                     if (size.w < consts.MIN_TEXTURE_SIZE or size.h < consts.MIN_TEXTURE_SIZE) continue;
@@ -975,7 +980,7 @@ pub fn updateCache() void {
                         .{ .x = p.x, .y = p.y, .u = 0, .v = 0 },
                     };
 
-                    for (shape.props.sdf_effects.items) |effect| {
+                    for (shape.effects.items) |effect| {
                         web_gpu_programs.draw_shape(
                             &vertex_bounds,
                             shape.getDrawUniform(effect),
@@ -1040,10 +1045,10 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 web_gpu_programs.draw_texture(&vertex_data, img.texture_id);
             },
             .shape => |*shape| {
-                const sdf_padding = sdf.getSdfPadding(shape.props.sdf_effects.items);
+                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
                 if (shape.cache_texture_id) |cache_texture_id| {
                     web_gpu_programs.draw_texture(
-                        &sdf.getDrawBounds(
+                        &sdf_drawing.getDrawBounds(
                             shape.bounds,
                             sdf_padding,
                             shape.getFilterMargin(),
@@ -1051,9 +1056,9 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                         cache_texture_id,
                     );
                 } else {
-                    for (shape.props.sdf_effects.items) |effect| {
+                    for (shape.effects.items) |effect| {
                         web_gpu_programs.draw_shape(
-                            &sdf.getDrawBounds(
+                            &sdf_drawing.getDrawBounds(
                                 shape.bounds,
                                 sdf_padding,
                                 shape.getFilterMargin(),
@@ -1074,9 +1079,9 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 if (text.typo_props.is_sdf_shared) {
                     const text_sdf_texture_id = text.getSdfTextureId();
 
-                    const padding = sdf.getSdfPadding(text.props.sdf_effects.items);
-                    for (text.props.sdf_effects.items) |effect| {
-                        const text_bounds = sdf.getDrawBounds(
+                    const padding = sdf_drawing.getSdfPadding(text.effects.items);
+                    for (text.effects.items) |effect| {
+                        const text_bounds = sdf_drawing.getDrawBounds(
                             text.bounds,
                             padding,
                             null,
@@ -1103,7 +1108,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                             const ch_d = try fonts.get(text.typo_props.font_family_id, char);
 
                             if (ch_d.sdf_texture_id) |sdf_texture_id| {
-                                for (text.props.sdf_effects.items) |effect| {
+                                for (text.effects.items) |effect| {
                                     const bounds = vertex.getBoundsVertex(text.typo_props.font_size * ch_d.max_ratio_padding_to_font_size, matrix);
                                     const char_sdf_viewport_font_size = ch_d.max_font_size * ch_d.sdf_scale;
                                     const sdf_scale = char_sdf_viewport_font_size / text.typo_props.font_size;
@@ -1174,9 +1179,9 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
         const hover_point_id = state.hovered_asset_id;
 
         if (getSelectedShape()) |shape| {
-            const sdf_padding = sdf.getSdfPadding(shape.props.sdf_effects.items);
+            const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
             web_gpu_programs.draw_shape(
-                &sdf.getDrawBounds(
+                &sdf_drawing.getDrawBounds(
                     shape.bounds,
                     sdf_padding,
                     null,
@@ -1211,7 +1216,7 @@ pub fn renderPick() !void {
                 web_gpu_programs.pick_texture(&vertex_data, img.texture_id);
             },
             .shape => |shape| {
-                for (shape.props.sdf_effects.items) |effect| {
+                for (shape.effects.items) |effect| {
                     web_gpu_programs.pick_shape(
                         &shape.getPickBounds(),
                         shape.getPickUniform(effect),
@@ -1287,6 +1292,7 @@ pub fn setSnapshot(snapshot: snapshots.ProjectSnapshot, with_snapshot: bool) !vo
                     shape.paths,
                     shape.bounds,
                     shape.props,
+                    shape.effects,
                     shape.sdf_texture_id,
                     shape.cache_texture_id,
                 );
@@ -1297,6 +1303,7 @@ pub fn setSnapshot(snapshot: snapshots.ProjectSnapshot, with_snapshot: bool) !vo
                     text.content orelse "", // should always be provided in real-life executions
                     text.bounds,
                     text.props,
+                    text.effects,
                     text.typo_props,
                     text.sdf_texture_id,
                 );
@@ -1318,7 +1325,7 @@ pub fn deinitState() void {
         switch (entry.value_ptr.*) {
             .img => {},
             .shape => |*shape| shape.deinit(),
-            .text => {},
+            .text => |*text| text.deinit(),
         }
     }
     state.assets.clearAndFree();
@@ -1382,7 +1389,7 @@ pub fn setSelectedAssetTypoProps(serialized: typography_props.Serialized, commit
     snapshots.triggerNewSnapshot(true, commit);
 }
 
-pub fn setSelectedAssetProps(serialized_props: asset_props.SerializedProps, commit: bool) !void {
+pub fn setSelectedAssetProps(props: asset_props.Props, serialized_effects: []const sdf_effect.Serialized, commit: bool) !void {
     if (getSelectedAsset()) |asset| {
         switch (asset.*) {
             .img => |img| {
@@ -1390,21 +1397,23 @@ pub fn setSelectedAssetProps(serialized_props: asset_props.SerializedProps, comm
                 // img.props = props;
             },
             .shape => |*shape| {
-                shape.props.deinit();
-                shape.props = try asset_props.deserializeProps(serialized_props, std.heap.page_allocator);
-                if (serialized_props.filter == null and shape.cache_texture_id != null) {
+                shape.props = props;
+                sdf_effect.deinit(shape.effects);
+                shape.effects = try sdf_effect.deserialize(serialized_effects, std.heap.page_allocator);
+                if (props.blur == null and shape.cache_texture_id != null) {
                     // TODO: https://github.com/mateuszJS/magic-render/issues/204
                     // destroy_texture(shape.cache_texture_id);
 
                     shape.cache_texture_id = null;
-                } else if (serialized_props.filter != null and shape.cache_texture_id == null) {
+                } else if (props.blur != null and shape.cache_texture_id == null) {
                     shape.cache_texture_id = create_cache_texture();
                 }
                 shape.outdated_sdf = true;
             },
             .text => |*text| {
-                text.props.deinit();
-                text.props = try asset_props.deserializeProps(serialized_props, std.heap.page_allocator);
+                text.props = props;
+                sdf_effect.deinit(text.effects);
+                text.effects = try sdf_effect.deserialize(serialized_effects, std.heap.page_allocator);
                 if (text.typo_props.is_sdf_shared) {
                     text.is_sdf_outdated = true;
                 }

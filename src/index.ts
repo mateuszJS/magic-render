@@ -13,7 +13,7 @@ import * as Fonts from 'fonts'
 import { Asset, CreatorAPI, CreatorTool, Id, ProjectSnapshot, ZigAsset } from './types'
 import { destroyCanvasTextures } from 'getCanvasRenderDescriptor'
 import setCamera from 'utils/setCamera'
-import { toZigShapeProps } from 'snapshots/convert'
+import { toZigEffects, toZigShapeProps } from 'snapshots/convert'
 import * as CustomPrograms from 'customPrograms'
 import * as Snapshots from 'snapshots/snapshots'
 import toZigAsset from 'snapshots/toZigAsset'
@@ -260,8 +260,8 @@ export default async function initCreator(
       onUpdateTool(tool)
       Logic.setTool(tool)
     },
-    updateAssetProps: (props, commit) => {
-      Logic.setSelectedAssetProps(toZigShapeProps(props), commit)
+    updateAssetProps: (props, effects, commit) => {
+      Logic.setSelectedAssetProps(toZigShapeProps(props), toZigEffects(effects), commit)
     },
     updateAssetBounds: Logic.setSelectedAssetBounds,
     updateAssetTypoProps: (typoProps, commit) => {

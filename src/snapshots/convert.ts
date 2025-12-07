@@ -1,5 +1,5 @@
 import { toFill, toZigFill } from 'snapshots/fill'
-import { PointUV, ShapeProps, TypoProps, ZigShapeProps } from 'types'
+import { Effect, PointUV, ShapeProps, TypoProps, ZigEffect, ZigShapeProps } from 'types'
 
 export function toBounds(bounds: PointUV[]): PointUV[] {
   return bounds.map((point) => ({
@@ -10,19 +10,28 @@ export function toBounds(bounds: PointUV[]): PointUV[] {
   }))
 }
 
+export function toEffects(effects: ZigEffect[]): Effect[] {
+  return [...effects].map((effect) => ({
+    dist_start: effect.dist_start,
+    dist_end: effect.dist_end,
+    fill: toFill(effect.fill),
+  }))
+}
+
+export function toZigEffects(effects: Effect[]): ZigEffect[] {
+  return effects.map((effect) => ({
+    dist_start: effect.dist_start,
+    dist_end: effect.dist_end,
+    fill: toZigFill(effect.fill),
+  }))
+}
+
 export function toShapeProps(props: ZigShapeProps): ShapeProps {
   return {
-    sdf_effects: [...props.sdf_effects].map((effect) => ({
-      dist_start: effect.dist_start,
-      dist_end: effect.dist_end,
-      fill: toFill(effect.fill),
-    })),
-    filter: props.filter?.gaussianBlur
+    blur: props.blur
       ? {
-          gaussianBlur: {
-            x: props.filter.gaussianBlur.x,
-            y: props.filter.gaussianBlur.y,
-          },
+          x: props.blur.x,
+          y: props.blur.y,
         }
       : null,
     opacity: props.opacity,
@@ -40,17 +49,10 @@ export function toTypoProps(props: TypoProps): TypoProps {
 
 export function toZigShapeProps(props: ShapeProps): ZigShapeProps {
   return {
-    sdf_effects: [...props.sdf_effects].map((effect) => ({
-      dist_start: effect.dist_start,
-      dist_end: effect.dist_end,
-      fill: toZigFill(effect.fill),
-    })),
-    filter: props.filter?.gaussianBlur
+    blur: props.blur
       ? {
-          gaussianBlur: {
-            x: props.filter.gaussianBlur.x,
-            y: props.filter.gaussianBlur.y,
-          },
+          x: props.blur.x,
+          y: props.blur.y,
         }
       : null,
     opacity: props.opacity,

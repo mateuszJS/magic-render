@@ -225,7 +225,7 @@ async function test() {
     const formData = new FormData(assetPropsForm)
     try {
       const newProps = JSON.parse(formData.get('code') as string)
-      creator.updateAssetProps(newProps, true)
+      creator.updateAssetProps(newProps, [], true)
     } catch (e) {
       alert('Cannot parse JSON: ' + (e as Error).message)
     }
