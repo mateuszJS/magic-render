@@ -1,7 +1,5 @@
 const std = @import("std");
-const sdf_drawing = @import("drawing.zig");
 const fill = @import("fill.zig");
-const types = @import("../types.zig");
 const utils = @import("../utils.zig");
 
 pub const Effect = struct {
@@ -49,8 +47,6 @@ pub fn compareSerialized(a: []const Serialized, b: []const Serialized) bool {
     return true;
 }
 
-// This function cannot be part of SerializedProps struct because it returns []GradientStop(part of props.fill)
-// and there is no writer interface created(only []u8 can be returned as a slices)
 pub fn deserialize(effects: []const Serialized, allocator: std.mem.Allocator) !std.ArrayList(Effect) {
     var effects_list = std.ArrayList(Effect).init(allocator);
 

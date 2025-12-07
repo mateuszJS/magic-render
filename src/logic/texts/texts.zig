@@ -437,6 +437,12 @@ pub const Text = struct {
             .sdf_texture_id = self.sdf_texture_id,
         };
     }
+
+    pub fn deinit(self: *Text) void {
+        std.heap.page_allocator.free(self.content);
+        self.text_vertex.deinit();
+        sdf_effect.deinit(self.effects);
+    }
 };
 
 pub const Serialized = struct {

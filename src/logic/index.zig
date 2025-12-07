@@ -1325,7 +1325,7 @@ pub fn deinitState() void {
         switch (entry.value_ptr.*) {
             .img => {},
             .shape => |*shape| shape.deinit(),
-            .text => {},
+            .text => |*text| text.deinit(),
         }
     }
     state.assets.clearAndFree();

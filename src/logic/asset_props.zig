@@ -1,7 +1,6 @@
 // This file describes base properties shared among all the assets like opacity or blur
 
 const std = @import("std");
-const fill = @import("sdf/fill.zig");
 const types = @import("types.zig");
 const utils = @import("utils.zig");
 
