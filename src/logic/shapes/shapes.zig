@@ -445,7 +445,7 @@ pub const Serialized = struct {
     paths: []const []const Point,
     bounds: [4]PointUV,
     props: asset_props.Props,
-    effects: []sdf_effect.Serialized,
+    effects: []const sdf_effect.Serialized,
     sdf_texture_id: u32,
     cache_texture_id: ?u32,
 

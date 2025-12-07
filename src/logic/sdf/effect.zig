@@ -37,7 +37,7 @@ pub fn deinit(effects: std.ArrayList(Effect)) void {
     effects.deinit();
 }
 
-pub fn compareSerialized(a: []Serialized, b: []Serialized) bool {
+pub fn compareSerialized(a: []const Serialized, b: []const Serialized) bool {
     if (a.len != b.len) return false;
 
     for (a, b) |effect_a, effect_b| {
