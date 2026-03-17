@@ -862,7 +862,7 @@ pub fn computeSdfs() !void {
 
                     const text_sdf_texture_id = text.getSdfTextureId();
 
-                    const SMOOTH_SCALE = 3;
+                    const smooth_scale = 3;
                     // factor used to decrease rounding errors which come from:
                     // computing letter SDF -> computing text SDF -> rendering text SDF
                     // 3 is just the number which was giving best results
@@ -871,7 +871,7 @@ pub fn computeSdfs() !void {
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         text.bounds,
                         text_padding,
-                        SMOOTH_SCALE,
+                        smooth_scale,
                     );
                     text.sdf_scale = sdf_dims.scale;
 

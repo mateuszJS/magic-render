@@ -2,9 +2,11 @@ const STRAIGHT_LINE_THRESHOLD = 1e10;
 const EPSILON = 1e-10;
 const PI = 3.141592653589793;
 const FWIDTH_VALID_LIMIT = 3.402823466e+10;
-/* for rendering shapes with shared SDF, we firstly fill SDF with -3.402823466e+38 and then place particular shape's SDFs.
-Because of that the derivative of the distance function is huge between the edge of shape's SDF and default SDF values,
-so we have to discredit those cases */
+// Shapes share a single SDF texture. Pixels not covered by any shape are
+// initialized to -3.402823466e+38 before per-shape SDF values are written.
+// This creates extremely large distance derivatives at the boundary between
+// real shape SDF values and the default background value, so we ignore
+// derivatives larger than FWIDTH_VALID_LIMIT.
 
 struct Vertex {
   @location(0) position: vec4f,
