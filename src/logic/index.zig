@@ -335,21 +335,21 @@ fn createText(x: f32, y: f32) !texts.Text {
             .dist_end = 0,
             .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
         },
-        // .{
-        //     .dist_start = 3,
-        //     .dist_end = 1.5,
-        //     .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
-        // },
-        // .{
-        //     .dist_start = -6,
-        //     .dist_end = -8,
-        //     .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
-        // },
-        // .{
-        //     .dist_start = -12,
-        //     .dist_end = -18,
-        //     .fill = .{ .solid = .{ 1.0, 1.0, 0.0, 1.0 } },
-        // },
+        .{
+            .dist_start = 3,
+            .dist_end = 1.5,
+            .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
+        },
+        .{
+            .dist_start = -6,
+            .dist_end = -8,
+            .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
+        },
+        .{
+            .dist_start = -12,
+            .dist_end = -18,
+            .fill = .{ .solid = .{ 1.0, 1.0, 0.0, 1.0 } },
+        },
     };
 
     const typo_props = typography_props.Serialized{

@@ -1,4 +1,4 @@
-Issue with combining multiple SDFs into one (like letters into a word) is that on zoom all SDFs seems like moving by 1px into random directions due to stacking rounding errors. Error lives in SDF mostly so it happens on any size of the texture, on retina and non-retina screens.
+Issue with combining multiple SDFs into one (like letters into a word) is that while users zoom all SDFs seem to move by 1px into random directions due to stacking rounding errors. Error lives in SDF mostly so it happens on any size of the texture, on retina and non-retina screens. Computing SDF of letters -> combining letters SDF into text SDF -> rendering text SDF
 
 Solutions:
 
