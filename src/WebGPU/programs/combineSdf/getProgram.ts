@@ -20,7 +20,7 @@ export default function getCombineSdf(device: GPUDevice) {
     destinationTex: GPUTexture,
     sourceTex: GPUTexture,
     computeDepthTex: GPUTexture,
-    placementData: DataView<ArrayBuffer> // [placement_start_x, placement_start_y, placement_end_x, placement_end_y]
+    placementData: DataView<ArrayBuffer> // [placement_start_x, placement_start_y, placement_size_x, placement_size_y]
   ) {
     const uniformBuffer = device.createBuffer({
       label: 'combine sdf uniform buffer',
