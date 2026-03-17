@@ -44,8 +44,13 @@ export default function getCombineSdf(device: GPUDevice) {
 
     passEncoder.setBindGroup(0, bindGroup)
 
-    const width = placementData.getFloat32(2 * 4, true)
-    const height = placementData.getFloat32(3 * 4, true)
+    const startX = placementData.getFloat32(0 * 4, true)
+    const startY = placementData.getFloat32(1 * 4, true)
+    const sizeX = placementData.getFloat32(2 * 4, true)
+    const sizeY = placementData.getFloat32(3 * 4, true)
+
+    const width = Math.max(0, Math.ceil(startX + sizeX) - Math.floor(startX))
+    const height = Math.max(0, Math.ceil(startY + sizeY) - Math.floor(startY))
     passEncoder.dispatchWorkgroups(width, height)
   }
 }

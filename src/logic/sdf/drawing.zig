@@ -201,7 +201,7 @@ pub fn getDrawBounds(bounds: [4]PointUV, sdf_padding: f32, filter_margin: ?Point
     };
 }
 
-pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32, scale: f32) struct {
+pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32) struct {
     size: texture_size.TextureSize,
     scale: f32,
     // rounding_error: texture_size.TextureSize,
@@ -214,14 +214,14 @@ pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32, scale: f32) struc
     );
 
     const desired_size = texture_size.get_allowed_size(
-        bounds_with_padding[0].distance(bounds_with_padding[1]) * scale,
-        bounds_with_padding[0].distance(bounds_with_padding[3]) * scale,
+        bounds_with_padding[0].distance(bounds_with_padding[1]),
+        bounds_with_padding[0].distance(bounds_with_padding[3]),
     );
 
     // TODO: recreate and solve this issue:
     // ceil because without it, while casting f32 to u32 it rounds down
     // and often the end of the texture cuts out large part of the padding and in the result shapes touched the edge
-    // we cannot round above because it jumps between values, and we cannot do it below becuase it might be
+    // we cannot round above because it jumps between values, and we cannot do it below because it might be
     // bigger than max sdf size. We might just +1?
 
     const sdf_size = texture_size.get_allowed_sdf_size(desired_size);

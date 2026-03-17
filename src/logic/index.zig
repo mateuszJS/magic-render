@@ -166,7 +166,6 @@ pub fn updateRenderScale(scale: f32) !void {
                 const new_sdf_dims = sdf_drawing.getSdfTextureDims(
                     shape.bounds,
                     sdf_padding,
-                    1,
                 );
 
                 if (new_sdf_dims.size.w > shape.sdf_size.w or new_sdf_dims.size.h > shape.sdf_size.h) {
@@ -783,7 +782,7 @@ pub fn computeSdfs() !void {
 
                 const bounds = utils.createBounds(ch_w, ch_h);
                 const padding = font_size * ch_d.*.max_ratio_padding_to_font_size;
-                const sdf_dims = sdf_drawing.getSdfTextureDims(bounds, padding, 1);
+                const sdf_dims = sdf_drawing.getSdfTextureDims(bounds, padding);
 
                 ch_d.sdf_scale = sdf_dims.scale;
                 ch_d.max_requested_viewport_font_size = font_size / shared.render_scale;
@@ -829,7 +828,6 @@ pub fn computeSdfs() !void {
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         shape.bounds,
                         sdf_padding,
-                        1,
                     );
                     shape.sdf_size = sdf_dims.size;
                     shape.sdf_scale = sdf_dims.scale;
@@ -862,7 +860,6 @@ pub fn computeSdfs() !void {
 
                     const text_sdf_texture_id = text.getSdfTextureId();
 
-                    const smooth_scale = 3;
                     // factor used to decrease rounding errors which come from:
                     // computing letter SDF -> computing text SDF -> rendering text SDF
                     // 3 is just the number which was giving best results
@@ -871,7 +868,6 @@ pub fn computeSdfs() !void {
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         text.bounds,
                         text_padding,
-                        smooth_scale,
                     );
                     text.sdf_scale = sdf_dims.scale;
 
