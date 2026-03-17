@@ -134,7 +134,7 @@ pub fn getDrawUniform(sdf_effect: Effect, sdf_scale: f32, opacity: f32) DrawUnif
 }
 
 pub fn getSdfPadding(effects: []Effect) f32 {
-    var padding: f32 = 0.0;
+    var padding: f32 = 1.0; // at least 1, without fwidth fix
     // because of skeleton render, we cannot od less than zero
 
     for (effects) |effect| {
@@ -221,7 +221,7 @@ pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32) struct {
     // TODO: recreate and solve this issue:
     // ceil because without it, while casting f32 to u32 it rounds down
     // and often the end of the texture cuts out large part of the padding and in the result shapes touched the edge
-    // we cannot round above because it jumps between values, and we cannot do it below becuase it might be
+    // we cannot round above because it jumps between values, and we cannot do it below because it might be
     // bigger than max sdf size. We might just +1?
 
     const sdf_size = texture_size.get_allowed_sdf_size(desired_size);
