@@ -23,7 +23,7 @@ struct Uniform {
   let source_texel = getSample(texel_pos * ratio_source_tex_to_placement);
   let scaled_dist = source_texel.r / ratio_source_tex_to_placement.x; // we assume all sizes keeps their ratio width / height, so we can use .x or .y here
 
-  if (scaled_dist > depth){
+  if (scaled_dist > depth) {
     textureStore(destination_tex, dest_pos, vec4f(scaled_dist, source_texel.g, source_texel.b, source_texel.a));
     textureStore(depth_tex, dest_pos, vec4f(scaled_dist));
   }

@@ -1,6 +1,10 @@
 const STRAIGHT_LINE_THRESHOLD = 1e10;
 const EPSILON = 1e-10;
 const PI = 3.141592653589793;
+const FWIDTH_VALID_LIMIT = 3.402823466e+10;
+/* for rendering shapes with shared SDF, we firstly fill SDF with -3.402823466e+38 and then place particular shape's SDFs.
+Because of that the derivative of the distance function is huge between the edge of shape's SDF and default SDF values,
+so we have to discredit those cases */
 
 struct Vertex {
   @location(0) position: vec4f,
@@ -49,11 +53,13 @@ fn getSample(pos: vec2f) -> vec4f {
   // let sdf = textureLoad(texture, vec2u(vsOut.uv));
   let sdf = getSample(vsOut.uv);
 
-  let dist = sdf.r;
-  let width = fwidth(dist) * 0.5;
+  let dist_derivative = fwidth(sdf.r);
 
-  let inner_alpha = smoothstep(u.dist_start - width, u.dist_start + width, dist);
-  let outer_alpha = smoothstep(u.dist_end - width, u.dist_end + width, dist);
+  let safe_dist_derivative = select(0.0, dist_derivative, dist_derivative <= FWIDTH_VALID_LIMIT); // if too large -> 0
+  let alpha_smooth_factor = safe_dist_derivative * 0.5;
+
+  let inner_alpha = smoothstep(u.dist_start - alpha_smooth_factor, u.dist_start + alpha_smooth_factor, sdf.r);
+  let outer_alpha = smoothstep(u.dist_end - alpha_smooth_factor, u.dist_end + alpha_smooth_factor, sdf.r);
   let alpha = outer_alpha - inner_alpha;
   let color = getColor(sdf, vsOut.uv, vsOut.norm_uv);
   let result = vec4f(color.rgb, color.a * alpha);

@@ -166,6 +166,7 @@ pub fn updateRenderScale(scale: f32) !void {
                 const new_sdf_dims = sdf_drawing.getSdfTextureDims(
                     shape.bounds,
                     sdf_padding,
+                    1,
                 );
 
                 if (new_sdf_dims.size.w > shape.sdf_size.w or new_sdf_dims.size.h > shape.sdf_size.h) {
@@ -334,21 +335,21 @@ fn createText(x: f32, y: f32) !texts.Text {
             .dist_end = 0,
             .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
         },
-        .{
-            .dist_start = 3,
-            .dist_end = 1.5,
-            .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
-        },
-        .{
-            .dist_start = -6,
-            .dist_end = -8,
-            .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
-        },
-        .{
-            .dist_start = -12,
-            .dist_end = -18,
-            .fill = .{ .solid = .{ 1.0, 1.0, 0.0, 1.0 } },
-        },
+        // .{
+        //     .dist_start = 3,
+        //     .dist_end = 1.5,
+        //     .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
+        // },
+        // .{
+        //     .dist_start = -6,
+        //     .dist_end = -8,
+        //     .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
+        // },
+        // .{
+        //     .dist_start = -12,
+        //     .dist_end = -18,
+        //     .fill = .{ .solid = .{ 1.0, 1.0, 0.0, 1.0 } },
+        // },
     };
 
     const typo_props = typography_props.Serialized{
@@ -782,7 +783,7 @@ pub fn computeSdfs() !void {
 
                 const bounds = utils.createBounds(ch_w, ch_h);
                 const padding = font_size * ch_d.*.max_ratio_padding_to_font_size;
-                const sdf_dims = sdf_drawing.getSdfTextureDims(bounds, padding);
+                const sdf_dims = sdf_drawing.getSdfTextureDims(bounds, padding, 1);
 
                 ch_d.sdf_scale = sdf_dims.scale;
                 ch_d.max_requested_viewport_font_size = font_size / shared.render_scale;
@@ -828,6 +829,7 @@ pub fn computeSdfs() !void {
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         shape.bounds,
                         sdf_padding,
+                        1,
                     );
                     shape.sdf_size = sdf_dims.size;
                     shape.sdf_scale = sdf_dims.scale;
@@ -860,10 +862,16 @@ pub fn computeSdfs() !void {
 
                     const text_sdf_texture_id = text.getSdfTextureId();
 
+                    const SMOOTH_SCALE = 3;
+                    // factor used to decrease rounding errors which come from:
+                    // computing letter SDF -> computing text SDF -> rendering text SDF
+                    // 3 is just the number which was giving best results
+
                     const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         text.bounds,
                         text_padding,
+                        SMOOTH_SCALE,
                     );
                     text.sdf_scale = sdf_dims.scale;
 

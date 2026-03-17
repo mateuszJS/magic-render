@@ -1,0 +1,9 @@
+Issue with combining multiple SDFs into one (like letters into a word) is that on zoom all SDFs seems like moving by 1px into random directions due to stacking rounding errors. Error lives in SDF mostly so it happens on any size of the texture, on retina and non-retina screens.
+
+Solutions:
+
+- ❌ in final SDF, instead of storing one pixel, let's store 4 pixels - this solution created rough edges, example in images/rough_edges.png
+- ✅ increase padding by 1, so it's always at least 2 in total, so we don't cut letter that often
+- ✅ increase size of output texture by 3 (3 is just the smallest value giving good enough results)
+- ✅ eliminate huge fwidth (SDF distance function derivative) which occurs on the edge of placed SDF inside final SDF and initial values of that final SDF
+- ❌ any changes to rounding strategy, size of final/each SDFs, coordinate

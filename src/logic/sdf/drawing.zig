@@ -134,7 +134,7 @@ pub fn getDrawUniform(sdf_effect: Effect, sdf_scale: f32, opacity: f32) DrawUnif
 }
 
 pub fn getSdfPadding(effects: []Effect) f32 {
-    var padding: f32 = 0.0;
+    var padding: f32 = 1.0; // at least 1, without fwidth fix
     // because of skeleton render, we cannot od less than zero
 
     for (effects) |effect| {
@@ -201,7 +201,7 @@ pub fn getDrawBounds(bounds: [4]PointUV, sdf_padding: f32, filter_margin: ?Point
     };
 }
 
-pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32) struct {
+pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32, scale: f32) struct {
     size: texture_size.TextureSize,
     scale: f32,
     // rounding_error: texture_size.TextureSize,
@@ -214,8 +214,8 @@ pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32) struct {
     );
 
     const desired_size = texture_size.get_allowed_size(
-        bounds_with_padding[0].distance(bounds_with_padding[1]),
-        bounds_with_padding[0].distance(bounds_with_padding[3]),
+        bounds_with_padding[0].distance(bounds_with_padding[1]) * scale,
+        bounds_with_padding[0].distance(bounds_with_padding[3]) * scale,
     );
 
     // TODO: recreate and solve this issue:
