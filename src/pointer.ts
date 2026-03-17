@@ -177,7 +177,8 @@ export default function initMouseController(
     camera.y = realY - (realY - camera.y) * zoomFactor
   }
 
-  function zoom(delta: number) {
+  function wheelZoom(delta: number) {
+    //TODO: reuse performZoom instead
     const oldZoom = camera.zoom
     camera.zoom = clamp(camera.zoom - delta * 0.005, 0.1, 20)
     onZoom()
@@ -195,10 +196,10 @@ export default function initMouseController(
       event.preventDefault()
       if (mouseMode === MouseMode.Zoom) {
         const delta = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : -event.deltaX
-        zoom(delta)
+        wheelZoom(delta)
       } else {
         if (event.ctrlKey) {
-          zoom(event.deltaY * camera.zoom)
+          wheelZoom(event.deltaY * camera.zoom)
         } else {
           camera.x -= event.deltaX
           camera.y += event.deltaY

@@ -13,6 +13,6 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            if (!/^(fix|feat|perf):/.test(process.env.PR_TITLE)) {
-              throw new Error(`Please start the PR title with "fix:", "feat:" or "perf:". Current title: "${process.env.PR_TITLE}"`);
+            if (!/^(fix|feat|perf|build\(deps-dev\):)/.test(process.env.PR_TITLE)) {
+              throw new Error(`Please start the PR title with "fix:", "feat:", "perf:" or "build(deps-dev):". Current title: "${process.env.PR_TITLE}"`);
             }
