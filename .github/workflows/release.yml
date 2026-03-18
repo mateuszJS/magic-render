@@ -9,29 +9,26 @@ permissions:
   contents: write
   issues: write
   pull-requests: write
-  id-token: write # to enable use of OIDC for npm provenance
+  id-token: write # required for OIDC
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      # Setup .npmrc file to publish to npm
+      # Setup Zig compiler
       - uses: mlugg/setup-zig@v2
         with:
           version: '0.14.1'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '24.10.x' # [semantic-release@25]: requires Node ^22.14.0 || >=24.10.0
-          registry-url: 'https://registry.npmjs.org'
       - run: npm ci
       - run: npm run build
       - run: npm audit --omit=dev
-      # once we install dependency we cna change it to "npm audit signatures" to verify signatures as well
+      # once we install dependency we can change it to "npm audit signatures" to verify signatures as well
       # --omit-dev because of axios vulneraiblity used by wasm-pack, not in prod, vulnerability is active only when user input is provided
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npx semantic-release
