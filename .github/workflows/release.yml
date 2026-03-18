@@ -22,7 +22,7 @@ jobs:
           version: '0.14.1'
       - uses: actions/setup-node@v4
         with:
-          node-version: '24.x' # [semantic-release]: node version >=20.8.1 is required
+          node-version: '24.10.x' # [semantic-release@25]: requires Node ^22.14.0 || >=24.10.0
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
       - run: npm run build
