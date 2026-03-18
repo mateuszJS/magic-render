@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      # Setup .npmrc file to publish to npm
+      # Setup Zig compiler
       - uses: mlugg/setup-zig@v2
         with:
           version: '0.14.1'
