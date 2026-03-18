@@ -860,6 +860,10 @@ pub fn computeSdfs() !void {
 
                     const text_sdf_texture_id = text.getSdfTextureId();
 
+                    // factor used to decrease rounding errors which come from:
+                    // computing letter SDF -> computing text SDF -> rendering text SDF
+                    // 3 is just the number which was giving best results
+
                     const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         text.bounds,

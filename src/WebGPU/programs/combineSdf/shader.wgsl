@@ -11,32 +11,58 @@ struct Uniform {
 @compute @workgroup_size(1) fn cs(
   @builtin(global_invocation_id) id : vec3u
 )  {
-  let texel_pos = vec2f(id.xy) + vec2f(0.5);
-
-  let dest_pos = vec2i(u.placement_start + texel_pos);
-  if (any(dest_pos < vec2i(0)) || any(dest_pos >= vec2i(textureDimensions(destination_tex)))) {
+  if (any(u.placement_size <= vec2f(0.0))) {
     return;
   }
 
-  let ratio_source_tex_to_placement = vec2f(textureDimensions(source_tex)) / u.placement_size; // texture doesn't to be same size as placement_size!
-  let depth = textureLoad(depth_tex, dest_pos).r;
-  let source_texel = getSample(texel_pos * ratio_source_tex_to_placement);
-  let scaled_dist = source_texel.r / ratio_source_tex_to_placement.x; // we assume all sizes keeps their ratio width / height, so we can use .x or .y here
+  let placement_min = floor(u.placement_start);
+  let placement_max = ceil(u.placement_start + u.placement_size);
 
-  if (scaled_dist > depth){
+  let dest_pos = vec2i(placement_min) + vec2i(id.xy);
+
+  if (any(vec2f(dest_pos) >= placement_max)) {
+    return;
+  }
+
+  let dest_dims = vec2i(textureDimensions(destination_tex));
+  if (any(dest_pos < vec2i(0)) || any(dest_pos >= dest_dims)) {
+    return;
+  }
+
+  let dest_center = vec2f(dest_pos) + vec2f(0.5);
+  let local = (dest_center - u.placement_start) / u.placement_size;
+
+  if (any(local < vec2f(0.0)) || any(local >= vec2f(1.0))) {
+    return;
+  }
+
+  let source_size = vec2f(textureDimensions(source_tex));
+  let source_sample_pos = local * source_size;
+  let source_texel = getSampleSource(source_sample_pos);
+  let scale = source_size / u.placement_size;
+  let scaled_dist = source_texel.r / scale.x; // we assume all sizes keeps their ratio width / height, so we can use .x or .y here
+  let depth = textureLoad(depth_tex, dest_pos).r;
+
+  if (scaled_dist > depth) {
     textureStore(destination_tex, dest_pos, vec4f(scaled_dist, source_texel.g, source_texel.b, source_texel.a));
     textureStore(depth_tex, dest_pos, vec4f(scaled_dist));
   }
 }
 
-fn getSample(pos: vec2f) -> vec4f {
-  let floor_pos = floor(pos - 0.5);
-  let fract_pos = (pos - 0.5) - floor_pos;
+fn getSampleSource(pos: vec2f) -> vec4f {
+  let source_dims_u = textureDimensions(source_tex);
+  let source_dims_i = vec2i(source_dims_u);
 
-  let p00 = vec2u(floor_pos);
-  let p10 = vec2u(floor_pos + vec2f(1.0, 0.0));
-  let p01 = vec2u(floor_pos + vec2f(0.0, 1.0));
-  let p11 = vec2u(floor_pos + vec2f(1.0, 1.0));
+  let clamped_pos = clamp(pos, vec2f(0.5), vec2f(source_dims_u) - vec2f(0.5));
+  let base_pos = clamped_pos - vec2f(0.5);
+
+  let floor_pos = vec2i(floor(base_pos));
+  let fract_pos = base_pos - vec2f(floor_pos);
+
+  let p00 = vec2u(clamp(floor_pos, vec2i(0), source_dims_i - vec2i(1)));
+  let p10 = vec2u(clamp(floor_pos + vec2i(1, 0), vec2i(0), source_dims_i - vec2i(1)));
+  let p01 = vec2u(clamp(floor_pos + vec2i(0, 1), vec2i(0), source_dims_i - vec2i(1)));
+  let p11 = vec2u(clamp(floor_pos + vec2i(1, 1), vec2i(0), source_dims_i - vec2i(1)));
 
   let c00 = textureLoad(source_tex, p00);
   let c10 = textureLoad(source_tex, p10);

@@ -20,7 +20,7 @@ export default function getCombineSdf(device: GPUDevice) {
     destinationTex: GPUTexture,
     sourceTex: GPUTexture,
     computeDepthTex: GPUTexture,
-    placementData: DataView<ArrayBuffer> // [placement_start_x, placement_start_y, placement_end_x, placement_end_y]
+    placementData: DataView<ArrayBuffer> // [placement_start_x, placement_start_y, placement_size_x, placement_size_y]
   ) {
     const uniformBuffer = device.createBuffer({
       label: 'combine sdf uniform buffer',
@@ -44,8 +44,13 @@ export default function getCombineSdf(device: GPUDevice) {
 
     passEncoder.setBindGroup(0, bindGroup)
 
-    const width = placementData.getFloat32(2 * 4, true)
-    const height = placementData.getFloat32(3 * 4, true)
+    const startX = placementData.getFloat32(0 * 4, true)
+    const startY = placementData.getFloat32(1 * 4, true)
+    const sizeX = placementData.getFloat32(2 * 4, true)
+    const sizeY = placementData.getFloat32(3 * 4, true)
+
+    const width = Math.max(0, Math.ceil(startX + sizeX) - Math.floor(startX))
+    const height = Math.max(0, Math.ceil(startY + sizeY) - Math.floor(startY))
     passEncoder.dispatchWorkgroups(width, height)
   }
 }
