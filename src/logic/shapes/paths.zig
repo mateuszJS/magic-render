@@ -35,7 +35,7 @@ pub const Path = struct {
         };
     }
 
-    pub fn addPoint(self: *Path, point: Point, same_point_threshold: Point) !void {
+    pub fn addPoint(self: *Path, point: Point, is_closing: bool) !void {
         if (self.closed) {
             @panic("Attempting to add point to already closed path!");
         }
@@ -51,12 +51,20 @@ pub const Path = struct {
 
         try self.points.append(path_utils.STRAIGHT_LINE_HANDLE);
 
-        const first_p = self.points.items[0];
-        if (@abs(first_p.x - point.x) < same_point_threshold.x and @abs(first_p.y - point.y) < same_point_threshold.y) {
+        if (is_closing) {
             self.closed = true;
         } else {
             try self.points.append(point);
         }
+    }
+
+    // If the point is in closing threshold, returns point to close to, if not, returns null
+    pub fn getIsClosing(self: Path, point: Point, same_point_threshold: Point) ?Point {
+        const first_p = self.points.items[0];
+        if (@abs(first_p.x - point.x) < same_point_threshold.x and @abs(first_p.y - point.y) < same_point_threshold.y) {
+            return first_p;
+        }
+        return null;
     }
 
     fn getPrevHandle(self: Path, i: usize) ?Point {

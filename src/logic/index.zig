@@ -632,7 +632,7 @@ pub fn onPointerLeave() !void {
 pub fn commitChanges() !void {
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
-            shape.update_preview_point(null);
+            shape.updateControlPointPreview(null);
         }
 
         shapes.resetState();
