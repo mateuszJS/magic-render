@@ -21,7 +21,7 @@ import {
 } from './types'
 import { destroyCanvasTextures } from 'getCanvasRenderDescriptor'
 import setCamera from 'utils/setCamera'
-import { toZigEffects } from 'snapshots/convert'
+import { toZigEffects, toZigProps } from 'snapshots/convert'
 import * as CustomPrograms from 'customPrograms'
 import * as Snapshots from 'snapshots/snapshots'
 import toZigAsset from 'snapshots/toZigAsset'
@@ -268,8 +268,11 @@ export default async function initCreator(
       onUpdateTool(tool)
       Logic.setTool(tool)
     },
-    updateAssetProps: (props, effects, commit) => {
-      Logic.setSelectedAssetProps(props, toZigEffects(effects), commit)
+    updateAssetProps: (props, commit) => {
+      Logic.setSelectedAssetProps(toZigProps(props), commit)
+    },
+    updateAssetEffects: (effects, commit) => {
+      Logic.setSelectedAssetEffects(toZigEffects(effects), commit)
     },
     updateAssetBounds: Logic.setSelectedAssetBounds,
     updateAssetTypoProps: (typoProps, commit) => {

@@ -163,21 +163,44 @@ pub fn getBoundsWithPadding(bounds: [4]PointUV, sdf_padding: f32, scale: f32, fi
         padding.y += margin.y;
     }
 
-    var buffer: [4]PointUV = undefined;
-    const bounds_len: usize = 4;
-    for (bounds, 0..) |b, i| {
-        const b_next = bounds[(i + 1) % bounds_len];
-        const b_prev = bounds[@min((i -% 1), (bounds_len - 1)) % bounds_len];
+    const edge_x = Point{
+        .x = bounds[1].x - bounds[0].x,
+        .y = bounds[1].y - bounds[0].y,
+    };
+    const edge_y = Point{
+        .x = bounds[3].x - bounds[0].x,
+        .y = bounds[3].y - bounds[0].y,
+    };
 
-        const angle_next = b.angleTo(b_next);
-        const angle_prev = b.angleTo(b_prev);
+    const edge_x_len = edge_x.length();
+    const edge_y_len = edge_y.length();
 
-        buffer[i] = b;
-        buffer[i].x -= @cos(angle_next) * padding.x + @cos(angle_prev) * padding.x;
-        buffer[i].y -= @sin(angle_next) * padding.y + @sin(angle_prev) * padding.y;
-        buffer[i].x *= scale;
-        buffer[i].y *= scale;
-    }
+    const axis_x = Point{ .x = edge_x.x / edge_x_len, .y = edge_x.y / edge_x_len };
+    const axis_y = Point{ .x = edge_y.x / edge_y_len, .y = edge_y.y / edge_y_len };
+
+    const offset_x = Point{
+        .x = axis_x.x * padding.x,
+        .y = axis_x.y * padding.x,
+    };
+
+    const offset_y = Point{
+        .x = axis_y.x * padding.y,
+        .y = axis_y.y * padding.y,
+    };
+
+    var buffer: [4]PointUV = bounds;
+
+    buffer[0].x = (bounds[0].x - offset_x.x - offset_y.x) * scale;
+    buffer[0].y = (bounds[0].y - offset_x.y - offset_y.y) * scale;
+
+    buffer[1].x = (bounds[1].x + offset_x.x - offset_y.x) * scale;
+    buffer[1].y = (bounds[1].y + offset_x.y - offset_y.y) * scale;
+
+    buffer[2].x = (bounds[2].x + offset_x.x + offset_y.x) * scale;
+    buffer[2].y = (bounds[2].y + offset_x.y + offset_y.y) * scale;
+
+    buffer[3].x = (bounds[3].x - offset_x.x + offset_y.x) * scale;
+    buffer[3].y = (bounds[3].y - offset_x.y + offset_y.y) * scale;
 
     return buffer;
 }

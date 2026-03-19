@@ -1387,17 +1387,34 @@ pub fn setSelectedAssetTypoProps(serialized: typography_props.Serialized, commit
     snapshots.triggerNewSnapshot(true, commit);
 }
 
-pub fn setSelectedAssetProps(props: asset_props.Props, serialized_effects: []const sdf_effect.Serialized, commit: bool) !void {
+pub fn setSelectedAssetEffects(serialized_effects: []const sdf_effect.Serialized, commit: bool) !void {
     if (getSelectedAsset()) |asset| {
         switch (asset.*) {
-            .img => |img| {
-                _ = img; // autofix
-                // img.props = props;
-            },
+            .img => {},
             .shape => |*shape| {
-                shape.props = props;
                 sdf_effect.deinit(shape.effects);
                 shape.effects = try sdf_effect.deserialize(serialized_effects, std.heap.page_allocator);
+                shape.outdated_sdf = true;
+            },
+            .text => |*text| {
+                sdf_effect.deinit(text.effects);
+                text.effects = try sdf_effect.deserialize(serialized_effects, std.heap.page_allocator);
+                if (text.typo_props.is_sdf_shared) {
+                    text.is_sdf_outdated = true;
+                }
+            },
+        }
+    }
+
+    snapshots.triggerNewSnapshot(true, commit);
+}
+
+pub fn setSelectedAssetProps(props: asset_props.Props, commit: bool) !void {
+    if (getSelectedAsset()) |asset| {
+        switch (asset.*) {
+            .img => {},
+            .shape => |*shape| {
+                shape.props = props;
                 if (props.blur == null and shape.cache_texture_id != null) {
                     // TODO: https://github.com/mateuszJS/magic-render/issues/204
                     // destroy_texture(shape.cache_texture_id);
@@ -1406,15 +1423,10 @@ pub fn setSelectedAssetProps(props: asset_props.Props, serialized_effects: []con
                 } else if (props.blur != null and shape.cache_texture_id == null) {
                     shape.cache_texture_id = js_glue.createCacheTexture();
                 }
-                shape.outdated_sdf = true;
+                shape.outdated_cache = true; // we could also check if blur exists even
             },
             .text => |*text| {
                 text.props = props;
-                sdf_effect.deinit(text.effects);
-                text.effects = try sdf_effect.deserialize(serialized_effects, std.heap.page_allocator);
-                if (text.typo_props.is_sdf_shared) {
-                    text.is_sdf_outdated = true;
-                }
             },
         }
     }
@@ -1490,7 +1502,7 @@ pub fn setSelectedAssetBounds(bounds: [4]types.PointUV, commit: bool) !void {
             },
             .shape => |*shape| {
                 shape.bounds = bounds;
-                shape.should_update_sdf = true;
+                // shape.should_update_sdf = true; on 99% is not needed
             },
             .text => |*text| {
                 text.bounds = bounds;

@@ -26,6 +26,16 @@ export function toZigEffects(effects: Effect[]): ZigEffect[] {
   }))
 }
 
+export function toZigProps(props: BasicProps): BasicProps {
+  return {
+    opacity: props.opacity,
+    blur:
+      props.blur && (props.blur.x > Number.EPSILON || props.blur.y > Number.EPSILON)
+        ? props.blur
+        : null,
+  }
+}
+
 // BasicProps are shared between API & Zig
 export function toBasicProps(props: BasicProps): BasicProps {
   return {

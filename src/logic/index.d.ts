@@ -163,12 +163,9 @@ declare module '*.zig' {
   ) => void
   export const generateUiElementsSdf: VoidFunction
 
-  export const setSelectedAssetProps: (
-    props: BasicProps,
-    effects: ZigEffect[],
-    commit: boolean
-  ) => void
   export const setSelectedAssetBounds: (bounds: PointUV[], commit: boolean) => void
+  export const setSelectedAssetProps: (props: BasicProps, commit: boolean) => void
+  export const setSelectedAssetEffects: (effects: ZigEffect[], commit: boolean) => void
   export const setSelectedAssetTypoProps: (typo_props: TypoProps, commit: boolean) => void
 
   export const addFont: (font_id: number) => void
