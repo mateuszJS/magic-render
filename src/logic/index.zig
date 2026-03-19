@@ -1412,10 +1412,7 @@ pub fn setSelectedAssetEffects(serialized_effects: []const sdf_effect.Serialized
 pub fn setSelectedAssetProps(props: asset_props.Props, commit: bool) !void {
     if (getSelectedAsset()) |asset| {
         switch (asset.*) {
-            .img => |img| {
-                _ = img; // autofix
-                // img.props = props;
-            },
+            .img => {},
             .shape => |*shape| {
                 shape.props = props;
                 if (props.blur == null and shape.cache_texture_id != null) {
@@ -1426,14 +1423,10 @@ pub fn setSelectedAssetProps(props: asset_props.Props, commit: bool) !void {
                 } else if (props.blur != null and shape.cache_texture_id == null) {
                     shape.cache_texture_id = js_glue.createCacheTexture();
                 }
-                shape.outdated_cache = true;
-                // shape.outdated_sdf = true;
+                shape.outdated_cache = true; // we could also check if blur exists even
             },
             .text => |*text| {
                 text.props = props;
-                // if (text.typo_props.is_sdf_shared) {
-                //     text.is_sdf_outdated = true;
-                // }
             },
         }
     }
@@ -1509,7 +1502,7 @@ pub fn setSelectedAssetBounds(bounds: [4]types.PointUV, commit: bool) !void {
             },
             .shape => |*shape| {
                 shape.bounds = bounds;
-                // shape.should_update_sdf = true;
+                // shape.should_update_sdf = true; on 99% is not needed
             },
             .text => |*text| {
                 text.bounds = bounds;
