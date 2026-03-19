@@ -180,7 +180,8 @@ export type CreatorAPI = {
   setTool: (tool: CreatorTool) => void
   // we need to obtain live update!
   updateAssetTypoProps: (props: TypoProps, commit: boolean) => void // updates typography properties of selected asset
-  updateAssetProps: (props: BasicProps, effects: Effect[], commit: boolean) => void // updates properties of selected asset
+  updateAssetProps: (props: BasicProps, commit: boolean) => void // updates basic properties of selected asset
+  updateAssetEffects: (effects: Effect[], commit: boolean) => void // updates only effects of selected asset
   updateAssetBounds: (bounds: PointUV[], commit: boolean) => void // updates bounds of selected asset
   INFINITE_DISTANCE_THRESHOLD: number // threshold value for considering a distance as "infinite" in SDF fill effects
   INFINITE_DISTANCE: number // maximum f32 value, used for SDF fill effects

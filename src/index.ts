@@ -268,8 +268,11 @@ export default async function initCreator(
       onUpdateTool(tool)
       Logic.setTool(tool)
     },
-    updateAssetProps: (props, effects, commit) => {
-      Logic.setSelectedAssetProps(props, toZigEffects(effects), commit)
+    updateAssetProps: (props, commit) => {
+      Logic.setSelectedAssetProps(props, commit)
+    },
+    updateAssetEffects: (effects, commit) => {
+      Logic.setSelectedAssetEffects(toZigEffects(effects), commit)
     },
     updateAssetBounds: Logic.setSelectedAssetBounds,
     updateAssetTypoProps: (typoProps, commit) => {
