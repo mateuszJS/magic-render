@@ -72,19 +72,23 @@ fn main(
       if (center >= filterOffset &&
           center < 128 - filterOffset &&
           all(writeIndex < dims)) {
-
-        let denom = 2.0 * u.sigma * u.sigma;
         var acc = vec4f(0.0);
-        var wsum = 0.0;
 
-        for (var f = 0; f < u.filterDim; f++) {
-          let rel = f - filterOffset;
-          var i = center + rel;
-          let w = exp(- (f32(rel * rel)) / denom);
-          acc = acc + w * tile[r][i];
-          wsum = wsum + w;
+        if (u.filterDim <= 1 || u.sigma <= 0.0) {
+          acc = tile[r][center];
+        } else {
+          let denom = 2.0 * u.sigma * u.sigma;
+          var wsum = 0.0;
+
+          for (var f = 0; f < u.filterDim; f++) {
+            let rel = f - filterOffset;
+            let i = center + rel;
+            let w = exp(- (f32(rel * rel)) / denom);
+            acc = acc + w * tile[r][i];
+            wsum = wsum + w;
+          }
+          acc = acc / wsum;
         }
-        acc = acc / wsum;
 
         textureStore(outputTex, writeIndex, acc);
       }
