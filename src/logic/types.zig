@@ -28,6 +28,7 @@ pub const State = struct {
     tool: Tool,
     init_pointer_coords: Point,
     action_pointer_offset: Point,
+    init_action_bounds: [4]PointUV,
 };
 
 pub const Asset = union(enum) {

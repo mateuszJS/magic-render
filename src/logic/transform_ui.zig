@@ -45,23 +45,70 @@ pub fn isTransformUi(id: u32) bool {
     return id >= 1 and id <= 9;
 }
 
+// et - enhanced transform, can maintain center and aspect ratio if needed
+// @param x - x coordinate
+// @param y - y coordinate
+// @param a - maintain aspect ratio
+// @param c - maintain center or by bypass if equal false
+// @returns ep - enhanced point
+fn et(x: f32, y: f32, a: bool, c: bool) Point {
+    // const s = if (@abs(x - 1) > @abs(y - 1)) x else y;
+    const s = (x + y) * 0.5;
+    const a_x = if (a) s else x;
+    const a_y = if (a) s else y;
+    return if (c) .{
+        .x = 2.0 * a_x - 1.0,
+        .y = 2.0 * a_y - 1.0,
+    } else .{
+        .x = a_x,
+        .y = a_y,
+    };
+}
+
 pub fn transformPoints(ui_component_id: u32, bounds: *[4]PointUV, raw_pointer: Point, constrained: bool, maintain_center: bool) void {
     var matrix = Matrix3x3.getMatrixFromRectangle(bounds.*);
-    const pointer = matrix.inverse().get(raw_pointer);
+    const p = matrix.inverse().get(raw_pointer);
 
     // pivot points
     const p_start: f32 = if (maintain_center) 0.5 else 0;
     const p_end: f32 = if (maintain_center) 0.5 else 1;
+    const c = maintain_center;
+    const a = constrained;
 
     switch (ui_component_id) {
-        1 => matrix.pivotScale(1 - pointer.x, pointer.y, p_end, p_start), // Top left corner
-        2 => matrix.pivotScale(pointer.x, pointer.y, p_start, p_start), // Top right corner
-        3 => matrix.pivotScale(pointer.x, 1 - pointer.y, p_start, p_end), // bottom right corner
-        4 => matrix.pivotScale(1 - pointer.x, 1 - pointer.y, p_end, p_end), // bottom left corner
-        5 => matrix.pivotScale(1, pointer.y, p_start, p_start), // top
-        6 => matrix.pivotScale(pointer.x, 1, p_start, p_start), // right
-        7 => matrix.pivotScale(1, 1 - pointer.y, p_start, p_end), // bottom
-        8 => matrix.pivotScale(1 - pointer.x, 1, p_end, p_start), // left
+        1 => { // Top left corner
+            // ep - enhanced point
+            const ep = et(1 - p.x, p.y, a, c);
+            matrix.pivotScale(ep.x, ep.y, p_end, p_start);
+        },
+        2 => { // Top right corner
+            const ep = et(p.x, p.y, a, c);
+            matrix.pivotScale(ep.x, ep.y, p_start, p_start);
+        },
+        3 => { // Bottom right corner
+            const ep = et(p.x, 1 - p.y, a, c);
+            matrix.pivotScale(ep.x, ep.y, p_start, p_end);
+        },
+        4 => { // Bottom left corner
+            const ep = et(1 - p.x, 1 - p.y, a, c);
+            matrix.pivotScale(ep.x, ep.y, p_end, p_end);
+        },
+        5 => { // top
+            const ep = et(p.y, p.y, a, c);
+            matrix.pivotScale(if (a) ep.x else 1.0, ep.y, 0.5, p_start);
+        },
+        6 => { // right
+            const ep = et(p.x, p.x, a, c);
+            matrix.pivotScale(ep.x, if (a) ep.y else 1.0, p_start, 0.5);
+        },
+        7 => { // bottom
+            const ep = et(1 - p.y, 1 - p.y, a, c);
+            matrix.pivotScale(if (a) ep.x else 1.0, ep.y, 0.5, p_end);
+        },
+        8 => { // left
+            const ep = et(1 - p.x, 1 - p.x, a, c);
+            matrix.pivotScale(ep.x, if (a) ep.y else 1.0, p_end, 0.5);
+        },
         9 => {
             // rotation
 
@@ -94,8 +141,8 @@ pub fn transformPoints(ui_component_id: u32, bounds: *[4]PointUV, raw_pointer: P
     const angle_x = bounds[0].angleTo(bounds[1]);
     const angle_y = bounds[0].angleTo(bounds[3]);
 
-    for (bounds, consts.DEFAULT_BOUNDS) |*b, p| {
-        const t_p = matrix.get(p);
+    for (bounds, consts.DEFAULT_BOUNDS) |*b, p_uv| {
+        const t_p = matrix.get(p_uv);
         b.x = t_p.x;
         b.y = t_p.y;
     }

@@ -143,6 +143,7 @@ var state = types.State{
     .tool = Tool.None,
     .init_pointer_coords = types.Point{ .x = 0.0, .y = 0.0 },
     .action_pointer_offset = types.Point{ .x = 0.0, .y = 0.0 }, // indicates pointer position when action has started, useful for transformatiosn with ctrl/shift
+    .init_action_bounds = undefined,
 };
 
 pub fn initState(width: f32, height: f32, texture_max_size: f32, max_buffer_size: f32) !void {
@@ -448,6 +449,9 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             // No active asset, do nothing
         } else if (transform_ui.isTransformUi(state.hovered_asset_id.getPrim())) {
             state.action = .Transform;
+            const asset = getSelectedAsset() orelse @panic("Asset should be always selected here");
+            const bounds = asset.getBounds();
+            state.init_action_bounds = bounds;
         } else if (state.selected_asset_id.getPrim() >= ASSET_ID_MIN and state.selected_asset_id.getPrim() == state.hovered_asset_id.getPrim()) {
             state.action = .Move;
             state.init_pointer_coords = types.Point{ .x = x, .y = y };
@@ -457,6 +461,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
                 .x = x - bounds[0].x,
                 .y = y - bounds[0].y,
             };
+            // state.init_action_bounds = bounds;
         }
     }
 }
@@ -595,13 +600,15 @@ pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !
             snapshots.triggerNewSnapshot(true, false);
         },
         .Transform => {
+            var safe_copy = state.init_action_bounds;
             transform_ui.transformPoints(
                 state.hovered_asset_id.getPrim(),
-                bounds,
+                &safe_copy,
                 types.Point{ .x = x, .y = y },
                 constrained,
                 maintain_center,
             );
+            bounds.* = safe_copy;
             switch (asset.*) {
                 .img => {},
                 .shape => |*shape| {
