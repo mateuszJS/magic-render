@@ -141,7 +141,6 @@ var state = types.State{
     .selected_asset_id = AssetId{},
     .action = ActionType.None,
     .tool = Tool.None,
-    .init_pointer_coords = types.Point{ .x = 0.0, .y = 0.0 },
     .action_pointer_offset = types.Point{ .x = 0.0, .y = 0.0 }, // indicates pointer position when action has started, useful for transformatiosn with ctrl/shift
     .init_action_bounds = undefined,
 };
@@ -447,21 +446,21 @@ pub fn onPointerDown(x: f32, y: f32) !void {
 
         if (!state.selected_asset_id.isPrim()) {
             // No active asset, do nothing
-        } else if (transform_ui.isTransformUi(state.hovered_asset_id.getPrim())) {
+            return;
+        }
+
+        const asset = getSelectedAsset() orelse @panic("Asset should be always selected here");
+        const bounds = asset.getBounds();
+        state.init_action_bounds = bounds;
+
+        if (transform_ui.isTransformUi(state.hovered_asset_id.getPrim())) {
             state.action = .Transform;
-            const asset = getSelectedAsset() orelse @panic("Asset should be always selected here");
-            const bounds = asset.getBounds();
-            state.init_action_bounds = bounds;
         } else if (state.selected_asset_id.getPrim() >= ASSET_ID_MIN and state.selected_asset_id.getPrim() == state.hovered_asset_id.getPrim()) {
             state.action = .Move;
-            state.init_pointer_coords = types.Point{ .x = x, .y = y };
-            const asset = getSelectedAsset() orelse @panic("Asset should be always selected here");
-            const bounds = asset.getBounds();
             state.action_pointer_offset = types.Point{
                 .x = x - bounds[0].x,
                 .y = y - bounds[0].y,
             };
-            // state.init_action_bounds = bounds;
         }
     }
 }
@@ -583,11 +582,13 @@ pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !
 
     switch (state.action) {
         .Move => {
+            const init_x = state.init_action_bounds[0].x + state.action_pointer_offset.x;
+            const init_y = state.init_action_bounds[0].y + state.action_pointer_offset.y;
             const shift_supported_offset = if (constrained) blk: {
-                if (@abs(x - state.init_pointer_coords.x) >= @abs(y - state.init_pointer_coords.y)) {
-                    break :blk types.Point{ .x = x, .y = state.init_pointer_coords.y };
+                if (@abs(x - init_x) >= @abs(y - init_y)) {
+                    break :blk types.Point{ .x = x, .y = init_y };
                 } else {
-                    break :blk types.Point{ .x = state.init_pointer_coords.x, .y = y };
+                    break :blk types.Point{ .x = init_x, .y = y };
                 }
             } else types.Point{ .x = x, .y = y };
 

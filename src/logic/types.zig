@@ -26,7 +26,6 @@ pub const State = struct {
     selected_asset_id: AssetId,
     action: ActionType,
     tool: Tool,
-    init_pointer_coords: Point,
     action_pointer_offset: Point,
     init_action_bounds: [4]PointUV,
 };
