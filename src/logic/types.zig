@@ -26,7 +26,8 @@ pub const State = struct {
     selected_asset_id: AssetId,
     action: ActionType,
     tool: Tool,
-    last_pointer_coords: Point,
+    init_pointer_coords: Point,
+    action_pointer_offset: Point,
 };
 
 pub const Asset = union(enum) {

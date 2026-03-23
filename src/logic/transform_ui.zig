@@ -45,24 +45,36 @@ pub fn isTransformUi(id: u32) bool {
     return id >= 1 and id <= 9;
 }
 
-pub fn transformPoints(ui_component_id: u32, bounds: *[4]PointUV, raw_pointer: Point) void {
+pub fn transformPoints(ui_component_id: u32, bounds: *[4]PointUV, raw_pointer: Point, constrained: bool, maintain_center: bool) void {
     var matrix = Matrix3x3.getMatrixFromRectangle(bounds.*);
     const pointer = matrix.inverse().get(raw_pointer);
 
+    // pivot points
+    const p_start: f32 = if (maintain_center) 0.5 else 0;
+    const p_end: f32 = if (maintain_center) 0.5 else 1;
+
     switch (ui_component_id) {
-        1 => matrix.pivotScale(1 - pointer.x, pointer.y, 1, 0), // Top left corner
-        2 => matrix.pivotScale(pointer.x, pointer.y, 0, 0), // Top right corner
-        3 => matrix.pivotScale(pointer.x, 1 - pointer.y, 0, 1), // bottom right corner
-        4 => matrix.pivotScale(1 - pointer.x, 1 - pointer.y, 1, 1), // bottom left corner
-        5 => matrix.pivotScale(1, pointer.y, 0, 0), // top
-        6 => matrix.pivotScale(pointer.x, 1, 0, 0), // right
-        7 => matrix.pivotScale(1, 1 - pointer.y, 0, 1), // bottom
-        8 => matrix.pivotScale(1 - pointer.x, 1, 1, 0), // left
+        1 => matrix.pivotScale(1 - pointer.x, pointer.y, p_end, p_start), // Top left corner
+        2 => matrix.pivotScale(pointer.x, pointer.y, p_start, p_start), // Top right corner
+        3 => matrix.pivotScale(pointer.x, 1 - pointer.y, p_start, p_end), // bottom right corner
+        4 => matrix.pivotScale(1 - pointer.x, 1 - pointer.y, p_end, p_end), // bottom left corner
+        5 => matrix.pivotScale(1, pointer.y, p_start, p_start), // top
+        6 => matrix.pivotScale(pointer.x, 1, p_start, p_start), // right
+        7 => matrix.pivotScale(1, 1 - pointer.y, p_start, p_end), // bottom
+        8 => matrix.pivotScale(1 - pointer.x, 1, p_end, p_start), // left
         9 => {
             // rotation
+
             const center = bounds[0].mid(bounds[2]);
             const asset_angle_y = bounds[0].angleTo(bounds[3]);
-            var asset_new_angle = center.angleTo(raw_pointer) - asset_angle_y;
+            const pointer_angle = center.angleTo(raw_pointer);
+            var asset_new_angle = pointer_angle - asset_angle_y;
+
+            if (constrained) {
+                const step = std.math.pi / 12.0; // 15 degrees
+                const snapped = @round(pointer_angle / step) * step;
+                asset_new_angle = snapped - asset_angle_y;
+            }
 
             if (matrix.isMirrored()) {
                 asset_new_angle *= -1;

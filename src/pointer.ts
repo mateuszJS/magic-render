@@ -104,7 +104,11 @@ export default function initMouseController(
 
       const move = () => {
         updatePointer(e)
-        Logic.onPointerMove(...getZigAbsolutePointer())
+        Logic.onPointerMove(
+          ...getZigAbsolutePointer(),
+          e.shiftKey,
+          e.ctrlKey || e.metaKey || e.altKey
+        )
       }
       if (pointer.afterPickEventsQueue.length > 0) {
         pointer.afterPickEventsQueue.push({

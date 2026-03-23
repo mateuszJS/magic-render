@@ -141,7 +141,8 @@ var state = types.State{
     .selected_asset_id = AssetId{},
     .action = ActionType.None,
     .tool = Tool.None,
-    .last_pointer_coords = types.Point{ .x = 0.0, .y = 0.0 },
+    .init_pointer_coords = types.Point{ .x = 0.0, .y = 0.0 },
+    .action_pointer_offset = types.Point{ .x = 0.0, .y = 0.0 }, // indicates pointer position when action has started, useful for transformatiosn with ctrl/shift
 };
 
 pub fn initState(width: f32, height: f32, texture_max_size: f32, max_buffer_size: f32) !void {
@@ -449,7 +450,13 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             state.action = .Transform;
         } else if (state.selected_asset_id.getPrim() >= ASSET_ID_MIN and state.selected_asset_id.getPrim() == state.hovered_asset_id.getPrim()) {
             state.action = .Move;
-            state.last_pointer_coords = types.Point{ .x = x, .y = y };
+            state.init_pointer_coords = types.Point{ .x = x, .y = y };
+            const asset = getSelectedAsset() orelse @panic("Asset should be always selected here");
+            const bounds = asset.getBounds();
+            state.action_pointer_offset = types.Point{
+                .x = x - bounds[0].x,
+                .y = y - bounds[0].y,
+            };
         }
     }
 }
@@ -479,7 +486,7 @@ pub fn onPointerUp() !void {
     }
 }
 
-pub fn onPointerMove(x: f32, y: f32) !void {
+pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !void {
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
             shape.updatePointPreview(types.Point{ .x = x, .y = y });
@@ -571,15 +578,18 @@ pub fn onPointerMove(x: f32, y: f32) !void {
 
     switch (state.action) {
         .Move => {
-            const offset = types.Point{
-                .x = x - state.last_pointer_coords.x,
-                .y = y - state.last_pointer_coords.y,
-            };
-            state.last_pointer_coords = types.Point{ .x = x, .y = y };
+            const shift_supported_offset = if (constrained) blk: {
+                if (@abs(x - state.init_pointer_coords.x) >= @abs(y - state.init_pointer_coords.y)) {
+                    break :blk types.Point{ .x = x, .y = state.init_pointer_coords.y };
+                } else {
+                    break :blk types.Point{ .x = state.init_pointer_coords.x, .y = y };
+                }
+            } else types.Point{ .x = x, .y = y };
 
+            const first_point = bounds[0];
             for (bounds) |*point| {
-                point.x += offset.x;
-                point.y += offset.y;
+                point.x = (point.x - first_point.x) - state.action_pointer_offset.x + shift_supported_offset.x;
+                point.y = (point.y - first_point.y) - state.action_pointer_offset.y + shift_supported_offset.y;
             }
 
             snapshots.triggerNewSnapshot(true, false);
@@ -589,6 +599,8 @@ pub fn onPointerMove(x: f32, y: f32) !void {
                 state.hovered_asset_id.getPrim(),
                 bounds,
                 types.Point{ .x = x, .y = y },
+                constrained,
+                maintain_center,
             );
             switch (asset.*) {
                 .img => {},
