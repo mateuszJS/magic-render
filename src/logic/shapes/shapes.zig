@@ -40,8 +40,8 @@ pub const Preview = struct {
 fn getSnapThreshold(bounds: [4]PointUV) Point {
     const invert_matrix = Matrix3x3.getMatrixFromRectangle(bounds).inverse();
     const close_path_threshold = Point{
-        .x = 10.0 * @abs(invert_matrix.values[0]),
-        .y = 10.0 * @abs(invert_matrix.values[4]),
+        .x = 20.0 * @abs(invert_matrix.values[0]),
+        .y = 20.0 * @abs(invert_matrix.values[4]),
     };
     return close_path_threshold;
 }
@@ -140,7 +140,8 @@ pub const Shape = struct {
 
         if (active_path_index) |i| {
             var active_path = &self.paths.items[i];
-            try active_path.addPoint(point, getSnapThreshold(self.bounds));
+            const is_closing = active_path.getIsClosing(point, getSnapThreshold(self.bounds)) != null;
+            try active_path.addPoint(point, is_closing);
         } else {
             // start a new path
             const new_path = try Path.new(point, allocator);
@@ -150,12 +151,14 @@ pub const Shape = struct {
     }
 
     pub fn updatePointPreview(self: *Shape, p: Point) void {
-        if (is_handle_preview) {
-            if (active_path_index) |index| {
-                const path = self.paths.items[index];
+        if (active_path_index) |index| {
+            const path = self.paths.items[index];
+            const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
+
+            if (is_handle_preview) {
                 const points = path.points.items;
                 const last_cp: Point = if (points.len == 2) points[0] else if (path.closed) points[0] else points[points.len - 1];
-                const matrix = Matrix3x3.getMatrixFromRectangle(self.bounds);
+
                 const dist = matrix.get(last_cp).distance(p);
 
                 if (dist > CREATE_HANDLE_THRESHOLD) {
@@ -163,18 +166,21 @@ pub const Shape = struct {
                 } else {
                     self.updateLastHandle(path_utils.STRAIGHT_LINE_HANDLE);
                 }
+            } else {
+                const relative_point = matrix.inverse().get(p);
+                const is_closing_point = path.getIsClosing(relative_point, getSnapThreshold(self.bounds));
+                const new_preview_point =
+                    if (is_closing_point) |closing_p|
+                        matrix.get(closing_p)
+                    else
+                        p;
+                self.updateControlPointPreview(new_preview_point);
             }
-        } else {
-            self.update_preview_point(p);
         }
     }
 
     // the point of this method is to limit sets of outdated_sdf to true
-    pub fn update_preview_point(self: *Shape, p: ?Point) void {
-        if (active_path_index == null) {
-            return;
-        }
-
+    pub fn updateControlPointPreview(self: *Shape, p: ?Point) void {
         const curr_preview = self.preview_point orelse Point{ .x = std.math.inf(f32), .y = 0 };
         const new_preview = p orelse Point{ .x = std.math.inf(f32), .y = 0 };
 
