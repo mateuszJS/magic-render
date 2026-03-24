@@ -40,7 +40,12 @@ declare module '*.zig' {
   export const onUpdatePick: (id: Id) => void
   export const onPointerDown: (x: number, y: number) => void
   export const onPointerUp: () => void
-  export const onPointerMove: (x: number, y: number) => void
+  export const onPointerMove: (
+    x: number,
+    y: number,
+    constrained: boolean,
+    maintain_center: boolean
+  ) => void
   export const onPointerDoubleClick: VoidFunction
   export const onPointerLeave: VoidFunction
   export const commitChanges: VoidFunction
