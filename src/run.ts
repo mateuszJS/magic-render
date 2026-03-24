@@ -20,12 +20,13 @@ import {
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
 import * as Logic from 'logic/index.zig'
-import { pointer } from 'pointer'
+import { camera, pointer } from 'pointer'
 import * as Textures from 'textures'
 import { endCache, startCache } from 'WebGPU/textureCache'
 import { BoundingBox, Point } from 'types'
 import { getCustomProgram } from 'customPrograms'
 import assertUnreachable from 'utils/assertUnreachable'
+// import { TimingHelper, NonNegativeRollingAverage } from 'WebGPU/TimingHelper'
 
 let renderPass: GPURenderPassEncoder
 export function updateRenderPass(newRenderPass: GPURenderPassEncoder) {
@@ -43,6 +44,10 @@ export default function runCreator(
   let encoder: GPUCommandEncoder
 
   const pickManager = new PickManager(device)
+
+  // https://webgpufundamentals.org/webgpu/lessons/webgpu-timing.html
+  // const timingHelper = new TimingHelper(device)
+  // const gpuAverage = new NonNegativeRollingAverage()
 
   Logic.glueJsTextureCache(
     Textures.createCacheTexture,
@@ -154,7 +159,7 @@ export default function runCreator(
 
   /*===========MAIN LOOP FUNCTION===============*/
   function draw(now: DOMHighResTimeStamp, previewCtx?: GPUCanvasContext) {
-    const isDrawNeeded = Logic.tick(now)
+    const isDrawNeeded = Logic.tick(now) || camera.redrawNeeded
 
     encoder = device.createCommandEncoder({
       label: 'draw canvas main encoder',
@@ -175,6 +180,7 @@ export default function runCreator(
       renderPass = encoder.beginRenderPass(canvasDescriptor)
       Logic.renderDraw(!!previewCtx)
       renderPass.end()
+      camera.redrawNeeded = false
     }
 
     if (previewCtx) {
@@ -206,6 +212,14 @@ export default function runCreator(
 
     const commandBuffer = encoder.finish()
     device.queue.submit([commandBuffer])
+
+    // const computePass = timingHelper.beginComputePass(encoder, { label: 'blur-pass' })
+    // timingHelper.getResult().then((gpuTime) => {
+    //   if (typeof gpuTime === 'number') {
+    //     gpuAverage.addSample(gpuTime / 1000)
+    //   }
+    // })
+
     destroyGpuObjects()
 
     pickManager.asyncPick()

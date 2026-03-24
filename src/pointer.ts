@@ -18,6 +18,7 @@ export const camera = {
   x: 0,
   y: 0,
   zoom: 1,
+  redrawNeeded: true,
 }
 
 export const pointer = {
@@ -97,6 +98,7 @@ export default function initMouseController(
 
         camera.x = pointer.x - panCameraStart.x
         camera.y = -(pointer.y - panCameraStart.y)
+        camera.redrawNeeded = true
         return
       }
 
@@ -189,6 +191,7 @@ export default function initMouseController(
     camera.x = pointer.x - (pointer.x - camera.x) * zoomFactor
     const realY = canvas.height - pointer.y
     camera.y = realY - (realY - camera.y) * zoomFactor
+    camera.redrawNeeded = true
   }
 
   /* panning , supports both scroll and touch, expect Safari */
@@ -206,6 +209,7 @@ export default function initMouseController(
         } else {
           camera.x -= event.deltaX
           camera.y += event.deltaY
+          camera.redrawNeeded = true
         }
       }
     },

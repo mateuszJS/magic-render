@@ -314,9 +314,9 @@ pub fn getBorderDrawVertex(asset: Asset, strong: bool) [8]triangles.DrawInstance
             buffer[(i * 2)..][0..2],
             point,
             next_point,
-            3.0 * shared.render_scale,
+            5.0 * shared.render_scale,
             color,
-            1.5 * shared.render_scale,
+            2.5 * shared.render_scale,
         );
     }
 

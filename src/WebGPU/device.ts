@@ -16,6 +16,7 @@ export default async function setup() {
 
   device = await adapter.requestDevice({
     requiredFeatures: hasBGRA8unormStorage ? ['bgra8unorm-storage'] : [],
+    // to debug with GPU query : ['timestamp-query'],
     label: 'id: ' + Date.now(),
   })
 

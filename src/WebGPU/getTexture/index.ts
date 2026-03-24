@@ -133,7 +133,7 @@ function copySourceToTexture(
     { source, flipY },
     {
       texture,
-      // premultipliedAlpha: true
+      premultipliedAlpha: true,
     },
     { width: source.width, height: source.height, depthOrArrayLayers }
   )
