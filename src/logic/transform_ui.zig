@@ -237,11 +237,11 @@ pub fn getDrawVertexData(
         const color = if (hovered_elem_id == t_line.id) white else black;
 
         const p1, const p2 = getPointsOfLine(bounds, t_line);
-        var thickness: f32 = 10.0 * shared.render_scale;
+        var thickness: f32 = 4.0 * shared.render_scale;
 
         if (t_line.id == 9) {
             // rotation icon
-            thickness = 30.0 * shared.render_scale;
+            thickness = 20.0 * shared.render_scale;
             const icon_size = thickness - 5.0 * shared.render_scale;
             const icon_color = if (hovered_elem_id == t_line.id) black else white;
 
@@ -253,7 +253,7 @@ pub fn getDrawVertexData(
             };
         }
 
-        const outer_line_width = thickness + 10.0 * shared.render_scale;
+        const outer_line_width = thickness + 3.0 * shared.render_scale;
         lines.getDrawVertexData(
             triangle_buffer[i..][0..2],
             p1,
@@ -300,12 +300,13 @@ pub fn getPickVertexData(buffer: *[PICK_TRIANGLE_INSTANCES]triangles.PickInstanc
     }
 }
 
-pub fn getBorderDrawVertex(
-    asset: Asset,
-    color: [4]u8,
-) [8]triangles.DrawInstance {
+const UI_PATH_STRONG_COLOR = [_]u8{ 90, 90, 255, 255 };
+const UI_PATH_LIGHT_COLOR = [_]u8{ UI_PATH_STRONG_COLOR[0], UI_PATH_STRONG_COLOR[1], UI_PATH_STRONG_COLOR[2], 30 };
+
+pub fn getBorderDrawVertex(asset: Asset, strong: bool) [8]triangles.DrawInstance {
     var buffer: [8]triangles.DrawInstance = undefined;
     const bounds = asset.getBounds();
+    const color = if (strong) UI_PATH_STRONG_COLOR else UI_PATH_LIGHT_COLOR;
 
     for (bounds, 0..) |point, i| {
         const next_point = if (i == 3) bounds[0] else bounds[i + 1];
@@ -313,9 +314,9 @@ pub fn getBorderDrawVertex(
             buffer[(i * 2)..][0..2],
             point,
             next_point,
-            10.0 * shared.render_scale,
+            3.0 * shared.render_scale,
             color,
-            5.0 * shared.render_scale,
+            1.5 * shared.render_scale,
         );
     }
 
