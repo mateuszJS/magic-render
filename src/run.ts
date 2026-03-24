@@ -154,7 +154,7 @@ export default function runCreator(
 
   /*===========MAIN LOOP FUNCTION===============*/
   function draw(now: DOMHighResTimeStamp, previewCtx?: GPUCanvasContext) {
-    Logic.tick(now)
+    const isDrawNeeded = Logic.tick(now)
 
     encoder = device.createCommandEncoder({
       label: 'draw canvas main encoder',
@@ -166,14 +166,16 @@ export default function runCreator(
 
     Logic.updateCache()
 
-    const canvasDescriptor = getCanvasRenderDescriptor(previewCtx || context, device)
-    renderPass = encoder.beginRenderPass(canvasDescriptor)
-
     const matrix = getCanvasMatrix(previewCtx?.canvas || creatorCanvas)
     device.queue.writeBuffer(canvasMatrix.buffer, 0, matrix)
+
     // time = performance.now()
-    Logic.renderDraw(!!previewCtx)
-    renderPass.end()
+    if (isDrawNeeded) {
+      const canvasDescriptor = getCanvasRenderDescriptor(previewCtx || context, device)
+      renderPass = encoder.beginRenderPass(canvasDescriptor)
+      Logic.renderDraw(!!previewCtx)
+      renderPass.end()
+    }
 
     if (previewCtx) {
       const commandBuffer = encoder.finish()

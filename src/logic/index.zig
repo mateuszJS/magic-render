@@ -143,6 +143,7 @@ var state = types.State{
     .tool = Tool.None,
     .action_pointer_offset = types.Point{ .x = 0.0, .y = 0.0 }, // indicates pointer position when action has started, useful for transformatiosn with ctrl/shift
     .init_action_bounds = undefined,
+    .redraw_needed = true,
 };
 
 pub fn initState(width: f32, height: f32, texture_max_size: f32, max_buffer_size: f32) !void {
@@ -150,12 +151,14 @@ pub fn initState(width: f32, height: f32, texture_max_size: f32, max_buffer_size
     shared.max_buffer_size = max_buffer_size;
     state.width = width;
     state.height = height;
+    state.redraw_needed = true;
     state.assets = std.AutoArrayHashMap(u32, Asset).init(std.heap.page_allocator);
     UI.init();
     fonts.init();
 }
 
 pub fn updateRenderScale(scale: f32) !void {
+    state.redraw_needed = true;
     shared.render_scale = scale;
 
     var iterator = state.assets.iterator();
@@ -253,11 +256,14 @@ fn addText(
 pub fn removeAsset() !void {
     _ = state.assets.orderedRemove(state.selected_asset_id.getPrim());
     try setSelectedAsset(AssetId{});
+
+    state.redraw_needed = true;
     snapshots.triggerNewSnapshot(true, true);
 }
 
 pub fn onUpdatePick(id: [4]u32) void {
-    if (state.action != .Transform) {
+    if (state.action != .Transform and !state.hovered_asset_id.equal(id)) {
+        state.redraw_needed = true;
         state.hovered_asset_id = AssetId.fromArray(id);
         // hovered_asset_id stores id of the ui transform element during transformations
     }
@@ -312,6 +318,8 @@ pub fn updateTextContent(
         // IMPORTANT: do NOT free input_content,
         // It's owned by Zigar/JS side, so hopefully it's gonna somehow handled there
         const results = try text.computeText(selection_start, selection_end);
+
+        state.redraw_needed = true;
         snapshots.triggerNewSnapshot(true, true);
         return results;
     } else {
@@ -371,6 +379,8 @@ fn createText(x: f32, y: f32) !texts.Text {
 }
 
 pub fn onPointerDown(x: f32, y: f32) !void {
+    state.redraw_needed = true;
+
     if (state.tool == .Text) {
         try setSelectedAsset(state.hovered_asset_id);
 
@@ -466,6 +476,8 @@ pub fn onPointerDown(x: f32, y: f32) !void {
 }
 
 pub fn onPointerUp() !void {
+    state.redraw_needed = true;
+
     if (state.tool == .None) {
         if (state.action == .None) {
             try setSelectedAsset(state.hovered_asset_id);
@@ -493,6 +505,7 @@ pub fn onPointerUp() !void {
 pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !void {
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
+            state.redraw_needed = true;
             shape.updatePointPreview(types.Point{ .x = x, .y = y });
         }
         return;
@@ -502,6 +515,8 @@ pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !
         if (getSelectedText() != null) {
             if (state.hovered_asset_id.getPrim() == state.selected_asset_id.getPrim()) {
                 if (state.hovered_asset_id.isSec() and state.selected_asset_id.isSec()) {
+                    state.redraw_needed = true;
+
                     const new_caret_index = state.hovered_asset_id.getSec();
                     const curr_caret_index = state.selected_asset_id.getSec();
 
@@ -518,6 +533,8 @@ pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !
     if (state.tool == Tool.EditShape) {
         if (state.selected_asset_id.isTert()) {
             if (getSelectedShape()) |shape| {
+                state.redraw_needed = true;
+
                 const matrix = Matrix3x3.getMatrixFromRectangle(shape.bounds);
                 const pointer = matrix.inverse().get(types.Point{ .x = x, .y = y });
 
@@ -582,6 +599,8 @@ pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !
 
     switch (state.action) {
         .Move => {
+            state.redraw_needed = true;
+
             const init_x = state.init_action_bounds[0].x + state.action_pointer_offset.x;
             const init_y = state.init_action_bounds[0].y + state.action_pointer_offset.y;
             const shift_supported_offset = if (constrained) blk: {
@@ -601,6 +620,8 @@ pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !
             snapshots.triggerNewSnapshot(true, false);
         },
         .Transform => {
+            state.redraw_needed = true;
+
             var safe_copy = state.init_action_bounds;
             transform_ui.transformPoints(
                 state.hovered_asset_id.getPrim(),
@@ -639,17 +660,21 @@ pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !
 
 pub fn onPointerDoubleClick() !void {
     if (state.tool == .None and getSelectedText() != null) {
+        state.redraw_needed = true;
         try setTool(Tool.Text);
         js_glue.onUpdateTool(@intFromEnum(Tool.Text));
     }
 }
 
 pub fn onPointerLeave() !void {
+    state.redraw_needed = true;
     state.action = .None;
     state.hovered_asset_id = AssetId{};
 }
 
 pub fn commitChanges() !void {
+    state.redraw_needed = true;
+
     if (state.tool == Tool.DrawShape) {
         if (getSelectedShape()) |shape| {
             shape.updateControlPointPreview(null);
@@ -1042,12 +1067,16 @@ pub fn updateCache() void {
 }
 
 pub fn setCaretPosition(start: u32, end: u32) void {
+    state.redraw_needed = true;
+
     texts.caret_position = start;
     texts.last_caret_update = shared.time_u32;
     texts.selection_end_position = end;
 }
 
 pub fn renderDraw(is_ui_hidden: bool) !void {
+    state.redraw_needed = false;
+
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -1380,9 +1409,11 @@ pub fn setTool(tool: Tool) !void {
     }
 }
 
-pub fn tick(now: f32) !void {
+// returns bool indicating if an update in drawing is needed
+pub fn tick(now: f32) !bool {
     shared.tick(now);
     try snapshots.loop(state);
+    return state.redraw_needed;
 }
 
 pub fn setSelectedAssetTypoProps(serialized: typography_props.Serialized, commit: bool) !void {
@@ -1402,9 +1433,10 @@ pub fn setSelectedAssetTypoProps(serialized: typography_props.Serialized, commit
         if (text.typo_props.is_sdf_shared) {
             text.is_sdf_outdated = true;
         }
-    }
 
-    snapshots.triggerNewSnapshot(true, commit);
+        state.redraw_needed = true;
+        snapshots.triggerNewSnapshot(true, commit);
+    }
 }
 
 pub fn setSelectedAssetEffects(serialized_effects: []const sdf_effect.Serialized, commit: bool) !void {
@@ -1424,9 +1456,10 @@ pub fn setSelectedAssetEffects(serialized_effects: []const sdf_effect.Serialized
                 }
             },
         }
-    }
 
-    snapshots.triggerNewSnapshot(true, commit);
+        state.redraw_needed = true;
+        snapshots.triggerNewSnapshot(true, commit);
+    }
 }
 
 pub fn setSelectedAssetProps(props: asset_props.Props, commit: bool) !void {
@@ -1449,9 +1482,10 @@ pub fn setSelectedAssetProps(props: asset_props.Props, commit: bool) !void {
                 text.props = props;
             },
         }
-    }
 
-    snapshots.triggerNewSnapshot(true, commit);
+        state.redraw_needed = true;
+        snapshots.triggerNewSnapshot(true, commit);
+    }
 }
 
 pub fn setSelectedAssetBounds(bounds: [4]types.PointUV, commit: bool) !void {
@@ -1537,9 +1571,10 @@ pub fn setSelectedAssetBounds(bounds: [4]types.PointUV, commit: bool) !void {
                 }
             },
         }
-    }
 
-    snapshots.triggerNewSnapshot(true, commit);
+        state.redraw_needed = true;
+        snapshots.triggerNewSnapshot(true, commit);
+    }
 }
 
 pub fn addFont(font_id: u32) !void {
@@ -1552,6 +1587,8 @@ pub fn addFont(font_id: u32) !void {
             .shape => {},
             .text => |*text| {
                 if (text.typo_props.font_family_id == font_id) {
+                    state.redraw_needed = true;
+
                     const result = try text.computeText(0, 0);
                     const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
                     if (is_text_area_enabled and text.id == state.selected_asset_id.getPrim()) {
@@ -1566,6 +1603,8 @@ pub fn addFont(font_id: u32) !void {
 
 pub fn onBlurTextArea() void {
     if (state.tool == .Text) {
+        state.redraw_needed = true;
+
         // leave typing mode, focus is not longer in text area
         state.selected_asset_id = AssetId.fromArray(.{ state.selected_asset_id.getPrim(), 0, 0, 0 });
         texts.caret_position = 0;
@@ -1583,6 +1622,7 @@ pub fn invalidateCache(ids: []const u32) void {
             switch (asset.*) {
                 .img => {},
                 .shape => |*shape| {
+                    state.redraw_needed = true;
                     shape.outdated_cache = true;
                 },
                 .text => {},
