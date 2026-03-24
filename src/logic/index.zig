@@ -378,6 +378,7 @@ fn createText(x: f32, y: f32) !texts.Text {
     );
 }
 
+// @param auto_select - whether to select asset on pointer down, useufl for dekstop users
 pub fn onPointerDown(x: f32, y: f32) !void {
     state.redraw_needed = true;
 
@@ -454,6 +455,14 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             }
         }
 
+        if (state.hovered_asset_id.getPrim() >= ASSET_ID_MIN and
+            state.tool == .None and
+            state.action == .None)
+        {
+            // This standard for desktop, not sure if gonna work well with mobile
+            try setSelectedAsset(state.hovered_asset_id);
+        }
+
         if (!state.selected_asset_id.isPrim()) {
             // No active asset, do nothing
             return;
@@ -465,7 +474,9 @@ pub fn onPointerDown(x: f32, y: f32) !void {
 
         if (transform_ui.isTransformUi(state.hovered_asset_id.getPrim())) {
             state.action = .Transform;
-        } else if (state.selected_asset_id.getPrim() >= ASSET_ID_MIN and state.selected_asset_id.getPrim() == state.hovered_asset_id.getPrim()) {
+        } else if (state.selected_asset_id.getPrim() >= ASSET_ID_MIN and
+            state.selected_asset_id.getPrim() == state.hovered_asset_id.getPrim())
+        {
             state.action = .Move;
             state.action_pointer_offset = types.Point{
                 .x = x - bounds[0].x,
@@ -480,6 +491,8 @@ pub fn onPointerUp() !void {
 
     if (state.tool == .None) {
         if (state.action == .None) {
+            // I've commented it out because I think mobile might work
+            // fine with first lcick like desktop does, to be tested
             try setSelectedAsset(state.hovered_asset_id);
         } else {
             state.action = .None;

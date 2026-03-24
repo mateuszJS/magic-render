@@ -1,3 +1,5 @@
+import throttle from 'utils/throttle'
+
 function updateCanvasSize(
   canvas: HTMLCanvasElement,
   width: number,
@@ -14,19 +16,27 @@ export default function canvasSizeObserver(
   callback: VoidFunction
 ) {
   // TODO: should we also handle window.devicePixelRatio; ?
+
+  const onResize = throttle((entry: ResizeObserverEntry) => {
+    const canvas = entry.target as HTMLCanvasElement
+    // Safari does not support devicePixelContentBoxSize
+    const width =
+      entry.devicePixelContentBoxSize?.[0].inlineSize ??
+      entry.contentBoxSize[0].inlineSize * devicePixelRatio
+    const height =
+      entry.devicePixelContentBoxSize?.[0].blockSize ??
+      entry.contentBoxSize[0].blockSize * devicePixelRatio
+
+    updateCanvasSize(canvas, width, height, device)
+    callback()
+
+    // doing it more often causes actually worst results
+    // seems like canvas starts skipping updated then
+  }, 100)
+
   const observer = new ResizeObserver((entries) => {
     for (const entry of entries) {
-      const canvas = entry.target as HTMLCanvasElement
-      // Safari does not support devicePixelContentBoxSize
-      const width =
-        entry.devicePixelContentBoxSize?.[0].inlineSize ??
-        entry.contentBoxSize[0].inlineSize * devicePixelRatio
-      const height =
-        entry.devicePixelContentBoxSize?.[0].blockSize ??
-        entry.contentBoxSize[0].blockSize * devicePixelRatio
-
-      updateCanvasSize(canvas, width, height, device)
-      callback()
+      onResize(entry)
     }
   })
 
