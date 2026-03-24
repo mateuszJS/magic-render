@@ -698,20 +698,14 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
     if (state.hovered_asset_id.getPrim() != state.selected_asset_id.getPrim()) {
         if (state.assets.get(state.hovered_asset_id.getPrim())) |asset| {
             try triangle_vertex_data.appendSlice(
-                &transform_ui.getBorderDrawVertex(
-                    asset,
-                    .{ 255, 0, 0, 255 },
-                ),
+                &transform_ui.getBorderDrawVertex(asset, false),
             );
         }
     }
 
     if (getSelectedAsset()) |asset| {
         try triangle_vertex_data.appendSlice(
-            &transform_ui.getBorderDrawVertex(
-                asset.*,
-                .{ 0, 255, 0, 255 },
-            ),
+            &transform_ui.getBorderDrawVertex(asset.*, true),
         );
 
         if (state.tool != .Text) {
