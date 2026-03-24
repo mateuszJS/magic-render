@@ -154,7 +154,7 @@ declare module '*.zig' {
   ) => void
   export const setCaretPosition: (selection_start: number, selection_end: number) => void
 
-  export const tick: (time: DOMHighResTimeStamp) => void
+  export const tick: (time: DOMHighResTimeStamp) => boolean
   export const computeSdfs: VoidFunction
   export const renderDraw: (is_ui_hidden: boolean) => void
   export const renderPick: VoidFunction

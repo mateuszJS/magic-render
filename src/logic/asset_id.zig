@@ -61,4 +61,12 @@ pub const AssetId = struct {
 
         try writer.print("{d}, {d}, {d}, {d}", .{ self._prim, self._sec, self._tert, self._quat });
     }
+
+    // Normally it should compare to AssetId, but for now we only need this while receiving raw array
+    pub fn equal(self: AssetId, values: [4]u32) bool {
+        return self._prim == values[0] and
+            self._sec == values[1] and
+            self._tert == values[2] and
+            self._quat == values[3];
+    }
 };
