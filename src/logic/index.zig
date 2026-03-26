@@ -28,6 +28,7 @@ const Tool = @import("types.zig").Tool;
 const typography_props = @import("texts/typography_props.zig");
 const js_glue = @import("js_glue.zig");
 const sdf_effect = @import("sdf/effect.zig");
+const caret = @import("texts/caret.zig");
 
 const FillType = enum(u8) {
     Solid,
@@ -651,8 +652,8 @@ pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !
                 },
                 .text => |*text| {
                     _ = try text.computeText(
-                        texts.caret_position,
-                        texts.selection_end_position,
+                        caret.position,
+                        caret.selection_end_position,
                     );
 
                     const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
@@ -699,8 +700,8 @@ pub fn commitChanges() !void {
     const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
     if (is_text_area_enabled) {
         disable_typing();
-        texts.caret_position = 0;
-        texts.selection_end_position = 0;
+        caret.position = 0;
+        caret.selection_end_position = 0;
     }
 }
 
@@ -1076,9 +1077,9 @@ pub fn updateCache() void {
 pub fn setCaretPosition(start: u32, end: u32) void {
     state.redraw_needed = true;
 
-    texts.caret_position = start;
-    texts.last_caret_update = shared.time_u32;
-    texts.selection_end_position = end;
+    caret.position = start;
+    caret.last_update = shared.time_u32;
+    caret.selection_end_position = end;
 }
 
 pub fn renderDraw(is_ui_hidden: bool) !void {
@@ -1150,8 +1151,8 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                     if (!is_typing_ui) continue;
                 }
 
-                const selection_start = @min(texts.caret_position, texts.selection_end_position);
-                const selection_end = @max(texts.caret_position, texts.selection_end_position);
+                const selection_start = @min(caret.position, caret.selection_end_position);
+                const selection_end = @max(caret.position, caret.selection_end_position);
                 var vertex_triangles_buffer =
                     std.ArrayList(triangles.DrawInstance).init(allocator);
                 const matrix = Matrix3x3.getMatrixFromRectangleNoScale(text.bounds);
@@ -1179,7 +1180,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                         if (is_typing_ui) {
                             const is_selection = selection_start != selection_end;
 
-                            if (!is_selection and texts.caret_position == i) {
+                            if (!is_selection and caret.position == i and caret.isCaretShown()) {
                                 const caret_buffer = text.addCaretDrawVertex(
                                     vertex.relative_bounds[3].toPoint(),
                                 );
@@ -1198,7 +1199,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 }
 
                 // if caret is at the end of text
-                if (texts.caret_position == text.text_vertex.items.len) {
+                if (caret.position == text.text_vertex.items.len and caret.isCaretShown()) {
                     const position =
                         if (text.text_vertex.getLastOrNull()) |last_vertex|
                             last_vertex.relative_bounds[2].toPoint()
@@ -1417,9 +1418,20 @@ pub fn setTool(tool: Tool) !void {
 }
 
 // returns bool indicating if an update in drawing is needed
+var lastIsCaretShown = false;
 pub fn tick(now: f32) !bool {
     shared.tick(now);
     try snapshots.loop(state);
+
+    if (!state.redraw_needed and state.tool == .Text and getSelectedText() != null) {
+        const isCaretShown = caret.isCaretShown();
+
+        if (isCaretShown != lastIsCaretShown) {
+            lastIsCaretShown = isCaretShown;
+            return true;
+        }
+    }
+
     return state.redraw_needed;
 }
 
@@ -1568,8 +1580,8 @@ pub fn setSelectedAssetBounds(bounds: [4]types.PointUV, commit: bool) !void {
             .text => |*text| {
                 text.bounds = bounds;
                 const result = try text.computeText(
-                    texts.caret_position,
-                    texts.selection_end_position,
+                    caret.position,
+                    caret.selection_end_position,
                 );
 
                 const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
@@ -1614,8 +1626,8 @@ pub fn onBlurTextArea() void {
 
         // leave typing mode, focus is not longer in text area
         state.selected_asset_id = AssetId.fromArray(.{ state.selected_asset_id.getPrim(), 0, 0, 0 });
-        texts.caret_position = 0;
-        texts.selection_end_position = 0;
+        caret.position = 0;
+        caret.selection_end_position = 0;
     }
 }
 

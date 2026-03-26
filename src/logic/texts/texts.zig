@@ -20,13 +20,6 @@ const sdf_effect = @import("../sdf/effect.zig");
 const ENTER_CHAR_CODE: u21 = 0xa;
 const SOFT_BREAK_MARKER: u21 = 0x2060;
 
-// Global text state, modified mainly in index.zig
-// do NOT include this in Text struct! Otherwise we would need to keep looping over all texts
-// to make sure we clear all startes when user select/clicks on a text
-pub var caret_position: u32 = 0;
-pub var selection_end_position: u32 = 0; // selection start is indicated by caret_position
-pub var last_caret_update: u32 = 0;
-
 pub const CharVertex = struct {
     relative_bounds: [4]PointUV,
     char: ?u21,
@@ -289,24 +282,17 @@ pub const Text = struct {
             .y = relative_start.y + self.typo_props.font_size * self.typo_props.line_height,
         };
 
-        const CARET_BLINK_INTERVAL_MS = 700;
-        const blink = (shared.time_u32 / CARET_BLINK_INTERVAL_MS) % 2 == 0;
-        const newly_updated = shared.time_u32 - last_caret_update < 1000;
-
-        if (blink or newly_updated) {
-            var buffer: [2]triangles.DrawInstance = undefined;
-            const width = 3.0 * shared.render_scale;
-            lines.getDrawVertexData(
-                &buffer,
-                matrix.get(relative_start),
-                matrix.get(relative_end),
-                width,
-                .{ 255, 255, 255, 255 },
-                width / 2,
-            );
-            return buffer;
-        }
-        return null;
+        var buffer: [2]triangles.DrawInstance = undefined;
+        const width = 3.0 * shared.render_scale;
+        lines.getDrawVertexData(
+            &buffer,
+            matrix.get(relative_start),
+            matrix.get(relative_end),
+            width,
+            .{ 255, 255, 255, 255 },
+            width / 2,
+        );
+        return buffer;
     }
 
     pub fn getCaretIndex(self: Text, id: [4]u32, relative_x: f32) ?u32 {
