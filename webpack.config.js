@@ -23,6 +23,7 @@ const baseConfig = {
     // HMR doesn't support ESM
     hot: false, // and anyway with canvas we would need to perform reload
     liveReload: true,
+    server: 'https',
   },
   resolve: {
     extensions: ['.ts', '.js', '.wgsl', '.jpg', '.png', '.zig', '.woff2', '.ttf'],

@@ -109,7 +109,14 @@ export function attachSlice(
   // }
 }
 
-export function createTextureFromSource(source: TextureSource, options: Options = {}) {
+/* instead of TextureSource the source accepts only ImageBitmap, it's important,
+  e.g.HTMLImageElement has color profile attached to it (like Display P3 from iPhone screenshots)
+  and Safari copies those values directly into sRGB texture, so colors looks funky.
+  Instead we covnerted image to createImageBitmap with colorSpaceConversion "none"
+  what strips the color profile and normalizes values to sRGB
+*/
+export function createTextureFromSource(source: ImageBitmap, options: Options = {}) {
+  console.log('presentationFormat', presentationFormat)
   const texture = device.createTexture({
     label: 'createTextureFromSource',
     format: presentationFormat,
@@ -141,18 +148,4 @@ function copySourceToTexture(
   // if (texture.mipLevelCount > 1) {
   //   generateMipmaps(device, texture);
   // }
-}
-
-export async function loadImageBitmap(url: string) {
-  const res = await fetch(url)
-  const blob = await res.blob()
-  return await createImageBitmap(blob, {
-    colorSpaceConversion: 'none',
-    premultiplyAlpha: 'premultiply',
-  })
-}
-
-export async function createTextureFromImage(url: string, options: Options) {
-  const imgBitmap = await loadImageBitmap(url)
-  return createTextureFromSource(imgBitmap, options)
 }

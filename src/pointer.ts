@@ -25,11 +25,12 @@ export const pointer = {
   x: 0,
   y: 0,
   afterPickEventsQueue: [] as Array<{ requireNewPick: boolean; cb: VoidFunction }>,
-  /* this queue exists because wen mobiel device is touched we have to:
+  /* this queue exists because when mobile device is touched we have to:
     1) update pointer,
     2) do picking,
     3) record a click in order,
-    so click has to wait after pick is done */
+    so click has to wait after pick is done
+  But it's also useful for fast "unit" testing */
 }
 
 export default function initMouseController(
@@ -52,11 +53,15 @@ export default function initMouseController(
     ]
   }
 
-  function updatePointer(e: MouseEvent) {
+  function updatePointer(e: MouseEvent | Touch) {
     const rect = canvas.getBoundingClientRect()
     const scale = canvas.width / rect.width
     pointer.x = (e.clientX - rect.left) * scale
     pointer.y = (e.clientY - rect.top) * scale
+  }
+
+  function getTouchDistance(t1: Touch, t2: Touch) {
+    return Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY)
   }
 
   canvas.addEventListener(
@@ -70,14 +75,10 @@ export default function initMouseController(
         pointer.y = OUTSIDE_CANVAS
         Logic.onPointerLeave()
       }
-      if (pointer.afterPickEventsQueue.length > 0) {
-        pointer.afterPickEventsQueue.push({
-          requireNewPick: false,
-          cb: update,
-        })
-      } else {
-        update()
-      }
+      pointer.afterPickEventsQueue.push({
+        requireNewPick: false,
+        cb: update,
+      })
     },
     eventOptions
   )
@@ -102,27 +103,44 @@ export default function initMouseController(
         return
       }
 
-      onStartProcessing()
-
-      const move = () => {
-        updatePointer(e)
-        Logic.onPointerMove(
-          ...getZigAbsolutePointer(),
-          e.shiftKey,
-          e.ctrlKey || e.metaKey || e.altKey
-        )
-      }
-      if (pointer.afterPickEventsQueue.length > 0) {
-        pointer.afterPickEventsQueue.push({
-          requireNewPick: false,
-          cb: move,
-        })
-      } else {
-        move()
-      }
+      onPointerMove(e)
     },
     eventOptions
   )
+
+  const onPointerMove = (e: MouseEvent | Touch) => {
+    onStartProcessing()
+    const move = () => {
+      updatePointer(e)
+      Logic.onPointerMove(
+        ...getZigAbsolutePointer(),
+        e instanceof MouseEvent ? e.shiftKey : false,
+        e instanceof MouseEvent ? e.ctrlKey || e.metaKey || e.altKey : false
+      )
+    }
+    pointer.afterPickEventsQueue.push({
+      requireNewPick: false,
+      cb: move,
+    })
+  }
+
+  const onPointerDown = (e: MouseEvent | Touch) => {
+    onStartProcessing()
+    updatePointer(e)
+    pointer.afterPickEventsQueue.push({
+      requireNewPick: true,
+      cb: Logic.onPointerDown.bind(null, ...getZigAbsolutePointer()),
+    })
+  }
+
+  const onPointerUp = () => {
+    onStartProcessing()
+
+    pointer.afterPickEventsQueue.push({
+      requireNewPick: false,
+      cb: Logic.onPointerUp,
+    })
+  }
 
   canvas.addEventListener(
     'mousedown',
@@ -138,13 +156,7 @@ export default function initMouseController(
       }
       panCameraStart = null
 
-      onStartProcessing()
-
-      updatePointer(e)
-      pointer.afterPickEventsQueue.push({
-        requireNewPick: true,
-        cb: Logic.onPointerDown.bind(null, ...getZigAbsolutePointer()),
-      })
+      onPointerDown(e)
     },
     eventOptions
   )
@@ -156,16 +168,7 @@ export default function initMouseController(
       panCameraStart = null
       canvas.style.cursor = 'default'
 
-      onStartProcessing()
-
-      if (pointer.afterPickEventsQueue.length > 0) {
-        pointer.afterPickEventsQueue.push({
-          requireNewPick: false,
-          cb: Logic.onPointerUp,
-        })
-      } else {
-        Logic.onPointerUp()
-      }
+      onPointerUp()
     },
     eventOptions
   )
@@ -289,103 +292,84 @@ export default function initMouseController(
     eventOptions
   )
 
-  // The code below is from mozzila MDN docs, and it's a good base once we can test on mobile
+  const touchEventOptions: AddEventListenerOptions = {
+    passive: false,
+    signal: abortSignal,
+  }
 
-  // function updateBackground(ev: TouchEvent) {
-  //   switch (ev.targetTouches.length) {
-  //     case 1:
-  //       console.log('single tap')
-  //       break
-  //     case 2:
-  //       console.log('Two simultaneous touches')
-  //       break
-  //     default:
-  //       console.log('More than two simultaneous touches')
-  //   }
-  // }
+  let lastTouchDistance = 0
+  let lastTouchMidpoint: Point | null = null
 
-  // const tpCache: Touch[] = []
+  canvas.addEventListener(
+    'touchstart',
+    (e) => {
+      e.preventDefault()
 
-  // canvas.addEventListener('touchstart', (event) => {
-  //   // If the user makes simultaneous touches, the browser will fire a
-  //   // separate touchstart event for each touch point. Thus if there are
-  //   // three simultaneous touches, the first touchstart event will have
-  //   // targetTouches length of one, the second event will have a length
-  //   // of two, and so on.
-  //   console.log(event.targetTouches.length)
-  //   event.preventDefault()
-  //   // Cache the touch points for later processing of 2-touch pinch/zoom
-  //   if (event.targetTouches.length === 2) {
-  //     for (const touch of event.targetTouches) {
-  //       tpCache.push(touch)
-  //     }
-  //   }
-  //   // if (logEvents) log('touchStart', event, true)
-  //   updateBackground(event)
-  // })
+      if (e.touches.length === 1) {
+        onPointerDown(e.touches[0])
+      } else if (e.touches.length === 2) {
+        lastTouchDistance = getTouchDistance(e.touches[0], e.touches[1])
+        lastTouchMidpoint = {
+          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+        }
+        // Cancel any ongoing single-touch drawing operation
+        onPointerUp()
+      }
+    },
+    touchEventOptions
+  )
 
-  // canvas.addEventListener('touchmove', (ev) => {
-  //   // Note: if the user makes more than one "simultaneous" touches, most browsers
-  //   // fire at least one touchmove event and some will fire several touch moves.
-  //   // Consequently, an application might want to "ignore" some touch moves.
-  //   //
-  //   // This function sets the target element's border to "dashed" to visually
-  //   // indicate the target received a move event.
-  //   //
-  //   ev.preventDefault()
-  //   // if (logEvents) log('touchMove', ev, false)
-  //   // To avoid too much color flashing many touchmove events are started,
-  //   // don't update the background if two touch points are active
-  //   if (!(ev.touches.length === 2 && ev.targetTouches.length === 2)) updateBackground(ev)
+  canvas.addEventListener(
+    'touchmove',
+    (e) => {
+      e.preventDefault()
 
-  //   // Set the target element's border to dashed to give a clear visual
-  //   // indication the element received a move event.
-  //   // ev.target.style.border = 'dashed'
+      if (e.touches.length === 1) {
+        onStartProcessing()
+        onPointerMove(e.touches[0])
+      } else if (e.touches.length === 2) {
+        const t1 = e.touches[0]
+        const t2 = e.touches[1]
+        const newDistance = getTouchDistance(t1, t2)
+        const midClientX = (t1.clientX + t2.clientX) / 2
+        const midClientY = (t1.clientY + t2.clientY) / 2
 
-  //   // Check this event for 2-touch Move/Pinch/Zoom gesture
-  //   handlePinchZoom(ev)
-  // })
+        const rect = canvas.getBoundingClientRect()
+        const scale = canvas.width / rect.width
+        const midX = (midClientX - rect.left) * scale
+        const midY = (midClientY - rect.top) * scale
 
-  // function handlePinchZoom(ev: TouchEvent) {
-  //   if (ev.targetTouches.length === 2 && ev.changedTouches.length === 2) {
-  //     // Check if the two target touches are the same ones that started
-  //     // the 2-touch
-  //     const reverseTpCache = tpCache.slice().reverse()
-  //     const point1 = reverseTpCache.findIndex(
-  //       (tp) => tp.identifier === ev.targetTouches[0].identifier
-  //     )
-  //     const point2 = reverseTpCache.findIndex(
-  //       (tp) => tp.identifier === ev.targetTouches[1].identifier
-  //     )
+        if (lastTouchDistance > 0) {
+          performZoom((newDistance - lastTouchDistance) * 0.003, midX, midY)
+        }
 
-  //     if (point1 >= 0 && point2 >= 0) {
-  //       // Calculate the difference between the start and move coordinates
-  //       const diff1 = Math.abs(tpCache[point1].clientX - ev.targetTouches[0].clientX)
-  //       const diff2 = Math.abs(tpCache[point2].clientX - ev.targetTouches[1].clientX)
+        if (lastTouchMidpoint) {
+          camera.x += (midClientX - lastTouchMidpoint.x) * scale
+          camera.y -= (midClientY - lastTouchMidpoint.y) * scale
+          camera.redrawNeeded = true
+        }
 
-  //       // This threshold is device dependent as well as application specific
-  //       const PINCH_THRESHOLD = (ev.target as HTMLCanvasElement).clientWidth / 10
-  //       if (diff1 >= PINCH_THRESHOLD && diff2 >= PINCH_THRESHOLD) {
-  //         // ev.target.style.background = 'green'
-  //         console.log('Pinch zoom detected')
-  //       }
-  //     } else {
-  //       // empty tpCache
-  //       tpCache.length = 0
-  //     }
-  //   }
-  // }
+        lastTouchDistance = newDistance
+        lastTouchMidpoint = { x: midClientX, y: midClientY }
+      }
+    },
+    touchEventOptions
+  )
 
-  // function endHandler(ev: TouchEvent) {
-  //   ev.preventDefault()
-  //   // if (logEvents) log(ev.type, ev, false)
-  //   if (ev.targetTouches.length === 0) {
-  //     // Restore background and border to original values
-  //     // ev.target.style.background = 'white'
-  //     // ev.target.style.border = '1px solid black'
-  //   }
-  // }
+  function handleTouchEnd(e: TouchEvent) {
+    e.preventDefault()
 
-  // canvas.addEventListener('touchcancel', endHandler)
-  // canvas.addEventListener('touchend', endHandler)
+    if (e.touches.length === 0) {
+      onPointerUp()
+    }
+
+    if (e.touches.length < 2) {
+      lastTouchDistance = 0
+      lastTouchMidpoint = null
+    }
+  }
+
+  canvas.addEventListener('touchend', handleTouchEnd, touchEventOptions)
+  canvas.addEventListener('touchcancel', handleTouchEnd, touchEventOptions)
 }

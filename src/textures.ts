@@ -124,7 +124,12 @@ async function resolveTexture(
       return
     }
 
-    const { ctx } = getImageData(img, img.naturalWidth, img.naturalHeight)
+    // colorSpaceConversion: 'none' strips the embedded color profile (e.g. Display P3 from iPhone
+    // screenshots) and treats values as sRGB. Without this, Safari copies P3 values verbatim into
+    // an sRGB texture, producing oversaturated colors — while Chrome silently converts correctly.
+    const bitmap = await createImageBitmap(img, { colorSpaceConversion: 'none' })
+
+    const { ctx } = getImageData(bitmap, img.naturalWidth, img.naturalHeight)
     const data = ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data
     const hash = hashImageData(data)
 
@@ -132,12 +137,13 @@ async function resolveTexture(
     if (existingTexture !== null) {
       textures[textureId] = existingTexture
     } else {
-      textures[textureId].texture = createTextureFromSource(img, {
+      textures[textureId].texture = createTextureFromSource(bitmap, {
         flipY: true,
       })
       textures[textureId].data = data
       textures[textureId].hash = hash
     }
+    bitmap.close()
 
     onLoad?.({
       width: img.width,
