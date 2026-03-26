@@ -272,29 +272,6 @@ pub const Text = struct {
         return buffer;
     }
 
-    pub fn addCaretDrawVertex(
-        self: Text,
-        relative_start: Point,
-    ) ?[2]triangles.DrawInstance {
-        const matrix = Matrix3x3.getMatrixFromRectangleNoScale(self.bounds);
-        const relative_end = Point{
-            .x = relative_start.x,
-            .y = relative_start.y + self.typo_props.font_size * self.typo_props.line_height,
-        };
-
-        var buffer: [2]triangles.DrawInstance = undefined;
-        const width = 3.0 * shared.render_scale;
-        lines.getDrawVertexData(
-            &buffer,
-            matrix.get(relative_start),
-            matrix.get(relative_end),
-            width,
-            .{ 255, 255, 255, 255 },
-            width / 2,
-        );
-        return buffer;
-    }
-
     pub fn getCaretIndex(self: Text, id: [4]u32, relative_x: f32) ?u32 {
         var caret_index = id[1];
         if (caret_index > 0) {

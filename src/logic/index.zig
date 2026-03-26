@@ -1181,7 +1181,8 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                             const is_selection = selection_start != selection_end;
 
                             if (!is_selection and caret.position == i and caret.isCaretShown()) {
-                                const caret_buffer = text.addCaretDrawVertex(
+                                const caret_buffer = caret.addDrawVertex(
+                                    text,
                                     vertex.relative_bounds[3].toPoint(),
                                 );
                                 if (caret_buffer) |buffer| {
@@ -1208,7 +1209,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                                 .x = 0,
                                 .y = -text.typo_props.font_size * text.typo_props.line_height,
                             };
-                    if (text.addCaretDrawVertex(position)) |buffer| {
+                    if (caret.addDrawVertex(text, position)) |buffer| {
                         try vertex_triangles_buffer.appendSlice(&buffer);
                     }
                 }
