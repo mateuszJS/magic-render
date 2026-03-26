@@ -300,6 +300,11 @@ export default function initMouseController(
   let lastTouchDistance = 0
   let lastTouchMidpoint: Point | null = null
 
+  // useful for detectign double click on touch devices
+  let lastTapTime = 0
+  let lastTapX = 0
+  let lastTapY = 0
+
   canvas.addEventListener(
     'touchstart',
     (e) => {
@@ -362,6 +367,22 @@ export default function initMouseController(
 
     if (e.touches.length === 0) {
       onPointerUp()
+
+      if (e.changedTouches.length === 1) {
+        const touch = e.changedTouches[0]
+        const now = Date.now()
+        const dx = touch.clientX - lastTapX
+        const dy = touch.clientY - lastTapY
+        const isDoubleTap = now - lastTapTime < 300 && Math.hypot(dx, dy) < 30
+        if (isDoubleTap) {
+          Logic.onPointerDoubleClick()
+          lastTapTime = 0
+        } else {
+          lastTapTime = now
+          lastTapX = touch.clientX
+          lastTapY = touch.clientY
+        }
+      }
     }
 
     if (e.touches.length < 2) {
