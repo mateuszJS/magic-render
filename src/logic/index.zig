@@ -1128,7 +1128,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                     continue;
                 }
 
-                const is_typing_ui = state.tool == .Text and state.selected_asset_id.getPrim() == text.id;
+                const is_typing_ui = !is_ui_hidden and state.tool == .Text and state.selected_asset_id.getPrim() == text.id;
 
                 if (text.typo_props.is_sdf_shared) {
                     const text_sdf_texture_id = text.getSdfTextureId();
