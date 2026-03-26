@@ -174,7 +174,12 @@ export default async function initCreator(
     }
   }
 
-  Logic.connectTyping(Typing.enable, Typing.disable, Typing.updateContent, Typing.updateSelection)
+  Logic.connectTyping(
+    (text: string) => Typing.enable(text, canvas),
+    Typing.disable,
+    Typing.updateContent,
+    Typing.updateSelection
+  )
 
   const addImages: CreatorAPI['addImages'] = async (urls) => {
     const results = await Promise.allSettled(

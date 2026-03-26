@@ -14,6 +14,13 @@ enum MouseMode {
 let mouseMode = MouseMode.None
 let panCameraStart: Point | null = null
 
+export function getWorldPointer(canvasHeight: number): [number, number] {
+  return [
+    (pointer.x - camera.x) / camera.zoom, //
+    (canvasHeight - pointer.y - camera.y) / camera.zoom,
+  ]
+}
+
 export const camera = {
   x: 0,
   y: 0,
@@ -44,13 +51,6 @@ export default function initMouseController(
 
   const eventOptions: AddEventListenerOptions = {
     signal: abortSignal,
-  }
-
-  function getZigAbsolutePointer(): [number, number] {
-    return [
-      (pointer.x - camera.x) / camera.zoom,
-      (canvas.height - pointer.y - camera.y) / camera.zoom,
-    ]
   }
 
   function updatePointer(e: MouseEvent | Touch) {
@@ -113,7 +113,7 @@ export default function initMouseController(
     const move = () => {
       updatePointer(e)
       Logic.onPointerMove(
-        ...getZigAbsolutePointer(),
+        ...getWorldPointer(canvas.height),
         e instanceof MouseEvent ? e.shiftKey : false,
         e instanceof MouseEvent ? e.ctrlKey || e.metaKey || e.altKey : false
       )
@@ -129,7 +129,7 @@ export default function initMouseController(
     updatePointer(e)
     pointer.afterPickEventsQueue.push({
       requireNewPick: true,
-      cb: Logic.onPointerDown.bind(null, ...getZigAbsolutePointer()),
+      cb: Logic.onPointerDown.bind(null, ...getWorldPointer(canvas.height)),
     })
   }
 
