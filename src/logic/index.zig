@@ -852,10 +852,9 @@ pub fn computeSdfs() !void {
                 const bounds = utils.createBounds(ch_w, ch_h);
                 const padding = font_size * ch_d.*.max_ratio_padding_to_font_size;
                 const sdf_dims = sdf_drawing.getSdfTextureDims(bounds, padding);
-                std.debug.print("ch_w: {d}, ch_h: {d}, render_scale: {d}", .{ ch_w, ch_h, shared.render_scale });
+                // std.debug.print("ch_w: {d}, ch_h: {d}, render_scale: {d}", .{ ch_w, ch_h, shared.render_scale });
                 std.debug.print("sdf_dims.size.w: {d}, sdf_dims.size.h: {d}, sdf_dims.scale: {d}\n", .{ sdf_dims.size.w, sdf_dims.size.h, sdf_dims.scale });
                 ch_d.sdf_scale = sdf_dims.scale;
-                ch_d.max_requested_viewport_font_size = font_size / shared.render_scale;
                 // max requested size is not actual generated(like real_viewport_font_size below is)
                 // it's max requested size in viewport coords to avoid re-requesting same size again
                 const real_viewport_font_size = font_size * ch_d.sdf_scale;

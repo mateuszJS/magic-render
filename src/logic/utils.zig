@@ -45,3 +45,23 @@ pub fn createBounds(w: f32, h: f32) [4]PointUV {
         .{ .x = 0, .y = 0, .u = 0, .v = 0 },
     };
 }
+
+pub fn getNextStep(base: f32, input: f32) f32 {
+    // Rule 1: Minimum is 50
+    if (input <= base) return base;
+
+    // We want the next step strictly greater than the input.
+    // We normalize by dividing by 50.
+    const normalized = input / 50.0;
+
+    // math.log2 for floats returns the exponent.
+    // Example: if normalized is 2.0, log2 is 1.0.
+    // We use floor + 1 to get the next power of 2 exponent.
+    const exponent = math.floor(math.log2(normalized)) + 1.0;
+
+    // Calculate 2^exponent
+    const next_p2 = math.pow(f32, 2.0, exponent);
+
+    // Return as integer
+    return 50.0 * next_p2;
+}

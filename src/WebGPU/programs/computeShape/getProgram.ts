@@ -1,10 +1,12 @@
 import { delayedDestroy } from '../initPrograms'
 import shaderCode from './shader.wgsl'
 
+const WORKING_GROUP_SIZE = [16, 4, 1]
+
 export default function getComputeShape(device: GPUDevice) {
   const shaderModule = device.createShaderModule({
     label: 'computeShape shader',
-    code: shaderCode,
+    code: shaderCode.replace('$WORKING_GROUP_SIZE', WORKING_GROUP_SIZE.join(', ')),
   })
 
   const pipeline = device.createComputePipeline({
@@ -39,6 +41,9 @@ export default function getComputeShape(device: GPUDevice) {
     })
 
     passEncoder.setBindGroup(0, bindGroup)
-    passEncoder.dispatchWorkgroups(texture.width, texture.height)
+    passEncoder.dispatchWorkgroups(
+      Math.ceil(texture.width / WORKING_GROUP_SIZE[0]),
+      Math.ceil(texture.height / WORKING_GROUP_SIZE[1])
+    )
   }
 }

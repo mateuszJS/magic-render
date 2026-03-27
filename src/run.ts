@@ -69,6 +69,7 @@ export default function runCreator(
       console.log('compute_shape:', width, height)
       const curvesDataView = curves_data['*'].dataView
       Textures.update(textureId, width, height)
+      console.log('computeShape')
       computeShape(computePass, curvesDataView, Textures.getTexture(textureId))
     },
     clear_sdf: (sdfTextureId, computeDepthTextureId, width, height) => {

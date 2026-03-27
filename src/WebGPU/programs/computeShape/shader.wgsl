@@ -12,7 +12,7 @@ struct CubicBezier {
 @group(0) @binding(0) var tex: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(1) var<storage, read> curves: array<vec2f>;
 
-@compute @workgroup_size(16, 4, 1) fn cs(
+@compute @workgroup_size($WORKING_GROUP_SIZE) fn cs(
   @builtin(global_invocation_id) id : vec3u
 )  {
   let pos = vec2f(id.xy) + vec2f(0.5, 0.5);

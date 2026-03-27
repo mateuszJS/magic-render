@@ -1,10 +1,12 @@
 import { delayedDestroy } from '../initPrograms'
 import shaderCode from './shader.wgsl'
 
+const WORKING_GROUP_SIZE = [16, 4, 1]
+
 export default function getCombineSdf(device: GPUDevice) {
   const shaderModule = device.createShaderModule({
     label: 'combineSdf shader',
-    code: shaderCode,
+    code: shaderCode.replace('$WORKING_GROUP_SIZE', WORKING_GROUP_SIZE.join(', ')),
   })
 
   const pipeline = device.createComputePipeline({
@@ -51,6 +53,9 @@ export default function getCombineSdf(device: GPUDevice) {
 
     const width = Math.max(0, Math.ceil(startX + sizeX) - Math.floor(startX))
     const height = Math.max(0, Math.ceil(startY + sizeY) - Math.floor(startY))
-    passEncoder.dispatchWorkgroups(width, height)
+    passEncoder.dispatchWorkgroups(
+      Math.ceil(width / WORKING_GROUP_SIZE[0]),
+      Math.ceil(height / WORKING_GROUP_SIZE[1])
+    )
   }
 }
