@@ -124,9 +124,15 @@ export default function initMouseController(
     })
   }
 
+  let isPointerDown = false /* to avoid triggering pointer up when user click outside of canvas,
+  moves mouse and does "pointer up" event on the canvas. For example when user want to selct contenr of
+  the text area, and moved pointer up to the canvas. IF "poitner up" event will fire,
+  then selected element will be unselected, and possible that text area will also dissapear */
+
   const onPointerDown = (e: MouseEvent | Touch) => {
     onStartProcessing()
     updatePointer(e)
+    isPointerDown = true
     pointer.afterPickEventsQueue.push({
       requireNewPick: true,
       cb: Logic.onPointerDown.bind(null, ...getWorldPointer(canvas.height)),
@@ -134,7 +140,10 @@ export default function initMouseController(
   }
 
   const onPointerUp = () => {
+    if (!isPointerDown) return
+
     onStartProcessing()
+    isPointerDown = false
 
     pointer.afterPickEventsQueue.push({
       requireNewPick: false,
