@@ -271,6 +271,10 @@ export default function initMouseController(
             performZoom(-0.1, centerX, centerY)
           }
           break
+        case 'Delete':
+        case 'Backspace':
+          Logic.removeAsset()
+          break
         case 'Meta': {
           // update the way transform works
         }

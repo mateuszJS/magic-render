@@ -49,7 +49,7 @@ declare module '*.zig' {
   export const onPointerDoubleClick: VoidFunction
   export const onPointerLeave: VoidFunction
   export const commitChanges: VoidFunction
-  export const updateRenderScale: (render_scale: number) => void
+  export const updateRenderScale: (zoom: number, pixel_density: number) => void
   export const updateTextContent: (
     text: string,
     selection_start: number,

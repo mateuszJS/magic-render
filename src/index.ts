@@ -102,7 +102,11 @@ export default async function initCreator(
   })
 
   function updateRenderScale() {
-    Logic.updateRenderScale(canvas.width / (canvas.clientWidth * camera.zoom))
+    console.log('updateRenderScale')
+    console.log('canvas.width', canvas.width)
+    console.log('canvas.clientWidth', canvas.clientWidth)
+    console.log('camera.zoom', camera.zoom)
+    Logic.updateRenderScale(camera.zoom, canvas.clientWidth / canvas.width)
   }
 
   let isCameraSet = false
@@ -136,9 +140,6 @@ export default async function initCreator(
       canvas,
       Snapshots.lastSnapshot.width,
       Snapshots.lastSnapshot.height,
-      canvas.width / canvas.clientWidth, // it's pixels density
-      // we have to use DOM-attached canvas to obtain pixel density,
-      // otherwise clientWidth = 0
       capturePreview,
       onPreviewUpdate
     )

@@ -287,7 +287,7 @@ pub const Shape = struct {
     }
 
     pub fn getSkeletonUniform(self: Shape) sdf_drawing.DrawUniform {
-        const stroke_width = path_utils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.render_scale;
+        const stroke_width = path_utils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.ui_scale;
         return sdf_drawing.DrawUniform{
             .solid = .{
                 .dist_start = stroke_width * 0.5,

@@ -158,9 +158,10 @@ pub fn initState(width: f32, height: f32, texture_max_size: f32, max_buffer_size
     fonts.init();
 }
 
-pub fn updateRenderScale(scale: f32) !void {
+pub fn updateRenderScale(zoom: f32, pixel_density: f32) !void {
     state.redraw_needed = true;
-    shared.render_scale = scale;
+    shared.render_scale = pixel_density / zoom;
+    shared.ui_scale = 1 / (zoom * pixel_density);
 
     var iterator = state.assets.iterator();
     while (iterator.next()) |asset| {
@@ -255,11 +256,26 @@ fn addText(
 }
 
 pub fn removeAsset() !void {
-    _ = state.assets.orderedRemove(state.selected_asset_id.getPrim());
-    try setSelectedAsset(AssetId{});
-
     state.redraw_needed = true;
     snapshots.triggerNewSnapshot(true, true);
+
+    if ((state.tool == .DrawShape or state.tool == .EditShape) and state.selected_asset_id.isSec() and state.selected_asset_id.isTert()) {
+        if (getSelectedShape()) |shape| {
+            if (shape.paths.items.len > state.selected_asset_id.getSec()) {
+                var active_path = &shape.paths.items[state.selected_asset_id.getSec()];
+                const point_index = state.selected_asset_id.getTert();
+                if (active_path.points.items.len > point_index) {
+                    _ = active_path.points.orderedRemove(point_index);
+                    // TODO: split shape into two paths if they are not connected anymore
+                    // handle case when that was last point
+                    return;
+                }
+            }
+        }
+    }
+
+    _ = state.assets.orderedRemove(state.selected_asset_id.getPrim());
+    try setSelectedAsset(AssetId{});
 }
 
 pub fn onUpdatePick(id: [4]u32) void {
@@ -356,13 +372,13 @@ fn createText(x: f32, y: f32) !texts.Text {
         },
         .{
             .dist_start = -12,
-            .dist_end = -18,
+            .dist_end = -118,
             .fill = .{ .solid = .{ 1.0, 1.0, 0.0, 1.0 } },
         },
     };
 
     const typo_props = typography_props.Serialized{
-        .font_size = 72,
+        .font_size = 1072,
         .font_family_id = 0,
         .line_height = 1.2,
         .is_sdf_shared = true,
@@ -370,7 +386,7 @@ fn createText(x: f32, y: f32) !texts.Text {
 
     return try addText(
         id,
-        "Type here",
+        "A",
         bounds,
         asset_props.Props{},
         effects,
@@ -773,7 +789,7 @@ fn drawProjectBoundary() void {
             buffer[i * 2 ..][0..2],
             point,
             next_point,
-            2.0 * shared.render_scale,
+            2.0 * shared.ui_scale,
             color,
             0.0,
         );
@@ -836,7 +852,8 @@ pub fn computeSdfs() !void {
                 const bounds = utils.createBounds(ch_w, ch_h);
                 const padding = font_size * ch_d.*.max_ratio_padding_to_font_size;
                 const sdf_dims = sdf_drawing.getSdfTextureDims(bounds, padding);
-
+                std.debug.print("ch_w: {d}, ch_h: {d}, render_scale: {d}", .{ ch_w, ch_h, shared.render_scale });
+                std.debug.print("sdf_dims.size.w: {d}, sdf_dims.size.h: {d}, sdf_dims.scale: {d}\n", .{ sdf_dims.size.w, sdf_dims.size.h, sdf_dims.scale });
                 ch_d.sdf_scale = sdf_dims.scale;
                 ch_d.max_requested_viewport_font_size = font_size / shared.render_scale;
                 // max requested size is not actual generated(like real_viewport_font_size below is)
@@ -846,11 +863,24 @@ pub fn computeSdfs() !void {
                 const viewport_padding = padding * sdf_dims.scale;
                 const points = try allocator.dupe(types.Point, ch_d.points);
 
+                var min_x = std.math.floatMax(f32);
+                var min_y = std.math.floatMax(f32);
+                var max_x = std.math.floatMin(f32);
+                var max_y = std.math.floatMin(f32);
                 for (points) |*point| {
                     if (path_utils.isStraightLineHandle(point.*)) continue;
                     point.x = (point.x * real_viewport_font_size) + viewport_padding;
                     point.y = (point.y * real_viewport_font_size) + viewport_padding;
+                    min_x = @min(min_x, point.x);
+                    min_y = @min(min_y, point.y);
+                    max_x = @max(max_x, point.x);
+                    max_y = @max(max_y, point.y);
                 }
+
+                std.debug.print("min_x: {d}, min_y: {d}, max_x: {d}, max_y: {d}\n", .{ min_x, min_y, max_x, max_y });
+                std.debug.print("sdf_dims: {d}x{d}\n", .{ sdf_dims.size.w, sdf_dims.size.h });
+                std.debug.print("viewport_padding: {d}\n", .{viewport_padding});
+                std.debug.print("padding: {d}\n", .{padding});
 
                 web_gpu_programs.compute_shape(
                     points,
@@ -918,6 +948,7 @@ pub fn computeSdfs() !void {
                     // 3 is just the number which was giving best results
 
                     const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
+                    std.debug.print("shared.render_scale: {}\n", .{shared.render_scale});
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         text.bounds,
                         text_padding,
@@ -1298,7 +1329,7 @@ pub fn renderPick() !void {
 
     if (state.tool == Tool.Text) {
         if (getSelectedText()) |text| {
-            const overflow_margin_factor = if (state.action == .TextSelection) 300 * shared.render_scale else 0;
+            const overflow_margin_factor = if (state.action == .TextSelection) 300 * shared.ui_scale else 0;
             const buffer = try text.addPickVertex(
                 std.heap.page_allocator,
                 overflow_margin_factor,
@@ -1330,6 +1361,7 @@ pub fn renderPick() !void {
 }
 
 pub fn setSnapshot(snapshot: snapshots.ProjectSnapshot, with_snapshot: bool) !void {
+    state.redraw_needed = true;
     state.width = snapshot.width;
     state.height = snapshot.height;
 

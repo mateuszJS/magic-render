@@ -6,6 +6,7 @@ const std = @import("std");
 const shared = @import("../shared.zig");
 const consts = @import("../consts.zig");
 const Effect = @import("effect.zig").Effect;
+const SKELETON_LINE_WIDTH = @import("../shapes/path_utils.zig").SKELETON_LINE_WIDTH;
 
 pub const DrawUniform = union(enum) {
     solid: UniformSolid,
@@ -134,7 +135,7 @@ pub fn getDrawUniform(sdf_effect: Effect, sdf_scale: f32, opacity: f32) DrawUnif
 }
 
 pub fn getSdfPadding(effects: []Effect) f32 {
-    var padding: f32 = 1.0; // at least 1, without fwidth fix
+    var padding: f32 = SKELETON_LINE_WIDTH / 2; // at least 1, without fwidth fix
     // because of skeleton render, we cannot od less than zero
 
     for (effects) |effect| {
@@ -146,7 +147,7 @@ pub fn getSdfPadding(effects: []Effect) f32 {
     }
 
     // we do smoothing in shaders with fwidth(), so it's 1px to make sure we wont cut it out
-    padding += 1.0;
+    padding += 1.0 * RATIO_PX_PER_SDF_TEXEL;
 
     return padding;
 }
@@ -224,6 +225,8 @@ pub fn getDrawBounds(bounds: [4]PointUV, sdf_padding: f32, filter_margin: ?Point
     };
 }
 
+const RATIO_PX_PER_SDF_TEXEL = 5;
+
 pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32) struct {
     size: texture_size.TextureSize,
     scale: f32,
@@ -232,7 +235,7 @@ pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32) struct {
     const bounds_with_padding = getBoundsWithPadding(
         bounds,
         sdf_padding,
-        1 / shared.render_scale,
+        1 / (shared.render_scale * RATIO_PX_PER_SDF_TEXEL),
         null,
     );
 
@@ -253,7 +256,7 @@ pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32) struct {
         .h = @max(sdf_size.h, consts.MIN_TEXTURE_SIZE),
     };
 
-    const init_width = bounds_with_padding[0].distance(bounds_with_padding[1]) * shared.render_scale;
+    const init_width = bounds_with_padding[0].distance(bounds_with_padding[1]) * (shared.render_scale * RATIO_PX_PER_SDF_TEXEL);
     // * shared.render_scale to revert to logical scale (without impact of camera/zoom)
     const sdf_scale = sdf_safe_size.w / init_width;
 

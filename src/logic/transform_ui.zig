@@ -167,7 +167,7 @@ fn getPointsOfLine(b: [4]PointUV, t_line: TransformLine) struct { Point, Point }
         // corners
         const length = b[t_line.start].distance(b[t_line.end]);
         const angle = b[t_line.start].angleTo(b[t_line.end]);
-        const sanitized_length = @min(30.0 * shared.render_scale, length * 0.1);
+        const sanitized_length = @min(30.0 * shared.ui_scale, length * 0.1);
 
         const p1 = Point{
             .x = b[t_line.start].x,
@@ -184,7 +184,7 @@ fn getPointsOfLine(b: [4]PointUV, t_line: TransformLine) struct { Point, Point }
         const point = b[t_line.start].mid(b[t_line.end]);
         const length = b[t_line.start].distance(b[t_line.end]);
         const angle = b[t_line.start].angleTo(b[t_line.end]);
-        const sanitized_length = @min(30.0 * shared.render_scale, length * 0.07);
+        const sanitized_length = @min(30.0 * shared.ui_scale, length * 0.07);
 
         const p1 = Point{
             .x = point.x + @cos(angle) * sanitized_length,
@@ -207,8 +207,8 @@ fn getPointsOfLine(b: [4]PointUV, t_line: TransformLine) struct { Point, Point }
         };
         const angle = std.math.atan2(asset_mid_bottom.y - asset_center.y, asset_mid_bottom.x - asset_center.x);
         const p1 = Point{
-            .x = asset_mid_bottom.x + @cos(angle) * 60.0 * shared.render_scale,
-            .y = asset_mid_bottom.y + @sin(angle) * 60.0 * shared.render_scale,
+            .x = asset_mid_bottom.x + @cos(angle) * 60.0 * shared.ui_scale,
+            .y = asset_mid_bottom.y + @sin(angle) * 60.0 * shared.ui_scale,
         };
         const p2 = Point{
             .x = p1.x + @cos(angle + std.math.pi / 4.0) * 0.1, // 0.01 just to make it 45 degree
@@ -221,6 +221,12 @@ fn getPointsOfLine(b: [4]PointUV, t_line: TransformLine) struct { Point, Point }
 }
 
 pub const RENDER_TRIANGLE_INSTANCES = UI_VERTICES_COUNT_BORDER * 2 * 2; // two triangle per line, each line has front and back color
+
+const BORDER_WIDTH: f32 = 5.0;
+const ROTATE_ICON_SIZE: f32 = 20.0;
+const ROTATE_BUTTON_SIZE: f32 = ROTATE_ICON_SIZE + 5.0;
+const EXTRA_OUTLINE_WIDTH: f32 = 3.0;
+const PICK_PADDING: f32 = 15.0;
 
 pub fn getDrawVertexData(
     bounds: [4]PointUV,
@@ -237,12 +243,12 @@ pub fn getDrawVertexData(
         const color = if (hovered_elem_id == t_line.id) white else black;
 
         const p1, const p2 = getPointsOfLine(bounds, t_line);
-        var thickness: f32 = 4.0 * shared.render_scale;
+        var thickness: f32 = BORDER_WIDTH * shared.ui_scale;
 
         if (t_line.id == 9) {
             // rotation icon
-            thickness = 20.0 * shared.render_scale;
-            const icon_size = thickness - 5.0 * shared.render_scale;
+            thickness = ROTATE_BUTTON_SIZE * shared.ui_scale;
+            const icon_size = ROTATE_ICON_SIZE * shared.ui_scale;
             const icon_color = if (hovered_elem_id == t_line.id) black else white;
 
             icon_vertex_data = UI.DrawVertex{
@@ -253,7 +259,7 @@ pub fn getDrawVertexData(
             };
         }
 
-        const outer_line_width = thickness + 3.0 * shared.render_scale;
+        const outer_line_width = thickness + EXTRA_OUTLINE_WIDTH * shared.ui_scale;
         lines.getDrawVertexData(
             triangle_buffer[i..][0..2],
             p1,
@@ -285,14 +291,14 @@ pub fn getPickVertexData(buffer: *[PICK_TRIANGLE_INSTANCES]triangles.PickInstanc
     var i: usize = 0;
     for (resize_lines) |t_line| {
         const p1, const p2 = getPointsOfLine(bounds, t_line);
-        const thickness: f32 = if (t_line.id == 9) 30.0 * shared.render_scale else 10.0 * shared.render_scale;
+        const thickness: f32 = PICK_PADDING + EXTRA_OUTLINE_WIDTH + if (t_line.id == 9) ROTATE_BUTTON_SIZE else BORDER_WIDTH;
 
         lines.getPickVertexData(
             buffer[i..][0..2],
             p1,
             p2,
-            thickness + 10.0 * shared.render_scale,
-            thickness / 2.0,
+            thickness * shared.ui_scale,
+            (thickness / 2.0) * shared.ui_scale,
             .{ t_line.id, 0, 0, 0 },
         );
 
@@ -302,6 +308,8 @@ pub fn getPickVertexData(buffer: *[PICK_TRIANGLE_INSTANCES]triangles.PickInstanc
 
 const UI_PATH_STRONG_COLOR = [_]u8{ 90, 90, 255, 255 };
 const UI_PATH_LIGHT_COLOR = [_]u8{ UI_PATH_STRONG_COLOR[0], UI_PATH_STRONG_COLOR[1], UI_PATH_STRONG_COLOR[2], 30 };
+
+const NON_INTERACTIVE_BORDER_WIDTH = 5.0;
 
 pub fn getBorderDrawVertex(asset: Asset, strong: bool) [8]triangles.DrawInstance {
     var buffer: [8]triangles.DrawInstance = undefined;
@@ -314,9 +322,9 @@ pub fn getBorderDrawVertex(asset: Asset, strong: bool) [8]triangles.DrawInstance
             buffer[(i * 2)..][0..2],
             point,
             next_point,
-            5.0 * shared.render_scale,
+            NON_INTERACTIVE_BORDER_WIDTH * shared.ui_scale,
             color,
-            2.5 * shared.render_scale,
+            (NON_INTERACTIVE_BORDER_WIDTH / 2.0) * shared.ui_scale,
         );
     }
 

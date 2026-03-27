@@ -28,7 +28,7 @@ pub fn addDrawVertex(
     };
 
     var buffer: [2]triangles.DrawInstance = undefined;
-    const width = 3.0 * shared.render_scale;
+    const width = 3.0 * shared.ui_scale;
     lines.getDrawVertexData(
         &buffer,
         matrix.get(relative_start),
