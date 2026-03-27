@@ -8,7 +8,7 @@ struct Uniform {
 @group(0) @binding(2) var depth_tex: texture_storage_2d<r32float, read_write>;
 @group(0) @binding(3) var<uniform> u: Uniform;
 
-@compute @workgroup_size(1) fn cs(
+@compute @workgroup_size(16, 4, 1) fn cs(
   @builtin(global_invocation_id) id : vec3u
 )  {
   if (any(u.placement_size <= vec2f(0.0))) {
