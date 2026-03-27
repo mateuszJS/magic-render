@@ -65,7 +65,7 @@ async function getAssetsState(): Promise<Array<FakeAsset>> {
   const isProcessingEventsEl = page.locator('#is-processing-events')
   await expect(isProcessingEventsEl).toHaveText('false')
 
-  const assetsSnapshot = await page.evaluate(() => window.lastSnapshot.assets)
+  const assetsSnapshot = await page.evaluate(() => window.getLastSnapshot().assets)
   return assetsSnapshot as Array<FakeAsset>
 }
 

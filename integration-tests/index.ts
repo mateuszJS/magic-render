@@ -1,5 +1,5 @@
 import initCreator from '../src/index'
-import type { ProjectSnapshot } from '../src/types'
+import type { ProjectSnapshot, Shape, Image, Text } from '../src/types'
 import FontEBGaramond from './EBGaramond-VariableFont_wght.ttf'
 import FontGoogleSans from './GoogleSans-Regular.ttf'
 import OutfitWoff2 from './Outfit.woff2'
@@ -16,7 +16,7 @@ const fontsDictionary: Record<number, string> = {
 
 declare global {
   interface Window {
-    lastSnapshot: ProjectSnapshot
+    getLastSnapshot: () => ProjectSnapshot
   }
 }
 
@@ -42,10 +42,22 @@ async function test() {
   const xSlider = document.querySelector<HTMLInputElement>('#x-slider')!
   const fontFamilySelect = document.querySelector<HTMLSelectElement>('#font-family-select')!
 
-  window.lastSnapshot = {
-    width: 0,
-    height: 0,
-    assets: [],
+  function getLastSnapshot() {
+    const lastSnapshot = window.localStorage.getItem('lastSnapshot')
+    if (lastSnapshot) {
+      return JSON.parse(lastSnapshot) as ProjectSnapshot
+    }
+    return {
+      width: 0,
+      height: 0,
+      assets: [],
+    }
+  }
+
+  window.getLastSnapshot = getLastSnapshot
+
+  function setLastSnapshot(snapshot: ProjectSnapshot) {
+    window.localStorage.setItem('lastSnapshot', JSON.stringify(snapshot))
   }
 
   let currentHistoryIndex = 0
@@ -65,7 +77,7 @@ async function test() {
       // }
     },
     (snapshot, commit) => {
-      window.lastSnapshot = snapshot
+      setLastSnapshot(snapshot)
 
       const selectedAsset = snapshot.assets.find((asset) => asset.id === selectedAssetId)
 
@@ -91,7 +103,7 @@ async function test() {
       selectedAssetEl.textContent = assetId.toString()
       selectedAssetId = assetId[0]
 
-      window.lastSnapshot.assets.some((asset) => {
+      window.getLastSnapshot().assets.some((asset) => {
         if (asset.id === selectedAssetId && 'content' in asset) {
           sharedTextEffects.checked = asset.typo_props.is_sdf_shared
           return true
@@ -116,14 +128,17 @@ async function test() {
     }
   )
 
-  creator.setSnapshot(
-    {
-      width: projectWidth,
-      height: projectHeight,
-      assets: [],
-    },
-    true
-  )
+  type SerializedOutputAssetMerged = Image & Shape & Text
+  const lastSnapshot = getLastSnapshot()
+  const snaitizedLastSnapshot = {
+    ...lastSnapshot,
+    assets: (lastSnapshot.assets as SerializedOutputAssetMerged[]).map(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      ({ id, texture_id, cache_texture_id, sdf_texture_id, ...rest }) => rest
+    ),
+  }
+
+  creator.setSnapshot(snaitizedLastSnapshot, true)
 
   const addImageInput = document.querySelector<HTMLInputElement>('#add-image')!
   addImageInput.addEventListener('change', (event) => {
@@ -144,8 +159,8 @@ async function test() {
     if (!files) return
 
     const snapshot = {
-      width: window.lastSnapshot.width,
-      height: window.lastSnapshot.height,
+      width: getLastSnapshot().width,
+      height: getLastSnapshot().height,
       assets: Array.from(files).map((file) => ({
         url: URL.createObjectURL(file),
       })),
@@ -182,14 +197,14 @@ async function test() {
     currentHistoryIndex = Math.max(0, currentHistoryIndex - 1)
     const snapshot = assetsUpdatesHistory[currentHistoryIndex]
     creator.setSnapshot(snapshot, false)
-    window.lastSnapshot = snapshot
+    setLastSnapshot(snapshot)
   })
 
   redoBtn.addEventListener('click', () => {
     currentHistoryIndex = Math.min(assetsUpdatesHistory.length - 1, currentHistoryIndex + 1)
     const snapshot = assetsUpdatesHistory[currentHistoryIndex]
     creator.setSnapshot(snapshot, false)
-    window.lastSnapshot = snapshot
+    setLastSnapshot(snapshot)
   })
 
   toolsSelect.addEventListener('change', (event) => {
@@ -198,7 +213,7 @@ async function test() {
   })
 
   sharedTextEffects.addEventListener('change', () => {
-    const newAssets = window.lastSnapshot.assets.map((asset) => {
+    const newAssets = getLastSnapshot().assets.map((asset) => {
       if (asset.id === selectedAssetId && 'content' in asset) {
         return {
           ...asset,
@@ -213,7 +228,7 @@ async function test() {
     })
     creator.setSnapshot(
       {
-        ...window.lastSnapshot,
+        ...getLastSnapshot(),
         assets: newAssets,
       },
       true
@@ -249,7 +264,7 @@ async function test() {
     const height = Number(formData.get('height'))
     creator.setSnapshot(
       {
-        assets: window.lastSnapshot.assets,
+        assets: getLastSnapshot().assets,
         width,
         height,
       },
