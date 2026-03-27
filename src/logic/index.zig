@@ -372,13 +372,13 @@ fn createText(x: f32, y: f32) !texts.Text {
         },
         .{
             .dist_start = -12,
-            .dist_end = -118,
+            .dist_end = -18,
             .fill = .{ .solid = .{ 1.0, 1.0, 0.0, 1.0 } },
         },
     };
 
     const typo_props = typography_props.Serialized{
-        .font_size = 1072,
+        .font_size = 72,
         .font_family_id = 0,
         .line_height = 1.2,
         .is_sdf_shared = true,

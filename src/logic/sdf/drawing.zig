@@ -225,7 +225,7 @@ pub fn getDrawBounds(bounds: [4]PointUV, sdf_padding: f32, filter_margin: ?Point
     };
 }
 
-const RATIO_PX_PER_SDF_TEXEL = 5;
+const RATIO_PX_PER_SDF_TEXEL = 2;
 
 pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32) struct {
     size: texture_size.TextureSize,
