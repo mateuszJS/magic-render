@@ -62,7 +62,6 @@ export interface TextureSource {
   url: string
   texture?: GPUTexture
   hash?: string
-  data?: Uint8ClampedArray // it's time consuming to obtain data from a GPUTexture later
 }
 
 interface ImageExtractedData {
@@ -128,19 +127,15 @@ async function resolveTexture(
     // screenshots) and treats values as sRGB. Without this, Safari copies P3 values verbatim into
     // an sRGB texture, producing oversaturated colors — while Chrome silently converts correctly.
     const bitmap = await createImageBitmap(img, { colorSpaceConversion: 'none' })
+    const hash = hashImageData(bitmap)
 
-    const { ctx } = getImageData(bitmap, img.naturalWidth, img.naturalHeight)
-    const data = ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data
-    const hash = hashImageData(data)
-
-    existingTexture = findSameTexture(data, hash)
+    existingTexture = findSameTexture(hash)
     if (existingTexture !== null) {
       textures[textureId] = existingTexture
     } else {
       textures[textureId].texture = createTextureFromSource(bitmap, {
         flipY: true,
       })
-      textures[textureId].data = data
       textures[textureId].hash = hash
     }
     bitmap.close()
@@ -290,10 +285,13 @@ function getImageData(img: CanvasImageSource, width: number, height: number) {
 
 /**
  * A simple, non-cryptographic hash function (djb2) for raw pixel data.
- * @param data The Uint8ClampedArray from getImageData.
+ * @param bitmap The ImageBitmap to hash.
  * @returns A hash string.
  */
-function hashImageData(data: Uint8ClampedArray): string {
+function hashImageData(bitmap: ImageBitmap): string {
+  const { ctx } = getImageData(bitmap, bitmap.width, bitmap.height)
+  const data = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data
+
   let hash = 5381
   for (let i = 0; i < data.length; i++) {
     // Bitwise operations are fast
@@ -302,20 +300,10 @@ function hashImageData(data: Uint8ClampedArray): string {
   return String(hash)
 }
 
-function findSameTexture(imgData: Uint8ClampedArray, hash: string): TextureSource | null {
+function findSameTexture(hash: string): TextureSource | null {
   for (let i = 0; i < textures.length; i++) {
     const texture = textures[i]
     if (texture.hash === hash) {
-      // if hashes match, perform the more expensive full pixel check
-      if (imgData.length !== texture.data!.length) {
-        return null
-      }
-
-      for (let i = 0; i < imgData.length; i++) {
-        if (imgData[i] !== texture.data![i]) {
-          return null
-        }
-      }
       return texture
     }
   }

@@ -66,10 +66,8 @@ export default function runCreator(
       drawTriangle(renderPass, dataView)
     },
     compute_shape: (curves_data, width, height, textureId) => {
-      console.log('compute_shape:', width, height)
       const curvesDataView = curves_data['*'].dataView
       Textures.update(textureId, width, height)
-      console.log('computeShape')
       computeShape(computePass, curvesDataView, Textures.getTexture(textureId))
     },
     clear_sdf: (sdfTextureId, computeDepthTextureId, width, height) => {

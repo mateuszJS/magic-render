@@ -836,7 +836,7 @@ pub fn computeSdfs() !void {
     try requestCharsSdfs();
 
     var fonts_iter = fonts.fonts.iterator();
-    while (fonts_iter.next()) |font_entry| {
+    outer: while (fonts_iter.next()) |font_entry| {
         var font = font_entry.value_ptr.*;
         var char_iter = font.chars.iterator();
 
@@ -852,8 +852,6 @@ pub fn computeSdfs() !void {
                 const bounds = utils.createBounds(ch_w, ch_h);
                 const padding = font_size * ch_d.*.max_ratio_padding_to_font_size;
                 const sdf_dims = sdf_drawing.getSdfTextureDims(bounds, padding);
-                // std.debug.print("ch_w: {d}, ch_h: {d}, render_scale: {d}", .{ ch_w, ch_h, shared.render_scale });
-                std.debug.print("sdf_dims.size.w: {d}, sdf_dims.size.h: {d}, sdf_dims.scale: {d}\n", .{ sdf_dims.size.w, sdf_dims.size.h, sdf_dims.scale });
                 ch_d.sdf_scale = sdf_dims.scale;
                 // max requested size is not actual generated(like real_viewport_font_size below is)
                 // it's max requested size in viewport coords to avoid re-requesting same size again
@@ -876,11 +874,6 @@ pub fn computeSdfs() !void {
                     max_y = @max(max_y, point.y);
                 }
 
-                std.debug.print("min_x: {d}, min_y: {d}, max_x: {d}, max_y: {d}\n", .{ min_x, min_y, max_x, max_y });
-                std.debug.print("sdf_dims: {d}x{d}\n", .{ sdf_dims.size.w, sdf_dims.size.h });
-                std.debug.print("viewport_padding: {d}\n", .{viewport_padding});
-                std.debug.print("padding: {d}\n", .{padding});
-
                 web_gpu_programs.compute_shape(
                     points,
                     @intFromFloat(sdf_dims.size.w),
@@ -889,6 +882,7 @@ pub fn computeSdfs() !void {
                 );
 
                 ch_d.outdated_sdf = false;
+                break :outer;
             }
         }
     }
