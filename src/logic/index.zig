@@ -68,7 +68,7 @@ pub fn glueJsGeneral(
     onAssetSelection: *const fn ([4]u32) void,
     onUpdateTool: *const fn (u16) void,
     createSdfTexture: *const fn () u32,
-    createComputeDepthTexture: *const fn (u32, u32) u32,
+    createDisposableComputeDepthTexture: *const fn (u32, u32) u32,
     getCharData: *const fn (u32, u21) SerializedCharDetails,
     getKerning: *const fn (u32, u21, u21) f32,
 ) void {
@@ -76,7 +76,7 @@ pub fn glueJsGeneral(
     js_glue.onAssetSelection = onAssetSelection;
     js_glue.onUpdateTool = onUpdateTool;
     js_glue.createSdfTexture = createSdfTexture;
-    js_glue.createComputeDepthTexture = createComputeDepthTexture;
+    js_glue.createDisposableComputeDepthTexture = createDisposableComputeDepthTexture;
     js_glue.getCharData = getCharData;
     js_glue.getKerning = getKerning;
 }
@@ -160,18 +160,21 @@ pub fn initState(width: f32, height: f32, texture_max_size: f32, max_buffer_size
 
 pub fn updateRenderScale(zoom: f32, pixel_density: f32) !void {
     state.redraw_needed = true;
-    shared.render_scale = pixel_density / zoom;
-    shared.ui_scale = 1 / (zoom * pixel_density);
+    shared.render_scale = 1 / (pixel_density * zoom);
+    shared.ui_scale = pixel_density / zoom;
+    shared.pixel_density = pixel_density;
 
     var iterator = state.assets.iterator();
     while (iterator.next()) |asset| {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+                // Rethink entire padding safe 1 texel padding idea.
+                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, shape.bounds);
                 const new_sdf_dims = sdf_drawing.getSdfTextureDims(
                     shape.bounds,
                     sdf_padding,
+                    true,
                 );
 
                 if (new_sdf_dims.size.w > shape.sdf_size.w or new_sdf_dims.size.h > shape.sdf_size.h) {
@@ -378,7 +381,7 @@ fn createText(x: f32, y: f32) !texts.Text {
     };
 
     const typo_props = typography_props.Serialized{
-        .font_size = 72,
+        .font_size = 10,
         .font_family_id = 0,
         .line_height = 1.2,
         .is_sdf_shared = true,
@@ -811,7 +814,8 @@ fn requestCharsSdfs() !void {
                     continue;
                 }
 
-                const padding = sdf_drawing.getSdfPadding(text.effects.items);
+                // DOESN'T MAKE SENSE TO USE TEXT.BOUNDS HERE
+                const padding = sdf_drawing.getSdfPadding(text.effects.items, text.bounds);
 
                 for (text.text_vertex.items) |vertex| {
                     if (vertex.char) |char| {
@@ -836,7 +840,8 @@ pub fn computeSdfs() !void {
     try requestCharsSdfs();
 
     var fonts_iter = fonts.fonts.iterator();
-    outer: while (fonts_iter.next()) |font_entry| {
+    // outer:
+    while (fonts_iter.next()) |font_entry| {
         var font = font_entry.value_ptr.*;
         var char_iter = font.chars.iterator();
 
@@ -851,7 +856,11 @@ pub fn computeSdfs() !void {
 
                 const bounds = utils.createBounds(ch_w, ch_h);
                 const padding = font_size * ch_d.*.max_ratio_padding_to_font_size;
-                const sdf_dims = sdf_drawing.getSdfTextureDims(bounds, padding);
+                const sdf_dims = sdf_drawing.getSdfTextureDims(
+                    bounds,
+                    padding,
+                    true,
+                );
                 ch_d.sdf_scale = sdf_dims.scale;
                 // max requested size is not actual generated(like real_viewport_font_size below is)
                 // it's max requested size in viewport coords to avoid re-requesting same size again
@@ -882,7 +891,7 @@ pub fn computeSdfs() !void {
                 );
 
                 ch_d.outdated_sdf = false;
-                break :outer;
+                // break :outer;
             }
         }
     }
@@ -900,15 +909,19 @@ pub fn computeSdfs() !void {
 
                 const option_points = try shape.getRelativePoints(allocator);
                 if (option_points) |points| {
-                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, shape.bounds);
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         shape.bounds,
                         sdf_padding,
+                        true,
                     );
                     shape.sdf_size = sdf_dims.size;
                     shape.sdf_scale = sdf_dims.scale;
 
                     for (points) |*point| {
+                        point.x += sdf_padding;
+                        point.y += sdf_padding;
+
                         point.x *= shape.sdf_scale;
                         point.y *= shape.sdf_scale;
                     }
@@ -940,17 +953,18 @@ pub fn computeSdfs() !void {
                     // computing letter SDF -> computing text SDF -> rendering text SDF
                     // 3 is just the number which was giving best results
 
-                    const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
-                    std.debug.print("shared.render_scale: {}\n", .{shared.render_scale});
+                    const text_padding = sdf_drawing.getSdfPadding(text.effects.items, text.bounds);
+                    // std.debug.print("shared.render_scale: {}\n", .{shared.render_scale});
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         text.bounds,
                         text_padding,
+                        false,
                     );
                     text.sdf_scale = sdf_dims.scale;
 
                     const bounds_height = text.bounds[0].distance(text.bounds[3]);
 
-                    const compute_depth_texture_id = js_glue.createComputeDepthTexture(
+                    const compute_depth_texture_id = js_glue.createDisposableComputeDepthTexture(
                         @intFromFloat(sdf_dims.size.w),
                         @intFromFloat(sdf_dims.size.h),
                     );
@@ -1013,7 +1027,9 @@ pub fn updateCache() void {
                         break :b id;
                     };
 
-                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, shape.bounds);
+                    // NOTE: same, no calculate padding, assign durign creation of SDF
+                    // and read it here. Only margin should be added here
                     const bounds = sdf_drawing.getBoundsWithPadding(
                         shape.bounds,
                         sdf_padding,
@@ -1124,7 +1140,9 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 web_gpu_programs.draw_texture(&vertex_data, img.texture_id);
             },
             .shape => |*shape| {
-                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+                // NOTE: again, padding no claculated
+                // assigned alogn SDF creation and jsut read here
+                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, shape.bounds);
                 if (shape.cache_texture_id) |cache_texture_id| {
                     web_gpu_programs.draw_texture(
                         &sdf_drawing.getDrawBounds(
@@ -1158,7 +1176,9 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 if (text.typo_props.is_sdf_shared) {
                     const text_sdf_texture_id = text.getSdfTextureId();
 
-                    const padding = sdf_drawing.getSdfPadding(text.effects.items);
+                    const padding = sdf_drawing.getSdfPadding(text.effects.items, text.bounds);
+                    // NOTE: again, I believe padding sohouldn't be calcualted here
+                    // should be assigned alogn SDF creation
                     for (text.effects.items) |effect| {
                         const text_bounds = sdf_drawing.getDrawBounds(
                             text.bounds,
@@ -1259,7 +1279,10 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
         const hover_point_id = state.hovered_asset_id;
 
         if (getSelectedShape()) |shape| {
-            const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+            const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, shape.bounds);
+            // NOTE: shouldn't padding be stringly tied to sdf texture
+            // so also assigned to sdf texture????
+            // so not claculated here!
             web_gpu_programs.draw_shape(
                 &sdf_drawing.getDrawBounds(
                     shape.bounds,

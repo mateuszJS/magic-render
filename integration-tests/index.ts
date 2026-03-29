@@ -42,16 +42,18 @@ async function test() {
   const xSlider = document.querySelector<HTMLInputElement>('#x-slider')!
   const fontFamilySelect = document.querySelector<HTMLSelectElement>('#font-family-select')!
 
+  const BLANK_SNAPSHOT = {
+    width: 500,
+    height: 800,
+    assets: [],
+  }
+
   function getLastSnapshot() {
     const lastSnapshot = window.localStorage.getItem('lastSnapshot')
     if (lastSnapshot) {
       return JSON.parse(lastSnapshot) as ProjectSnapshot
     }
-    return {
-      width: 0,
-      height: 0,
-      assets: [],
-    }
+    return BLANK_SNAPSHOT
   }
 
   window.getLastSnapshot = getLastSnapshot
@@ -139,6 +141,17 @@ async function test() {
   }
 
   creator.setSnapshot(snaitizedLastSnapshot, true)
+
+  const resetProjectBtn = document.querySelector<HTMLInputElement>('#reset-project')!
+  resetProjectBtn.addEventListener('click', () => {
+    setLastSnapshot(BLANK_SNAPSHOT)
+    window.location.reload()
+  })
+
+  const downloadCanvasBtn = document.querySelector<HTMLInputElement>('#download-canvas')!
+  downloadCanvasBtn.addEventListener('click', () => {
+    creator.download()
+  })
 
   const addImageInput = document.querySelector<HTMLInputElement>('#add-image')!
   addImageInput.addEventListener('change', (event) => {

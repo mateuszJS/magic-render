@@ -29,20 +29,22 @@ pub const Details = struct {
     max_ratio_padding_to_font_size: f32 = 0,
 
     pub fn request_size(self: *Details, font_size: f32, raw_effect_padding: f32) void {
-        const next_ep = utils.getNextStep(MIN_SDF_FONT_SIZE, raw_effect_padding);
-
+        const next_ep = raw_effect_padding;
+        // const next_ep = utils.getNextStep(MIN_SDF_FONT_SIZE, raw_effect_padding);
+        // std.debug.print("params: {d} {d}\n", .{ font_size, raw_effect_padding });
         if (consts.EPSILON + self.max_ratio_padding_to_font_size < next_ep / font_size) {
-            std.debug.print("1 requesting char: {d} {d}\n", .{ font_size, next_ep });
             self.max_ratio_padding_to_font_size = next_ep / font_size;
+            std.debug.print("self.max_ratio_padding_to_font_size: {d}\n", .{self.max_ratio_padding_to_font_size});
             self.outdated_sdf = true;
         }
 
         const viewport_font_size = font_size / shared.render_scale;
         const next_fs = utils.getNextStep(MIN_SDF_FONT_SIZE, viewport_font_size);
+        // const next_fs = viewport_font_size;
         if (next_fs > self.max_requested_world_font_size + consts.EPSILON) {
-            std.debug.print("2 requesting char: {d} {d}\n", .{ self.max_requested_world_font_size, next_fs });
             self.max_requested_world_font_size = next_fs;
             self.max_font_size = next_fs * shared.render_scale;
+            std.debug.print("2 requesting char: {d} {d} {d}\n", .{ self.max_requested_world_font_size, next_fs, self.max_font_size });
             self.outdated_sdf = true;
         }
     }

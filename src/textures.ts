@@ -9,6 +9,7 @@ import collectShapesData from 'svgToShapes/collectShapesData'
 import { Asset } from 'types'
 import getShapesAssets from 'svgToShapes/getShapesAssets'
 import { device, storageFormat } from 'WebGPU/device'
+import { delayedDestroy } from 'WebGPU/programs/initPrograms'
 
 function getSvgSize(svgRoot: ElementNode, img?: HTMLImageElement) {
   const props = svgRoot.properties
@@ -177,7 +178,7 @@ export function createCacheTexture(): number {
   return textureId
 }
 
-export function createComputeDepthTexture(width: number, height: number): number {
+export function createDisposableComputeDepthTexture(width: number, height: number): number {
   const textureId = textures.length
   const label = 'combineSdf - depth texture'
   const texture: GPUTexture = device.createTexture({
@@ -188,6 +189,9 @@ export function createComputeDepthTexture(width: number, height: number): number
   })
 
   textures.push({ url: label, texture })
+
+  delayedDestroy(texture)
+
   return textureId
 }
 
@@ -230,12 +234,20 @@ export function update(textureId: number, width: number, height: number): void {
   const texture: GPUTexture = device.createTexture({
     label: existingTex.label,
     size: [width, height],
+    // size: [Math.min(2000, width), Math.min(2000, height)],
     format: existingTex.format,
     usage: existingTex.usage,
   })
 
   existingTex?.destroy()
   textures[textureId].texture = texture
+
+  window.localStorage.setItem('device_lost_reason', `Sucess? ${width}x${height}`)
+  // max: 268_435_456
+  // 4575 x 2101 x 16 = 153_793_200
+  // 4972 x 2301 x 16 = 183_049_152
+  // 5353 x 2493 x 16 = 213_520_464
+  // 4377 x 2002 x 16 = 140_204_064
 }
 
 export function setCacheTexture(id: number, texture: GPUTexture) {

@@ -26,6 +26,7 @@ import * as CustomPrograms from 'customPrograms'
 import * as Snapshots from 'snapshots/snapshots'
 import toZigAsset from 'snapshots/toZigAsset'
 import { NO_ASSET_ID } from 'consts'
+import { downloadCanvas } from 'utils/downloadCanvas'
 
 export default async function initCreator(
   initialProjectWidth: number, // we could also set size along setSnapshot, but
@@ -102,11 +103,11 @@ export default async function initCreator(
   })
 
   function updateRenderScale() {
-    console.log('updateRenderScale')
-    console.log('canvas.width', canvas.width)
-    console.log('canvas.clientWidth', canvas.clientWidth)
-    console.log('camera.zoom', camera.zoom)
-    Logic.updateRenderScale(camera.zoom, canvas.clientWidth / canvas.width)
+    document.querySelector('#device-lost-reason')!.textContent = (
+      canvas.width / canvas.clientWidth
+    ).toString()
+
+    Logic.updateRenderScale(camera.zoom, canvas.width / canvas.clientWidth)
   }
 
   let isCameraSet = false
@@ -134,15 +135,17 @@ export default async function initCreator(
   const throttledPreviewGenerator = throttle(() => {
     if (isDestroyed || texturesLoading > 0) return
 
-    generatePreview(
-      device,
-      presentationFormat,
-      canvas,
-      Snapshots.lastSnapshot.width,
-      Snapshots.lastSnapshot.height,
-      capturePreview,
-      onPreviewUpdate
-    )
+    // generatePreview(
+    //   device,
+    //   presentationFormat,
+    //   canvas,
+    //   Snapshots.lastSnapshot.width,
+    //   Snapshots.lastSnapshot.height,
+    //   400,
+    //   400,
+    //   capturePreview,
+    //   onPreviewUpdate
+    // )
   }, 1000 * 5)
 
   const triggerGeneratePreview = () => {
@@ -161,7 +164,7 @@ export default async function initCreator(
     (id) => onAssetSelect([...id] as Id),
     onUpdateTool,
     Textures.createSDF,
-    Textures.createComputeDepthTexture,
+    Textures.createDisposableComputeDepthTexture,
     Fonts.getCharData,
     Fonts.getKerning
   )
@@ -284,6 +287,19 @@ export default async function initCreator(
     updateAssetTypoProps: (typoProps, commit) => {
       Fonts.loadFont(typoProps.font_family_id)
       Logic.setSelectedAssetTypoProps(typoProps, commit)
+    },
+    download: () => {
+      generatePreview(
+        device,
+        presentationFormat,
+        canvas,
+        Snapshots.lastSnapshot.width,
+        Snapshots.lastSnapshot.height,
+        Snapshots.lastSnapshot.width,
+        Snapshots.lastSnapshot.height,
+        capturePreview,
+        downloadCanvas
+      )
     },
     INFINITE_DISTANCE_THRESHOLD: Logic.INFINITE_DISTANCE * 0.9,
     // 90% of INFINITE_DISTANCE to provide a margin for floating-point errors

@@ -334,7 +334,7 @@ pub const Text = struct {
         var next_char_is_first_in_line = true;
         for (self.text_vertex.items, 0..) |vertex, index| {
             const half_width = (vertex.relative_bounds[1].x - vertex.origin.x) / 2;
-            if (half_width > consts.EPSILON) {
+            if (half_width >= consts.EPSILON) {
                 const valid_pick_index = index + 1; // pick = 0 -> no selection
                 // left part of the char
                 const left_additional_offset =

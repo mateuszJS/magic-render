@@ -134,20 +134,19 @@ pub fn getDrawUniform(sdf_effect: Effect, sdf_scale: f32, opacity: f32) DrawUnif
     }
 }
 
-pub fn getSdfPadding(effects: []Effect) f32 {
+pub fn getSdfPadding(effects: []Effect, bounds: [4]PointUV) f32 {
     var padding: f32 = SKELETON_LINE_WIDTH / 2; // at least 1, without fwidth fix
     // because of skeleton render, we cannot od less than zero
 
     for (effects) |effect| {
         if (effect.dist_end > 9999999) {
-            std.debug.print("SDF effect dist_end should NOT be a large positive number!\n effect: {any}\n", .{effect});
             @panic("SDF effect dist_end should NOT be a large positive number!");
         }
         padding = @max(padding, -effect.dist_end);
     }
 
     // we do smoothing in shaders with fwidth(), so it's 1px to make sure we wont cut it out
-    padding += 1.0 * RATIO_PX_PER_SDF_TEXEL;
+    padding += @max(3.0, 1.0 * getRatioPxPerSdfTexel(bounds)); // 1px guard for fwidth() smoothing
 
     return padding;
 }
@@ -225,17 +224,77 @@ pub fn getDrawBounds(bounds: [4]PointUV, sdf_padding: f32, filter_margin: ?Point
     };
 }
 
-const RATIO_PX_PER_SDF_TEXEL = 2;
+// Progressive ratio: 1 texel per px below 50px viewport size, doubling thresholds above.
+// Formula: max(1, ceil(log2(viewport_size / 50)) + 1)
+// Results: <=50->1, (50,100]->2, (100,200]->3, (200,400]->4, ...
+// fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
+//     const max_dim = @max(bounds[0].distance(bounds[1]), bounds[0].distance(bounds[3]));
+//     const viewport_size = max_dim * shared.render_scale;
+//     const normalized = viewport_size / 50.0;
+//     if (normalized <= 1.0) return 1.0;
+//     return 4 * @ceil(std.math.log2(normalized)) + 1.0;
+// }
+// fn getRatioPxPerSdfTexel(bounds: [4]PointUV, optimise: bool) f32 {
+fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
+    const max_dim = @max(bounds[0].distance(bounds[1]), bounds[0].distance(bounds[3]));
+    const viewport_size = max_dim / shared.render_scale;
+    if (viewport_size <= 50.0) return 1.0;
+    // std.debug.print("shared.pixel_density: {d}\n", .{shared.pixel_density});
+    if (shared.pixel_density + consts.EPSILON >= 3.0) {
+        // tested on retina screen, 3 device px per 1 CSS pixel
+        // Retina loss - abouve thta not much improvements
+        // 10 -> 300
+        // 8 -> 235
+        // 6 -> 175
+        // 4 -> 75
+        // 2 -> 33
+        // std.debug.print("333333333\n", .{});
+        return @max(1, 0.65 * @sqrt(viewport_size) - 1.9);
+    } else if (shared.pixel_density + consts.EPSILON >= 2.0) {
+        // tested on retina screen, 2 device px per 1 CSS pixel
+        // https://quickchart.io/chart?c=%7B%22type%22%3A%22scatter%22%2C%22data%22%3A%7B%22datasets%22%3A%5B%7B%22label%22%3A%220.026x%2B0.9%22%2C%22data%22%3A%5B%7B%22x%22%3A0%2C%22y%22%3A0.9%7D%2C%7B%22x%22%3A50%2C%22y%22%3A2.2%7D%2C%7B%22x%22%3A100%2C%22y%22%3A3.5%7D%2C%7B%22x%22%3A150%2C%22y%22%3A4.8%7D%2C%7B%22x%22%3A200%2C%22y%22%3A6.1%7D%2C%7B%22x%22%3A250%2C%22y%22%3A7.4%7D%2C%7B%22x%22%3A300%2C%22y%22%3A8.7%7D%2C%7B%22x%22%3A350%2C%22y%22%3A10.0%7D%5D%2C%22showLine%22%3Atrue%2C%22pointRadius%22%3A0%2C%22borderColor%22%3A%22blue%22%7D%2C%7B%22label%22%3A%22target+points%22%2C%22data%22%3A%5B%7B%22x%22%3A40%2C%22y%22%3A2%7D%2C%7B%22x%22%3A120%2C%22y%22%3A4%7D%2C%7B%22x%22%3A210%2C%22y%22%3A6%7D%2C%7B%22x%22%3A260%2C%22y%22%3A8%7D%2C%7B%22x%22%3A350%2C%22y%22%3A10%7D%5D%2C%22pointRadius%22%3A6%2C%22backgroundColor%22%3A%22red%22%7D%5D%7D%7D
+        // Retina loss - abouve thta not much improvements
+        // 10 -> 350
+        // 8 -> 260
+        // 6 -> 210
+        // 4 -> 120
+        // 2 -> 40
+        // std.debug.print("222222222\n", .{});
+        return @max(1, 0.026 * viewport_size + 0.9);
+    } else {
+        // tested on non-retina screen, 1 device px per 1 CSS pixel
+        // https://quickchart.io/chart?c=%7B%22type%22%3A%22scatter%22%2C%22data%22%3A%7B%22datasets%22%3A%5B%7B%22label%22%3A%220.53%E2%88%9Ax-3%22%2C%22data%22%3A%5B%7B%22x%22%3A0%2C%22y%22%3A-3%7D%2C%7B%22x%22%3A50%2C%22y%22%3A0.75%7D%2C%7B%22x%22%3A100%2C%22y%22%3A2.3%7D%2C%7B%22x%22%3A150%2C%22y%22%3A3.49%7D%2C%7B%22x%22%3A200%2C%22y%22%3A4.49%7D%2C%7B%22x%22%3A250%2C%22y%22%3A5.38%7D%2C%7B%22x%22%3A300%2C%22y%22%3A6.18%7D%2C%7B%22x%22%3A350%2C%22y%22%3A6.92%7D%2C%7B%22x%22%3A400%2C%22y%22%3A7.6%7D%2C%7B%22x%22%3A450%2C%22y%22%3A8.24%7D%2C%7B%22x%22%3A500%2C%22y%22%3A8.85%7D%2C%7B%22x%22%3A550%2C%22y%22%3A9.43%7D%2C%7B%22x%22%3A600%2C%22y%22%3A9.98%7D%2C%7B%22x%22%3A700%2C%22y%22%3A11.02%7D%5D%2C%22showLine%22%3Atrue%2C%22pointRadius%22%3A0%2C%22borderColor%22%3A%22blue%22%7D%2C%7B%22label%22%3A%22target+points%22%2C%22data%22%3A%5B%7B%22x%22%3A86%2C%22y%22%3A2%7D%2C%7B%22x%22%3A180%2C%22y%22%3A4%7D%2C%7B%22x%22%3A280%2C%22y%22%3A6%7D%2C%7B%22x%22%3A420%2C%22y%22%3A8%7D%2C%7B%22x%22%3A600%2C%22y%22%3A10%7D%5D%2C%22pointRadius%22%3A6%2C%22backgroundColor%22%3A%22red%22%7D%5D%7D%7D
+        // loss - good enough, above that not much improvements(used as data for graph), really good:
+        // 10 -> 400, 600, 850
+        // 8 -> 320, 420, 500
+        // 6 -> 230, 280, 450
+        // 4 -> 140, 180, 200
+        // 2 -> 73,  86, 100
+        // std.debug.print("111111111\n", .{});
+        return @max(1, 0.53 * @sqrt(viewport_size) - 3);
+    }
+}
 
-pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32) struct {
+pub fn getSdfTextureDims(
+    bounds: [4]PointUV,
+    sdf_padding: f32,
+    optimise: bool,
+) struct {
     size: texture_size.TextureSize,
     scale: f32,
-    // rounding_error: texture_size.TextureSize,
 } {
+    if (optimise) {
+        std.debug.print("letter size: {d}\n", .{
+            @max(bounds[0].distance(bounds[1]), bounds[0].distance(bounds[3])) / shared.render_scale,
+        });
+    }
+
+    // const ratio: f32 = getRatioPxPerSdfTexel(bounds, optimise); // getRatioPxPerSdfTexel(bounds);
+    const ratio: f32 = if (optimise) getRatioPxPerSdfTexel(bounds) else 1; // getRatioPxPerSdfTexel(bounds);
     const bounds_with_padding = getBoundsWithPadding(
         bounds,
         sdf_padding,
-        1 / (shared.render_scale * RATIO_PX_PER_SDF_TEXEL),
+        1 / (shared.render_scale * ratio),
         null,
     );
 
@@ -244,28 +303,18 @@ pub fn getSdfTextureDims(bounds: [4]PointUV, sdf_padding: f32) struct {
         bounds_with_padding[0].distance(bounds_with_padding[3]),
     );
 
-    // TODO: recreate and solve this issue:
-    // ceil because without it, while casting f32 to u32 it rounds down
-    // and often the end of the texture cuts out large part of the padding and in the result shapes touched the edge
-    // we cannot round above because it jumps between values, and we cannot do it below because it might be
-    // bigger than max sdf size. We might just +1?
-
     const sdf_size = texture_size.get_allowed_sdf_size(desired_size);
     const sdf_safe_size = texture_size.TextureSize{
         .w = @max(sdf_size.w, consts.MIN_TEXTURE_SIZE),
         .h = @max(sdf_size.h, consts.MIN_TEXTURE_SIZE),
     };
 
-    const init_width = bounds_with_padding[0].distance(bounds_with_padding[1]) * (shared.render_scale * RATIO_PX_PER_SDF_TEXEL);
+    const init_width = bounds_with_padding[0].distance(bounds_with_padding[1]) * (shared.render_scale * ratio);
     // * shared.render_scale to revert to logical scale (without impact of camera/zoom)
     const sdf_scale = sdf_safe_size.w / init_width;
 
     return .{
         .size = sdf_safe_size,
         .scale = sdf_scale,
-        // .rounding_error = .{
-        //     .w = sdf_safe_size.w - sdf_size.w,
-        //     .h = sdf_safe_size.h - sdf_size.h,
-        // },
     };
 }

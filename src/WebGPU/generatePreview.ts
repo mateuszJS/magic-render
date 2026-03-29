@@ -8,17 +8,16 @@ export default async function generatePreview(
   creatorCanvas: HTMLCanvasElement,
   projectWidth: number,
   projectHeight: number,
+  outputWidth: number,
+  outputHeight: number,
   capturePreview: (previewCtx: GPUCanvasContext, collectAndCleanup: VoidFunction) => void,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void
 ) {
   const pixelDensity = creatorCanvas.width / creatorCanvas.clientWidth
-  if (1 < 2) {
-    return
-  }
-  const size = 400
+
   const previewCanvas = document.createElement('canvas')
-  previewCanvas.width = size
-  previewCanvas.height = size
+  previewCanvas.width = outputWidth
+  previewCanvas.height = outputHeight
   const previewContext = previewCanvas.getContext('webgpu')!
 
   previewContext.configure({

@@ -183,6 +183,7 @@ export type CreatorAPI = {
   updateAssetProps: (props: BasicProps, commit: boolean) => void // updates basic properties of selected asset
   updateAssetEffects: (effects: Effect[], commit: boolean) => void // updates only effects of selected asset
   updateAssetBounds: (bounds: PointUV[], commit: boolean) => void // updates bounds of selected asset
+  download: VoidFunction // triggers download of the current canvas content as an image
   INFINITE_DISTANCE_THRESHOLD: number // threshold value for considering a distance as "infinite" in SDF fill effects
   INFINITE_DISTANCE: number // maximum f32 value, used for SDF fill effects
 }

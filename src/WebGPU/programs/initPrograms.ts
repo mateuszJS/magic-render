@@ -32,15 +32,15 @@ export const canvasMatrix: {
 } = { buffer: null as unknown as GPUBuffer } // should throw error when used before assigning
 export let pickCanvasMatrixBuffer: GPUBuffer
 
-let buffersToDestroy: Array<GPUBuffer | GPUTexture> = []
+let gpuObjectToDestroy: Array<GPUBuffer | GPUTexture> = []
 
 export function delayedDestroy(gpuObject: GPUBuffer | GPUTexture) {
-  buffersToDestroy.push(gpuObject)
+  gpuObjectToDestroy.push(gpuObject)
 }
 
 export function destroyGpuObjects() {
-  buffersToDestroy.forEach((buffer) => buffer.destroy())
-  buffersToDestroy = []
+  gpuObjectToDestroy.forEach((buffer) => buffer.destroy())
+  gpuObjectToDestroy = []
 }
 
 export default function initPrograms(device: GPUDevice, presentationFormat: GPUTextureFormat) {

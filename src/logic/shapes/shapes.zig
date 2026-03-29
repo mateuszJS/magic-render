@@ -384,18 +384,17 @@ pub const Shape = struct {
             self.bounds[0].distance(self.bounds[3]),
         );
 
-        const padding = sdf_drawing.getSdfPadding(self.effects.items);
         for (points) |*point| {
             const scaled = scale.get(point);
-            point.x = padding + scaled.x;
-            point.y = padding + scaled.y;
+            point.x = scaled.x;
+            point.y = scaled.y;
         }
 
         return points;
     }
 
     pub fn getPickBounds(self: Shape) [6]images.PickVertex {
-        const sdf_padding = sdf_drawing.getSdfPadding(self.effects.items);
+        const sdf_padding = sdf_drawing.getSdfPadding(self.effects.items, self.bounds);
         const bounds = sdf_drawing.getDrawBounds(self.bounds, sdf_padding, null);
         var buffer: [6]images.PickVertex = undefined;
         for (bounds, 0..) |b, i| {

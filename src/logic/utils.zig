@@ -18,7 +18,7 @@ pub fn getNextPowerOfTwo(value: f32) f32 {
 }
 
 pub fn equalF32(a: f32, b: f32) bool {
-    return @abs(a - b) < consts.EPSILON;
+    return @abs(a - b) <= consts.EPSILON;
 }
 
 // 0.001 tolerance for bounds comparison

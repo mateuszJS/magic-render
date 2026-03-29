@@ -135,7 +135,7 @@ declare module '*.zig' {
     onAssetSelection: (data: Id) => void,
     onUpdateTool: (new_tool: number) => void,
     createSdfTexture: () => number,
-    createComputeDepthTexture: (width: number, height: number) => number,
+    createDisposableComputeDepthTexture: (width: number, height: number) => number,
     getCharData: (font_id: number, char_code: number) => SerializedCharDetails,
     getKerning: (font_id: number, char_code_a: number, char_code_b: number) => number
   ): void
