@@ -103,10 +103,6 @@ export default async function initCreator(
   })
 
   function updateRenderScale() {
-    document.querySelector('#device-lost-reason')!.textContent = (
-      canvas.width / canvas.clientWidth
-    ).toString()
-
     Logic.updateRenderScale(camera.zoom, canvas.width / canvas.clientWidth)
   }
 
@@ -133,19 +129,20 @@ export default async function initCreator(
   )
 
   const throttledPreviewGenerator = throttle(() => {
-    if (isDestroyed || texturesLoading > 0) return
+    const disavleMinaitureFortesting = true
+    if (isDestroyed || texturesLoading > 0 || disavleMinaitureFortesting) return
 
-    // generatePreview(
-    //   device,
-    //   presentationFormat,
-    //   canvas,
-    //   Snapshots.lastSnapshot.width,
-    //   Snapshots.lastSnapshot.height,
-    //   400,
-    //   400,
-    //   capturePreview,
-    //   onPreviewUpdate
-    // )
+    generatePreview(
+      device,
+      presentationFormat,
+      canvas,
+      Snapshots.lastSnapshot.width,
+      Snapshots.lastSnapshot.height,
+      400,
+      400,
+      capturePreview,
+      onPreviewUpdate
+    )
   }, 1000 * 5)
 
   const triggerGeneratePreview = () => {

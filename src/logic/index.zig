@@ -169,7 +169,6 @@ pub fn updateRenderScale(zoom: f32, pixel_density: f32) !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                // Rethink entire padding safe 1 texel padding idea.
                 const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
                 const new_sdf_dims = sdf_drawing.getSdfTextureDims(
                     shape.bounds,
@@ -401,7 +400,7 @@ fn createText(x: f32, y: f32) !texts.Text {
 
     return try addText(
         id,
-        "A",
+        "Type here",
         bounds,
         asset_props.Props{},
         effects,
@@ -826,7 +825,6 @@ fn requestCharsSdfs() !void {
                     continue;
                 }
 
-                // DOESN'T MAKE SENSE TO USE TEXT.BOUNDS HERE
                 const padding = sdf_drawing.getSdfPadding(text.effects.items);
 
                 for (text.text_vertex.items) |vertex| {
@@ -882,18 +880,10 @@ pub fn computeSdfs() !void {
                 const viewport_padding = padding * sdf_dims.scale;
                 const points = try allocator.dupe(types.Point, ch_d.points);
 
-                var min_x = std.math.floatMax(f32);
-                var min_y = std.math.floatMax(f32);
-                var max_x = std.math.floatMin(f32);
-                var max_y = std.math.floatMin(f32);
                 for (points) |*point| {
                     if (path_utils.isStraightLineHandle(point.*)) continue;
                     point.x = (point.x * real_viewport_font_size) + viewport_padding;
                     point.y = (point.y * real_viewport_font_size) + viewport_padding;
-                    min_x = @min(min_x, point.x);
-                    min_y = @min(min_y, point.y);
-                    max_x = @max(max_x, point.x);
-                    max_y = @max(max_y, point.y);
                 }
 
                 web_gpu_programs.compute_shape(
@@ -961,18 +951,9 @@ pub fn computeSdfs() !void {
                     if (!fonts.fonts.contains(text.typo_props.font_family_id)) {
                         continue;
                     }
-                    // nextStpe needs ot be used here as well!!!
-                    // const MIN_COMBINE_SDF_SIZE = 100;
-                    // const next_fs = utils.getNextStep(MIN_COMBINE_SDF_SIZE, viewport_font_size);
 
                     const text_sdf_texture_id = text.getSdfTextureId();
-
-                    // factor used to decrease rounding errors which come from:
-                    // computing letter SDF -> computing text SDF -> rendering text SDF
-                    // 3 is just the number which was giving best results
-
                     const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
-                    // std.debug.print("shared.render_scale: {}\n", .{shared.render_scale});
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         text.bounds,
                         text_padding,
@@ -994,7 +975,7 @@ pub fn computeSdfs() !void {
                         @intFromFloat(sdf_dims.size.w),
                         @intFromFloat(sdf_dims.size.h),
                     );
-                    std.debug.print("COMBINE SDF\n", .{});
+
                     for (text.text_vertex.items) |vertex| {
                         if (vertex.char) |char| {
                             const ch_d = try fonts.get(text.typo_props.font_family_id, char);
@@ -1049,8 +1030,6 @@ pub fn updateCache() void {
                     };
 
                     const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
-                    // NOTE: same, no calculate padding, assign durign creation of SDF
-                    // and read it here. Only margin should be added here
                     const bounds = sdf_drawing.getBoundsWithPadding(
                         shape.bounds,
                         sdf_padding,
@@ -1162,8 +1141,6 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 web_gpu_programs.draw_texture(&vertex_data, img.texture_id);
             },
             .shape => |*shape| {
-                // NOTE: again, padding no claculated
-                // assigned alogn SDF creation and jsut read here
                 const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
                 if (shape.cache_texture_id) |cache_texture_id| {
                     web_gpu_programs.draw_texture(
@@ -1199,8 +1176,6 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                     const text_sdf_texture_id = text.getSdfTextureId();
 
                     const padding = sdf_drawing.getSdfPadding(text.effects.items);
-                    // NOTE: again, I believe padding sohouldn't be calcualted here
-                    // should be assigned alogn SDF creation
                     for (text.effects.items) |effect| {
                         const text_bounds = sdf_drawing.getDrawBounds(
                             text.bounds,
@@ -1302,9 +1277,6 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
 
         if (getSelectedShape()) |shape| {
             const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
-            // NOTE: shouldn't padding be stringly tied to sdf texture
-            // so also assigned to sdf texture????
-            // so not claculated here!
             web_gpu_programs.draw_shape(
                 &sdf_drawing.getDrawBounds(
                     shape.bounds,
@@ -1547,7 +1519,6 @@ pub fn setSelectedAssetEffects(serialized_effects: []const sdf_effect.Serialized
                     const new_padding = sdf_drawing.getSdfPadding(text.effects.items);
                     if (new_padding > text.last_sdf_padding) {
                         text.is_sdf_outdated = true;
-                        std.debug.print("SET ASSETS EFFECTS", .{});
                     }
                 }
             },

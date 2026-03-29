@@ -241,13 +241,6 @@ export function update(textureId: number, width: number, height: number): void {
 
   existingTex?.destroy()
   textures[textureId].texture = texture
-
-  window.localStorage.setItem('device_lost_reason', `Sucess? ${width}x${height}`)
-  // max: 268_435_456
-  // 4575 x 2101 x 16 = 153_793_200
-  // 4972 x 2301 x 16 = 183_049_152
-  // 5353 x 2493 x 16 = 213_520_464
-  // 4377 x 2002 x 16 = 140_204_064
 }
 
 export function setCacheTexture(id: number, texture: GPUTexture) {
