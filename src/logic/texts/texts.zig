@@ -57,6 +57,9 @@ pub const Text = struct {
     sdf_texture_id: ?u32 = null,
     sdf_scale: f32 = 1.0,
     is_sdf_outdated: bool = true,
+    last_sdf_padding: f32 = 0,
+    last_sdf_dim_width: f32 = 0, // you cannot make text lose apsect ratio
+    // so we keep track only width
 
     props: asset_props.Props,
     effects: std.ArrayList(sdf_effect.Effect),
@@ -243,7 +246,7 @@ pub const Text = struct {
 
         std.heap.page_allocator.free(self.content); // free previous content
         self.content = try updated_content_bytes.toOwnedSlice();
-
+        std.debug.print("COMPUTE TEXT\n", .{});
         self.is_sdf_outdated = true;
 
         return .{

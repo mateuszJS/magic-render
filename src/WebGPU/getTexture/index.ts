@@ -116,7 +116,6 @@ export function attachSlice(
   what strips the color profile and normalizes values to sRGB
 */
 export function createTextureFromSource(source: ImageBitmap, options: Options = {}) {
-  console.log('presentationFormat', presentationFormat)
   const texture = device.createTexture({
     label: 'createTextureFromSource',
     format: presentationFormat,

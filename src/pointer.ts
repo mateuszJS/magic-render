@@ -359,7 +359,6 @@ export default function initMouseController(
         const midY = (midClientY - rect.top) * scale
 
         if (lastTouchDistance > 0) {
-          console.log(newDistance - lastTouchDistance)
           performZoom((newDistance - lastTouchDistance) * 0.003 * camera.zoom, midX, midY)
         }
 

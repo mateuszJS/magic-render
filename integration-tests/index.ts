@@ -121,7 +121,6 @@ async function test() {
     },
     (newTool) => {
       toolsSelect.value = newTool.toString()
-      console.log(`new tool: ${newTool}`)
     },
     (fontId) => {
       const font = fontsDictionary[fontId]
@@ -296,7 +295,7 @@ async function test() {
     const bounds = asset.bounds
 
     if (!bounds) throw new Error('Asset has no bounds defined')
-    console.log(x, commit)
+
     const newBounds = bounds.map((point) => ({
       ...point,
       x: point.x + x,

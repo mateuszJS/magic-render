@@ -175,14 +175,26 @@ pub fn updateRenderScale(zoom: f32, pixel_density: f32) !void {
                     shape.bounds,
                     sdf_padding,
                     false,
+                    1.0,
                 );
 
-                if (new_sdf_dims.size.w > shape.sdf_size.w or new_sdf_dims.size.h > shape.sdf_size.h) {
+                if (new_sdf_dims.size.w > shape.sdf_size.w + consts.EPSILON or
+                    new_sdf_dims.size.h > shape.sdf_size.h + consts.EPSILON)
+                {
                     shape.outdated_sdf = true;
                 }
             },
             .text => |*text| {
-                text.is_sdf_outdated = true;
+                const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
+                const sdf_dims = sdf_drawing.getSdfTextureDims(
+                    text.bounds,
+                    text_padding,
+                    true,
+                    1.0,
+                );
+                if (sdf_dims.size.w > text.last_sdf_dim_width + consts.EPSILON) {
+                    text.is_sdf_outdated = true;
+                }
             },
         }
     }
@@ -860,6 +872,7 @@ pub fn computeSdfs() !void {
                     bounds,
                     padding,
                     false,
+                    1.0,
                 );
                 ch_d.sdf_scale = sdf_dims.scale;
                 // max requested size is not actual generated(like real_viewport_font_size below is)
@@ -910,10 +923,12 @@ pub fn computeSdfs() !void {
                 const option_points = try shape.getRelativePoints(allocator);
                 if (option_points) |points| {
                     const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+                    // TODO: geenrate 20% bigger
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         shape.bounds,
                         sdf_padding,
                         false,
+                        1.0,
                     );
                     shape.sdf_size = sdf_dims.size;
                     shape.sdf_scale = sdf_dims.scale;
@@ -946,6 +961,9 @@ pub fn computeSdfs() !void {
                     if (!fonts.fonts.contains(text.typo_props.font_family_id)) {
                         continue;
                     }
+                    // nextStpe needs ot be used here as well!!!
+                    // const MIN_COMBINE_SDF_SIZE = 100;
+                    // const next_fs = utils.getNextStep(MIN_COMBINE_SDF_SIZE, viewport_font_size);
 
                     const text_sdf_texture_id = text.getSdfTextureId();
 
@@ -959,6 +977,7 @@ pub fn computeSdfs() !void {
                         text.bounds,
                         text_padding,
                         true,
+                        1.2,
                     );
                     text.sdf_scale = sdf_dims.scale;
 
@@ -975,7 +994,7 @@ pub fn computeSdfs() !void {
                         @intFromFloat(sdf_dims.size.w),
                         @intFromFloat(sdf_dims.size.h),
                     );
-
+                    std.debug.print("COMBINE SDF\n", .{});
                     for (text.text_vertex.items) |vertex| {
                         if (vertex.char) |char| {
                             const ch_d = try fonts.get(text.typo_props.font_family_id, char);
@@ -1006,6 +1025,8 @@ pub fn computeSdfs() !void {
                     }
 
                     text.is_sdf_outdated = false;
+                    text.last_sdf_dim_width = sdf_dims.size.w;
+                    text.last_sdf_padding = text_padding;
                 }
             },
         }
@@ -1487,13 +1508,15 @@ pub fn tick(now: f32) !bool {
 
 pub fn setSelectedAssetTypoProps(serialized: typography_props.Serialized, commit: bool) !void {
     if (getSelectedText()) |text| {
-        text.typo_props = typography_props.deserialize(serialized);
+        const new_typo_props = typography_props.deserialize(serialized);
+        text.typo_props = new_typo_props;
+
         const result = try text.computeText(0, 0);
 
         const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
 
         if (is_text_area_enabled) {
-            // although this should not really happen, if user changes font proeprties,
+            // although this should not really happen, if user changes font properties,
             // then it's not longer in typing tool in the textbox
             update_text_content(result.content);
             // new soft breaks might appear after font change
@@ -1521,7 +1544,11 @@ pub fn setSelectedAssetEffects(serialized_effects: []const sdf_effect.Serialized
                 sdf_effect.deinit(text.effects);
                 text.effects = try sdf_effect.deserialize(serialized_effects, std.heap.page_allocator);
                 if (text.typo_props.is_sdf_shared) {
-                    text.is_sdf_outdated = true;
+                    const new_padding = sdf_drawing.getSdfPadding(text.effects.items);
+                    if (new_padding > text.last_sdf_padding) {
+                        text.is_sdf_outdated = true;
+                        std.debug.print("SET ASSETS EFFECTS", .{});
+                    }
                 }
             },
         }

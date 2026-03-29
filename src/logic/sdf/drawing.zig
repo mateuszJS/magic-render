@@ -223,7 +223,7 @@ pub fn getDrawBounds(bounds: [4]PointUV, sdf_padding: f32, filter_margin: ?Point
 }
 
 // returns how much combine SDF ratio should be vs normal SDF
-// Combien SDFs need denser sampling
+// Combined SDFs need denser sampling
 fn getCombineSdfRatio() f32 {
     if (shared.pixel_density + consts.EPSILON >= 3.0) {
         return 0.1;
@@ -237,7 +237,6 @@ fn getCombineSdfRatio() f32 {
 fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
     const max_dim = @max(bounds[0].distance(bounds[1]), bounds[0].distance(bounds[3]));
     const viewport_size = max_dim / shared.render_scale;
-    if (viewport_size <= 50.0) return 1.0;
 
     if (shared.pixel_density + consts.EPSILON >= 3.0) {
         // tested on retina screen, 3 device px per 1 CSS pixel
@@ -275,6 +274,10 @@ pub fn getSdfTextureDims(
     bounds: [4]PointUV,
     sdf_padding: f32,
     combine_sdf: bool,
+    additional_scale: f32,
+    // used to generate 20% bigger textures, so we won't need to regenerate
+    // again texture while user is zooming in slowly (so would trigger
+    // new SDF each frame)
 ) struct {
     size: texture_size.TextureSize,
     scale: f32,
@@ -284,10 +287,12 @@ pub fn getSdfTextureDims(
         loss_ratio = @max(1, loss_ratio * getCombineSdfRatio());
     }
 
+    const scale = additional_scale / (shared.render_scale * loss_ratio);
+
     const bounds_with_padding = getBoundsWithPadding(
         bounds,
-        sdf_padding + 0,
-        1 / (shared.render_scale * loss_ratio),
+        sdf_padding,
+        scale,
         null,
     );
 
@@ -302,7 +307,7 @@ pub fn getSdfTextureDims(
         .h = @max(sdf_size.h, consts.MIN_TEXTURE_SIZE),
     };
 
-    const init_width = bounds_with_padding[0].distance(bounds_with_padding[1]) * (shared.render_scale * loss_ratio);
+    const init_width = bounds_with_padding[0].distance(bounds_with_padding[1]) / scale;
     // * shared.render_scale to revert to logical scale (without impact of camera/zoom)
     const sdf_scale = sdf_safe_size.w / init_width;
 

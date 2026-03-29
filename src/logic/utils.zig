@@ -52,7 +52,7 @@ pub fn getNextStep(base: f32, input: f32) f32 {
 
     // We want the next step strictly greater than the input.
     // We normalize by dividing by 50.
-    const normalized = input / 50.0;
+    const normalized = input / base;
 
     // math.log2 for floats returns the exponent.
     // Example: if normalized is 2.0, log2 is 1.0.
@@ -63,5 +63,5 @@ pub fn getNextStep(base: f32, input: f32) f32 {
     const next_p2 = math.pow(f32, 2.0, exponent);
 
     // Return as integer
-    return 50.0 * next_p2;
+    return base * next_p2;
 }
