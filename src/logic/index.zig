@@ -170,11 +170,11 @@ pub fn updateRenderScale(zoom: f32, pixel_density: f32) !void {
             .img => {},
             .shape => |*shape| {
                 // Rethink entire padding safe 1 texel padding idea.
-                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, shape.bounds);
+                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
                 const new_sdf_dims = sdf_drawing.getSdfTextureDims(
                     shape.bounds,
                     sdf_padding,
-                    true,
+                    false,
                 );
 
                 if (new_sdf_dims.size.w > shape.sdf_size.w or new_sdf_dims.size.h > shape.sdf_size.h) {
@@ -815,7 +815,7 @@ fn requestCharsSdfs() !void {
                 }
 
                 // DOESN'T MAKE SENSE TO USE TEXT.BOUNDS HERE
-                const padding = sdf_drawing.getSdfPadding(text.effects.items, text.bounds);
+                const padding = sdf_drawing.getSdfPadding(text.effects.items);
 
                 for (text.text_vertex.items) |vertex| {
                     if (vertex.char) |char| {
@@ -859,7 +859,7 @@ pub fn computeSdfs() !void {
                 const sdf_dims = sdf_drawing.getSdfTextureDims(
                     bounds,
                     padding,
-                    true,
+                    false,
                 );
                 ch_d.sdf_scale = sdf_dims.scale;
                 // max requested size is not actual generated(like real_viewport_font_size below is)
@@ -909,11 +909,11 @@ pub fn computeSdfs() !void {
 
                 const option_points = try shape.getRelativePoints(allocator);
                 if (option_points) |points| {
-                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, shape.bounds);
+                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         shape.bounds,
                         sdf_padding,
-                        true,
+                        false,
                     );
                     shape.sdf_size = sdf_dims.size;
                     shape.sdf_scale = sdf_dims.scale;
@@ -953,12 +953,12 @@ pub fn computeSdfs() !void {
                     // computing letter SDF -> computing text SDF -> rendering text SDF
                     // 3 is just the number which was giving best results
 
-                    const text_padding = sdf_drawing.getSdfPadding(text.effects.items, text.bounds);
+                    const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
                     // std.debug.print("shared.render_scale: {}\n", .{shared.render_scale});
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         text.bounds,
                         text_padding,
-                        false,
+                        true,
                     );
                     text.sdf_scale = sdf_dims.scale;
 
@@ -1027,13 +1027,14 @@ pub fn updateCache() void {
                         break :b id;
                     };
 
-                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, shape.bounds);
+                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
                     // NOTE: same, no calculate padding, assign durign creation of SDF
                     // and read it here. Only margin should be added here
                     const bounds = sdf_drawing.getBoundsWithPadding(
                         shape.bounds,
                         sdf_padding,
                         1 / shared.render_scale,
+                        // WARNING: here 1px safety padding changes into 1/shared.render_scale
                         shape.getFilterMargin(),
                     );
                     const init_width = bounds[0].distance(bounds[1]) * shared.render_scale;
@@ -1142,7 +1143,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
             .shape => |*shape| {
                 // NOTE: again, padding no claculated
                 // assigned alogn SDF creation and jsut read here
-                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, shape.bounds);
+                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
                 if (shape.cache_texture_id) |cache_texture_id| {
                     web_gpu_programs.draw_texture(
                         &sdf_drawing.getDrawBounds(
@@ -1176,7 +1177,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 if (text.typo_props.is_sdf_shared) {
                     const text_sdf_texture_id = text.getSdfTextureId();
 
-                    const padding = sdf_drawing.getSdfPadding(text.effects.items, text.bounds);
+                    const padding = sdf_drawing.getSdfPadding(text.effects.items);
                     // NOTE: again, I believe padding sohouldn't be calcualted here
                     // should be assigned alogn SDF creation
                     for (text.effects.items) |effect| {
@@ -1279,7 +1280,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
         const hover_point_id = state.hovered_asset_id;
 
         if (getSelectedShape()) |shape| {
-            const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, shape.bounds);
+            const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
             // NOTE: shouldn't padding be stringly tied to sdf texture
             // so also assigned to sdf texture????
             // so not claculated here!

@@ -66,10 +66,6 @@ fn getSample(pos: vec2f) -> vec4f {
   let color = getColor(sdf, vsOut.uv, vsOut.norm_uv);
   let result = vec4f(color.rgb, color.a * alpha);
 
-  if (result.a < EPSILON) {
-    return vec4f(0.5);
-  }
-
   return result;
 
   // let stroke_factor = select(0.5, 0.0, sdf.g > 1.0);

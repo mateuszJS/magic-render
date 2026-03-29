@@ -394,7 +394,7 @@ pub const Shape = struct {
     }
 
     pub fn getPickBounds(self: Shape) [6]images.PickVertex {
-        const sdf_padding = sdf_drawing.getSdfPadding(self.effects.items, self.bounds);
+        const sdf_padding = sdf_drawing.getSdfPadding(self.effects.items);
         const bounds = sdf_drawing.getDrawBounds(self.bounds, sdf_padding, null);
         var buffer: [6]images.PickVertex = undefined;
         for (bounds, 0..) |b, i| {
