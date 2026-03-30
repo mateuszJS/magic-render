@@ -239,6 +239,7 @@ export default async function initCreator(
 
     Snapshots.withSnapshotReady((snapshot) => {
       const assets = [...snapshot.assets, ...serializedAssets].map<ZigAsset>(toZigAsset)
+
       Logic.setSnapshot({ ...snapshot, assets }, true)
       triggerGeneratePreview()
     })
@@ -253,13 +254,14 @@ export default async function initCreator(
 
   const setSnapshot: CreatorAPI['setSnapshot'] = async (snapshot, withSnapshot) => {
     const assets = snapshot.assets.map<ZigAsset>(toZigAsset)
+
     Logic.setSnapshot({ ...snapshot, assets }, withSnapshot)
     triggerGeneratePreview()
   }
 
   return {
     addImages,
-    removeAsset: Logic.removeAsset,
+    removeAsset: () => Logic.removeAsset,
     setSnapshot,
     destroy: () => {
       isDestroyed = true

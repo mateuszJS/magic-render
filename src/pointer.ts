@@ -239,10 +239,16 @@ export default function initMouseController(
         document.activeElement?.tagName === 'INPUT' ||
         document.activeElement?.tagName === 'TEXTAREA'
 
+      if (event.key === 'Alt') {
+        // alt is the only key that works even if user is focused in an text area
+        mouseMode = MouseMode.Zoom
+        return
+      }
+
+      if (isInputFocused) return
+
       switch (event.key) {
         case ' ':
-          if (isInputFocused) return
-
           if (mouseMode !== MouseMode.Pan) {
             canvas.style.cursor = 'grab'
             mouseMode = MouseMode.Pan
@@ -258,8 +264,6 @@ export default function initMouseController(
           // case '+':
           // Zoom in with Ctrl/Cmd + Plus
 
-          if (isInputFocused) return
-
           if (event.ctrlKey || event.metaKey) {
             event.preventDefault()
             const centerX = pointer.x !== OUTSIDE_CANVAS ? pointer.x : canvas.width / 2
@@ -270,8 +274,6 @@ export default function initMouseController(
         case '-':
           // case '_':
           // Zoom out with Ctrl/Cmd/Shift + Minus
-
-          if (isInputFocused) return
 
           if (event.ctrlKey || event.metaKey || event.shiftKey) {
             event.preventDefault()

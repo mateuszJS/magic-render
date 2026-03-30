@@ -62,6 +62,26 @@ async function test() {
     window.localStorage.setItem('lastSnapshot', JSON.stringify(snapshot))
   }
 
+  function updatePropsPanels() {
+    const selectedAsset = getLastSnapshot().assets.find((asset) => asset.id === selectedAssetId)
+
+    if (selectedAsset) {
+      assetBoundsTextarea.value = JSON.stringify(selectedAsset.bounds, null, 2)
+
+      if ('props' in selectedAsset) {
+        console.log('selectedAsset.props', selectedAsset.props)
+        assetPropertiesTextarea.value = JSON.stringify(selectedAsset.props, null, 2)
+      }
+
+      if ('content' in selectedAsset) {
+        sharedTextEffects.style.display = 'block'
+        sharedTextEffects.checked = selectedAsset.typo_props.is_sdf_shared
+      } else {
+        sharedTextEffects.style.display = 'none'
+      }
+    }
+  }
+
   let currentHistoryIndex = 0
   let newTextures = 0
   let selectedAssetId = 0
@@ -81,14 +101,7 @@ async function test() {
     (snapshot, commit) => {
       setLastSnapshot(snapshot)
 
-      const selectedAsset = snapshot.assets.find((asset) => asset.id === selectedAssetId)
-
-      if (selectedAsset) {
-        assetBoundsTextarea.value = JSON.stringify(selectedAsset.bounds, null, 2)
-        if ('props' in selectedAsset) {
-          assetPropertiesTextarea.value = JSON.stringify(selectedAsset.props, null, 2)
-        }
-      }
+      updatePropsPanels()
 
       if (!commit) return
 
@@ -99,19 +112,11 @@ async function test() {
       }
       assetsUpdatesHistory.push(snapshot)
       currentHistoryIndex = assetsUpdatesHistory.length - 1
-      console.log(snapshot)
     },
     (assetId) => {
       selectedAssetEl.textContent = assetId.toString()
       selectedAssetId = assetId[0]
-
-      window.getLastSnapshot().assets.some((asset) => {
-        if (asset.id === selectedAssetId && 'content' in asset) {
-          sharedTextEffects.checked = asset.typo_props.is_sdf_shared
-          return true
-        }
-        return false
-      })
+      updatePropsPanels()
     },
     (inProgress) => {
       isProcessingEventsEl.textContent = inProgress ? 'true' : 'false'
@@ -238,6 +243,7 @@ async function test() {
 
       return asset
     })
+
     creator.setSnapshot(
       {
         ...getLastSnapshot(),
@@ -252,6 +258,7 @@ async function test() {
     const formData = new FormData(assetPropsForm)
     try {
       const newProps = JSON.parse(formData.get('code') as string)
+
       creator.updateAssetProps(newProps, true)
     } catch (e) {
       alert('Cannot parse JSON: ' + (e as Error).message)
