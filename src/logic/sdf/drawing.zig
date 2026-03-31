@@ -374,14 +374,8 @@ pub fn getSdfTextureDims(
     scale: f32,
     sdf_rounding_err: Point,
 } {
-    shared.texture_max_size = 20;
-    // var loss_ratio: f32 = getRatioPxPerSdfTexel(bounds);
-    // if (combine_sdf) {
-    //     loss_ratio = @max(1, loss_ratio * getCombineSdfRatio());
-    // }
+    // shared.texture_max_size = 20;
 
-    // loss_ratio = 1;
-    // _ = additional_scale;
     const scale = additional_scale / (shared.render_scale * loss_factor);
     const bounds_with_padding = getBoundsWithPadding(
         bounds,

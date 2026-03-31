@@ -397,6 +397,34 @@ pub const Shape = struct {
         return points;
     }
 
+    pub fn getDrawBounds(self: Shape) [6]PointUV {
+        // shape.sdf_size includes effects padding, safety padding and rounding error
+        // to be able to compare them(obtain scale) together we have to calculate
+        // world size -> bounds size + effects padding
+        // sdf size -> shape.sdf_size - effects padding - rounding error
+
+        const effects_padding_world = sdf_drawing.getSdfPadding(self.effects.items, 1);
+        const world_width = self.bounds[0].distance(self.bounds[1]) + 2 * effects_padding_world;
+
+        // We assume all sdf texture keeps aspect ratio, just sdf_rounding_err breakes their aspect ratio
+
+        const sdf_world_width = self.sdf_size.w - (2 * consts.SDF_SAFE_PADDING + self.sdf_rounding_err.x);
+        const scale_world_vs_sdf = world_width / sdf_world_width;
+        const padding_world = effects_padding_world + consts.SDF_SAFE_PADDING * scale_world_vs_sdf;
+
+        const scaled_sdf_round_err = Point{
+            .x = self.sdf_rounding_err.x * scale_world_vs_sdf,
+            .y = self.sdf_rounding_err.y * scale_world_vs_sdf,
+        };
+
+        return sdf_drawing.getDrawBoundsWorld(
+            self.bounds,
+            padding_world,
+            self.getFilterMargin(),
+            scaled_sdf_round_err,
+        );
+    }
+
     pub fn getPickBounds(self: Shape) [6]images.PickVertex {
         const bounds = sdf_drawing.getDrawBounds(self.bounds, self.sdf_texture_padding, null);
         var buffer: [6]images.PickVertex = undefined;

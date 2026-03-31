@@ -169,15 +169,15 @@ pub fn updateRenderScale(zoom: f32, pixel_density: f32) !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
+                const loss = sdf_drawing.getRatioPxPerSdfTexel(shape.bounds);
+                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, loss);
                 const new_sdf_dims = sdf_drawing.getSdfTextureDims(
                     shape.bounds,
-                    shape.sdf_texture_padding,
-                    sdf_drawing.getRatioPxPerSdfTexel(shape.bounds),
+                    sdf_padding,
+                    loss,
                     1.0,
                 );
-                // std.debug.print("shared.render_scale {d}\n", .{shared.render_scale});
-                // std.debug.print("real new width {d}\n", .{new_sdf_dims.size.w});
-                // std.debug.print("current width {d}\n", .{shape.sdf_size.w});
+
                 if (new_sdf_dims.size.w > shape.sdf_size.w + consts.EPSILON or
                     new_sdf_dims.size.h > shape.sdf_size.h + consts.EPSILON)
                 {
@@ -396,7 +396,7 @@ fn createText(x: f32, y: f32) !texts.Text {
     };
 
     const typo_props = typography_props.Serialized{
-        .font_size = 10,
+        .font_size = 200,
         .font_family_id = 0,
         .line_height = 1.2,
         .is_sdf_shared = true,
@@ -404,7 +404,7 @@ fn createText(x: f32, y: f32) !texts.Text {
 
     return try addText(
         id,
-        "Type here",
+        "w",
         bounds,
         asset_props.Props{},
         effects,
@@ -918,12 +918,11 @@ pub fn computeSdfs() !void {
                 if (option_points) |points| {
                     const loss = sdf_drawing.getRatioPxPerSdfTexel(shape.bounds);
                     const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, loss);
-                    // TODO: geenrate 20% bigger
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         shape.bounds,
                         sdf_padding,
                         loss,
-                        1.0,
+                        1.2,
                     );
 
                     shape.sdf_size = sdf_dims.size;
@@ -1043,10 +1042,10 @@ pub fn updateCache() void {
                         break :b id;
                     };
 
-                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, 1);
+                    const padding_world = sdf_drawing.getSdfPadding(shape.effects.items, 1);
                     const bounds = sdf_drawing.getBoundsWithPadding(
                         shape.bounds,
-                        sdf_padding,
+                        padding_world,
                         1 / shared.render_scale,
                         // WARNING: here 1px safety padding changes into 1/shared.render_scale
                         shape.getFilterMargin(),
@@ -1155,43 +1154,17 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 web_gpu_programs.draw_texture(&vertex_data, img.texture_id);
             },
             .shape => |*shape| {
-                // shape.sdf_size includes effects padding, safety padding and rounding error
-                // to be able to compare them(obtain scale) together we have to calculate
-                // world size -> bounds size + effects padding
-                // sdf size -> shape.sdf_size - effects padding - rounding error
-
-                const effects_padding_world = sdf_drawing.getSdfPadding(shape.effects.items, 1);
-                const world_width = shape.bounds[0].distance(shape.bounds[1]) + 2 * effects_padding_world;
-
-                // We assume all sdf texture keeps aspect ratio, just sdf_rounding_err breakes their aspect ratio
-
-                const sdf_world_width = shape.sdf_size.w - (2 * consts.SDF_SAFE_PADDING + shape.sdf_rounding_err.x);
-                const scale_world_vs_sdf = world_width / sdf_world_width;
-                const padding_world = effects_padding_world + consts.SDF_SAFE_PADDING * scale_world_vs_sdf;
-
-                const scaled_sdf_round_err = types.Point{
-                    .x = shape.sdf_rounding_err.x * scale_world_vs_sdf,
-                    .y = shape.sdf_rounding_err.y * scale_world_vs_sdf,
-                };
-
                 if (shape.cache_texture_id) |cache_texture_id| {
+                    const bounds = shape.getDrawBounds();
                     web_gpu_programs.draw_texture(
-                        &sdf_drawing.getDrawBounds(
-                            shape.bounds,
-                            shape.sdf_texture_padding,
-                            shape.getFilterMargin(),
-                        ),
+                        &bounds,
                         cache_texture_id,
                     );
                 } else {
+                    const bounds = shape.getDrawBounds();
                     for (shape.effects.items) |effect| {
                         web_gpu_programs.draw_shape(
-                            &sdf_drawing.getDrawBoundsWorld(
-                                shape.bounds,
-                                padding_world,
-                                shape.getFilterMargin(),
-                                scaled_sdf_round_err,
-                            ),
+                            &bounds,
                             shape.getDrawUniform(effect),
                             shape.sdf_texture_id,
                         );
