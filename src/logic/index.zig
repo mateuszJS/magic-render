@@ -823,7 +823,7 @@ fn requestCharsSdfs() !void {
             .img => {},
             .shape => {},
             .text => |*text| {
-                if (!text.is_sdf_outdated) continue;
+                // if (!text.is_sdf_outdated) continue;
 
                 if (!fonts.fonts.contains(text.typo_props.font_family_id)) {
                     continue;
@@ -833,12 +833,27 @@ fn requestCharsSdfs() !void {
 
                 for (text.text_vertex.items) |vertex| {
                     if (vertex.char) |char| {
+                        std.debug.print("requyesting chars {u} {d}\n", .{ char, char });
                         const ch_d = try fonts.get(text.typo_props.font_family_id, char);
 
-                        ch_d.request_size(
-                            text.typo_props.font_size,
-                            padding,
-                        );
+                        if (ch_d.sdf_texture_id != null) {
+                            // NOTE: we coudl also comapre texture sizes liek for Shapes,
+                            // but it is be too expensive for chars (due to volume)
+
+                            // const loss = sdf_drawing.getRatioPxPerSdfTexel(shape.bounds);
+                            // const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, loss);
+                            // const sdf_dims = sdf_drawing.getSdfTextureDims(
+                            //     shape.bounds,
+                            //     sdf_padding,
+                            //     loss,
+                            //     1.2,
+                            // );
+
+                            ch_d.request_size(
+                                text.typo_props.font_size,
+                                padding,
+                            );
+                        }
                     }
                 }
             },
@@ -864,38 +879,76 @@ pub fn computeSdfs() !void {
 
             if (ch_d.sdf_texture_id) |sdf_texture_id| {
                 if (!ch_d.outdated_sdf) continue;
-                const font_size = ch_d.max_font_size;
+
+                const font_size = ch_d.max_requested_viewport_font_size;
+                // const font_size = ch_d.max_font_size;
                 const ch_w = font_size * ch_d.width;
                 const ch_h = font_size * ch_d.height;
 
+                std.debug.print("font_size {d}, ch_h {d}\n", .{ font_size, ch_h });
+
                 const bounds = utils.createBounds(ch_w, ch_h);
                 const padding = font_size * ch_d.*.max_ratio_padding_to_font_size;
+
+                const loss = sdf_drawing.getRatioPxPerSdfTexel(bounds);
                 const sdf_dims = sdf_drawing.getSdfTextureDims(
                     bounds,
                     padding,
-                    1.0,
+                    loss,
                     1.0,
                 );
-                ch_d.sdf_scale = sdf_dims.scale;
-                // max requested size is not actual generated(like real_viewport_font_size below is)
-                // it's max requested size in viewport coords to avoid re-requesting same size again
-                const real_viewport_font_size = font_size * ch_d.sdf_scale;
 
-                const viewport_padding = padding * sdf_dims.scale;
+                ch_d.sdf_size = sdf_dims.size;
+                ch_d.sdf_scale = sdf_dims.scale;
+
+                ch_d.sdf_texture_padding = padding * ch_d.sdf_scale;
+                ch_d.sdf_rounding_err = sdf_dims.sdf_rounding_err;
+
                 const points = try allocator.dupe(types.Point, ch_d.points);
 
                 for (points) |*point| {
-                    if (path_utils.isStraightLineHandle(point.*)) continue;
-                    point.x = (point.x * real_viewport_font_size) + viewport_padding;
-                    point.y = (point.y * real_viewport_font_size) + viewport_padding;
+                    point.x *= font_size * ch_d.sdf_scale;
+                    point.y *= font_size * ch_d.sdf_scale;
+
+                    point.x += consts.SDF_SAFE_PADDING + ch_d.sdf_texture_padding;
+                    point.y += consts.SDF_SAFE_PADDING + ch_d.sdf_texture_padding;
                 }
 
                 web_gpu_programs.compute_shape(
                     points,
-                    @intFromFloat(sdf_dims.size.w),
-                    @intFromFloat(sdf_dims.size.h),
+                    @intFromFloat(ch_d.sdf_size.w),
+                    @intFromFloat(ch_d.sdf_size.h),
                     sdf_texture_id,
                 );
+
+                // const bounds = utils.createBounds(ch_w, ch_h);
+                // const padding = font_size * ch_d.*.max_ratio_padding_to_font_size;
+                // const sdf_dims = sdf_drawing.getSdfTextureDims(
+                //     bounds,
+                //     padding,
+                //     1.0,
+                //     1.0,
+                // );
+                // ch_d.sdf_scale = sdf_dims.scale;
+                // // max requested size is not actual generated(like real_viewport_font_size below is)
+                // // it's max requested size in viewport coords to avoid re-requesting same size again
+                // const real_viewport_font_size = font_size * ch_d.sdf_scale;
+
+                // const viewport_padding = padding * sdf_dims.scale;
+                // const points = try allocator.dupe(types.Point, ch_d.points);
+
+                // for (points) |*point| {
+                //     if (path_utils.isStraightLineHandle(point.*)) continue;
+                //     point.x = (point.x * real_viewport_font_size) + viewport_padding;
+                //     point.y = (point.y * real_viewport_font_size) + viewport_padding;
+                // }
+
+                // web_gpu_programs.compute_shape(
+                //     points,
+                //     @intFromFloat(sdf_dims.size.w),
+                //     @intFromFloat(sdf_dims.size.h),
+                //     sdf_texture_id,
+                // );
 
                 ch_d.outdated_sdf = false;
                 // break :outer;
@@ -932,6 +985,8 @@ pub fn computeSdfs() !void {
                     shape.sdf_rounding_err = sdf_dims.sdf_rounding_err;
 
                     for (points) |*point| {
+                        if (path_utils.isStraightLineHandle(point.*)) continue;
+
                         point.x *= shape.sdf_scale;
                         point.y *= shape.sdf_scale;
 
@@ -1212,7 +1267,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                             if (ch_d.sdf_texture_id) |sdf_texture_id| {
                                 for (text.effects.items) |effect| {
                                     const bounds = vertex.getBoundsVertex(text.typo_props.font_size * ch_d.max_ratio_padding_to_font_size, matrix);
-                                    const char_sdf_viewport_font_size = ch_d.max_font_size * ch_d.sdf_scale;
+                                    const char_sdf_viewport_font_size = ch_d.max_requested_viewport_font_size * ch_d.sdf_scale;
                                     const sdf_scale = char_sdf_viewport_font_size / text.typo_props.font_size;
 
                                     web_gpu_programs.draw_shape(

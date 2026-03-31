@@ -20,6 +20,7 @@ pub fn get(font_id: u32, c: u21) !*chars.Details {
         const char = js_glue.getCharData(font_id, c);
 
         const d = try std.heap.page_allocator.create(chars.Details);
+        std.debug.print("NEW DETIAILS {u} {d} {?}\n", .{ c, c, char.sdf_texture_id });
         d.* = chars.Details{
             .sdf_texture_id = char.sdf_texture_id,
             .x = char.x,

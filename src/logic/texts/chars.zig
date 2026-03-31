@@ -3,6 +3,7 @@ const Point = @import("../types.zig").Point;
 const shared = @import("../shared.zig");
 const consts = @import("../consts.zig");
 const utils = @import("../utils.zig");
+const TextureSize = @import("../texture_size.zig").TextureSize;
 
 const MIN_SDF_FONT_SIZE = 50; // below that we lose too many details
 // in SDF textures
@@ -23,24 +24,30 @@ pub const Details = struct {
     // It's due to the fact char's sdf is used for multiple cases at once
     // so there is no one world case size to use
     // so sdf_scale is always 1 expect fact when sdf texture hits max size!
+    sdf_size: TextureSize = .{ .w = 0, .h = 0 },
+    sdf_texture_padding: f32 = 0,
+    sdf_rounding_err: Point = .{ .x = 0, .y = 0 },
 
-    max_requested_world_font_size: f32 = 0,
-    max_font_size: f32 = 0,
+    max_requested_viewport_font_size: f32 = 0,
+    // max_font_size: f32 = 0,
     max_ratio_padding_to_font_size: f32 = 0,
 
-    pub fn request_size(self: *Details, font_size: f32, raw_effect_padding: f32) void {
-        const next_ep = raw_effect_padding;
-
-        if (consts.EPSILON + self.max_ratio_padding_to_font_size < next_ep / font_size) {
-            self.max_ratio_padding_to_font_size = next_ep / font_size;
+    pub fn request_size(self: *Details, font_size: f32, effect_padding: f32) void {
+        if (consts.EPSILON + self.max_ratio_padding_to_font_size < effect_padding / font_size) {
+            self.max_ratio_padding_to_font_size = effect_padding / font_size;
             self.outdated_sdf = true;
         }
 
-        const viewport_font_size = font_size / shared.render_scale;
-        const next_fs = utils.getNextStep(MIN_SDF_FONT_SIZE, viewport_font_size);
-        if (next_fs > self.max_requested_world_font_size + consts.EPSILON) {
-            self.max_requested_world_font_size = next_fs;
-            self.max_font_size = next_fs * shared.render_scale;
+        const font_size_world = font_size / shared.render_scale;
+        const next_font_size = utils.getNextStep(MIN_SDF_FONT_SIZE, font_size_world);
+        if (next_font_size > self.max_requested_viewport_font_size + consts.EPSILON) {
+            std.debug.print("debug: {d} {d} {d}\n", .{
+                font_size,
+                shared.render_scale,
+                next_font_size,
+            });
+            self.max_requested_viewport_font_size = next_font_size;
+            // self.max_font_size = next_font_size * shared.render_scale; // I don't think it's needed
             self.outdated_sdf = true;
         }
     }

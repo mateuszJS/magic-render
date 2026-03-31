@@ -135,6 +135,7 @@ pub fn getDrawUniform(sdf_effect: Effect, sdf_scale: f32, opacity: f32) DrawUnif
 }
 
 pub fn getSdfPadding(effects: []Effect, loss: f32) f32 {
+    _ = loss;
     var padding: f32 = SKELETON_LINE_WIDTH / 2; // at least 1, without fwidth fix
     // because of skeleton render, we cannot od less than zero
 
@@ -144,11 +145,6 @@ pub fn getSdfPadding(effects: []Effect, loss: f32) f32 {
         }
         padding = @max(padding, -effect.dist_end);
     }
-
-    _ = loss;
-    // padding += 1.0; // idk why 4, lower valeus still cuase bleed,
-    // maybe it's indirectional effect of because of multisampling of 4?
-    // 4 texels to stop bleeding texture
 
     return padding;
 }
@@ -324,7 +320,7 @@ pub fn getCombineSdfRatio() f32 {
 pub fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
     const max_dim = @max(bounds[0].distance(bounds[1]), bounds[0].distance(bounds[3]));
     const viewport_size = max_dim / shared.render_scale;
-
+    std.debug.print("shared.pixel_density {d}\n", .{shared.pixel_density});
     if (shared.pixel_density + consts.EPSILON >= 3.0) {
         // tested on retina screen, 3 device px per 1 CSS pixel
         // https://quickchart.io/chart?c=%7B%22type%22%3A%22scatter%22%2C%22data%22%3A%7B%22datasets%22%3A%5B%7B%22label%22%3A%220.65sqrt(x)-1.9%22%2C%22data%22%3A%5B%7B%22x%22%3A0%2C%22y%22%3A-1.9%7D%2C%7B%22x%22%3A50%2C%22y%22%3A2.7%7D%2C%7B%22x%22%3A100%2C%22y%22%3A4.6%7D%2C%7B%22x%22%3A150%2C%22y%22%3A6.1%7D%2C%7B%22x%22%3A200%2C%22y%22%3A7.3%7D%2C%7B%22x%22%3A250%2C%22y%22%3A8.4%7D%2C%7B%22x%22%3A300%2C%22y%22%3A9.4%7D%2C%7B%22x%22%3A350%2C%22y%22%3A10.3%7D%5D%2C%22showLine%22%3Atrue%2C%22pointRadius%22%3A0%2C%22borderColor%22%3A%22blue%22%7D%2C%7B%22label%22%3A%22target+points%22%2C%22data%22%3A%5B%7B%22x%22%3A33%2C%22y%22%3A2%7D%2C%7B%22x%22%3A75%2C%22y%22%3A4%7D%2C%7B%22x%22%3A175%2C%22y%22%3A6%7D%2C%7B%22x%22%3A235%2C%22y%22%3A8%7D%2C%7B%22x%22%3A300%2C%22y%22%3A10%7D%5D%2C%22pointRadius%22%3A6%2C%22backgroundColor%22%3A%22red%22%7D%5D%7D%7D
@@ -344,6 +340,8 @@ pub fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
         // 210 -> 6
         // 120 -> 4
         //  40 -> 2
+        // return 20;
+        // std.debug.print("22222222", .{});
         return @max(1, 0.026 * viewport_size + 0.9);
     } else {
         // std.debug.print("viewport_size {d}\n", .{viewport_size});
@@ -355,8 +353,9 @@ pub fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
         // 280 -> 6
         // 180 -> 4
         //  86 -> 2
+        std.debug.print("11111111", .{});
 
-        return 20;
+        return 1;
         // return @max(1, 0.53 * @sqrt(viewport_size) - 3);
     }
 }
@@ -427,4 +426,78 @@ pub fn getSdfTextureDims(
             .y = sdf_round_size.h - sdf_size.h,
         },
     };
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+// Axis-aligned rectangle bounds helper.
+// bounds[0]=bottom-left, [1]=bottom-right, [2]=top-right, [3]=top-left
+fn testBounds(w: f32, h: f32) [4]PointUV {
+    return [4]PointUV{
+        .{ .x = 0, .y = 0, .u = 0, .v = 0 },
+        .{ .x = w, .y = 0, .u = 1, .v = 0 },
+        .{ .x = w, .y = h, .u = 1, .v = 1 },
+        .{ .x = 0, .y = h, .u = 0, .v = 1 },
+    };
+}
+
+// Happy path — no limits hit.
+// bounds 100×50, padding=2, loss=1, additional_scale=1, render_scale=1
+// Expected (traced by hand):
+//   bounds_with_padding: 104×54
+//   sdf_safe_size: (ceil(104)+2) × (ceil(54)+2) = 106×56
+//   sdf_scale: 104/104 = 1.0
+test "getSdfTextureDims - happy path" {
+    shared.render_scale = 1.0;
+    shared.texture_max_size = 1000.0;
+    shared.max_buffer_size = 1e12;
+
+    const result = getSdfTextureDims(testBounds(100, 50), 2.0, 1.0, 1.0);
+
+    try std.testing.expectEqual(@as(f32, 106), result.size.w);
+    try std.testing.expectEqual(@as(f32, 56), result.size.h);
+    try std.testing.expectApproxEqAbs(@as(f32, 1.0), result.scale, 1e-4);
+}
+
+// texture_max_size hit — 200×100 bounds exceed max_size=20.
+// Expected (traced by hand):
+//   bounds_with_padding: 204×104
+//   desired_size after get_allowed_size: 20×10.196  (scale = 20/204)
+//   sdf_budget = 17, sdf_over = 20/17 → sdf_size = 17×8.666
+//   sdf_safe_size: (ceil(17)+2) × (ceil(8.666)+2) = 19×11  ← both ≤ 20
+test "getSdfTextureDims - capped by texture_max_size" {
+    shared.render_scale = 1.0;
+    shared.texture_max_size = 20.0;
+    shared.max_buffer_size = 1e12;
+
+    const result = getSdfTextureDims(testBounds(200, 100), 2.0, 1.0, 1.0);
+
+    try std.testing.expectEqual(@as(f32, 19), result.size.w);
+    try std.testing.expectEqual(@as(f32, 11), result.size.h);
+    // Must not exceed the declared max
+    try std.testing.expect(result.size.w <= 20.0);
+    try std.testing.expect(result.size.h <= 20.0);
+    // Aspect ratio 2:1 should be roughly preserved (w wider than h)
+    try std.testing.expect(result.size.w > result.size.h);
+}
+
+// max_buffer_size hit — 200×200 square exceeds buffer limit.
+// max_buffer_size = 40000 bytes → max_pixels = 2500 → cap ≈ 12.25×12.25
+// Expected (traced by hand):
+//   bounds_with_padding: 204×204
+//   get_allowed_sdf_size: ratio = 2500/41616 → size ≈ 12.255×12.255
+//   sdf_safe_size: (ceil(12.255)+2) × (ceil(12.255)+2) = 15×15
+test "getSdfTextureDims - capped by max_buffer_size" {
+    shared.render_scale = 1.0;
+    shared.texture_max_size = 1000.0;
+    shared.max_buffer_size = 40000.0;
+
+    const result = getSdfTextureDims(testBounds(200, 200), 2.0, 1.0, 1.0);
+
+    try std.testing.expectEqual(@as(f32, 15), result.size.w);
+    try std.testing.expectEqual(@as(f32, 15), result.size.h);
+    // Square bounds → square output (aspect ratio preserved)
+    try std.testing.expectEqual(result.size.w, result.size.h);
+    // Well under uncapped size of ~206×206
+    try std.testing.expect(result.size.w < 100.0);
 }

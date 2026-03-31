@@ -44,6 +44,7 @@ async function test() {
   const projectSizeForm = document.querySelector<HTMLFormElement>('#project-size-popover')!
   const xSlider = document.querySelector<HTMLInputElement>('#x-slider')!
   const fontFamilySelect = document.querySelector<HTMLSelectElement>('#font-family-select')!
+  const fontSizeInput = document.querySelector<HTMLInputElement>('#font-size-input')!
 
   const BLANK_SNAPSHOT = {
     width: 500,
@@ -82,6 +83,8 @@ async function test() {
       if ('content' in selectedAsset) {
         sharedTextEffects.style.display = 'block'
         sharedTextEffects.checked = selectedAsset.typo_props.is_sdf_shared
+        fontSizeInput.value = selectedAsset.typo_props.font_size.toString()
+        console.log(selectedAsset.typo_props.font_size)
       } else {
         sharedTextEffects.style.display = 'none'
       }
@@ -344,6 +347,42 @@ async function test() {
       {
         ...selectedAsset.typo_props,
         font_family_id: fontFamilyId,
+      },
+      true
+    )
+  })
+
+  fontSizeInput.addEventListener('input', () => {
+    const lastCommittedSnapshot = assetsUpdatesHistory[currentHistoryIndex]
+    const selectedAsset = lastCommittedSnapshot.assets.find((a) => a.id === selectedAssetId)
+
+    if (!selectedAsset || !('content' in selectedAsset)) {
+      console.error('No selected text asset found')
+      return
+    }
+
+    creator.updateAssetTypoProps(
+      {
+        ...selectedAsset.typo_props,
+        font_size: fontSizeInput.valueAsNumber,
+      },
+      false
+    )
+  })
+
+  fontSizeInput.addEventListener('blur', () => {
+    const lastCommittedSnapshot = assetsUpdatesHistory[currentHistoryIndex]
+    const selectedAsset = lastCommittedSnapshot.assets.find((a) => a.id === selectedAssetId)
+
+    if (!selectedAsset || !('content' in selectedAsset)) {
+      console.error('No selected text asset found')
+      return
+    }
+
+    creator.updateAssetTypoProps(
+      {
+        ...selectedAsset.typo_props,
+        font_size: fontSizeInput.valueAsNumber,
       },
       true
     )
