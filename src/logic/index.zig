@@ -169,14 +169,15 @@ pub fn updateRenderScale(zoom: f32, pixel_density: f32) !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
                 const new_sdf_dims = sdf_drawing.getSdfTextureDims(
                     shape.bounds,
-                    sdf_padding,
-                    false,
+                    shape.sdf_texture_padding,
+                    sdf_drawing.getRatioPxPerSdfTexel(shape.bounds),
                     1.0,
                 );
-
+                // std.debug.print("shared.render_scale {d}\n", .{shared.render_scale});
+                // std.debug.print("real new width {d}\n", .{new_sdf_dims.size.w});
+                // std.debug.print("current width {d}\n", .{shape.sdf_size.w});
                 if (new_sdf_dims.size.w > shape.sdf_size.w + consts.EPSILON or
                     new_sdf_dims.size.h > shape.sdf_size.h + consts.EPSILON)
                 {
@@ -184,11 +185,14 @@ pub fn updateRenderScale(zoom: f32, pixel_density: f32) !void {
                 }
             },
             .text => |*text| {
-                const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
+                if (!text.typo_props.is_sdf_shared) continue;
+
+                const combined_sdf_loss_factor = sdf_drawing.getRatioPxPerSdfTexel(text.bounds) * sdf_drawing.getCombineSdfRatio();
+                const text_padding = sdf_drawing.getSdfPadding(text.effects.items, combined_sdf_loss_factor);
                 const sdf_dims = sdf_drawing.getSdfTextureDims(
                     text.bounds,
                     text_padding,
-                    true,
+                    @max(1, combined_sdf_loss_factor),
                     1.0,
                 );
                 if (sdf_dims.size.w > text.last_sdf_dim_width + consts.EPSILON) {
@@ -825,7 +829,7 @@ fn requestCharsSdfs() !void {
                     continue;
                 }
 
-                const padding = sdf_drawing.getSdfPadding(text.effects.items);
+                const padding = sdf_drawing.getSdfPadding(text.effects.items, 1);
 
                 for (text.text_vertex.items) |vertex| {
                     if (vertex.char) |char| {
@@ -869,7 +873,7 @@ pub fn computeSdfs() !void {
                 const sdf_dims = sdf_drawing.getSdfTextureDims(
                     bounds,
                     padding,
-                    false,
+                    1.0,
                     1.0,
                 );
                 ch_d.sdf_scale = sdf_dims.scale;
@@ -909,26 +913,48 @@ pub fn computeSdfs() !void {
                 // also instead of ticks we can do (ticks + shape.id) to avoid making all updates at once
                 const do_update = shape.outdated_sdf or (shape.should_update_sdf and is_throttle_event);
                 if (!do_update) continue;
-
+                // std.debug.print("Updating SDF for shape {d}\n", .{shape.id});
                 const option_points = try shape.getRelativePoints(allocator);
                 if (option_points) |points| {
-                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+
+                    // 1. Calcualte texutre, include 1 texel of padding all around to add smooth edges.
+                    //    If texture hit any limits, we assume that 1 texel is alreayd barely visible
+                    //    and we do nto care about scaling it propotionally(desired tex size / max limit tex size)
+                    const loss = sdf_drawing.getRatioPxPerSdfTexel(shape.bounds);
+                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, loss);
                     // TODO: geenrate 20% bigger
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         shape.bounds,
                         sdf_padding,
-                        false,
+                        loss,
                         1.0,
                     );
+                    // std.debug.print("shared.render_scale {d}\n", .{shared.render_scale});
                     shape.sdf_size = sdf_dims.size;
                     shape.sdf_scale = sdf_dims.scale;
 
-                    for (points) |*point| {
-                        point.x += sdf_padding;
-                        point.y += sdf_padding;
+                    shape.sdf_texture_padding = sdf_padding * shape.sdf_scale;
+                    shape.sdf_rounding_err = sdf_dims.sdf_rounding_err;
 
+                    // std.debug.print(
+                    //     "Assign shape SDF width {d}\n",
+                    //     .{shape.sdf_size.w},
+                    // );
+                    // std.debug.print(
+                    //     "sdf_padding {d}, sdf_texture_padding {d}\n",
+                    //     .{ sdf_padding, shape.sdf_texture_padding },
+                    // );
+                    // std.debug.print(
+                    //     "scale {d}\n",
+                    //     .{shape.sdf_scale},
+                    // );
+
+                    for (points) |*point| {
                         point.x *= shape.sdf_scale;
                         point.y *= shape.sdf_scale;
+
+                        point.x += 1 + shape.sdf_texture_padding;
+                        point.y += 1 + shape.sdf_texture_padding;
                     }
 
                     web_gpu_programs.compute_shape(
@@ -953,14 +979,19 @@ pub fn computeSdfs() !void {
                     }
 
                     const text_sdf_texture_id = text.getSdfTextureId();
-                    const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
+                    const loss = sdf_drawing.getRatioPxPerSdfTexel(text.bounds) * sdf_drawing.getCombineSdfRatio();
+                    const text_padding = sdf_drawing.getSdfPadding(text.effects.items, loss);
+                    std.debug.print("text_padding {d}\n", .{text_padding});
+
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         text.bounds,
                         text_padding,
-                        true,
+                        loss,
                         1.2,
                     );
-                    text.sdf_scale = sdf_dims.scale;
+                    text.sdf_scale = sdf_dims.scale; // this is so wrong
+                    std.debug.print("text.sdf_scale {d}\n", .{text.sdf_scale});
+                    // scale uncludes padding already, yet we add padding later anyway
 
                     const bounds_height = text.bounds[0].distance(text.bounds[3]);
 
@@ -987,13 +1018,13 @@ pub fn computeSdfs() !void {
                                 const start_y = bounds_height + vertex.relative_bounds[3].y - char_padding;
                                 const end_x = vertex.relative_bounds[1].x + char_padding;
                                 const end_y = bounds_height + vertex.relative_bounds[1].y + char_padding;
-
                                 const placement = Placement{
                                     .x = (text_padding + start_x) * text.sdf_scale,
                                     .y = (text_padding + start_y) * text.sdf_scale,
                                     .width = (end_x - start_x) * text.sdf_scale,
                                     .height = (end_y - start_y) * text.sdf_scale,
                                 };
+                                std.debug.print("placement {d}, {d}, {d}, {d}\n", .{ text_padding, text.sdf_scale, start_x, start_y });
 
                                 web_gpu_programs.combine_sdf(
                                     text_sdf_texture_id,
@@ -1029,7 +1060,7 @@ pub fn updateCache() void {
                         break :b id;
                     };
 
-                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, 1);
                     const bounds = sdf_drawing.getBoundsWithPadding(
                         shape.bounds,
                         sdf_padding,
@@ -1044,7 +1075,7 @@ pub fn updateCache() void {
                         blur,
                     );
 
-                    if (size.w < consts.MIN_TEXTURE_SIZE or size.h < consts.MIN_TEXTURE_SIZE) continue;
+                    // if (size.w < consts.MIN_TEXTURE_SIZE or size.h < consts.MIN_TEXTURE_SIZE) continue;
                     // just to make sure device.createTexture won't round number down to 0
                     shape.cache_scale = cache_scale;
 
@@ -1141,23 +1172,38 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 web_gpu_programs.draw_texture(&vertex_data, img.texture_id);
             },
             .shape => |*shape| {
-                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+                // const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
                 if (shape.cache_texture_id) |cache_texture_id| {
                     web_gpu_programs.draw_texture(
                         &sdf_drawing.getDrawBounds(
                             shape.bounds,
-                            sdf_padding,
+                            shape.sdf_texture_padding,
                             shape.getFilterMargin(),
                         ),
                         cache_texture_id,
                     );
                 } else {
                     for (shape.effects.items) |effect| {
+                        // shifts bounds by 1 texel
+                        const world_padding = sdf_drawing.getSdfPadding(shape.effects.items, 1);
+                        const world_width = shape.bounds[0].distance(shape.bounds[1]) + 2 * world_padding;
+
+                        // We assume all sclaing always keep aspect ratio(sdf_rounding_err is the one withotu aspect ratio)
+                        const sdf_world_width = shape.sdf_size.w - (2 + shape.sdf_rounding_err.x);
+                        const scale_world_vs_sdf = world_width / sdf_world_width;
+                        const safety_padding = 1.0 * scale_world_vs_sdf;
+
+                        const scaled_sdf_round_err = types.Point{
+                            .x = shape.sdf_rounding_err.x * scale_world_vs_sdf,
+                            .y = shape.sdf_rounding_err.y * scale_world_vs_sdf,
+                        };
+
                         web_gpu_programs.draw_shape(
-                            &sdf_drawing.getDrawBounds(
+                            &sdf_drawing.getDrawBoundsEnhanced(
                                 shape.bounds,
-                                sdf_padding,
+                                world_padding + safety_padding,
                                 shape.getFilterMargin(),
+                                scaled_sdf_round_err,
                             ),
                             shape.getDrawUniform(effect),
                             shape.sdf_texture_id,
@@ -1174,8 +1220,8 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
 
                 if (text.typo_props.is_sdf_shared) {
                     const text_sdf_texture_id = text.getSdfTextureId();
-
-                    const padding = sdf_drawing.getSdfPadding(text.effects.items);
+                    const loss = sdf_drawing.getRatioPxPerSdfTexel(text.bounds) * sdf_drawing.getCombineSdfRatio();
+                    const padding = sdf_drawing.getSdfPadding(text.effects.items, loss);
                     for (text.effects.items) |effect| {
                         const text_bounds = sdf_drawing.getDrawBounds(
                             text.bounds,
@@ -1276,16 +1322,15 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
         const hover_point_id = state.hovered_asset_id;
 
         if (getSelectedShape()) |shape| {
-            const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
-            web_gpu_programs.draw_shape(
-                &sdf_drawing.getDrawBounds(
-                    shape.bounds,
-                    sdf_padding,
-                    null,
-                ),
-                shape.getSkeletonUniform(),
-                shape.sdf_texture_id,
-            );
+            // web_gpu_programs.draw_shape(
+            //     &sdf_drawing.getDrawBounds(
+            //         shape.bounds,
+            //         shape.sdf_texture_padding,
+            //         null,
+            //     ),
+            //     shape.getSkeletonUniform(),
+            //     shape.sdf_texture_id,
+            // );
 
             const hover_id = if (shape.id == hover_point_id.getPrim()) hover_point_id else null;
             const vertex_data = try shape.getSkeletonDrawVertexData(
@@ -1516,7 +1561,8 @@ pub fn setSelectedAssetEffects(serialized_effects: []const sdf_effect.Serialized
                 sdf_effect.deinit(text.effects);
                 text.effects = try sdf_effect.deserialize(serialized_effects, std.heap.page_allocator);
                 if (text.typo_props.is_sdf_shared) {
-                    const new_padding = sdf_drawing.getSdfPadding(text.effects.items);
+                    const loss = sdf_drawing.getRatioPxPerSdfTexel(text.bounds) * sdf_drawing.getCombineSdfRatio();
+                    const new_padding = sdf_drawing.getSdfPadding(text.effects.items, loss);
                     if (new_padding > text.last_sdf_padding) {
                         text.is_sdf_outdated = true;
                     }

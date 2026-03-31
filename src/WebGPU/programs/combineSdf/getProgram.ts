@@ -53,6 +53,7 @@ export default function getCombineSdf(device: GPUDevice) {
 
     const width = Math.max(0, Math.ceil(startX + sizeX) - Math.floor(startX))
     const height = Math.max(0, Math.ceil(startY + sizeY) - Math.floor(startY))
+
     passEncoder.dispatchWorkgroups(
       Math.ceil(width / WORKING_GROUP_SIZE[0]),
       Math.ceil(height / WORKING_GROUP_SIZE[1])

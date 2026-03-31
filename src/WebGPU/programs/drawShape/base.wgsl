@@ -25,7 +25,7 @@ struct VSOutput {
   let size = textureDimensions(texture);
   return VSOutput(
     camera_projection * vec4f(vert.position.xy, 0.0, 1.0),
-    vert.position.zw * vec2f(size),
+    vert.position.zw * (vec2f(size) + vec2f(0)),
     vert.position.zw,
   );
 }
@@ -34,10 +34,16 @@ fn getSample(pos: vec2f) -> vec4f {
   let floor_pos = floor(pos - 0.5);
   let fract_pos = pos - 0.5 - floor_pos;
 
-  let p00 = vec2u(floor_pos);
-  let p10 = vec2u(floor_pos + vec2f(1.0, 0.0));
-  let p01 = vec2u(floor_pos + vec2f(0.0, 1.0));
-  let p11 = vec2u(floor_pos + vec2f(1.0, 1.0));
+  let max_coord = vec2i(textureDimensions(texture)) - vec2i(1, 1);
+
+  // let p00 = vec2i(floor_pos)                   ;
+  // let p10 = vec2i(floor_pos + vec2f(1.0, 0.0));
+  // let p01 = vec2i(floor_pos + vec2f(0.0, 1.0));
+  // let p11 = vec2i(floor_pos + vec2f(1.0, 1.0));
+  let p00 = vec2u(clamp(vec2i(floor_pos),                   vec2i(0, 0), max_coord));
+  let p10 = vec2u(clamp(vec2i(floor_pos + vec2f(1.0, 0.0)), vec2i(0, 0), max_coord));
+  let p01 = vec2u(clamp(vec2i(floor_pos + vec2f(0.0, 1.0)), vec2i(0, 0), max_coord));
+  let p11 = vec2u(clamp(vec2i(floor_pos + vec2f(1.0, 1.0)), vec2i(0, 0), max_coord));
 
   let c00 = textureLoad(texture, p00);
   let c10 = textureLoad(texture, p10);
@@ -53,18 +59,29 @@ fn getSample(pos: vec2f) -> vec4f {
 
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
   // let sdf = textureLoad(texture, vec2u(vsOut.uv));
-  let sdf = getSample(vsOut.uv);
+  // let sdf = getSample(vsOut.uv);
+  let sdf = textureLoad(texture, vec2i(vsOut.uv));
+
+  if (sdf.r >= 0) {
+    return vec4f(1, 0, 0, 1);
+  } else {
+    return vec4f(0, 1, 0, 1);
+  }
 
   let dist_derivative = fwidth(sdf.r);
 
   let safe_dist_derivative = select(0.0, dist_derivative, dist_derivative <= FWIDTH_VALID_LIMIT); // if too large -> 0
-  let alpha_smooth_factor = max(safe_dist_derivative * 0.5, EPSILON);
+  let alpha_smooth_factor = 0.0; // max(safe_dist_derivative * 0.5, EPSILON);
 
   let inner_alpha = smoothstep(u.dist_start - alpha_smooth_factor, u.dist_start + alpha_smooth_factor, sdf.r);
   let outer_alpha = smoothstep(u.dist_end - alpha_smooth_factor, u.dist_end + alpha_smooth_factor, sdf.r);
   let alpha = outer_alpha - inner_alpha;
   let color = getColor(sdf, vsOut.uv, vsOut.norm_uv);
   let result = vec4f(color.rgb, color.a * alpha);
+
+  if (result.a < EPSILON) {
+    return vec4f(0.5);
+  }
 
   return result;
 

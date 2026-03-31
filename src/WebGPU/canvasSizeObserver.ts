@@ -49,4 +49,5 @@ export default function canvasSizeObserver(
   // observer calls it anyway but it just happens late enough that user see a flicker
   // it it just displayed for a brief second, so we don't play with devicePixelContentBoxSize or devicePixelRatio
   updateCanvasSize(canvas, canvas.clientWidth, canvas.clientHeight, device)
+  callback()
 }

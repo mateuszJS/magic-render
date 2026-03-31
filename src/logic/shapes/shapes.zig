@@ -56,18 +56,24 @@ pub const Shape = struct {
     sdf_scale: f32 = 1.0,
     outdated_sdf: bool, // if true, we need to recalculate SDF
     sdf_texture_id: u32,
+    sdf_size: TextureSize = .{ .w = 0, .h = 0 }, // stores the last size of computed sdf
+    // size without extra safety padding and rounding errors is:
+    // sdf_size - (2 texels + sdf_rounding_err)
+    // sdf_scale refers to that size without extra padding and rounding error
+
+    // useful only while updating scale to avoid unnecessary regenerations if size hasn't grown
+    sdf_texture_padding: f32 = 0.0,
     should_update_sdf: bool, // throttled update,
     // less important than outdated_sdf which triggers instantly
     // this one triggers update on the next throttle event
+
+    sdf_rounding_err: Point = .{ .x = 0.0, .y = 0.0 },
 
     cache_scale: f32 = 1.0,
     outdated_cache: bool,
     cache_texture_id: ?u32,
 
     preview_point: ?Point = null,
-
-    sdf_size: TextureSize = .{ .w = 0, .h = 0 }, // stores the last size of computed sdf
-    // useful only while updating scale to avoid unnecessary regenerations if size hasn't grown
 
     pub fn new(
         id: u32,
@@ -394,8 +400,7 @@ pub const Shape = struct {
     }
 
     pub fn getPickBounds(self: Shape) [6]images.PickVertex {
-        const sdf_padding = sdf_drawing.getSdfPadding(self.effects.items);
-        const bounds = sdf_drawing.getDrawBounds(self.bounds, sdf_padding, null);
+        const bounds = sdf_drawing.getDrawBounds(self.bounds, self.sdf_texture_padding, null);
         var buffer: [6]images.PickVertex = undefined;
         for (bounds, 0..) |b, i| {
             buffer[i] = .{

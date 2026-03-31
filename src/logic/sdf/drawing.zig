@@ -134,7 +134,7 @@ pub fn getDrawUniform(sdf_effect: Effect, sdf_scale: f32, opacity: f32) DrawUnif
     }
 }
 
-pub fn getSdfPadding(effects: []Effect) f32 {
+pub fn getSdfPadding(effects: []Effect, loss: f32) f32 {
     var padding: f32 = SKELETON_LINE_WIDTH / 2; // at least 1, without fwidth fix
     // because of skeleton render, we cannot od less than zero
 
@@ -145,7 +145,10 @@ pub fn getSdfPadding(effects: []Effect) f32 {
         padding = @max(padding, -effect.dist_end);
     }
 
-    padding += 1.0; // 1px guard for fwidth() smoothing & combine sdf sampling
+    _ = loss;
+    // padding += 1.0; // idk why 4, lower valeus still cuase bleed,
+    // maybe it's indirectional effect of because of multisampling of 4?
+    // 4 texels to stop bleeding texture
 
     return padding;
 }
@@ -203,6 +206,84 @@ pub fn getBoundsWithPadding(bounds: [4]PointUV, sdf_padding: f32, scale: f32, fi
     return buffer;
 }
 
+pub fn getBoundsWithPaddingEnhanced(
+    bounds: [4]PointUV,
+    sdf_padding: f32,
+    scale: f32,
+    filter_margin: ?Point,
+    tex_round_err: Point,
+) [4]PointUV {
+    var padding = Point{
+        .x = sdf_padding,
+        .y = sdf_padding,
+    };
+
+    if (filter_margin) |margin| {
+        padding.x += margin.x;
+        padding.y += margin.y;
+    }
+
+    const edge_x = Point{
+        .x = bounds[1].x - bounds[0].x,
+        .y = bounds[1].y - bounds[0].y,
+    };
+    const edge_y = Point{
+        .x = bounds[3].x - bounds[0].x,
+        .y = bounds[3].y - bounds[0].y,
+    };
+
+    const edge_x_len = edge_x.length();
+    const edge_y_len = edge_y.length();
+
+    const axis_x = Point{ .x = edge_x.x / edge_x_len, .y = edge_x.y / edge_x_len };
+    const axis_y = Point{ .x = edge_y.x / edge_y_len, .y = edge_y.y / edge_y_len };
+
+    const offset_x = Point{
+        .x = axis_x.x * padding.x,
+        .y = axis_x.y * padding.x,
+    };
+
+    const offset_y = Point{
+        .x = axis_y.x * padding.y,
+        .y = axis_y.y * padding.y,
+    };
+
+    var buffer: [4]PointUV = bounds;
+
+    buffer[0].x = (bounds[0].x - offset_x.x - offset_y.x) * scale;
+    buffer[0].y = (bounds[0].y - offset_x.y - offset_y.y) * scale + tex_round_err.y;
+
+    buffer[1].x = (bounds[1].x + offset_x.x - offset_y.x) * scale + tex_round_err.x;
+    buffer[1].y = (bounds[1].y + offset_x.y - offset_y.y) * scale + tex_round_err.y;
+
+    buffer[2].x = (bounds[2].x + offset_x.x + offset_y.x) * scale + tex_round_err.x;
+    buffer[2].y = (bounds[2].y + offset_x.y + offset_y.y) * scale;
+
+    buffer[3].x = (bounds[3].x - offset_x.x + offset_y.x) * scale;
+    buffer[3].y = (bounds[3].y - offset_x.y + offset_y.y) * scale;
+
+    return buffer;
+}
+
+pub fn getDrawBoundsEnhanced(bounds: [4]PointUV, sdf_padding: f32, filter_margin: ?Point, tex_round_err: Point) [6]PointUV {
+    const bounds_with_padding = getBoundsWithPaddingEnhanced(
+        bounds,
+        sdf_padding,
+        1,
+        filter_margin,
+        tex_round_err,
+    );
+    return [_]PointUV{
+        // first triangle
+        bounds_with_padding[0],
+        bounds_with_padding[1],
+        bounds_with_padding[2],
+        // second triangle
+        bounds_with_padding[2],
+        bounds_with_padding[3],
+        bounds_with_padding[0],
+    };
+}
 pub fn getDrawBounds(bounds: [4]PointUV, sdf_padding: f32, filter_margin: ?Point) [6]PointUV {
     const bounds_with_padding = getBoundsWithPadding(
         bounds,
@@ -224,22 +305,23 @@ pub fn getDrawBounds(bounds: [4]PointUV, sdf_padding: f32, filter_margin: ?Point
 
 // returns how much combine SDF ratio should be vs normal SDF
 // Combined SDFs need denser sampling
-fn getCombineSdfRatio() f32 {
+pub fn getCombineSdfRatio() f32 {
     if (shared.pixel_density + consts.EPSILON >= 3.0) {
         return 0.1;
     } else if (shared.pixel_density + consts.EPSILON >= 2.0) {
         return 0.02;
     } else {
-        return 0.5; // TEST it on non-retina
+        return 1; // TEST it on non-retina
     }
 }
 
-fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
+pub fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
     const max_dim = @max(bounds[0].distance(bounds[1]), bounds[0].distance(bounds[3]));
     const viewport_size = max_dim / shared.render_scale;
 
     if (shared.pixel_density + consts.EPSILON >= 3.0) {
         // tested on retina screen, 3 device px per 1 CSS pixel
+        // https://quickchart.io/chart?c=%7B%22type%22%3A%22scatter%22%2C%22data%22%3A%7B%22datasets%22%3A%5B%7B%22label%22%3A%220.65sqrt(x)-1.9%22%2C%22data%22%3A%5B%7B%22x%22%3A0%2C%22y%22%3A-1.9%7D%2C%7B%22x%22%3A50%2C%22y%22%3A2.7%7D%2C%7B%22x%22%3A100%2C%22y%22%3A4.6%7D%2C%7B%22x%22%3A150%2C%22y%22%3A6.1%7D%2C%7B%22x%22%3A200%2C%22y%22%3A7.3%7D%2C%7B%22x%22%3A250%2C%22y%22%3A8.4%7D%2C%7B%22x%22%3A300%2C%22y%22%3A9.4%7D%2C%7B%22x%22%3A350%2C%22y%22%3A10.3%7D%5D%2C%22showLine%22%3Atrue%2C%22pointRadius%22%3A0%2C%22borderColor%22%3A%22blue%22%7D%2C%7B%22label%22%3A%22target+points%22%2C%22data%22%3A%5B%7B%22x%22%3A33%2C%22y%22%3A2%7D%2C%7B%22x%22%3A75%2C%22y%22%3A4%7D%2C%7B%22x%22%3A175%2C%22y%22%3A6%7D%2C%7B%22x%22%3A235%2C%22y%22%3A8%7D%2C%7B%22x%22%3A300%2C%22y%22%3A10%7D%5D%2C%22pointRadius%22%3A6%2C%22backgroundColor%22%3A%22red%22%7D%5D%7D%7D
         // Retina loss - abouve thta not much improvements
         // 300 -> 10
         // 235 -> 8
@@ -258,6 +340,7 @@ fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
         //  40 -> 2
         return @max(1, 0.026 * viewport_size + 0.9);
     } else {
+        // std.debug.print("viewport_size {d}\n", .{viewport_size});
         // tested on non-retina screen, 1 device px per 1 CSS pixel
         // https://quickchart.io/chart?c=%7B%22type%22%3A%22scatter%22%2C%22data%22%3A%7B%22datasets%22%3A%5B%7B%22label%22%3A%220.53%E2%88%9Ax-3%22%2C%22data%22%3A%5B%7B%22x%22%3A0%2C%22y%22%3A-3%7D%2C%7B%22x%22%3A50%2C%22y%22%3A0.75%7D%2C%7B%22x%22%3A100%2C%22y%22%3A2.3%7D%2C%7B%22x%22%3A150%2C%22y%22%3A3.49%7D%2C%7B%22x%22%3A200%2C%22y%22%3A4.49%7D%2C%7B%22x%22%3A250%2C%22y%22%3A5.38%7D%2C%7B%22x%22%3A300%2C%22y%22%3A6.18%7D%2C%7B%22x%22%3A350%2C%22y%22%3A6.92%7D%2C%7B%22x%22%3A400%2C%22y%22%3A7.6%7D%2C%7B%22x%22%3A450%2C%22y%22%3A8.24%7D%2C%7B%22x%22%3A500%2C%22y%22%3A8.85%7D%2C%7B%22x%22%3A550%2C%22y%22%3A9.43%7D%2C%7B%22x%22%3A600%2C%22y%22%3A9.98%7D%2C%7B%22x%22%3A700%2C%22y%22%3A11.02%7D%5D%2C%22showLine%22%3Atrue%2C%22pointRadius%22%3A0%2C%22borderColor%22%3A%22blue%22%7D%2C%7B%22label%22%3A%22target+points%22%2C%22data%22%3A%5B%7B%22x%22%3A86%2C%22y%22%3A2%7D%2C%7B%22x%22%3A180%2C%22y%22%3A4%7D%2C%7B%22x%22%3A280%2C%22y%22%3A6%7D%2C%7B%22x%22%3A420%2C%22y%22%3A8%7D%2C%7B%22x%22%3A600%2C%22y%22%3A10%7D%5D%2C%22pointRadius%22%3A6%2C%22backgroundColor%22%3A%22red%22%7D%5D%7D%7D
         // loss - good enough, above that not much improvements(used as data for graph), really good:
@@ -266,14 +349,16 @@ fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
         // 280 -> 6
         // 180 -> 4
         //  86 -> 2
-        return @max(1, 0.53 * @sqrt(viewport_size) - 3);
+
+        return 20;
+        // return @max(1, 0.53 * @sqrt(viewport_size) - 3);
     }
 }
 
 pub fn getSdfTextureDims(
     bounds: [4]PointUV,
     sdf_padding: f32,
-    combine_sdf: bool,
+    loss_factor: f32,
     additional_scale: f32,
     // used to generate 20% bigger textures, so we won't need to regenerate
     // again texture while user is zooming in slowly (so would trigger
@@ -281,20 +366,29 @@ pub fn getSdfTextureDims(
 ) struct {
     size: texture_size.TextureSize,
     scale: f32,
+    sdf_rounding_err: Point,
 } {
-    var loss_ratio: f32 = getRatioPxPerSdfTexel(bounds);
-    if (combine_sdf) {
-        loss_ratio = @max(1, loss_ratio * getCombineSdfRatio());
-    }
+    // var loss_ratio: f32 = getRatioPxPerSdfTexel(bounds);
+    // if (combine_sdf) {
+    //     loss_ratio = @max(1, loss_ratio * getCombineSdfRatio());
+    // }
 
-    const scale = additional_scale / (shared.render_scale * loss_ratio);
+    // loss_ratio = 1;
+    // _ = additional_scale;
+    const scale = additional_scale / (shared.render_scale * loss_factor);
 
+    // The 1px fwidth guard in sdf_padding needs to remain 1 SDF texel after
+    // the scale reduction. 1 texel = 1/scale world units, so compensate the gap:
+    // const fwidth_compensation = (1.0 / scale) - 1.0;
     const bounds_with_padding = getBoundsWithPadding(
         bounds,
-        sdf_padding,
+        sdf_padding, // + fwidth_compensation,
         scale,
         null,
     );
+
+    // Here, we have to check if its allowed size BUT
+    // still handle 1 texel extra padding from each side!
 
     const desired_size = texture_size.get_allowed_size(
         bounds_with_padding[0].distance(bounds_with_padding[1]),
@@ -302,17 +396,24 @@ pub fn getSdfTextureDims(
     );
 
     const sdf_size = texture_size.get_allowed_sdf_size(desired_size);
+
+    const world_width = bounds_with_padding[0].distance(bounds_with_padding[1]) / scale;
+    // * shared.render_scale to revert to logical scale (without impact of camera/zoom)
+
+    const sdf_scale = sdf_size.w / world_width;
+    std.debug.print("sdf_scale {d}\n", .{sdf_scale});
+
     const sdf_safe_size = texture_size.TextureSize{
-        .w = @max(sdf_size.w, consts.MIN_TEXTURE_SIZE),
-        .h = @max(sdf_size.h, consts.MIN_TEXTURE_SIZE),
+        .w = @ceil(sdf_size.w) + 2, // 1 texel left and right bot safety
+        .h = @ceil(sdf_size.h) + 2, // 1 texel top and bottom for safety
     };
 
-    const init_width = bounds_with_padding[0].distance(bounds_with_padding[1]) / scale;
-    // * shared.render_scale to revert to logical scale (without impact of camera/zoom)
-    const sdf_scale = sdf_safe_size.w / init_width;
-
     return .{
-        .size = sdf_safe_size,
-        .scale = sdf_scale,
+        .size = sdf_safe_size, // rounded ceil size
+        .scale = sdf_scale, // scale taken before rounding
+        .sdf_rounding_err = Point{
+            .x = @ceil(sdf_size.w) - sdf_size.w,
+            .y = @ceil(sdf_size.h) - sdf_size.h,
+        },
     };
 }

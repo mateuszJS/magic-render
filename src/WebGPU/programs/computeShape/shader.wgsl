@@ -15,6 +15,9 @@ struct CubicBezier {
 @compute @workgroup_size($WORKING_GROUP_SIZE) fn cs(
   @builtin(global_invocation_id) id : vec3u
 )  {
+  let size = textureDimensions(tex);
+  if (id.x >= size.x || id.y >= size.y) {return;}
+
   let pos = vec2f(id.xy) + vec2f(0.5, 0.5);
   let shape_info = evaluate_shape(pos);
 
