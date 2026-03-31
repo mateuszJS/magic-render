@@ -1172,7 +1172,25 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 web_gpu_programs.draw_texture(&vertex_data, img.texture_id);
             },
             .shape => |*shape| {
-                // const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+                // shape.sdf_size includes effects padding, safety padding and rounding error
+                // to be able to compare them(obtain scale) together we have to calculate
+                // world size -> bounds size + effects padding
+                // sdf size -> shape.sdf_size - effects padding - rounding error
+
+                const effects_padding_world = sdf_drawing.getSdfPadding(shape.effects.items, 1);
+                const world_width = shape.bounds[0].distance(shape.bounds[1]) + 2 * effects_padding_world;
+
+                // We assume all sdf texture keeps aspect ratio(sdf_rounding_err is the one without the aspect ratio)
+
+                const sdf_world_width = shape.sdf_size.w - (2 + shape.sdf_rounding_err.x);
+                const scale_world_vs_sdf = world_width / sdf_world_width;
+                const padding_world = effects_padding_world + 1.0 * scale_world_vs_sdf;
+
+                const scaled_sdf_round_err = types.Point{
+                    .x = shape.sdf_rounding_err.x * scale_world_vs_sdf,
+                    .y = shape.sdf_rounding_err.y * scale_world_vs_sdf,
+                };
+
                 if (shape.cache_texture_id) |cache_texture_id| {
                     web_gpu_programs.draw_texture(
                         &sdf_drawing.getDrawBounds(
@@ -1184,24 +1202,10 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                     );
                 } else {
                     for (shape.effects.items) |effect| {
-                        // shifts bounds by 1 texel
-                        const world_padding = sdf_drawing.getSdfPadding(shape.effects.items, 1);
-                        const world_width = shape.bounds[0].distance(shape.bounds[1]) + 2 * world_padding;
-
-                        // We assume all sclaing always keep aspect ratio(sdf_rounding_err is the one withotu aspect ratio)
-                        const sdf_world_width = shape.sdf_size.w - (2 + shape.sdf_rounding_err.x);
-                        const scale_world_vs_sdf = world_width / sdf_world_width;
-                        const safety_padding = 1.0 * scale_world_vs_sdf;
-
-                        const scaled_sdf_round_err = types.Point{
-                            .x = shape.sdf_rounding_err.x * scale_world_vs_sdf,
-                            .y = shape.sdf_rounding_err.y * scale_world_vs_sdf,
-                        };
-
                         web_gpu_programs.draw_shape(
-                            &sdf_drawing.getDrawBoundsEnhanced(
+                            &sdf_drawing.getDrawBoundsWorld(
                                 shape.bounds,
-                                world_padding + safety_padding,
+                                padding_world,
                                 shape.getFilterMargin(),
                                 scaled_sdf_round_err,
                             ),

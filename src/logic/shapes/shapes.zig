@@ -56,10 +56,8 @@ pub const Shape = struct {
     sdf_scale: f32 = 1.0,
     outdated_sdf: bool, // if true, we need to recalculate SDF
     sdf_texture_id: u32,
-    sdf_size: TextureSize = .{ .w = 0, .h = 0 }, // stores the last size of computed sdf
-    // size without extra safety padding and rounding errors is:
-    // sdf_size - (2 texels + sdf_rounding_err)
-    // sdf_scale refers to that size without extra padding and rounding error
+    sdf_size: TextureSize = .{ .w = 0, .h = 0 },
+    // this is rounded size, with safety padding and rounding error included!
 
     // useful only while updating scale to avoid unnecessary regenerations if size hasn't grown
     sdf_texture_padding: f32 = 0.0,

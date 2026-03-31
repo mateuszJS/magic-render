@@ -251,12 +251,13 @@ pub fn getBoundsWithPaddingEnhanced(
     var buffer: [4]PointUV = bounds;
 
     buffer[0].x = (bounds[0].x - offset_x.x - offset_y.x) * scale;
-    buffer[0].y = (bounds[0].y - offset_x.y - offset_y.y) * scale + tex_round_err.y;
+    // I assume this -1 is related to texutre coordinate system, it just works
+    buffer[0].y = (bounds[0].y - offset_x.y - offset_y.y) * scale + tex_round_err.y * axis_y.y * -1;
 
-    buffer[1].x = (bounds[1].x + offset_x.x - offset_y.x) * scale + tex_round_err.x;
-    buffer[1].y = (bounds[1].y + offset_x.y - offset_y.y) * scale + tex_round_err.y;
+    buffer[1].x = (bounds[1].x + offset_x.x - offset_y.x) * scale + tex_round_err.x * axis_x.x;
+    buffer[1].y = (bounds[1].y + offset_x.y - offset_y.y) * scale + tex_round_err.y * axis_y.y * -1;
 
-    buffer[2].x = (bounds[2].x + offset_x.x + offset_y.x) * scale + tex_round_err.x;
+    buffer[2].x = (bounds[2].x + offset_x.x + offset_y.x) * scale + tex_round_err.x * axis_x.x;
     buffer[2].y = (bounds[2].y + offset_x.y + offset_y.y) * scale;
 
     buffer[3].x = (bounds[3].x - offset_x.x + offset_y.x) * scale;
@@ -265,10 +266,15 @@ pub fn getBoundsWithPaddingEnhanced(
     return buffer;
 }
 
-pub fn getDrawBoundsEnhanced(bounds: [4]PointUV, sdf_padding: f32, filter_margin: ?Point, tex_round_err: Point) [6]PointUV {
+pub fn getDrawBoundsWorld(
+    bounds: [4]PointUV,
+    padding: f32,
+    filter_margin: ?Point,
+    tex_round_err: Point,
+) [6]PointUV {
     const bounds_with_padding = getBoundsWithPaddingEnhanced(
         bounds,
-        sdf_padding,
+        padding,
         1,
         filter_margin,
         tex_round_err,

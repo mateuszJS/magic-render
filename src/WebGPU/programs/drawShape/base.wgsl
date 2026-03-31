@@ -64,8 +64,10 @@ fn getSample(pos: vec2f) -> vec4f {
 
   if (sdf.r >= 0) {
     return vec4f(1, 0, 0, 1);
-  } else {
+  } else if(sdf.r >= -1) {
     return vec4f(0, 1, 0, 1);
+  } else {
+    return vec4f(0, 0.5, 0, 1);
   }
 
   let dist_derivative = fwidth(sdf.r);
