@@ -913,13 +913,9 @@ pub fn computeSdfs() !void {
                 // also instead of ticks we can do (ticks + shape.id) to avoid making all updates at once
                 const do_update = shape.outdated_sdf or (shape.should_update_sdf and is_throttle_event);
                 if (!do_update) continue;
-                // std.debug.print("Updating SDF for shape {d}\n", .{shape.id});
+
                 const option_points = try shape.getRelativePoints(allocator);
                 if (option_points) |points| {
-
-                    // 1. Calcualte texutre, include 1 texel of padding all around to add smooth edges.
-                    //    If texture hit any limits, we assume that 1 texel is alreayd barely visible
-                    //    and we do nto care about scaling it propotionally(desired tex size / max limit tex size)
                     const loss = sdf_drawing.getRatioPxPerSdfTexel(shape.bounds);
                     const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, loss);
                     // TODO: geenrate 20% bigger
@@ -929,32 +925,19 @@ pub fn computeSdfs() !void {
                         loss,
                         1.0,
                     );
-                    // std.debug.print("shared.render_scale {d}\n", .{shared.render_scale});
+
                     shape.sdf_size = sdf_dims.size;
                     shape.sdf_scale = sdf_dims.scale;
 
                     shape.sdf_texture_padding = sdf_padding * shape.sdf_scale;
                     shape.sdf_rounding_err = sdf_dims.sdf_rounding_err;
 
-                    // std.debug.print(
-                    //     "Assign shape SDF width {d}\n",
-                    //     .{shape.sdf_size.w},
-                    // );
-                    // std.debug.print(
-                    //     "sdf_padding {d}, sdf_texture_padding {d}\n",
-                    //     .{ sdf_padding, shape.sdf_texture_padding },
-                    // );
-                    // std.debug.print(
-                    //     "scale {d}\n",
-                    //     .{shape.sdf_scale},
-                    // );
-
                     for (points) |*point| {
                         point.x *= shape.sdf_scale;
                         point.y *= shape.sdf_scale;
 
-                        point.x += 1 + shape.sdf_texture_padding;
-                        point.y += 1 + shape.sdf_texture_padding;
+                        point.x += consts.SDF_SAFE_PADDING + shape.sdf_texture_padding;
+                        point.y += consts.SDF_SAFE_PADDING + shape.sdf_texture_padding;
                     }
 
                     web_gpu_programs.compute_shape(
@@ -1180,11 +1163,11 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 const effects_padding_world = sdf_drawing.getSdfPadding(shape.effects.items, 1);
                 const world_width = shape.bounds[0].distance(shape.bounds[1]) + 2 * effects_padding_world;
 
-                // We assume all sdf texture keeps aspect ratio(sdf_rounding_err is the one without the aspect ratio)
+                // We assume all sdf texture keeps aspect ratio, just sdf_rounding_err breakes their aspect ratio
 
-                const sdf_world_width = shape.sdf_size.w - (2 + shape.sdf_rounding_err.x);
+                const sdf_world_width = shape.sdf_size.w - (2 * consts.SDF_SAFE_PADDING + shape.sdf_rounding_err.x);
                 const scale_world_vs_sdf = world_width / sdf_world_width;
-                const padding_world = effects_padding_world + 1.0 * scale_world_vs_sdf;
+                const padding_world = effects_padding_world + consts.SDF_SAFE_PADDING * scale_world_vs_sdf;
 
                 const scaled_sdf_round_err = types.Point{
                     .x = shape.sdf_rounding_err.x * scale_world_vs_sdf,

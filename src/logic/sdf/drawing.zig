@@ -374,6 +374,7 @@ pub fn getSdfTextureDims(
     scale: f32,
     sdf_rounding_err: Point,
 } {
+    shared.texture_max_size = 20;
     // var loss_ratio: f32 = getRatioPxPerSdfTexel(bounds);
     // if (combine_sdf) {
     //     loss_ratio = @max(1, loss_ratio * getCombineSdfRatio());
@@ -382,10 +383,6 @@ pub fn getSdfTextureDims(
     // loss_ratio = 1;
     // _ = additional_scale;
     const scale = additional_scale / (shared.render_scale * loss_factor);
-
-    // The 1px fwidth guard in sdf_padding needs to remain 1 SDF texel after
-    // the scale reduction. 1 texel = 1/scale world units, so compensate the gap:
-    // const fwidth_compensation = (1.0 / scale) - 1.0;
     const bounds_with_padding = getBoundsWithPadding(
         bounds,
         sdf_padding, // + fwidth_compensation,
@@ -393,33 +390,47 @@ pub fn getSdfTextureDims(
         null,
     );
 
-    // Here, we have to check if its allowed size BUT
-    // still handle 1 texel extra padding from each side!
-
-    const desired_size = texture_size.get_allowed_size(
+    // ensure texture doesn't exceed WebGPU max texture size
+    const texture_size_limited = texture_size.get_allowed_size(
         bounds_with_padding[0].distance(bounds_with_padding[1]),
         bounds_with_padding[0].distance(bounds_with_padding[3]),
     );
 
-    const sdf_size = texture_size.get_allowed_sdf_size(desired_size);
+    // ensure texture doesn't exceed GPU Webbuffer size
+    const buffer_size_limited = texture_size.get_allowed_sdf_size(texture_size_limited);
+
+    // Reserve room for @ceil (up to +1) and the 2-texel safety padding (+2) = 3 total.
+    // Without this, sdf_safe_size could exceed texture_max_size.
+    // Scale both dims proportionally to preserve aspect ratio.
+    const max_additional_size = 2 * consts.SDF_SAFE_PADDING + 1; // 2 for safety padding, 1 for rounding error
+    const sdf_budget = shared.texture_max_size - max_additional_size;
+    const sdf_over = @max(buffer_size_limited.w, buffer_size_limited.h) / sdf_budget;
+    const sdf_size = if (sdf_over > 1.0) texture_size.TextureSize{
+        .w = buffer_size_limited.w / sdf_over,
+        .h = buffer_size_limited.h / sdf_over,
+    } else buffer_size_limited;
 
     const world_width = bounds_with_padding[0].distance(bounds_with_padding[1]) / scale;
     // * shared.render_scale to revert to logical scale (without impact of camera/zoom)
 
     const sdf_scale = sdf_size.w / world_width;
-    std.debug.print("sdf_scale {d}\n", .{sdf_scale});
+
+    const sdf_round_size = texture_size.TextureSize{
+        .w = @ceil(sdf_size.w),
+        .h = @ceil(sdf_size.h),
+    };
 
     const sdf_safe_size = texture_size.TextureSize{
-        .w = @ceil(sdf_size.w) + 2, // 1 texel left and right bot safety
-        .h = @ceil(sdf_size.h) + 2, // 1 texel top and bottom for safety
+        .w = sdf_round_size.w + 2 * consts.SDF_SAFE_PADDING,
+        .h = sdf_round_size.h + 2 * consts.SDF_SAFE_PADDING,
     };
 
     return .{
         .size = sdf_safe_size, // rounded ceil size
         .scale = sdf_scale, // scale taken before rounding
         .sdf_rounding_err = Point{
-            .x = @ceil(sdf_size.w) - sdf_size.w,
-            .y = @ceil(sdf_size.h) - sdf_size.h,
+            .x = sdf_round_size.w - sdf_size.w,
+            .y = sdf_round_size.h - sdf_size.h,
         },
     };
 }

@@ -14,3 +14,5 @@ pub const POINT_ZERO = Point{ .x = 0.0, .y = 0.0 };
 pub const MIN_TEXTURE_SIZE: f32 = 1;
 
 pub const EPSILON = std.math.floatEps(f32);
+
+pub const SDF_SAFE_PADDING = 1; // safe padding to avoid harsh edges + avoid bleeding errors
