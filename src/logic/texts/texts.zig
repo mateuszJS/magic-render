@@ -72,15 +72,7 @@ pub const Text = struct {
     bounds: [4]PointUV,
     text_vertex: std.ArrayList(CharVertex),
 
-    // sdf_texture_id: ?u32 = null,
     sdf_tex: ?sdf_drawing.SdfTex = null,
-
-    // sdf_scale: f32 = 1.0,
-    is_sdf_outdated: bool = true,
-    // last_sdf_padding: f32 = 0,
-    // last_sdf_dim_width: f32 = 0, // you cannot make text lose apsect ratio
-
-    // so we keep track only width
 
     props: asset_props.Props,
     effects: std.ArrayList(sdf_effect.Effect),
@@ -108,6 +100,8 @@ pub const Text = struct {
         };
 
         _ = try text.computeText(0, 0);
+
+        try chars.requestCharsSdfs(text);
 
         return text;
     }
@@ -268,7 +262,7 @@ pub const Text = struct {
         std.heap.page_allocator.free(self.content); // free previous content
         self.content = try updated_content_bytes.toOwnedSlice();
 
-        self.is_sdf_outdated = true;
+        // self.is_sdf_outdated = true;
 
         return .{
             .content = self.content,
@@ -313,15 +307,15 @@ pub const Text = struct {
         return null;
     }
 
-    pub fn getSdfTex(self: *Text) sdf_drawing.SdfTex {
-        return if (self.sdf_tex) |sdf_tex| sdf_tex else b: {
-            const sdf_tex = sdf_drawing.SdfTex{
-                .id = js_glue.createSdfTexture(),
-            };
-            self.sdf_tex = sdf_tex;
-            break :b sdf_tex;
-        };
-    }
+    // pub fn getSdfTex(self: *Text) sdf_drawing.SdfTex {
+    //     return if (self.sdf_tex) |sdf_tex| sdf_tex else b: {
+    //         const sdf_tex = sdf_drawing.SdfTex{
+    //             .id = js_glue.createSdfTexture(),
+    //         };
+    //         self.sdf_tex = sdf_tex;
+    //         break :b sdf_tex;
+    //     };
+    // }
 
     pub fn addPickVertex(
         self: Text,
@@ -424,6 +418,7 @@ pub const Text = struct {
             .effects = try effects_list.toOwnedSlice(),
             .typo_props = self.typo_props.serialize(),
             .sdf_texture_id = if (self.sdf_tex) |tex| tex.id else null,
+            .is_sdf_shared = self.sdf_tex != null,
         };
     }
 
@@ -443,10 +438,12 @@ pub const Serialized = struct {
     effects: []sdf_effect.Serialized,
     typo_props: typography_props.Serialized,
     sdf_texture_id: ?u32,
+    is_sdf_shared: bool,
 
     pub fn compare(self: Serialized, other: Serialized) bool {
         const all_match = self.id == other.id and
             self.props.compare(other.props) and
+            self.is_sdf_shared == other.is_sdf_shared and
             utils.compareBounds(self.bounds, other.bounds) and
             self.typo_props.compare(other.typo_props) and
             sdf_effect.compareSerialized(self.effects, other.effects) and

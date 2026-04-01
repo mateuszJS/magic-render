@@ -18,7 +18,6 @@ pub const Details = struct {
     height: f32,
 
     points: []const Point,
-    outdated_sdf: bool,
     kerning: std.AutoArrayHashMap(u21, f32), // kerning between current char and next one
 
     sdf_tex: ?sdf_drawing.SdfTex = null,
@@ -29,7 +28,10 @@ pub const Details = struct {
     pub fn request_size(self: *Details, font_size: f32, effect_padding: f32) void {
         if (consts.EPSILON + self.max_ratio_padding_to_font_size < effect_padding / font_size) {
             self.max_ratio_padding_to_font_size = effect_padding / font_size;
-            self.outdated_sdf = true;
+
+            if (self.sdf_tex) |*sdf_tex| {
+                sdf_tex.is_outdated = true;
+            }
         }
 
         const font_size_world = font_size / shared.render_scale;
@@ -38,7 +40,9 @@ pub const Details = struct {
         if (next_font_size > self.max_requested_viewport_font_size + consts.EPSILON) {
             self.max_requested_viewport_font_size = next_font_size;
             // self.max_font_size = next_font_size * shared.render_scale; // I don't think it's needed
-            self.outdated_sdf = true;
+            if (self.sdf_tex) |*sdf_tex| {
+                sdf_tex.is_outdated = true;
+            }
         }
     }
 };

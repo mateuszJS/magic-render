@@ -53,9 +53,6 @@ pub const Shape = struct {
     effects: std.ArrayList(sdf_effect.Effect),
     bounds: [4]PointUV,
 
-    sdf_scale: f32 = 1.0, // TODO: to remove
-
-    outdated_sdf: bool, // if true, we need to recalculate SDF
     sdf_tex: sdf_drawing.SdfTex,
 
     should_update_sdf: bool, // throttled update,
@@ -94,7 +91,6 @@ pub const Shape = struct {
             .props = props,
             .effects = try sdf_effect.deserialize(input_effects, allocator),
             .sdf_tex = sdf_drawing.SdfTex{ .id = sdf_texture_id },
-            .outdated_sdf = true,
             .should_update_sdf = false,
             .bounds = input_bounds,
             .cache_texture_id = cache_texture_id,
@@ -132,7 +128,7 @@ pub const Shape = struct {
             return;
         }
 
-        self.outdated_sdf = true;
+        self.sdf_tex.is_outdated = true;
 
         const invert_matrix = Matrix3x3.getMatrixFromRectangle(self.bounds).inverse();
         const point = invert_matrix.get(absolute_point);
@@ -187,7 +183,7 @@ pub const Shape = struct {
 
         if (is_diff) {
             self.preview_point = p;
-            self.outdated_sdf = true;
+            self.sdf_tex.is_outdated = true;
         }
     }
 
@@ -236,7 +232,7 @@ pub const Shape = struct {
 
             const active_path = &self.paths.items[i];
             active_path.updateLastHandle(point);
-            self.outdated_sdf = true;
+            self.sdf_tex.is_outdated = true;
         }
     }
 
@@ -340,21 +336,21 @@ pub const Shape = struct {
 
     pub fn getPickUniform(self: Shape, effect: sdf_effect.Effect) PickUniform {
         return PickUniform{
-            .dist_start = effect.dist_start * self.sdf_scale,
-            .dist_end = effect.dist_end * self.sdf_scale,
+            .dist_start = effect.dist_start * self.sdf_tex.scale,
+            .dist_end = effect.dist_end * self.sdf_tex.scale,
         };
     }
 
     pub fn getDrawUniform(self: Shape, effect: sdf_effect.Effect) sdf_drawing.DrawUniform {
         return sdf_drawing.getDrawUniform(
             effect,
-            self.sdf_scale,
+            self.sdf_tex.scale,
             self.props.opacity,
         );
     }
 
     pub fn getRelativePoints(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
-        if (!self.outdated_sdf and !self.should_update_sdf) {
+        if (!self.sdf_tex.is_outdated and !self.should_update_sdf) {
             @panic("getRelativePoints was called but the shape sdf was not marked as outdated!");
         }
         const check_points = try self.getAllPoints(

@@ -171,35 +171,31 @@ pub fn updateRenderScale(zoom: f32, pixel_density: f32) !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                const loss = sdf_drawing.getRatioPxPerSdfTexel(shape.bounds);
                 const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
                 const new_sdf_dims = sdf_drawing.getTexture(
                     shape.sdf_tex.id,
                     shape.bounds,
                     sdf_padding,
-                    loss,
                     1.0,
                 );
 
                 if (new_sdf_dims.isBiggerThan(shape.sdf_tex)) {
-                    shape.outdated_sdf = true;
+                    shape.sdf_tex.is_outdated = true;
                 }
             },
             .text => |*text| {
-                if (!text.typo_props.is_sdf_shared) continue;
+                try chars.requestCharsSdfs(text.*);
 
-                if (text.sdf_tex) |sdf_tex| {
-                    const combined_sdf_loss_factor = sdf_drawing.getRatioPxPerSdfTexel(text.bounds); // * sdf_drawing.getCombineSdfRatio();
-                    const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
+                if (text.sdf_tex) |*sdf_tex| {
                     const sdf_dims = sdf_drawing.getTexture(
                         sdf_tex.id,
                         text.bounds,
-                        text_padding,
-                        @max(1, combined_sdf_loss_factor),
+                        sdf_drawing.getSdfPadding(text.effects.items),
                         1.0,
                     );
-                    if (sdf_dims.size.w > sdf_tex.size.w + consts.EPSILON) {
-                        text.is_sdf_outdated = true;
+
+                    if (sdf_dims.isBiggerThan(sdf_tex.*)) {
+                        sdf_tex.*.is_outdated = true;
                     }
                 }
             },
@@ -358,6 +354,8 @@ pub fn updateTextContent(
         // It's owned by Zigar/JS side, so hopefully it's gonna somehow handled there
         const results = try text.computeText(selection_start, selection_end);
 
+        try chars.requestCharsSdfs(text.*);
+
         state.redraw_needed = true;
         snapshots.triggerNewSnapshot(true, true);
         return results;
@@ -403,7 +401,6 @@ fn createText(x: f32, y: f32) !texts.Text {
         .font_size = 200,
         .font_family_id = 0,
         .line_height = 1.2,
-        .is_sdf_shared = true,
     };
 
     return try addText(
@@ -640,7 +637,7 @@ pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !
                 }
 
                 points[i] = pointer;
-                shape.outdated_sdf = true;
+                shape.sdf_tex.is_outdated = true;
             }
         }
         return;
@@ -935,12 +932,10 @@ fn computeShape(
     padding: f32,
     points: []types.Point,
 ) !sdf_drawing.SdfTex {
-    const loss = sdf_drawing.getRatioPxPerSdfTexel(bounds);
     const sdf_tex = sdf_drawing.getTexture(
         tex_id,
         bounds,
         padding,
-        loss,
         1.0,
     );
 
@@ -963,17 +958,6 @@ fn computeShape(
 }
 
 pub fn computePhase() !void {
-    var assets_iter = state.assets.iterator();
-    while (assets_iter.next()) |asset| {
-        switch (asset.value_ptr.*) {
-            .img => {},
-            .shape => {},
-            .text => |text| {
-                try chars.requestCharsSdfs(text);
-            },
-        }
-    }
-
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -987,8 +971,9 @@ pub fn computePhase() !void {
         while (char_iter.next()) |char_details_entry| {
             var ch_d = char_details_entry.value_ptr.*;
 
-            if (ch_d.sdf_tex) |ch_sdf_tex| {
-                if (!ch_d.outdated_sdf) continue;
+            if (ch_d.sdf_tex) |*ch_sdf_tex| {
+                const unknown_size = utils.equalF32(ch_d.max_requested_viewport_font_size, 0);
+                if (!ch_sdf_tex.is_outdated or unknown_size) continue;
 
                 const ch_w = ch_d.max_requested_viewport_font_size * ch_d.width;
                 const ch_h = ch_d.max_requested_viewport_font_size * ch_d.height;
@@ -1038,9 +1023,8 @@ pub fn computePhase() !void {
                 //     @intFromFloat(ch_d.sdf_size.h),
                 //     sdf_texture_id,
                 // );
+                ch_sdf_tex.is_outdated = false;
             }
-
-            ch_d.outdated_sdf = false;
         }
     }
 
@@ -1052,7 +1036,7 @@ pub fn computePhase() !void {
                 const is_throttle_event = shared.ticks % 5 == 0;
                 // in the future we might do throttle depends on the number of selected shapes
                 // also instead of ticks we can do (ticks + shape.id) to avoid making all updates at once
-                const do_update = shape.outdated_sdf or (shape.should_update_sdf and is_throttle_event);
+                const do_update = shape.sdf_tex.is_outdated or (shape.should_update_sdf and is_throttle_event);
                 if (!do_update) continue;
 
                 const option_points = try shape.getRelativePoints(allocator);
@@ -1099,26 +1083,25 @@ pub fn computePhase() !void {
                     shape.outdated_cache = true;
                 }
 
-                shape.outdated_sdf = false;
+                shape.sdf_tex.is_outdated = false;
                 shape.should_update_sdf = false;
             },
             .text => |*text| {
-                if (text.typo_props.is_sdf_shared) {
-                    if (!text.is_sdf_outdated) continue;
+                if (text.sdf_tex) |*text_sdf_tex| {
+                    // const text_sdf_tex = text.getSdfTex();
+
+                    if (!text_sdf_tex.is_outdated) continue;
 
                     if (!fonts.fonts.contains(text.typo_props.font_family_id)) {
                         continue;
                     }
 
-                    const text_sdf_tex = text.getSdfTex();
-                    const loss = sdf_drawing.getRatioPxPerSdfTexel(text.bounds) * sdf_drawing.getCombineSdfRatio();
                     const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
 
                     const new_text_sdf_tex = sdf_drawing.getTexture(
                         text_sdf_tex.id,
                         text.bounds,
                         text_padding,
-                        loss,
                         1.2,
                     );
                     text.sdf_tex = new_text_sdf_tex;
@@ -1167,9 +1150,7 @@ pub fn computePhase() !void {
                         }
                     }
 
-                    text.is_sdf_outdated = false;
-                    // text.last_sdf_dim_width = sdf_dims.size.w;
-                    // text.last_sdf_padding = text_padding;
+                    text_sdf_tex.is_outdated = false;
                 }
             },
         }
@@ -1222,10 +1203,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
 
                 const is_typing_ui = !is_ui_hidden and state.tool == .Text and state.selected_asset_id.getPrim() == text.id;
 
-                if (text.typo_props.is_sdf_shared) {
-                    const text_sdf_tex = text.getSdfTex();
-                    const loss = sdf_drawing.getRatioPxPerSdfTexel(text.bounds) * sdf_drawing.getCombineSdfRatio();
-                    _ = loss; // autofix
+                if (text.sdf_tex) |text_sdf_tex| {
                     const padding = sdf_drawing.getSdfPadding(text.effects.items);
                     for (text.effects.items) |effect| {
                         const text_bounds = sdf_drawing.getDrawBounds(
@@ -1249,7 +1227,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
 
                 for (text.text_vertex.items, 0..) |vertex, i| {
                     if (vertex.char) |char| {
-                        if (!text.typo_props.is_sdf_shared) {
+                        if (text.sdf_tex == null) {
                             const ch_d = try fonts.get(text.typo_props.font_family_id, char);
 
                             if (ch_d.sdf_tex) |char_sdf_tex| {
@@ -1542,6 +1520,7 @@ pub fn setSelectedAssetTypoProps(serialized: typography_props.Serialized, commit
         text.typo_props = new_typo_props;
 
         const result = try text.computeText(0, 0);
+        try chars.requestCharsSdfs(text.*);
 
         const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
 
@@ -1552,9 +1531,13 @@ pub fn setSelectedAssetTypoProps(serialized: typography_props.Serialized, commit
             // new soft breaks might appear after font change
         }
 
-        if (text.typo_props.is_sdf_shared) {
-            text.is_sdf_outdated = true;
+        if (text.sdf_tex) |*sdf_tex| {
+            sdf_tex.*.is_outdated = true;
         }
+
+        // if (text.typo_props.is_sdf_shared) {
+        //     text.sdf_tex.is_outdated = true;
+        // }
 
         state.redraw_needed = true;
         snapshots.triggerNewSnapshot(true, commit);
@@ -1568,20 +1551,20 @@ pub fn setSelectedAssetEffects(serialized_effects: []const sdf_effect.Serialized
             .shape => |*shape| {
                 sdf_effect.deinit(shape.effects);
                 shape.effects = try sdf_effect.deserialize(serialized_effects, std.heap.page_allocator);
-                shape.outdated_sdf = true;
+                shape.sdf_tex.is_outdated = true;
             },
             .text => |*text| {
                 sdf_effect.deinit(text.effects);
                 text.effects = try sdf_effect.deserialize(serialized_effects, std.heap.page_allocator);
-                if (text.typo_props.is_sdf_shared) {
-                    const loss = sdf_drawing.getRatioPxPerSdfTexel(text.bounds) * sdf_drawing.getCombineSdfRatio();
-                    _ = loss; // autofix
-                    const new_padding = sdf_drawing.getSdfPadding(text.effects.items);
-                    _ = new_padding; // autofix
-                    // if (new_padding > text.last_sdf_padding) {
-                    text.is_sdf_outdated = true;
-                    // }
-                }
+                // if (text.typo_props.is_sdf_shared) {
+                // const loss = sdf_drawing.getRatioPxPerSdfTexel(text.bounds) * sdf_drawing.getCombineSdfRatio();
+                // _ = loss; // autofix
+                // const new_padding = sdf_drawing.getSdfPadding(text.effects.items);
+                // _ = new_padding; // autofix
+                // if (new_padding > text.last_sdf_padding) {
+                // text.is_sdf_outdated = true;
+                // }
+                // }
             },
         }
 
@@ -1718,6 +1701,9 @@ pub fn addFont(font_id: u32) !void {
                     state.redraw_needed = true;
 
                     const result = try text.computeText(0, 0);
+
+                    try chars.requestCharsSdfs(text.*);
+
                     const is_text_area_enabled = state.tool == .Text and state.selected_asset_id.isSec();
                     if (is_text_area_enabled and text.id == state.selected_asset_id.getPrim()) {
                         // new soft breaks might appear after font change

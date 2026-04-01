@@ -27,7 +27,6 @@ pub fn get(font_id: u32, c: u21) !*chars.Details {
             .width = char.width,
             .height = char.height,
             .points = char.points,
-            .outdated_sdf = true,
             .kerning = std.AutoArrayHashMap(u21, f32).init(std.heap.page_allocator),
         };
         try font.addChar(c, d);

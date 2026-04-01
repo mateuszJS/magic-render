@@ -141,6 +141,7 @@ pub const SdfTex = struct {
     scale: f32 = 1,
     padding: f32 = 0,
     round_err: Point = .{},
+    is_outdated: bool = true,
 
     pub fn isBiggerThan(self: SdfTex, other: SdfTex) bool {
         return self.size.w > other.size.w + consts.EPSILON or self.size.h > other.size.h + consts.EPSILON;
@@ -330,7 +331,7 @@ pub fn getCombineSdfRatio() f32 {
     }
 }
 
-pub fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
+fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
     if (shared.is_test) {
         return 5;
     }
@@ -378,13 +379,13 @@ pub fn getTexture(
     tex_id: u32,
     bounds: [4]PointUV,
     sdf_padding: f32,
-    loss_factor: f32,
     additional_scale: f32,
     // used to generate 20% bigger textures, so we won't need to regenerate
     // again texture while user is zooming in slowly (so would trigger
     // new SDF each frame)
 ) SdfTex {
-    const scale = additional_scale / (shared.render_scale * loss_factor);
+    const loss = getRatioPxPerSdfTexel(bounds);
+    const scale = additional_scale / (shared.render_scale * loss);
     const bounds_with_padding = getBoundsWithPadding(
         bounds,
         sdf_padding,
