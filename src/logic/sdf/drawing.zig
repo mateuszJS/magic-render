@@ -352,7 +352,7 @@ pub fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
         // 180 -> 4
         //  86 -> 2
 
-        return 1;
+        return 5;
         // return @max(1, 0.53 * @sqrt(viewport_size) - 3);
     }
 }

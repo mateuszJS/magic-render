@@ -1193,6 +1193,10 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
 
     drawProjectBackground();
 
+    // use this array list to collect all items that should be drawn on the very top
+    var vertex_triangles_buffer =
+        std.ArrayList(triangles.DrawInstance).init(allocator);
+
     var iterator = state.assets.iterator();
     while (iterator.next()) |asset| {
         switch (asset.value_ptr.*) {
@@ -1248,8 +1252,6 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
 
                 const selection_start = @min(caret.position, caret.selection_end_position);
                 const selection_end = @max(caret.position, caret.selection_end_position);
-                var vertex_triangles_buffer =
-                    std.ArrayList(triangles.DrawInstance).init(allocator);
                 const matrix = Matrix3x3.getMatrixFromRectangleNoScale(text.bounds);
 
                 for (text.text_vertex.items, 0..) |vertex, i| {
@@ -1295,7 +1297,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 }
 
                 // if caret is at the end of text
-                if (caret.position == text.text_vertex.items.len and caret.isCaretShown()) {
+                if (is_typing_ui and caret.position == text.text_vertex.items.len and caret.isCaretShown()) {
                     const position =
                         if (text.text_vertex.getLastOrNull()) |last_vertex|
                             last_vertex.relative_bounds[2].toPoint()
@@ -1307,10 +1309,6 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                     if (caret.addDrawVertex(text, position)) |buffer| {
                         try vertex_triangles_buffer.appendSlice(&buffer);
                     }
-                }
-
-                if (is_typing_ui and vertex_triangles_buffer.items.len > 0) {
-                    web_gpu_programs.draw_triangle(vertex_triangles_buffer.items);
                 }
             },
         }
@@ -1348,6 +1346,10 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
             );
             web_gpu_programs.draw_triangle(vertex_data);
         }
+    }
+
+    if (vertex_triangles_buffer.items.len > 0) {
+        web_gpu_programs.draw_triangle(vertex_triangles_buffer.items);
     }
 }
 
