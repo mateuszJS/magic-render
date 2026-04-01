@@ -325,25 +325,21 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             try setSelectedAsset(state.hovered_asset_id);
         }
 
-        if (!assets.selected_asset_id.isPrim()) {
-            // No active asset, do nothing
-            return;
-        }
+        if (assets.getSelectedAsset()) |asset| {
+            const bounds = asset.getBounds();
+            state.init_action_bounds = bounds;
 
-        const asset = assets.getSelectedAsset() orelse @panic("Asset should be always selected here");
-        const bounds = asset.getBounds();
-        state.init_action_bounds = bounds;
-
-        if (transform_ui.isTransformUi(state.hovered_asset_id.getPrim())) {
-            state.action = .Transform;
-        } else if (assets.selected_asset_id.getPrim() >= consts.ASSET_ID_MIN and
-            assets.selected_asset_id.getPrim() == state.hovered_asset_id.getPrim())
-        {
-            state.action = .Move;
-            state.action_pointer_offset = types.Point{
-                .x = x - bounds[0].x,
-                .y = y - bounds[0].y,
-            };
+            if (transform_ui.isTransformUi(state.hovered_asset_id.getPrim())) {
+                state.action = .Transform;
+            } else if (assets.selected_asset_id.getPrim() >= consts.ASSET_ID_MIN and
+                assets.selected_asset_id.getPrim() == state.hovered_asset_id.getPrim())
+            {
+                state.action = .Move;
+                state.action_pointer_offset = types.Point{
+                    .x = x - bounds[0].x,
+                    .y = y - bounds[0].y,
+                };
+            }
         }
     }
 }
