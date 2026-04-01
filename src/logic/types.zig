@@ -21,9 +21,7 @@ pub const Tool = enum(u16) {
 pub const State = struct {
     width: f32,
     height: f32,
-    assets: std.AutoArrayHashMap(u32, Asset),
     hovered_asset_id: AssetId,
-    selected_asset_id: AssetId,
     action: ActionType,
     tool: Tool,
     action_pointer_offset: Point,

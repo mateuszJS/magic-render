@@ -80,3 +80,10 @@ pub fn getNextStep(base: f32, input: f32) f32 {
     // Return as integer
     return base * next_p2;
 }
+
+var next_asset_id: u32 = consts.ASSET_ID_MIN;
+pub fn generateId() u32 {
+    const id = next_asset_id;
+    next_asset_id +%= 1;
+    return id;
+}

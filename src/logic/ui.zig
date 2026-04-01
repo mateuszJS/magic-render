@@ -6,7 +6,6 @@ const Point = @import("types.zig").Point;
 const PointUV = @import("types.zig").PointUV;
 const sdf_drawing = @import("sdf/drawing.zig");
 const consts = @import("consts.zig");
-const INFINITE_DISTANCE = @import("index.zig").INFINITE_DISTANCE;
 
 var elements: std.AutoArrayHashMap(u32, shapes.Shape) = undefined;
 
@@ -89,7 +88,7 @@ pub fn draw(
         if (elements.get(@intFromEnum(data.icon))) |shape| {
             const uniform = sdf_drawing.DrawUniform{
                 .solid = .{
-                    .dist_start = INFINITE_DISTANCE,
+                    .dist_start = consts.INFINITE_DISTANCE,
                     .dist_end = 0,
                     .color = data.color,
                 },
