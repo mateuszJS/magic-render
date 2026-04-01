@@ -172,8 +172,8 @@ pub fn updateRenderScale(zoom: f32, pixel_density: f32) !void {
             .img => {},
             .shape => |*shape| {
                 const loss = sdf_drawing.getRatioPxPerSdfTexel(shape.bounds);
-                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, loss);
-                const new_sdf_dims = sdf_drawing.getSdfTextureDims(
+                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+                const new_sdf_dims = sdf_drawing.getTexture(
                     shape.sdf_tex.id,
                     shape.bounds,
                     sdf_padding,
@@ -181,9 +181,7 @@ pub fn updateRenderScale(zoom: f32, pixel_density: f32) !void {
                     1.0,
                 );
 
-                if (new_sdf_dims.size.w > shape.sdf_tex.size.w + consts.EPSILON or
-                    new_sdf_dims.size.h > shape.sdf_tex.size.h + consts.EPSILON)
-                {
+                if (new_sdf_dims.isBiggerThan(shape.sdf_tex)) {
                     shape.outdated_sdf = true;
                 }
             },
@@ -192,8 +190,8 @@ pub fn updateRenderScale(zoom: f32, pixel_density: f32) !void {
 
                 if (text.sdf_tex) |sdf_tex| {
                     const combined_sdf_loss_factor = sdf_drawing.getRatioPxPerSdfTexel(text.bounds); // * sdf_drawing.getCombineSdfRatio();
-                    const text_padding = sdf_drawing.getSdfPadding(text.effects.items, combined_sdf_loss_factor);
-                    const sdf_dims = sdf_drawing.getSdfTextureDims(
+                    const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
+                    const sdf_dims = sdf_drawing.getTexture(
                         sdf_tex.id,
                         text.bounds,
                         text_padding,
@@ -837,7 +835,7 @@ pub fn updateCache() void {
                         break :b id;
                     };
 
-                    const padding_world = sdf_drawing.getSdfPadding(shape.effects.items, 1);
+                    const padding_world = sdf_drawing.getSdfPadding(shape.effects.items);
                     const bounds = sdf_drawing.getBoundsWithPadding(
                         shape.bounds,
                         padding_world,
@@ -937,10 +935,8 @@ fn computeShape(
     padding: f32,
     points: []types.Point,
 ) !sdf_drawing.SdfTex {
-    // const padding = ch_d.max_requested_viewport_font_size * ch_d.*.max_ratio_padding_to_font_size;
-
     const loss = sdf_drawing.getRatioPxPerSdfTexel(bounds);
-    const sdf_tex = sdf_drawing.getSdfTextureDims(
+    const sdf_tex = sdf_drawing.getTexture(
         tex_id,
         bounds,
         padding,
@@ -1014,7 +1010,7 @@ pub fn computePhase() !void {
 
                 // const loss = sdf_drawing.getRatioPxPerSdfTexel(bounds);
 
-                // const sdf_dims = sdf_drawing.getSdfTextureDims(
+                // const sdf_dims = sdf_drawing.getTexture(
                 //     bounds,
                 //     padding,
                 //     loss,
@@ -1061,7 +1057,7 @@ pub fn computePhase() !void {
 
                 const option_points = try shape.getRelativePoints(allocator);
                 if (option_points) |points| {
-                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items, 0);
+                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
                     const copy_points = try allocator.dupe(types.Point, points);
                     shape.sdf_tex = try computeShape(
                         shape.sdf_tex.id,
@@ -1071,7 +1067,7 @@ pub fn computePhase() !void {
                     );
 
                     // const loss = sdf_drawing.getRatioPxPerSdfTexel(shape.bounds);
-                    // const sdf_dims = sdf_drawing.getSdfTextureDims(
+                    // const sdf_dims = sdf_drawing.getTexture(
                     //     shape.bounds,
                     //     sdf_padding,
                     //     loss,
@@ -1116,9 +1112,9 @@ pub fn computePhase() !void {
 
                     const text_sdf_tex = text.getSdfTex();
                     const loss = sdf_drawing.getRatioPxPerSdfTexel(text.bounds) * sdf_drawing.getCombineSdfRatio();
-                    const text_padding = sdf_drawing.getSdfPadding(text.effects.items, loss);
+                    const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
 
-                    const new_text_sdf_tex = sdf_drawing.getSdfTextureDims(
+                    const new_text_sdf_tex = sdf_drawing.getTexture(
                         text_sdf_tex.id,
                         text.bounds,
                         text_padding,
@@ -1229,7 +1225,8 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 if (text.typo_props.is_sdf_shared) {
                     const text_sdf_tex = text.getSdfTex();
                     const loss = sdf_drawing.getRatioPxPerSdfTexel(text.bounds) * sdf_drawing.getCombineSdfRatio();
-                    const padding = sdf_drawing.getSdfPadding(text.effects.items, loss);
+                    _ = loss; // autofix
+                    const padding = sdf_drawing.getSdfPadding(text.effects.items);
                     for (text.effects.items) |effect| {
                         const text_bounds = sdf_drawing.getDrawBounds(
                             text.bounds,
@@ -1578,7 +1575,8 @@ pub fn setSelectedAssetEffects(serialized_effects: []const sdf_effect.Serialized
                 text.effects = try sdf_effect.deserialize(serialized_effects, std.heap.page_allocator);
                 if (text.typo_props.is_sdf_shared) {
                     const loss = sdf_drawing.getRatioPxPerSdfTexel(text.bounds) * sdf_drawing.getCombineSdfRatio();
-                    const new_padding = sdf_drawing.getSdfPadding(text.effects.items, loss);
+                    _ = loss; // autofix
+                    const new_padding = sdf_drawing.getSdfPadding(text.effects.items);
                     _ = new_padding; // autofix
                     // if (new_padding > text.last_sdf_padding) {
                     text.is_sdf_outdated = true;

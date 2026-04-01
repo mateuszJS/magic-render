@@ -134,14 +134,20 @@ pub fn getDrawUniform(sdf_effect: Effect, sdf_scale: f32, opacity: f32) DrawUnif
     }
 }
 
-pub const SdfTex = struct { id: u32, size: texture_size.TextureSize = .{}, scale: f32 = 1, padding: f32 = 0, rounding_err: Point = .{} };
-// ch_d.sdf_size = sdf_dims.size;
-// ch_d.sdf_scale = sdf_dims.scale;
-// ch_d.sdf_texture_padding = padding * ch_d.sdf_scale;
-// ch_d.sdf_rounding_err = sdf_dims.sdf_rounding_err;
+pub const SdfTex = struct {
+    // all of the fields uses viewport size, no world
+    id: u32,
+    size: texture_size.TextureSize = .{},
+    scale: f32 = 1,
+    padding: f32 = 0,
+    round_err: Point = .{},
 
-pub fn getSdfPadding(effects: []Effect, loss: f32) f32 {
-    _ = loss;
+    pub fn isBiggerThan(self: SdfTex, other: SdfTex) bool {
+        return self.size.w > other.size.w + consts.EPSILON or self.size.h > other.size.h + consts.EPSILON;
+    }
+};
+
+pub fn getSdfPadding(effects: []Effect) f32 {
     var padding: f32 = SKELETON_LINE_WIDTH / 2; // at least 1, without fwidth fix
     // because of skeleton render, we cannot od less than zero
 
@@ -292,6 +298,7 @@ pub fn getDrawBoundsWorld(
         bounds_with_padding[0],
     };
 }
+
 pub fn getDrawBounds(bounds: [4]PointUV, sdf_padding: f32, filter_margin: ?Point) [6]PointUV {
     const bounds_with_padding = getBoundsWithPadding(
         bounds,
@@ -367,7 +374,7 @@ pub fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
     }
 }
 
-pub fn getSdfTextureDims(
+pub fn getTexture(
     tex_id: u32,
     bounds: [4]PointUV,
     sdf_padding: f32,
@@ -421,9 +428,9 @@ pub fn getSdfTextureDims(
     const sdf_scale = sdf_size.w / world_width;
 
     return SdfTex{
-        .size = sdf_safe_size, // rounded ceil size
+        .size = sdf_safe_size,
         .scale = sdf_scale, // scale taken before rounding
-        .rounding_err = Point{
+        .round_err = Point{
             .x = sdf_round_size.w - sdf_size.w,
             .y = sdf_round_size.h - sdf_size.h,
         },
@@ -451,12 +458,12 @@ fn testBounds(w: f32, h: f32) [4]PointUV {
 //   bounds_with_padding: 104×54
 //   sdf_safe_size: (ceil(104)+2) × (ceil(54)+2) = 106×56
 //   sdf_scale: 104/104 = 1.0
-test "getSdfTextureDims - happy path" {
+test "getTexture - happy path" {
     shared.render_scale = 1.0;
     shared.texture_max_size = 1000.0;
     shared.max_buffer_size = 1e12;
 
-    const result = getSdfTextureDims(testBounds(100, 50), 2.0, 1.0, 1.0);
+    const result = getTexture(testBounds(100, 50), 2.0, 1.0, 1.0);
 
     try std.testing.expectEqual(@as(f32, 106), result.size.w);
     try std.testing.expectEqual(@as(f32, 56), result.size.h);
@@ -469,12 +476,12 @@ test "getSdfTextureDims - happy path" {
 //   desired_size after get_allowed_size: 20×10.196  (scale = 20/204)
 //   sdf_budget = 17, sdf_over = 20/17 → sdf_size = 17×8.666
 //   sdf_safe_size: (ceil(17)+2) × (ceil(8.666)+2) = 19×11  ← both ≤ 20
-test "getSdfTextureDims - capped by texture_max_size" {
+test "getTexture - capped by texture_max_size" {
     shared.render_scale = 1.0;
     shared.texture_max_size = 20.0;
     shared.max_buffer_size = 1e12;
 
-    const result = getSdfTextureDims(testBounds(200, 100), 2.0, 1.0, 1.0);
+    const result = getTexture(testBounds(200, 100), 2.0, 1.0, 1.0);
 
     try std.testing.expectEqual(@as(f32, 19), result.size.w);
     try std.testing.expectEqual(@as(f32, 11), result.size.h);
@@ -491,12 +498,12 @@ test "getSdfTextureDims - capped by texture_max_size" {
 //   bounds_with_padding: 204×204
 //   get_allowed_sdf_size: ratio = 2500/41616 → size ≈ 12.255×12.255
 //   sdf_safe_size: (ceil(12.255)+2) × (ceil(12.255)+2) = 15×15
-test "getSdfTextureDims - capped by max_buffer_size" {
+test "getTexture - capped by max_buffer_size" {
     shared.render_scale = 1.0;
     shared.texture_max_size = 1000.0;
     shared.max_buffer_size = 40000.0;
 
-    const result = getSdfTextureDims(testBounds(200, 200), 2.0, 1.0, 1.0);
+    const result = getTexture(testBounds(200, 200), 2.0, 1.0, 1.0);
 
     try std.testing.expectEqual(@as(f32, 15), result.size.w);
     try std.testing.expectEqual(@as(f32, 15), result.size.h);

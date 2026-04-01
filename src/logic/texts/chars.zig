@@ -21,15 +21,6 @@ pub const Details = struct {
     outdated_sdf: bool,
     kerning: std.AutoArrayHashMap(u21, f32), // kerning between current char and next one
 
-    // sdf_scale: f32 = 1, // in contrary to other sdf_scales
-    // this one is relative to requested viewport size, not world size.
-    // It's due to the fact char's sdf is used for multiple cases at once
-    // so there is no one world case size to use
-    // so sdf_scale is always 1 expect fact when sdf texture hits max size!
-    // sdf_size: TextureSize = .{ .w = 0, .h = 0 },
-    // sdf_texture_padding: f32 = 0,
-    // sdf_rounding_err: Point = .{ .x = 0, .y = 0 },
-
     sdf_tex: ?sdf_drawing.SdfTex = null,
 
     max_requested_viewport_font_size: f32 = 0,
@@ -73,7 +64,7 @@ pub const Chars = struct {
 pub fn requestCharsSdfs(text: texts.Text) !void {
     if (!fonts.fonts.contains(text.typo_props.font_family_id)) return;
 
-    const padding = sdf_drawing.getSdfPadding(text.effects.items, 1);
+    const padding = sdf_drawing.getSdfPadding(text.effects.items);
 
     for (text.text_vertex.items) |vertex| {
         if (vertex.char) |char| {
