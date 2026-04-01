@@ -172,6 +172,20 @@ export type CustomProgramError = {
   offset: number
 }
 
+export type CreatorProps = {
+  initialProjectWidth: number
+  initialProjectHeight: number
+  canvas: HTMLCanvasElement
+  uploadTexture: (url: string, onNewUrl: (newUrl: string) => void) => void
+  onSnapshotUpdate: (snapshot: ProjectSnapshot, commit: boolean) => void
+  onAssetSelect: (assetId: Id) => void
+  onIsProcessingFlagUpdate: (inProgress: boolean) => void
+  onPreviewUpdate: (canvas: HTMLCanvasElement) => void
+  onUpdateTool: (tool: CreatorTool) => void
+  getFontUrl: (fontId: number) => string
+  isTest: boolean
+}
+
 export type CreatorAPI = {
   addImages: (urls: string[]) => Promise<void>
   setSnapshot: (snapshot: ProjectSnapshot, withSnapshot: boolean) => Promise<void>

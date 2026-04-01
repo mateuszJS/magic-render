@@ -30,7 +30,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@eslint/js": "^9.21.0",
-    "@playwright/test": "^1.50.1",
+    "@playwright/test": "^1.59.0",
     "@stylistic/eslint-plugin-js": "^4.2.0",
     "@tsconfig/recommended": "^1.0.8",
     "@types/fontkit": "^2.0.8",

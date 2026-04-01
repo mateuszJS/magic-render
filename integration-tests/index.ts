@@ -96,18 +96,18 @@ async function test() {
   let selectedAssetId = 0
   const projectWidth = 1000
   const projectHeight = 1650
-  const creator = await initCreator(
-    projectWidth,
-    projectHeight,
+  const creator = await initCreator({
+    initialProjectWidth: projectWidth,
+    initialProjectHeight: projectHeight,
     canvas,
-    (url, setNewUrl) => {
+    uploadTexture: (url, setNewUrl) => {
       setNewUrl(`${newTextures}-${url}`)
       newTextures++
       // if (url.startsWith('http://our-domain.com')) {
       // setNewUrl('new url')
       // }
     },
-    (snapshot, commit) => {
+    onSnapshotUpdate: (snapshot, commit) => {
       setLastSnapshot(snapshot)
 
       updatePropsPanels()
@@ -122,26 +122,27 @@ async function test() {
       assetsUpdatesHistory.push(snapshot)
       currentHistoryIndex = assetsUpdatesHistory.length - 1
     },
-    (assetId) => {
+    onAssetSelect: (assetId) => {
       selectedAssetEl.textContent = assetId.toString()
       selectedAssetId = assetId[0]
       updatePropsPanels()
     },
-    (inProgress) => {
+    onIsProcessingFlagUpdate: (inProgress) => {
       isProcessingEventsEl.textContent = inProgress ? 'true' : 'false'
     },
-    (canvas) => {
+    onPreviewUpdate: (canvas) => {
       previewImg.src = canvas.toDataURL('image/png')
     },
-    (newTool) => {
+    onUpdateTool: (newTool) => {
       toolsSelect.value = newTool.toString()
     },
-    (fontId) => {
+    getFontUrl: (fontId) => {
       const font = fontsDictionary[fontId]
       if (!font) throw Error('Unknown font id: ' + fontId)
       return font
-    }
-  )
+    },
+    isTest: true,
+  })
 
   type SerializedOutputAssetMerged = Image & Shape & Text
   const lastSnapshot = getLastSnapshot()
@@ -194,25 +195,6 @@ async function test() {
 
     creator.setSnapshot(snapshot, true)
     startProjectInputFromImages.value = '' // reset input value to allow re-uploading the same file
-  })
-
-  const startProjectInputFromAssets = document.querySelector<HTMLInputElement>(
-    '#start-project-from-assets'
-  )!
-  startProjectInputFromAssets.addEventListener('change', (event) => {
-    const { files } = event.target as HTMLInputElement
-    if (!files) return
-
-    const PROJECT_SAMPLE = {
-      assets: Array.from(files).map((file) => ({
-        url: URL.createObjectURL(file),
-      })),
-      width: 500,
-      height: 500,
-    }
-
-    creator.setSnapshot(PROJECT_SAMPLE, true)
-    startProjectInputFromAssets.value = '' // reset input value to allow re-uploading the same file
   })
 
   removeAssetBtn.addEventListener('click', () => {

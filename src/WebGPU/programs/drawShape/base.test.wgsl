@@ -13,5 +13,5 @@ if (sdf.r >= 0) {
 }  else if(sdf.r >= -6) {
   return vec4f(1, 0, 1, 1);
 } else {
-  return vec4f(0.5, 0.5, 0.5, 1);
+  return vec4f(0.5);
 }

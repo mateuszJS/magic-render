@@ -8,6 +8,7 @@ import TerserPlugin from 'terser-webpack-plugin'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isProd = process.env.NODE_ENV === 'production'
+const isTest = process.env.TEST_ENV === 'true'
 
 // Base configuration shared between both formats
 const baseConfig = {
@@ -101,7 +102,7 @@ const baseConfig = {
       }),
     ],
   },
-  plugins: [isProd && !process.env.CI && new BundleAnalyzerPlugin({})],
+  plugins: [isProd && !isTest && new BundleAnalyzerPlugin({})],
 }
 
 const libConfig = {
@@ -135,4 +136,4 @@ const testConfig = {
   ],
 }
 
-export default isProd ? libConfig : testConfig
+export default isProd && !isTest ? libConfig : testConfig
