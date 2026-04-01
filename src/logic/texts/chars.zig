@@ -41,11 +41,6 @@ pub const Details = struct {
         const font_size_world = font_size / shared.render_scale;
         const next_font_size = utils.getNextStep(MIN_SDF_FONT_SIZE, font_size_world);
         if (next_font_size > self.max_requested_viewport_font_size + consts.EPSILON) {
-            std.debug.print("debug: {d} {d} {d}\n", .{
-                font_size,
-                shared.render_scale,
-                next_font_size,
-            });
             self.max_requested_viewport_font_size = next_font_size;
             // self.max_font_size = next_font_size * shared.render_scale; // I don't think it's needed
             self.outdated_sdf = true;

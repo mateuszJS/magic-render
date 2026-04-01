@@ -320,7 +320,7 @@ pub fn getCombineSdfRatio() f32 {
 pub fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
     const max_dim = @max(bounds[0].distance(bounds[1]), bounds[0].distance(bounds[3]));
     const viewport_size = max_dim / shared.render_scale;
-    std.debug.print("shared.pixel_density {d}\n", .{shared.pixel_density});
+
     if (shared.pixel_density + consts.EPSILON >= 3.0) {
         // tested on retina screen, 3 device px per 1 CSS pixel
         // https://quickchart.io/chart?c=%7B%22type%22%3A%22scatter%22%2C%22data%22%3A%7B%22datasets%22%3A%5B%7B%22label%22%3A%220.65sqrt(x)-1.9%22%2C%22data%22%3A%5B%7B%22x%22%3A0%2C%22y%22%3A-1.9%7D%2C%7B%22x%22%3A50%2C%22y%22%3A2.7%7D%2C%7B%22x%22%3A100%2C%22y%22%3A4.6%7D%2C%7B%22x%22%3A150%2C%22y%22%3A6.1%7D%2C%7B%22x%22%3A200%2C%22y%22%3A7.3%7D%2C%7B%22x%22%3A250%2C%22y%22%3A8.4%7D%2C%7B%22x%22%3A300%2C%22y%22%3A9.4%7D%2C%7B%22x%22%3A350%2C%22y%22%3A10.3%7D%5D%2C%22showLine%22%3Atrue%2C%22pointRadius%22%3A0%2C%22borderColor%22%3A%22blue%22%7D%2C%7B%22label%22%3A%22target+points%22%2C%22data%22%3A%5B%7B%22x%22%3A33%2C%22y%22%3A2%7D%2C%7B%22x%22%3A75%2C%22y%22%3A4%7D%2C%7B%22x%22%3A175%2C%22y%22%3A6%7D%2C%7B%22x%22%3A235%2C%22y%22%3A8%7D%2C%7B%22x%22%3A300%2C%22y%22%3A10%7D%5D%2C%22pointRadius%22%3A6%2C%22backgroundColor%22%3A%22red%22%7D%5D%7D%7D
@@ -341,10 +341,8 @@ pub fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
         // 120 -> 4
         //  40 -> 2
         // return 20;
-        // std.debug.print("22222222", .{});
         return @max(1, 0.026 * viewport_size + 0.9);
     } else {
-        // std.debug.print("viewport_size {d}\n", .{viewport_size});
         // tested on non-retina screen, 1 device px per 1 CSS pixel
         // https://quickchart.io/chart?c=%7B%22type%22%3A%22scatter%22%2C%22data%22%3A%7B%22datasets%22%3A%5B%7B%22label%22%3A%220.53%E2%88%9Ax-3%22%2C%22data%22%3A%5B%7B%22x%22%3A0%2C%22y%22%3A-3%7D%2C%7B%22x%22%3A50%2C%22y%22%3A0.75%7D%2C%7B%22x%22%3A100%2C%22y%22%3A2.3%7D%2C%7B%22x%22%3A150%2C%22y%22%3A3.49%7D%2C%7B%22x%22%3A200%2C%22y%22%3A4.49%7D%2C%7B%22x%22%3A250%2C%22y%22%3A5.38%7D%2C%7B%22x%22%3A300%2C%22y%22%3A6.18%7D%2C%7B%22x%22%3A350%2C%22y%22%3A6.92%7D%2C%7B%22x%22%3A400%2C%22y%22%3A7.6%7D%2C%7B%22x%22%3A450%2C%22y%22%3A8.24%7D%2C%7B%22x%22%3A500%2C%22y%22%3A8.85%7D%2C%7B%22x%22%3A550%2C%22y%22%3A9.43%7D%2C%7B%22x%22%3A600%2C%22y%22%3A9.98%7D%2C%7B%22x%22%3A700%2C%22y%22%3A11.02%7D%5D%2C%22showLine%22%3Atrue%2C%22pointRadius%22%3A0%2C%22borderColor%22%3A%22blue%22%7D%2C%7B%22label%22%3A%22target+points%22%2C%22data%22%3A%5B%7B%22x%22%3A86%2C%22y%22%3A2%7D%2C%7B%22x%22%3A180%2C%22y%22%3A4%7D%2C%7B%22x%22%3A280%2C%22y%22%3A6%7D%2C%7B%22x%22%3A420%2C%22y%22%3A8%7D%2C%7B%22x%22%3A600%2C%22y%22%3A10%7D%5D%2C%22pointRadius%22%3A6%2C%22backgroundColor%22%3A%22red%22%7D%5D%7D%7D
         // loss - good enough, above that not much improvements(used as data for graph), really good:
@@ -353,7 +351,6 @@ pub fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
         // 280 -> 6
         // 180 -> 4
         //  86 -> 2
-        std.debug.print("11111111", .{});
 
         return 1;
         // return @max(1, 0.53 * @sqrt(viewport_size) - 3);

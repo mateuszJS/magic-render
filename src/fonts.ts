@@ -80,7 +80,6 @@ export function getCharData(fontId: number, char_code: number): Logic.Serialized
   const char = String.fromCharCode(char_code)
   const path = font.getPath(char, 0, 0, 1)
   const d = path.toPathData(5)
-  console.log('JS d', path)
 
   // in case a character is created out of multiple overlapping paths,
   // we have to intersect and unite them;
@@ -119,8 +118,6 @@ export function getCharData(fontId: number, char_code: number): Logic.Serialized
   if (char_code == ENTER) {
     width = 0
   }
-
-  console.log('JS', char_code, correctedPaths)
 
   const result = new Logic.SerializedCharDetails({
     x: x1,

@@ -833,7 +833,6 @@ fn requestCharsSdfs() !void {
 
                 for (text.text_vertex.items) |vertex| {
                     if (vertex.char) |char| {
-                        std.debug.print("requyesting chars {u} {d}\n", .{ char, char });
                         const ch_d = try fonts.get(text.typo_props.font_family_id, char);
 
                         if (ch_d.sdf_texture_id != null) {
@@ -884,9 +883,6 @@ pub fn computeSdfs() !void {
                 // const font_size = ch_d.max_font_size;
                 const ch_w = font_size * ch_d.width;
                 const ch_h = font_size * ch_d.height;
-
-                std.debug.print("font_size {d}, ch_h {d}\n", .{ font_size, ch_h });
-
                 const bounds = utils.createBounds(ch_w, ch_h);
                 const padding = font_size * ch_d.*.max_ratio_padding_to_font_size;
 
@@ -1018,7 +1014,6 @@ pub fn computeSdfs() !void {
                     const text_sdf_texture_id = text.getSdfTextureId();
                     const loss = sdf_drawing.getRatioPxPerSdfTexel(text.bounds) * sdf_drawing.getCombineSdfRatio();
                     const text_padding = sdf_drawing.getSdfPadding(text.effects.items, loss);
-                    std.debug.print("text_padding {d}\n", .{text_padding});
 
                     const sdf_dims = sdf_drawing.getSdfTextureDims(
                         text.bounds,
@@ -1027,7 +1022,6 @@ pub fn computeSdfs() !void {
                         1.2,
                     );
                     text.sdf_scale = sdf_dims.scale; // this is so wrong
-                    std.debug.print("text.sdf_scale {d}\n", .{text.sdf_scale});
                     // scale uncludes padding already, yet we add padding later anyway
 
                     const bounds_height = text.bounds[0].distance(text.bounds[3]);
@@ -1061,7 +1055,6 @@ pub fn computeSdfs() !void {
                                     .width = (end_x - start_x) * text.sdf_scale,
                                     .height = (end_y - start_y) * text.sdf_scale,
                                 };
-                                std.debug.print("placement {d}, {d}, {d}, {d}\n", .{ text_padding, text.sdf_scale, start_x, start_y });
 
                                 web_gpu_programs.combine_sdf(
                                     text_sdf_texture_id,
