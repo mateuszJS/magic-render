@@ -4,8 +4,8 @@ const shared = @import("shared.zig");
 const std = @import("std");
 
 pub const TextureSize = struct {
-    w: f32,
-    h: f32,
+    w: f32 = 0,
+    h: f32 = 0,
 };
 
 // iOS WebKit Metal crashes on rgba32float STORAGE_BINDING textures above ~32MB,

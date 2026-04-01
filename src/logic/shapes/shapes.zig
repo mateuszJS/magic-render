@@ -53,19 +53,14 @@ pub const Shape = struct {
     effects: std.ArrayList(sdf_effect.Effect),
     bounds: [4]PointUV,
 
-    sdf_scale: f32 = 1.0,
-    outdated_sdf: bool, // if true, we need to recalculate SDF
-    sdf_texture_id: u32,
-    sdf_size: TextureSize = .{ .w = 0, .h = 0 },
-    // this is rounded size, with safety padding and rounding error included!
+    sdf_scale: f32 = 1.0, // TODO: to remove
 
-    // useful only while updating scale to avoid unnecessary regenerations if size hasn't grown
-    sdf_texture_padding: f32 = 0.0,
+    outdated_sdf: bool, // if true, we need to recalculate SDF
+    sdf_tex: sdf_drawing.SdfTex,
+
     should_update_sdf: bool, // throttled update,
     // less important than outdated_sdf which triggers instantly
     // this one triggers update on the next throttle event
-
-    sdf_rounding_err: Point = .{ .x = 0.0, .y = 0.0 },
 
     cache_scale: f32 = 1.0,
     outdated_cache: bool,
@@ -98,7 +93,7 @@ pub const Shape = struct {
             .paths = paths_list,
             .props = props,
             .effects = try sdf_effect.deserialize(input_effects, allocator),
-            .sdf_texture_id = sdf_texture_id,
+            .sdf_tex = sdf_drawing.SdfTex{ .id = sdf_texture_id },
             .outdated_sdf = true,
             .should_update_sdf = false,
             .bounds = input_bounds,
@@ -408,13 +403,14 @@ pub const Shape = struct {
 
         // We assume all sdf texture keeps aspect ratio, just sdf_rounding_err breakes their aspect ratio
 
-        const sdf_world_width = self.sdf_size.w - (2 * consts.SDF_SAFE_PADDING + self.sdf_rounding_err.x);
-        const scale_world_vs_sdf = world_width / sdf_world_width;
+        const sdf_world_width = self.sdf_tex.size.w - (2 * consts.SDF_SAFE_PADDING + self.sdf_tex.rounding_err.x);
+        const scale_world_vs_sdf = world_width / sdf_world_width; // NOTE: shoudln't we include osmehow here case if effects are too large
+        // so we decrease shape and this way sdf scale changes?
         const padding_world = effects_padding_world + consts.SDF_SAFE_PADDING * scale_world_vs_sdf;
 
         const scaled_sdf_round_err = Point{
-            .x = self.sdf_rounding_err.x * scale_world_vs_sdf,
-            .y = self.sdf_rounding_err.y * scale_world_vs_sdf,
+            .x = self.sdf_tex.rounding_err.x * scale_world_vs_sdf,
+            .y = self.sdf_tex.rounding_err.y * scale_world_vs_sdf,
         };
 
         return sdf_drawing.getDrawBoundsWorld(
@@ -426,7 +422,7 @@ pub const Shape = struct {
     }
 
     pub fn getPickBounds(self: Shape) [6]images.PickVertex {
-        const bounds = sdf_drawing.getDrawBounds(self.bounds, self.sdf_texture_padding, null);
+        const bounds = self.getDrawBounds();
         var buffer: [6]images.PickVertex = undefined;
         for (bounds, 0..) |b, i| {
             buffer[i] = .{
@@ -457,7 +453,7 @@ pub const Shape = struct {
             .bounds = self.bounds,
             .props = self.props,
             .effects = try sdf_effect.serialize(self.effects, allocator),
-            .sdf_texture_id = self.sdf_texture_id,
+            .sdf_texture_id = self.sdf_tex.id,
             .cache_texture_id = self.cache_texture_id,
         };
     }

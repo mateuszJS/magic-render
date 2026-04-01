@@ -55,6 +55,7 @@ function getAlternativeProgramOnError() {
         'let s=20.0;let p=floor(uv*s);let c=(p.x+p.y)%2.0;color=vec4f(c,c,c,1);'
       ),
       4 * 4,
+      false,
       (info) => {
         console.warn('Alternative program compilation info:', info)
       }
@@ -79,6 +80,7 @@ function createProgram(
     presentationFormat,
     customProgramWrapper.replace('${CUSTOM_PROGRAM_CODE}', code),
     4 * 4,
+    false,
     (info) => {
       const errors = info.messages.filter((msg) => msg.type === 'error')
       if (errors.length > 0) {

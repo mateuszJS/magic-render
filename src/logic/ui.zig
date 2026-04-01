@@ -50,7 +50,7 @@ pub fn generateUiElementsSdf(compute_shape: *const fn ([]const Point, u32, u32, 
                 1,
                 null,
             );
-            shape.sdf_size = texture_size.get_allowed_sdf_size(
+            shape.sdf_tex.size = texture_size.get_allowed_sdf_size(
                 texture_size.get_allowed_size(
                     bounds[0].distance(bounds[1]),
                     bounds[0].distance(bounds[3]),
@@ -64,9 +64,9 @@ pub fn generateUiElementsSdf(compute_shape: *const fn ([]const Point, u32, u32, 
 
             compute_shape(
                 points,
-                @intFromFloat(@floor(shape.sdf_size.w)),
-                @intFromFloat(@floor(shape.sdf_size.h)),
-                shape.sdf_texture_id,
+                @intFromFloat(@floor(shape.sdf_tex.size.w)),
+                @intFromFloat(@floor(shape.sdf_tex.size.h)),
+                shape.sdf_tex.id,
             );
         }
     }
@@ -96,11 +96,11 @@ pub fn draw(
             };
 
             const p = data.position;
-            const max_sdf_size = @max(shape.sdf_size.w, shape.sdf_size.h);
+            const max_sdf_size = @max(shape.sdf_tex.size.w, shape.sdf_tex.size.h);
             const scale = data.max_size / max_sdf_size;
 
-            const hw = scale * shape.sdf_size.w * 0.5; // half width
-            const hh = scale * shape.sdf_size.h * 0.5; // half height
+            const hw = scale * shape.sdf_tex.size.w * 0.5; // half width
+            const hh = scale * shape.sdf_tex.size.h * 0.5; // half height
 
             const vertex = [6]PointUV{
                 .{ .x = p.x - hw, .y = p.y - hh, .u = 0.0, .v = 0.0 },
@@ -114,7 +114,7 @@ pub fn draw(
             draw_shape(
                 &vertex,
                 uniform,
-                shape.sdf_texture_id,
+                shape.sdf_tex.id,
             );
         }
     }

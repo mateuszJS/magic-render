@@ -31,7 +31,8 @@ declare module '*.zig' {
     width: number,
     height: number,
     max_texture_size: number,
-    max_buffer_size: number
+    max_buffer_size: number,
+    isTest: boolean
   ) => void
   export const updateCache: VoidFunction
   export const removeAsset: () => void
@@ -155,7 +156,7 @@ declare module '*.zig' {
   export const setCaretPosition: (selection_start: number, selection_end: number) => void
 
   export const tick: (time: DOMHighResTimeStamp) => boolean
-  export const computeSdfs: VoidFunction
+  export const computePhase: VoidFunction
   export const renderDraw: (is_ui_hidden: boolean) => void
   export const renderPick: VoidFunction
   export const deinitState: VoidFunction

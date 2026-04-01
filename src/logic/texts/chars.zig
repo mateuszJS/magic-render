@@ -4,12 +4,14 @@ const shared = @import("../shared.zig");
 const consts = @import("../consts.zig");
 const utils = @import("../utils.zig");
 const TextureSize = @import("../texture_size.zig").TextureSize;
+const texts = @import("./texts.zig");
+const fonts = @import("./fonts.zig");
+const sdf_drawing = @import("../sdf/drawing.zig");
 
 const MIN_SDF_FONT_SIZE = 50; // below that we lose too many details
 // in SDF textures
 
 pub const Details = struct {
-    sdf_texture_id: ?u32,
     x: f32,
     y: f32,
     width: f32,
@@ -19,17 +21,18 @@ pub const Details = struct {
     outdated_sdf: bool,
     kerning: std.AutoArrayHashMap(u21, f32), // kerning between current char and next one
 
-    sdf_scale: f32 = 1, // in contrary to other sdf_scales
+    // sdf_scale: f32 = 1, // in contrary to other sdf_scales
     // this one is relative to requested viewport size, not world size.
     // It's due to the fact char's sdf is used for multiple cases at once
     // so there is no one world case size to use
     // so sdf_scale is always 1 expect fact when sdf texture hits max size!
-    sdf_size: TextureSize = .{ .w = 0, .h = 0 },
-    sdf_texture_padding: f32 = 0,
-    sdf_rounding_err: Point = .{ .x = 0, .y = 0 },
+    // sdf_size: TextureSize = .{ .w = 0, .h = 0 },
+    // sdf_texture_padding: f32 = 0,
+    // sdf_rounding_err: Point = .{ .x = 0, .y = 0 },
+
+    sdf_tex: ?sdf_drawing.SdfTex = null,
 
     max_requested_viewport_font_size: f32 = 0,
-    // max_font_size: f32 = 0,
     max_ratio_padding_to_font_size: f32 = 0,
 
     pub fn request_size(self: *Details, font_size: f32, effect_padding: f32) void {
@@ -39,7 +42,8 @@ pub const Details = struct {
         }
 
         const font_size_world = font_size / shared.render_scale;
-        const next_font_size = utils.getNextStep(MIN_SDF_FONT_SIZE, font_size_world);
+        // const next_font_size = utils.getNextStep(MIN_SDF_FONT_SIZE, font_size_world);
+        const next_font_size = font_size_world;
         if (next_font_size > self.max_requested_viewport_font_size + consts.EPSILON) {
             self.max_requested_viewport_font_size = next_font_size;
             // self.max_font_size = next_font_size * shared.render_scale; // I don't think it's needed
@@ -65,3 +69,22 @@ pub const Chars = struct {
         return try self.chars.put(c, details);
     }
 };
+
+pub fn requestCharsSdfs(text: texts.Text) !void {
+    if (!fonts.fonts.contains(text.typo_props.font_family_id)) return;
+
+    const padding = sdf_drawing.getSdfPadding(text.effects.items, 1);
+
+    for (text.text_vertex.items) |vertex| {
+        if (vertex.char) |char| {
+            const ch_d = try fonts.get(text.typo_props.font_family_id, char);
+
+            if (ch_d.sdf_tex != null) {
+                ch_d.request_size(
+                    text.typo_props.font_size,
+                    padding,
+                );
+            }
+        }
+    }
+}

@@ -41,6 +41,9 @@ export default async function initCreator(
   onUpdateTool: (tool: CreatorTool) => void,
   getFontUrl: (fontId: number) => string
 ): Promise<CreatorAPI> {
+  const isTest = true
+  const fakeMaxTexSize = 40
+
   let texturesLoading = 0
   let isMouseEventProcessing = false
   const abortController = new AbortController()
@@ -56,8 +59,9 @@ export default async function initCreator(
   Logic.initState(
     Snapshots.lastSnapshot.width,
     Snapshots.lastSnapshot.height,
-    device.limits.maxTextureDimension2D,
-    device.limits.maxBufferSize
+    fakeMaxTexSize || device.limits.maxTextureDimension2D,
+    device.limits.maxBufferSize,
+    isTest
   )
 
   Textures.init((texLoadings) => {
@@ -116,7 +120,7 @@ export default async function initCreator(
     updateRenderScale()
   })
 
-  initPrograms(device, presentationFormat)
+  initPrograms(device, presentationFormat, isTest)
 
   initMouseController(
     canvas,

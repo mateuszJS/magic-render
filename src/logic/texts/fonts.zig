@@ -2,6 +2,7 @@ const std = @import("std");
 const chars = @import("chars.zig");
 const Point = @import("../types.zig").Point;
 const js_glue = @import("../js_glue.zig");
+const sdf_drawing = @import("../sdf/drawing.zig");
 
 pub var fonts: std.AutoArrayHashMap(u32, chars.Chars) = undefined;
 
@@ -20,7 +21,7 @@ pub fn get(font_id: u32, c: u21) !*chars.Details {
         const char = js_glue.getCharData(font_id, c);
         const d = try std.heap.page_allocator.create(chars.Details);
         d.* = chars.Details{
-            .sdf_texture_id = char.sdf_texture_id,
+            .sdf_tex = if (char.sdf_texture_id) |sdf_tex_id| sdf_drawing.SdfTex{ .id = sdf_tex_id } else null,
             .x = char.x,
             .y = char.y,
             .width = char.width,

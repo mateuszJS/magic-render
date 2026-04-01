@@ -1,6 +1,7 @@
 const math = @import("std").math;
 const consts = @import("consts.zig");
 const PointUV = @import("types.zig").PointUV;
+const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 
 pub fn findMidAngle(angle1: f32, angle2: f32) f32 {
     const x = math.cos(angle1) + math.cos(angle2);
@@ -43,6 +44,20 @@ pub fn createBounds(w: f32, h: f32) [4]PointUV {
         .{ .x = w, .y = h, .u = 1, .v = 1 },
         .{ .x = w, .y = 0, .u = 1, .v = 0 },
         .{ .x = 0, .y = 0, .u = 0, .v = 0 },
+    };
+}
+
+pub fn transformBoundsUV(self: [4]PointUV, matrix: Matrix3x3) [6]PointUV {
+    const b = self.relative_bounds;
+    return [_]PointUV{
+        // first triangle
+        matrix.getUV(.{ .x = b[3].x, .y = b[3].y, .u = 0.0, .v = 0.0 }),
+        matrix.getUV(.{ .x = b[0].x, .y = b[0].y, .u = 0.0, .v = 1.0 }),
+        matrix.getUV(.{ .x = b[1].x, .y = b[1].y, .u = 1.0, .v = 1.0 }),
+        // second triangle
+        matrix.getUV(.{ .x = b[1].x, .y = b[1].y, .u = 1.0, .v = 1.0 }),
+        matrix.getUV(.{ .x = b[2].x, .y = b[2].y, .u = 1.0, .v = 0.0 }),
+        matrix.getUV(.{ .x = b[3].x, .y = b[3].y, .u = 0.0, .v = 0.0 }),
     };
 }
 

@@ -134,6 +134,12 @@ pub fn getDrawUniform(sdf_effect: Effect, sdf_scale: f32, opacity: f32) DrawUnif
     }
 }
 
+pub const SdfTex = struct { id: u32, size: texture_size.TextureSize = .{}, scale: f32 = 1, padding: f32 = 0, rounding_err: Point = .{} };
+// ch_d.sdf_size = sdf_dims.size;
+// ch_d.sdf_scale = sdf_dims.scale;
+// ch_d.sdf_texture_padding = padding * ch_d.sdf_scale;
+// ch_d.sdf_rounding_err = sdf_dims.sdf_rounding_err;
+
 pub fn getSdfPadding(effects: []Effect, loss: f32) f32 {
     _ = loss;
     var padding: f32 = SKELETON_LINE_WIDTH / 2; // at least 1, without fwidth fix
@@ -318,6 +324,10 @@ pub fn getCombineSdfRatio() f32 {
 }
 
 pub fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
+    if (shared.is_test) {
+        return 5;
+    }
+
     const max_dim = @max(bounds[0].distance(bounds[1]), bounds[0].distance(bounds[3]));
     const viewport_size = max_dim / shared.render_scale;
 
@@ -352,12 +362,13 @@ pub fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
         // 180 -> 4
         //  86 -> 2
 
-        return 5;
-        // return @max(1, 0.53 * @sqrt(viewport_size) - 3);
+        // return 5;
+        return @max(1, 0.53 * @sqrt(viewport_size) - 3);
     }
 }
 
 pub fn getSdfTextureDims(
+    tex_id: u32,
     bounds: [4]PointUV,
     sdf_padding: f32,
     loss_factor: f32,
@@ -365,17 +376,11 @@ pub fn getSdfTextureDims(
     // used to generate 20% bigger textures, so we won't need to regenerate
     // again texture while user is zooming in slowly (so would trigger
     // new SDF each frame)
-) struct {
-    size: texture_size.TextureSize,
-    scale: f32,
-    sdf_rounding_err: Point,
-} {
-    // shared.texture_max_size = 20;
-
+) SdfTex {
     const scale = additional_scale / (shared.render_scale * loss_factor);
     const bounds_with_padding = getBoundsWithPadding(
         bounds,
-        sdf_padding, // + fwidth_compensation,
+        sdf_padding,
         scale,
         null,
     );
@@ -403,8 +408,6 @@ pub fn getSdfTextureDims(
     const world_width = bounds_with_padding[0].distance(bounds_with_padding[1]) / scale;
     // * shared.render_scale to revert to logical scale (without impact of camera/zoom)
 
-    const sdf_scale = sdf_size.w / world_width;
-
     const sdf_round_size = texture_size.TextureSize{
         .w = @ceil(sdf_size.w),
         .h = @ceil(sdf_size.h),
@@ -415,13 +418,17 @@ pub fn getSdfTextureDims(
         .h = sdf_round_size.h + 2 * consts.SDF_SAFE_PADDING,
     };
 
-    return .{
+    const sdf_scale = sdf_size.w / world_width;
+
+    return SdfTex{
         .size = sdf_safe_size, // rounded ceil size
         .scale = sdf_scale, // scale taken before rounding
-        .sdf_rounding_err = Point{
+        .rounding_err = Point{
             .x = sdf_round_size.w - sdf_size.w,
             .y = sdf_round_size.h - sdf_size.h,
         },
+        .padding = sdf_padding * sdf_scale,
+        .id = tex_id,
     };
 }
 

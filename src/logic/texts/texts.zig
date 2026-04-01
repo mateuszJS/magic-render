@@ -26,19 +26,38 @@ pub const CharVertex = struct {
     origin: Point, // origin of the char (bottom left corner), useful for drawing selection/caret/picking
     last_in_line: bool = false,
 
-    pub fn getBoundsVertex(self: CharVertex, padding: f32, matrix: Matrix3x3) [6]PointUV {
-        const b = self.relative_bounds;
-        const p = padding;
-        return [_]PointUV{
-            // first triangle
-            matrix.getUV(.{ .x = b[3].x - p, .y = b[3].y - p, .u = 0.0, .v = 0.0 }),
-            matrix.getUV(.{ .x = b[0].x - p, .y = b[0].y + p, .u = 0.0, .v = 1.0 }),
-            matrix.getUV(.{ .x = b[1].x + p, .y = b[1].y + p, .u = 1.0, .v = 1.0 }),
-            // second triangle
-            matrix.getUV(.{ .x = b[1].x + p, .y = b[1].y + p, .u = 1.0, .v = 1.0 }),
-            matrix.getUV(.{ .x = b[2].x + p, .y = b[2].y - p, .u = 1.0, .v = 0.0 }),
-            matrix.getUV(.{ .x = b[3].x - p, .y = b[3].y - p, .u = 0.0, .v = 0.0 }),
+    pub fn getDrawBounds(self: CharVertex, effects_padding_world: f32, ch_sdf_tex: sdf_drawing.SdfTex, matrix: Matrix3x3) [6]PointUV {
+        var bounds: [4]PointUV = undefined;
+
+        for (self.relative_bounds, 0..) |p, i| {
+            bounds[i] = matrix.getUV(p);
+        }
+
+        // shape.sdf_size includes effects padding, safety padding and rounding error
+        // to be able to compare them(obtain scale) together we have to calculate
+        // world size -> bounds size + effects padding
+        // sdf size -> shape.sdf_size - effects padding - rounding error
+
+        // const effects_padding_world = sdf_drawing.getSdfPadding(self.effects.items, 1);
+        const world_width = bounds[0].distance(bounds[1]) + 2 * effects_padding_world;
+
+        // We assume all sdf texture keeps aspect ratio, just sdf_rounding_err breakes their aspect ratio
+
+        const sdf_world_width = ch_sdf_tex.size.w - (2 * consts.SDF_SAFE_PADDING + ch_sdf_tex.rounding_err.x);
+        const scale_world_vs_sdf = world_width / sdf_world_width;
+        const padding_world = effects_padding_world + consts.SDF_SAFE_PADDING * scale_world_vs_sdf;
+
+        const scaled_sdf_round_err = Point{
+            .x = ch_sdf_tex.rounding_err.x * scale_world_vs_sdf,
+            .y = ch_sdf_tex.rounding_err.y * scale_world_vs_sdf,
         };
+
+        return sdf_drawing.getDrawBoundsWorld(
+            bounds,
+            padding_world,
+            Point{ .x = 0, .y = 0 },
+            scaled_sdf_round_err,
+        );
     }
 };
 
@@ -54,11 +73,14 @@ pub const Text = struct {
     bounds: [4]PointUV,
     text_vertex: std.ArrayList(CharVertex),
 
-    sdf_texture_id: ?u32 = null,
-    sdf_scale: f32 = 1.0,
+    // sdf_texture_id: ?u32 = null,
+    sdf_tex: ?sdf_drawing.SdfTex = null,
+
+    // sdf_scale: f32 = 1.0,
     is_sdf_outdated: bool = true,
-    last_sdf_padding: f32 = 0,
-    last_sdf_dim_width: f32 = 0, // you cannot make text lose apsect ratio
+    // last_sdf_padding: f32 = 0,
+    // last_sdf_dim_width: f32 = 0, // you cannot make text lose apsect ratio
+
     // so we keep track only width
 
     props: asset_props.Props,
@@ -83,7 +105,7 @@ pub const Text = struct {
             .text_vertex = std.ArrayList(CharVertex).init(allocator),
             .props = props,
             .effects = try sdf_effect.deserialize(input_effects, allocator),
-            .sdf_texture_id = sdf_texture_id,
+            .sdf_tex = if (sdf_texture_id) |sdf_tex_id| sdf_drawing.SdfTex{ .id = sdf_tex_id } else null,
         };
 
         _ = try text.computeText(0, 0);
@@ -292,11 +314,13 @@ pub const Text = struct {
         return null;
     }
 
-    pub fn getSdfTextureId(self: *Text) u32 {
-        return if (self.sdf_texture_id) |sdf_texture_id| sdf_texture_id else b: {
-            const sdf_tex_id = js_glue.createSdfTexture();
-            self.sdf_texture_id = sdf_tex_id;
-            break :b sdf_tex_id;
+    pub fn getSdfTex(self: *Text) sdf_drawing.SdfTex {
+        return if (self.sdf_tex) |sdf_tex| sdf_tex else b: {
+            const sdf_tex = sdf_drawing.SdfTex{
+                .id = js_glue.createSdfTexture(),
+            };
+            self.sdf_tex = sdf_tex;
+            break :b sdf_tex;
         };
     }
 
@@ -400,7 +424,7 @@ pub const Text = struct {
             .props = self.props,
             .effects = try effects_list.toOwnedSlice(),
             .typo_props = self.typo_props.serialize(),
-            .sdf_texture_id = self.sdf_texture_id,
+            .sdf_texture_id = if (self.sdf_tex) |tex| tex.id else null,
         };
     }
 

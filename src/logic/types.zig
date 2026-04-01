@@ -60,8 +60,8 @@ pub const AssetSerialized = union(enum) {
 };
 
 pub const Point = extern struct {
-    x: f32,
-    y: f32,
+    x: f32 = 0,
+    y: f32 = 0,
 
     pub fn mid(self: Point, other: Point) Point {
         return Point{
