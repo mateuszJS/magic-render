@@ -396,24 +396,12 @@ pub const Shape = struct {
 
         // TODO: move this and same secito nfrom texts.Text to dedicated function
         const effects_padding_world = sdf_drawing.getSdfPadding(self.effects.items);
-        const world_width = self.bounds[0].distance(self.bounds[1]) + 2 * effects_padding_world;
-
-        // We assume all sdf texture keeps aspect ratio, just sdf_round_err breakes their aspect ratio
-
-        const sdf_world_width = self.sdf_tex.size.w - (2 * consts.SDF_SAFE_PADDING + self.sdf_tex.round_err.x);
-        const scale_world_vs_sdf = world_width / sdf_world_width; // NOTE: shoudln't we include osmehow here case if effects are too large
-        const padding_world = effects_padding_world + consts.SDF_SAFE_PADDING * scale_world_vs_sdf;
-
-        const scaled_sdf_round_err = Point{
-            .x = self.sdf_tex.round_err.x * scale_world_vs_sdf,
-            .y = self.sdf_tex.round_err.y * scale_world_vs_sdf,
-        };
 
         return sdf_drawing.getDrawBoundsWorld(
             self.bounds,
-            padding_world,
+            effects_padding_world,
             self.getFilterMargin(),
-            scaled_sdf_round_err,
+            self.sdf_tex,
         );
     }
 

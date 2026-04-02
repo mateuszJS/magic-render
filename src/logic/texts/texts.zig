@@ -38,24 +38,11 @@ pub const CharVertex = struct {
         // world size -> bounds size + effects padding
         // sdf size -> shape.sdf_size - effects padding - rounding error
 
-        const world_width = bounds[0].distance(bounds[1]) + 2 * effects_padding_world;
-
-        // We assume all sdf texture keeps aspect ratio, just sdf_rounding_err breakes their aspect ratio
-
-        const sdf_world_width = ch_sdf_tex.size.w - (2 * consts.SDF_SAFE_PADDING + ch_sdf_tex.round_err.x);
-        const scale_world_vs_sdf = world_width / sdf_world_width;
-        const padding_world = effects_padding_world + consts.SDF_SAFE_PADDING * scale_world_vs_sdf;
-
-        const scaled_sdf_round_err = Point{
-            .x = ch_sdf_tex.round_err.x * scale_world_vs_sdf,
-            .y = ch_sdf_tex.round_err.y * scale_world_vs_sdf,
-        };
-
         return sdf_drawing.getDrawBoundsWorld(
             bounds,
-            padding_world,
+            effects_padding_world,
             Point{ .x = 0, .y = 0 },
-            scaled_sdf_round_err,
+            ch_sdf_tex,
         );
     }
 };
@@ -204,8 +191,8 @@ pub const Text = struct {
             }
 
             const relative_bounds = self.getDrawRelativeBounds(
-                char_details.x,
-                char_details.y,
+                char_details.x, // NOTE: now sure if we should store it here
+                char_details.y, // it smells like unnecessary copy
                 char_details.width,
                 char_details.height,
                 .{
@@ -390,6 +377,23 @@ pub const Text = struct {
         }
 
         return triangles_buffer.toOwnedSlice();
+    }
+
+    pub fn getDrawBounds(self: Text) [6]PointUV {
+        // shape.sdf_size includes effects padding, safety padding and rounding error
+        // to be able to compare them(obtain scale) together we have to calculate
+        // world size -> bounds size + effects padding
+        // sdf size -> shape.sdf_size - effects padding - rounding error
+
+        // TODO: move this and same section from texts.Text to dedicated function
+        const effects_padding_world = sdf_drawing.getSdfPadding(self.effects.items);
+
+        return sdf_drawing.getDrawBoundsWorld(
+            self.bounds,
+            effects_padding_world,
+            Point{ .x = 0, .y = 0 },
+            self.sdf_tex orelse @panic("Text sdf texture should be set when calling getDrawBounds"),
+        );
     }
 
     pub fn getDrawUniform(self: Text, effects: sdf_effect.Effect, sdf_scale: f32) sdf_drawing.DrawUniform {

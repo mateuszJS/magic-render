@@ -277,16 +277,29 @@ pub fn getBoundsWithPaddingEnhanced(
 
 pub fn getDrawBoundsWorld(
     bounds: [4]PointUV,
-    padding: f32,
+    effects_padding_world: f32,
     filter_margin: ?Point,
-    tex_round_err: Point,
+    sdf_tex: SdfTex,
 ) [6]PointUV {
+    const world_width = bounds[0].distance(bounds[1]) + 2 * effects_padding_world;
+
+    // We assume all sdf texture keeps aspect ratio, just sdf_round_err breakes their aspect ratio
+
+    const sdf_world_width = sdf_tex.size.w - (2 * consts.SDF_SAFE_PADDING + sdf_tex.round_err.x);
+    const scale_world_vs_sdf = world_width / sdf_world_width; // NOTE: shoudln't we include osmehow here case if effects are too large
+    const padding_world = effects_padding_world + consts.SDF_SAFE_PADDING * scale_world_vs_sdf;
+
+    const scaled_sdf_round_err = Point{
+        .x = sdf_tex.round_err.x * scale_world_vs_sdf,
+        .y = sdf_tex.round_err.y * scale_world_vs_sdf,
+    };
+
     const bounds_with_padding = getBoundsWithPaddingEnhanced(
         bounds,
-        padding,
+        padding_world,
         1,
         filter_margin,
-        tex_round_err,
+        scaled_sdf_round_err,
     );
     return [_]PointUV{
         // first triangle
@@ -333,7 +346,7 @@ pub fn getCombineSdfRatio() f32 {
 
 fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
     if (shared.is_test) {
-        return 5;
+        return 20;
     }
 
     const max_dim = @max(bounds[0].distance(bounds[1]), bounds[0].distance(bounds[3]));
@@ -428,7 +441,15 @@ pub fn getTexture(
 
     const sdf_scale = sdf_size.w / world_width;
 
+    // std.debug.print("The sdf_safe_size width: {d} is composed of\n", .{sdf_safe_size.w});
+    // std.debug.print("bounds width {d}\n", .{bounds[0].distance(bounds[1]) * sdf_scale});
+    // std.debug.print("2x * sdf_padding {d}\n", .{2 * sdf_padding * sdf_scale});
+    // std.debug.print("2x * safety padding {d}\n", .{2 * consts.SDF_SAFE_PADDING});
+    // std.debug.print("rounding error x {d}\n", .{sdf_round_size.w - sdf_size.w});
+    // std.debug.print("TOGETHER {d}\n", .{(bounds[0].distance(bounds[1]) + 2 * sdf_padding) * sdf_scale + 2 * consts.SDF_SAFE_PADDING + (sdf_round_size.w - sdf_size.w)});
+
     return SdfTex{
+        // TODO: consder b ydefault assigning is_outed = false, here
         .size = sdf_safe_size,
         .scale = sdf_scale, // scale taken before rounding
         .round_err = Point{

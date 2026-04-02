@@ -26,7 +26,7 @@ export default function toZigAsset(asset: Asset): ZigAsset {
         typo_props: asset.typo_props,
         props: toZigProps(asset.props),
         effects: toZigEffects(asset.effects),
-        sdf_texture_id: asset.sdf_texture_id,
+        sdf_texture_id: asset.is_sdf_shared ? (asset.sdf_texture_id ?? Textures.createSDF()) : null, // we duplicate information here
         is_sdf_shared: asset.is_sdf_shared,
       },
     }

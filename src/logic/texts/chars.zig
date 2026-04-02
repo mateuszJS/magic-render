@@ -22,7 +22,8 @@ pub const Details = struct {
 
     sdf_tex: ?sdf_drawing.SdfTex = null,
 
-    max_requested_viewport_font_size: f32 = 0,
+    font_size: f32 = 0, // with that font-size last SDF was generated
+    viewport_font_size: f32 = 0, // viewport size of last generated SDF, only used to avoid requesting smaller or equal size
     max_ratio_padding_to_font_size: f32 = 0,
 
     pub fn request_size(self: *Details, font_size: f32, effect_padding: f32) void {
@@ -37,9 +38,8 @@ pub const Details = struct {
         const font_size_world = font_size / shared.render_scale;
         // const next_font_size = utils.getNextStep(MIN_SDF_FONT_SIZE, font_size_world);
         const next_font_size = font_size_world;
-        if (next_font_size > self.max_requested_viewport_font_size + consts.EPSILON) {
-            self.max_requested_viewport_font_size = next_font_size;
-            // self.max_font_size = next_font_size * shared.render_scale; // I don't think it's needed
+        if (next_font_size > self.viewport_font_size + consts.EPSILON) {
+            self.font_size = next_font_size * shared.render_scale; // in index.zig computeShape we already divide by render_scale
             if (self.sdf_tex) |*sdf_tex| {
                 sdf_tex.is_outdated = true;
             }
