@@ -142,7 +142,7 @@ pub const SdfTex = struct {
     padding: f32 = 0,
     round_err: Point = .{},
     is_outdated: bool = true,
-    viewport_vs_limit_tex_scale: f32 = 1,
+    ratio_viewports_desired_vs_limited: f32 = 1, // without consts.SAFE_PADDING and rounding error
 
     pub fn isBiggerThan(self: SdfTex, other: SdfTex) bool {
         return self.size.w > other.size.w + consts.EPSILON or self.size.h > other.size.h + consts.EPSILON;
@@ -301,7 +301,7 @@ fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
         //  86 -> 2
 
         // return 5;
-        return @max(1, 0.53 * @sqrt(viewport_size) - 3);
+        return 2;
     }
 }
 
@@ -360,19 +360,11 @@ pub fn getTexture(
 
     const sdf_scale = sdf_size.w / world_width;
 
-    // std.debug.print("The sdf_safe_size width: {d} is composed of\n", .{sdf_safe_size.w});
-    // std.debug.print("bounds width {d}\n", .{bounds[0].distance(bounds[1]) * sdf_scale});
-    // std.debug.print("2x * sdf_padding {d}\n", .{2 * sdf_padding * sdf_scale});
-    // std.debug.print("2x * safety padding {d}\n", .{2 * consts.SDF_SAFE_PADDING});
-    // std.debug.print("rounding error x {d}\n", .{sdf_round_size.w - sdf_size.w});
-    // std.debug.print("TOGETHER {d}\n", .{(bounds[0].distance(bounds[1]) + 2 * sdf_padding) * sdf_scale + 2 * consts.SDF_SAFE_PADDING + (sdf_round_size.w - sdf_size.w)});
-
     return SdfTex{
         // TODO: consder b ydefault assigning is_outed = false, here
         .size = sdf_safe_size,
         .scale = sdf_scale, // scale taken before rounding
-        // .viewport_vs_logic_scale = sdf_scale, // scale taken before rounding
-        .viewport_vs_limit_tex_scale = viewport_width / sdf_size.w, // scale taken before rounding
+        .ratio_viewports_desired_vs_limited = viewport_width / sdf_size.w,
         .round_err = Point{
             .x = sdf_round_size.w - sdf_size.w,
             .y = sdf_round_size.h - sdf_size.h,

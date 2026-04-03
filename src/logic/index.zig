@@ -763,19 +763,12 @@ pub fn computePhase() !void {
                     point.y *= ch_d.font_size;
                 }
 
-                // std.debug.print("===============LOOK RESULTS BELOW===============\n", .{});
-
                 ch_d.sdf_tex = try computeShape(
                     ch_sdf_tex.id,
                     bounds,
                     padding,
                     points,
                 );
-
-                // if (ch_d.sdf_tex) |sdf_tex| {
-                //     std.debug.print("Char width: {d}, height: {d}\n", .{ sdf_tex.size.w / sdf_tex.scale, sdf_tex.size.h / sdf_tex.scale });
-                //     std.debug.print("Char Texture width: {d}, height: {d}\n", .{ sdf_tex.size.w, sdf_tex.size.h });
-                // }
 
                 ch_sdf_tex.is_outdated = false;
                 ch_d.viewport_font_size = ch_d.font_size / shared.render_scale;
@@ -846,17 +839,6 @@ pub fn computePhase() !void {
                             const ch_d = try fonts.get(text.typo_props.font_family_id, char);
 
                             if (ch_d.sdf_tex) |char_sdf_tex| {
-                                // const char_sdf_viewport_font_size = ch_d.font_size * char_sdf_tex.scale;
-                                // const sdf_scale = char_sdf_viewport_font_size / text.typo_props.font_size;
-                                // _ = sdf_scale; // autofix
-
-                                // const bounds = vertex.getDrawBounds(
-                                //     text.typo_props.font_size * ch_d.max_ratio_padding_to_font_size,
-                                //     char_sdf_tex,
-                                //     Matrix3x3.identity(),
-                                // );
-                                // _ = bounds; // autofix
-
                                 // The sdf_safe_size width: 22 is composed of
                                 // bounds width 11.387345
                                 // 2x * sdf_padding 8.145454
@@ -864,36 +846,12 @@ pub fn computePhase() !void {
                                 // rounding error x 0.46719933
                                 // TOGETHER 22
 
-                                const text_scale_vs_char = 1; //text.typo_props.font_size / ch_d.font_size;
-                                const safety_padding = consts.SDF_SAFE_PADDING * text_scale_vs_char;
-                                _ = safety_padding;
                                 const char_padding = ch_d.font_size * ch_d.max_ratio_padding_to_font_size;
-
-                                std.debug.print("vertex.relative_bounds:\n world bounds width: {d}, scaled bounds width: {d},\n", .{
-                                    vertex.relative_bounds[1].x - vertex.relative_bounds[3].x,
-                                    (vertex.relative_bounds[1].x - vertex.relative_bounds[3].x) * char_sdf_tex.scale,
-                                });
-
-                                std.debug.print("2x * sdf_padding: {d}\n", .{2 * ch_d.font_size * ch_d.max_ratio_padding_to_font_size * char_sdf_tex.scale});
 
                                 const start_x = vertex.relative_bounds[3].x - char_padding;
                                 const start_y = bounds_height + vertex.relative_bounds[3].y - char_padding;
                                 const end_x = vertex.relative_bounds[1].x + char_padding;
                                 const end_y = bounds_height + vertex.relative_bounds[1].y + char_padding;
-                                // const start_x = vertex.relative_bounds[3].x - char_padding;
-                                // const start_y = bounds_height + vertex.relative_bounds[3].y - char_padding;
-                                // const end_x = vertex.relative_bounds[1].x + char_padding;
-                                // const end_y = bounds_height + vertex.relative_bounds[1].y + char_padding;
-
-                                std.debug.print(
-                                    "vertex width: {d}, char_padding: {d}\n",
-                                    .{ vertex.relative_bounds[1].x - vertex.relative_bounds[3].x, char_padding },
-                                );
-
-                                std.debug.print("new_text_sdf_tex.scale: {d}\n", .{new_text_sdf_tex.scale});
-                                std.debug.print("text_padding: {d}\n", .{text_padding});
-                                std.debug.print("end_x - start_x: {d}\n", .{end_x - start_x});
-                                std.debug.print("char_sdf_tex.round_err.x: {d}\n", .{char_sdf_tex.round_err.x});
 
                                 var placement = types.Placement{
                                     .x = start_x * char_sdf_tex.scale - consts.SDF_SAFE_PADDING,
@@ -902,23 +860,16 @@ pub fn computePhase() !void {
                                     .height = (end_y - start_y) * char_sdf_tex.scale + 2 * consts.SDF_SAFE_PADDING + char_sdf_tex.round_err.y,
                                 };
 
-                                placement.x /= new_text_sdf_tex.viewport_vs_limit_tex_scale;
-                                placement.y /= new_text_sdf_tex.viewport_vs_limit_tex_scale;
-                                placement.width /= new_text_sdf_tex.viewport_vs_limit_tex_scale;
-                                placement.height /= new_text_sdf_tex.viewport_vs_limit_tex_scale;
+                                const text_scale_vs_char = (text.typo_props.font_size / shared.render_scale) / ch_d.viewport_font_size;
+                                const place_scale = text_scale_vs_char / new_text_sdf_tex.ratio_viewports_desired_vs_limited;
+                                placement.x *= place_scale;
+                                placement.y *= place_scale;
+                                placement.width *= place_scale;
+                                placement.height *= place_scale;
 
                                 const combined_sdf_padding = text_padding * new_text_sdf_tex.scale + consts.SDF_SAFE_PADDING;
                                 placement.x += combined_sdf_padding;
                                 placement.y += combined_sdf_padding;
-
-                                // const placement = Placement{
-                                //     .x = (text_padding + start_x) * new_text_sdf_tex.scale,
-                                //     .y = (text_padding + start_y) * new_text_sdf_tex.scale,
-                                //     .width = (end_x - start_x + char_sdf_tex.round_err.x * text_scale_vs_char) * new_text_sdf_tex.scale,
-                                //     .height = (end_y - start_y + char_sdf_tex.round_err.y * text_scale_vs_char) * new_text_sdf_tex.scale,
-                                // };
-
-                                std.debug.print("placement width: {d}, height: {d}\n", .{ placement.width, placement.height });
 
                                 webgpu_glue.combine_sdf(
                                     new_text_sdf_tex.id,
