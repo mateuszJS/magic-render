@@ -397,7 +397,7 @@ pub const Shape = struct {
         // TODO: move this and same secito nfrom texts.Text to dedicated function
         const effects_padding_world = sdf_drawing.getSdfPadding(self.effects.items);
 
-        return sdf_drawing.getDrawBoundsWorld(
+        return sdf_drawing.getDrawBounds(
             self.bounds,
             effects_padding_world,
             self.getFilterMargin(),

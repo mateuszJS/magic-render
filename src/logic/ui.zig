@@ -6,6 +6,8 @@ const Point = @import("types.zig").Point;
 const PointUV = @import("types.zig").PointUV;
 const sdf_drawing = @import("sdf/drawing.zig");
 const consts = @import("consts.zig");
+const computeShape = @import("compute_shape.zig").computeShape;
+const webgpu_glue = @import("webgpu_glue.zig");
 
 var elements: std.AutoArrayHashMap(u32, shapes.Shape) = undefined;
 
@@ -32,7 +34,7 @@ pub fn importUiElement(
     try elements.put(id, shape);
 }
 
-pub fn generateUiElementsSdf(compute_shape: *const fn ([]const Point, u32, u32, u32) void) !void {
+pub fn generateUiElementsSdf() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -43,29 +45,11 @@ pub fn generateUiElementsSdf(compute_shape: *const fn ([]const Point, u32, u32, 
         const option_points = try shape.getRelativePoints(allocator);
         if (option_points) |points| {
             const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
-            const bounds = sdf_drawing.getBoundsWithPadding(
+            shape.sdf_tex = try computeShape(
+                shape.sdf_tex.id,
                 shape.bounds,
                 sdf_padding,
-                1,
-                null,
-            );
-            shape.sdf_tex.size = texture_size.get_allowed_sdf_size(
-                texture_size.get_allowed_size(
-                    bounds[0].distance(bounds[1]),
-                    bounds[0].distance(bounds[3]),
-                ),
-            );
-
-            for (points) |*point| {
-                point.x += sdf_padding;
-                point.y += sdf_padding;
-            }
-
-            compute_shape(
                 points,
-                @intFromFloat(@floor(shape.sdf_tex.size.w)),
-                @intFromFloat(@floor(shape.sdf_tex.size.h)),
-                shape.sdf_tex.id,
             );
         }
     }

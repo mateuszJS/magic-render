@@ -120,3 +120,10 @@ pub const PointUV = extern struct {
         };
     }
 };
+
+pub const Placement = struct {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+};

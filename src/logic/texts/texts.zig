@@ -38,7 +38,7 @@ pub const CharVertex = struct {
         // world size -> bounds size + effects padding
         // sdf size -> shape.sdf_size - effects padding - rounding error
 
-        return sdf_drawing.getDrawBoundsWorld(
+        return sdf_drawing.getDrawBounds(
             bounds,
             effects_padding_world,
             Point{ .x = 0, .y = 0 },
@@ -380,15 +380,9 @@ pub const Text = struct {
     }
 
     pub fn getDrawBounds(self: Text) [6]PointUV {
-        // shape.sdf_size includes effects padding, safety padding and rounding error
-        // to be able to compare them(obtain scale) together we have to calculate
-        // world size -> bounds size + effects padding
-        // sdf size -> shape.sdf_size - effects padding - rounding error
-
-        // TODO: move this and same section from texts.Text to dedicated function
         const effects_padding_world = sdf_drawing.getSdfPadding(self.effects.items);
 
-        return sdf_drawing.getDrawBoundsWorld(
+        return sdf_drawing.getDrawBounds(
             self.bounds,
             effects_padding_world,
             Point{ .x = 0, .y = 0 },

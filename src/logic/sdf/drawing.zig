@@ -163,60 +163,7 @@ pub fn getSdfPadding(effects: []Effect) f32 {
     return padding;
 }
 
-pub fn getBoundsWithPadding(bounds: [4]PointUV, sdf_padding: f32, scale: f32, filter_margin: ?Point) [4]PointUV {
-    var padding = Point{
-        .x = sdf_padding,
-        .y = sdf_padding,
-    };
-
-    if (filter_margin) |margin| {
-        padding.x += margin.x;
-        padding.y += margin.y;
-    }
-
-    const edge_x = Point{
-        .x = bounds[1].x - bounds[0].x,
-        .y = bounds[1].y - bounds[0].y,
-    };
-    const edge_y = Point{
-        .x = bounds[3].x - bounds[0].x,
-        .y = bounds[3].y - bounds[0].y,
-    };
-
-    const edge_x_len = edge_x.length();
-    const edge_y_len = edge_y.length();
-
-    const axis_x = Point{ .x = edge_x.x / edge_x_len, .y = edge_x.y / edge_x_len };
-    const axis_y = Point{ .x = edge_y.x / edge_y_len, .y = edge_y.y / edge_y_len };
-
-    const offset_x = Point{
-        .x = axis_x.x * padding.x,
-        .y = axis_x.y * padding.x,
-    };
-
-    const offset_y = Point{
-        .x = axis_y.x * padding.y,
-        .y = axis_y.y * padding.y,
-    };
-
-    var buffer: [4]PointUV = bounds;
-
-    buffer[0].x = (bounds[0].x - offset_x.x - offset_y.x) * scale;
-    buffer[0].y = (bounds[0].y - offset_x.y - offset_y.y) * scale;
-
-    buffer[1].x = (bounds[1].x + offset_x.x - offset_y.x) * scale;
-    buffer[1].y = (bounds[1].y + offset_x.y - offset_y.y) * scale;
-
-    buffer[2].x = (bounds[2].x + offset_x.x + offset_y.x) * scale;
-    buffer[2].y = (bounds[2].y + offset_x.y + offset_y.y) * scale;
-
-    buffer[3].x = (bounds[3].x - offset_x.x + offset_y.x) * scale;
-    buffer[3].y = (bounds[3].y - offset_x.y + offset_y.y) * scale;
-
-    return buffer;
-}
-
-pub fn getBoundsWithPaddingEnhanced(
+pub fn getBoundsWithPadding(
     bounds: [4]PointUV,
     sdf_padding: f32,
     scale: f32,
@@ -276,7 +223,7 @@ pub fn getBoundsWithPaddingEnhanced(
     return buffer;
 }
 
-pub fn getDrawBoundsWorld(
+pub fn getDrawBounds(
     bounds: [4]PointUV,
     effects_padding_world: f32,
     filter_margin: ?Point,
@@ -295,7 +242,7 @@ pub fn getDrawBoundsWorld(
         .y = sdf_tex.round_err.y * scale_world_vs_sdf,
     };
 
-    const bounds_with_padding = getBoundsWithPaddingEnhanced(
+    const bounds_with_padding = getBoundsWithPadding(
         bounds,
         padding_world,
         1,
@@ -314,40 +261,9 @@ pub fn getDrawBoundsWorld(
     };
 }
 
-pub fn getDrawBounds(bounds: [4]PointUV, sdf_padding: f32, filter_margin: ?Point) [6]PointUV {
-    const bounds_with_padding = getBoundsWithPadding(
-        bounds,
-        sdf_padding,
-        1,
-        filter_margin,
-    );
-    return [_]PointUV{
-        // first triangle
-        bounds_with_padding[0],
-        bounds_with_padding[1],
-        bounds_with_padding[2],
-        // second triangle
-        bounds_with_padding[2],
-        bounds_with_padding[3],
-        bounds_with_padding[0],
-    };
-}
-
-// returns how much combine SDF ratio should be vs normal SDF
-// Combined SDFs need denser sampling
-pub fn getCombineSdfRatio() f32 {
-    if (shared.pixel_density + consts.EPSILON >= 3.0) {
-        return 0.1;
-    } else if (shared.pixel_density + consts.EPSILON >= 2.0) {
-        return 0.02;
-    } else {
-        return 1; // TEST it on non-retina
-    }
-}
-
 fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
     if (shared.is_test or shared.is_test == false) {
-        return 5;
+        return 2;
     }
 
     const max_dim = @max(bounds[0].distance(bounds[1]), bounds[0].distance(bounds[3]));
@@ -405,6 +321,7 @@ pub fn getTexture(
         sdf_padding,
         scale,
         null,
+        consts.POINT_ZERO, // we will fix rounding error later by adding it to bounds_with_padding, so we can keep more precise scale for sdf generation, without impact of rounding error
     );
 
     // ensure texture doesn't exceed WebGPU max texture size

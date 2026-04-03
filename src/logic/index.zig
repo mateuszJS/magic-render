@@ -31,40 +31,14 @@ const sdf_effect = @import("sdf/effect.zig");
 const caret = @import("texts/caret.zig");
 const chars = @import("texts/chars.zig");
 const assets = @import("assets.zig");
+const webgpu_glue = @import("webgpu_glue.zig");
+const computeShape = @import("compute_shape.zig").computeShape;
 
 pub const INFINITE_DISTANCE = consts.INFINITE_DISTANCE;
 
-const FillType = enum(u8) {
-    Solid,
-    LinearGradient,
-    RadialGradient,
-};
-
-const Placement = struct {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-};
-
-const WebGpuPrograms = struct {
-    draw_texture: *const fn ([]const types.PointUV, u32) void,
-    draw_triangle: *const fn ([]const triangles.DrawInstance) void,
-    compute_shape: *const fn ([]const types.Point, u32, u32, u32) void,
-    clear_sdf: *const fn (u32, u32, u32, u32) void,
-    combine_sdf: *const fn (u32, u32, u32, Placement) void,
-    draw_blur: *const fn (u32, u32, u32, u32, f32, f32) void,
-    draw_shape: *const fn ([]const types.PointUV, sdf_drawing.DrawUniform, u32) void,
-    pick_texture: *const fn ([]const images.PickVertex, u32) void,
-    pick_triangle: *const fn ([]const triangles.PickInstance) void,
-    pick_shape: *const fn ([]const images.PickVertex, shapes.PickUniform, u32) void,
-};
-var web_gpu_programs: *const WebGpuPrograms = undefined;
-
-pub fn connectWebGpuPrograms(programs: *const WebGpuPrograms) void {
+pub fn connectWebGpuPrograms(programs: *const webgpu_glue.WebGpuProgramsInput) void {
     // https://github.com/chung-leong/zigar/wiki/JavaScript-to-Zig-function-conversion
-    // callback = cb orelse &none;
-    web_gpu_programs = programs; // orelse WebGpuPrograms{};
+    webgpu_glue.connect(programs);
 }
 
 pub fn glueJsGeneral(
@@ -598,10 +572,10 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
     }
 
     if (triangle_vertex_data.items.len > 0) {
-        web_gpu_programs.draw_triangle(triangle_vertex_data.items);
+        webgpu_glue.draw_triangle(triangle_vertex_data.items);
     }
 
-    try UI.draw(ui_vertex_data.items, web_gpu_programs.draw_shape);
+    try UI.draw(ui_vertex_data.items, webgpu_glue.draw_shape);
 }
 
 fn drawProjectBackground() void {
@@ -616,7 +590,7 @@ fn drawProjectBackground() void {
         0.0,
         [_]u8{ 30, 30, 30, 255 },
     );
-    web_gpu_programs.draw_triangle(&buffer);
+    webgpu_glue.draw_triangle(&buffer);
 }
 
 fn drawProjectBoundary() void {
@@ -644,7 +618,7 @@ fn drawProjectBoundary() void {
         );
     }
 
-    web_gpu_programs.draw_triangle(&buffer);
+    webgpu_glue.draw_triangle(&buffer);
 }
 
 pub fn updateCache() void {
@@ -654,6 +628,7 @@ pub fn updateCache() void {
             .img => {},
             .shape => |*shape| {
                 if (shape.props.blur) |blur| {
+                    // TODO: refactor this, reuse functions from sdf_drawing
                     if (!shape.outdated_cache) continue;
 
                     const cache_texture_id: u32 = if (shape.cache_texture_id) |id| id else b: {
@@ -669,7 +644,9 @@ pub fn updateCache() void {
                         1 / shared.render_scale,
                         // WARNING: here 1px safety padding changes into 1/shared.render_scale
                         shape.getFilterMargin(),
+                        consts.POINT_ZERO,
                     );
+                    // NOTE: on 99% those calcualtions are not accurate because do nto account sdf_tex.round_err
                     const init_width = bounds[0].distance(bounds[1]) * shared.render_scale;
                     const size, const sigma, const cache_scale = texture_size.get_safe_blur_dims(
                         init_width,
@@ -706,7 +683,7 @@ pub fn updateCache() void {
                     };
 
                     for (shape.effects.items) |effect| {
-                        web_gpu_programs.draw_shape(
+                        webgpu_glue.draw_shape(
                             &vertex_bounds,
                             shape.getDrawUniform(effect),
                             shape.sdf_tex.id,
@@ -731,7 +708,7 @@ pub fn updateCache() void {
                     const filter_size_per_pass_x = @ceil(factor * sigma_per_pass_x);
                     const filter_size_per_pass_y = @ceil(factor * sigma_per_pass_y);
 
-                    web_gpu_programs.draw_blur(
+                    webgpu_glue.draw_blur(
                         cache_texture_id,
                         @as(u32, @intFromFloat(iterations)),
                         @as(u32, @intFromFloat(filter_size_per_pass_x)) | 1, // Ensure odd and it's min 1
@@ -754,37 +731,6 @@ pub fn setCaretPosition(start: u32, end: u32) void {
     caret.position = start;
     caret.last_update = shared.time_u32;
     caret.selection_end_position = end;
-}
-
-fn computeShape(
-    tex_id: u32,
-    bounds: [4]types.PointUV,
-    padding: f32,
-    points: []types.Point,
-) !sdf_drawing.SdfTex {
-    const sdf_tex = sdf_drawing.getTexture(
-        tex_id,
-        bounds,
-        padding,
-        1.0,
-    );
-
-    for (points) |*point| {
-        point.x *= sdf_tex.scale;
-        point.y *= sdf_tex.scale;
-
-        point.x += consts.SDF_SAFE_PADDING + sdf_tex.padding;
-        point.y += consts.SDF_SAFE_PADDING + sdf_tex.padding;
-    }
-
-    web_gpu_programs.compute_shape(
-        points,
-        @intFromFloat(sdf_tex.size.w),
-        @intFromFloat(sdf_tex.size.h),
-        sdf_tex.id,
-    );
-
-    return sdf_tex;
 }
 
 pub fn computePhase() !void {
@@ -886,7 +832,7 @@ pub fn computePhase() !void {
                         @intFromFloat(new_text_sdf_tex.size.h),
                     );
 
-                    web_gpu_programs.clear_sdf(
+                    webgpu_glue.clear_sdf(
                         new_text_sdf_tex.id,
                         compute_depth_texture_id,
                         @intFromFloat(new_text_sdf_tex.size.w),
@@ -949,7 +895,7 @@ pub fn computePhase() !void {
                                 std.debug.print("end_x - start_x: {d}\n", .{end_x - start_x});
                                 std.debug.print("char_sdf_tex.round_err.x: {d}\n", .{char_sdf_tex.round_err.x});
 
-                                var placement = Placement{
+                                var placement = types.Placement{
                                     .x = start_x * char_sdf_tex.scale - consts.SDF_SAFE_PADDING,
                                     .y = start_y * char_sdf_tex.scale - consts.SDF_SAFE_PADDING,
                                     .width = (end_x - start_x) * char_sdf_tex.scale + 2 * consts.SDF_SAFE_PADDING + char_sdf_tex.round_err.x,
@@ -974,7 +920,7 @@ pub fn computePhase() !void {
 
                                 std.debug.print("placement width: {d}, height: {d}\n", .{ placement.width, placement.height });
 
-                                web_gpu_programs.combine_sdf(
+                                webgpu_glue.combine_sdf(
                                     new_text_sdf_tex.id,
                                     char_sdf_tex.id,
                                     compute_depth_texture_id,
@@ -1011,19 +957,19 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
             .img => |img| {
                 var vertex_data: [6]types.PointUV = undefined;
                 img.getRenderVertexData(&vertex_data);
-                web_gpu_programs.draw_texture(&vertex_data, img.texture_id);
+                webgpu_glue.draw_texture(&vertex_data, img.texture_id);
             },
             .shape => |*shape| {
                 if (shape.cache_texture_id) |cache_texture_id| {
                     const bounds = shape.getDrawBounds();
-                    web_gpu_programs.draw_texture(
+                    webgpu_glue.draw_texture(
                         &bounds,
                         cache_texture_id,
                     );
                 } else {
                     const bounds = shape.getDrawBounds();
                     for (shape.effects.items) |effect| {
-                        web_gpu_programs.draw_shape(
+                        webgpu_glue.draw_shape(
                             &bounds,
                             shape.getDrawUniform(effect),
                             shape.sdf_tex.id,
@@ -1041,25 +987,12 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 if (text.sdf_tex) |text_sdf_tex| {
                     const bounds = text.getDrawBounds();
                     for (text.effects.items) |effect| {
-                        web_gpu_programs.draw_shape(
+                        webgpu_glue.draw_shape(
                             &bounds,
                             text.getDrawUniform(effect, text_sdf_tex.scale),
                             text_sdf_tex.id,
                         );
                     }
-                    // const padding = sdf_drawing.getSdfPadding(text.effects.items);
-                    // for (text.effects.items) |effect| {
-                    //     const text_bounds = sdf_drawing.getDrawBounds(
-                    //         text.bounds,
-                    //         padding,
-                    //         null,
-                    //     );
-                    //     web_gpu_programs.draw_shape(
-                    //         &text_bounds,
-                    //         text.getDrawUniform(effect, text_sdf_tex.scale),
-                    //         text_sdf_tex.id,
-                    //     );
-                    // }
 
                     if (!is_typing_ui) continue;
                 }
@@ -1085,7 +1018,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                                 );
 
                                 for (text.effects.items) |effect| {
-                                    web_gpu_programs.draw_shape(
+                                    webgpu_glue.draw_shape(
                                         &bounds,
                                         text.getDrawUniform(effect, sdf_scale),
                                         char_sdf_tex.id,
@@ -1148,7 +1081,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
         const hover_point_id = state.hovered_asset_id;
 
         if (assets.getSelectedShape()) |shape| {
-            // web_gpu_programs.draw_shape(
+            // webgpu_glue.draw_shape(
             //     &sdf_drawing.getDrawBounds(
             //         shape.bounds,
             //         shape.sdf_texture_padding,
@@ -1164,12 +1097,12 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 hover_id,
                 state.tool == Tool.DrawShape,
             );
-            web_gpu_programs.draw_triangle(vertex_data);
+            webgpu_glue.draw_triangle(vertex_data);
         }
     }
 
     if (vertex_triangles_buffer.items.len > 0) {
-        web_gpu_programs.draw_triangle(vertex_triangles_buffer.items);
+        webgpu_glue.draw_triangle(vertex_triangles_buffer.items);
     }
 }
 
@@ -1185,11 +1118,11 @@ pub fn renderPick() !void {
                 var vertex_data: [6]images.PickVertex = undefined;
                 img.getPickVertexData(&vertex_data);
 
-                web_gpu_programs.pick_texture(&vertex_data, img.texture_id);
+                webgpu_glue.pick_texture(&vertex_data, img.texture_id);
             },
             .shape => |shape| {
                 for (shape.effects.items) |effect| {
-                    web_gpu_programs.pick_shape(
+                    webgpu_glue.pick_shape(
                         &shape.getPickBounds(),
                         shape.getPickUniform(effect),
                         shape.sdf_tex.id,
@@ -1206,7 +1139,7 @@ pub fn renderPick() !void {
                     std.heap.page_allocator,
                     0,
                 );
-                web_gpu_programs.pick_triangle(buffer);
+                webgpu_glue.pick_triangle(buffer);
                 std.heap.page_allocator.free(buffer);
             },
         }
@@ -1219,7 +1152,7 @@ pub fn renderPick() !void {
                 std.heap.page_allocator,
                 overflow_margin_factor,
             );
-            web_gpu_programs.pick_triangle(buffer);
+            webgpu_glue.pick_triangle(buffer);
             std.heap.page_allocator.free(buffer);
         }
     }
@@ -1231,7 +1164,7 @@ pub fn renderPick() !void {
 
         if (assets.getSelectedShape()) |shape| {
             const vertex_data = try shape.getSkeletonPickVertexData(allocator);
-            web_gpu_programs.pick_triangle(vertex_data);
+            webgpu_glue.pick_triangle(vertex_data);
         }
     }
 
@@ -1240,7 +1173,7 @@ pub fn renderPick() !void {
             const bounds = asset.getBounds();
             var vertex_buffer: [transform_ui.PICK_TRIANGLE_INSTANCES]triangles.PickInstance = undefined;
             transform_ui.getPickVertexData(vertex_buffer[0..transform_ui.PICK_TRIANGLE_INSTANCES], bounds);
-            web_gpu_programs.pick_triangle(vertex_buffer[0..transform_ui.PICK_TRIANGLE_INSTANCES]);
+            webgpu_glue.pick_triangle(vertex_buffer[0..transform_ui.PICK_TRIANGLE_INSTANCES]);
         }
     }
 }
@@ -1269,7 +1202,7 @@ pub fn deinitState() !void {
     UI.deinit();
     snapshots.deinit();
     state.hovered_asset_id = AssetId{};
-    web_gpu_programs = undefined;
+    webgpu_glue.deinit();
     // state itself is not destoyed as it will be reinitalized before usage
     // and has no reference to memory to free
 }
@@ -1283,7 +1216,7 @@ pub fn importUiElement(
 }
 
 pub fn generateUiElementsSdf() !void {
-    try UI.generateUiElementsSdf(web_gpu_programs.compute_shape);
+    try UI.generateUiElementsSdf();
 }
 
 pub fn setTool(tool: Tool) !void {
@@ -1357,19 +1290,12 @@ pub fn setSelectedAssetEffects(serialized_effects: []const sdf_effect.Serialized
             .text => |*text| {
                 sdf_effect.deinit(text.effects);
                 text.effects = try sdf_effect.deserialize(serialized_effects, std.heap.page_allocator);
+
                 try chars.requestCharsSdfs(text.*);
+
                 if (text.sdf_tex) |*sdf_tex| {
                     sdf_tex.*.is_outdated = true;
                 }
-                // if (text.typo_props.is_sdf_shared) {
-                // const loss = sdf_drawing.getRatioPxPerSdfTexel(text.bounds) * sdf_drawing.getCombineSdfRatio();
-                // _ = loss; // autofix
-                // const new_padding = sdf_drawing.getSdfPadding(text.effects.items);
-                // _ = new_padding; // autofix
-                // if (new_padding > text.last_sdf_padding) {
-                // text.is_sdf_outdated = true;
-                // }
-                // }
             },
         }
 

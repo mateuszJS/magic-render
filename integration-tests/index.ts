@@ -141,7 +141,7 @@ async function test() {
       if (!font) throw Error('Unknown font id: ' + fontId)
       return font
     },
-    isTest: true,
+    isTest: false,
   })
 
   type SerializedOutputAssetMerged = Image & Shape & Text
