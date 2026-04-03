@@ -260,6 +260,10 @@ pub fn updateTextContent(
 
         try chars.requestCharsSdfs(text.*);
 
+        if (text.sdf_tex) |*sdf_tex| {
+            sdf_tex.is_outdated = true;
+        }
+
         state.redraw_needed = true;
         snapshots.triggerNewSnapshot(true, true);
         return results;
@@ -508,6 +512,10 @@ pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !
                     shape.should_update_sdf = true;
                 },
                 .text => |*text| {
+                    if (text.sdf_tex) |*sdf_tex| {
+                        sdf_tex.is_outdated = true;
+                    }
+
                     _ = try text.computeText(
                         caret.position,
                         caret.selection_end_position,
@@ -941,13 +949,22 @@ pub fn computePhase() !void {
                                 std.debug.print("end_x - start_x: {d}\n", .{end_x - start_x});
                                 std.debug.print("char_sdf_tex.round_err.x: {d}\n", .{char_sdf_tex.round_err.x});
 
-                                const combined_sdf_padding = text_padding * new_text_sdf_tex.scale + consts.SDF_SAFE_PADDING;
-                                const placement = Placement{
-                                    .x = start_x * char_sdf_tex.scale - consts.SDF_SAFE_PADDING + combined_sdf_padding,
-                                    .y = start_y * char_sdf_tex.scale - consts.SDF_SAFE_PADDING + combined_sdf_padding,
+                                var placement = Placement{
+                                    .x = start_x * char_sdf_tex.scale - consts.SDF_SAFE_PADDING,
+                                    .y = start_y * char_sdf_tex.scale - consts.SDF_SAFE_PADDING,
                                     .width = (end_x - start_x) * char_sdf_tex.scale + 2 * consts.SDF_SAFE_PADDING + char_sdf_tex.round_err.x,
                                     .height = (end_y - start_y) * char_sdf_tex.scale + 2 * consts.SDF_SAFE_PADDING + char_sdf_tex.round_err.y,
                                 };
+
+                                placement.x /= new_text_sdf_tex.viewport_vs_limit_tex_scale;
+                                placement.y /= new_text_sdf_tex.viewport_vs_limit_tex_scale;
+                                placement.width /= new_text_sdf_tex.viewport_vs_limit_tex_scale;
+                                placement.height /= new_text_sdf_tex.viewport_vs_limit_tex_scale;
+
+                                const combined_sdf_padding = text_padding * new_text_sdf_tex.scale + consts.SDF_SAFE_PADDING;
+                                placement.x += combined_sdf_padding;
+                                placement.y += combined_sdf_padding;
+
                                 // const placement = Placement{
                                 //     .x = (text_padding + start_x) * new_text_sdf_tex.scale,
                                 //     .y = (text_padding + start_y) * new_text_sdf_tex.scale,
@@ -1341,6 +1358,9 @@ pub fn setSelectedAssetEffects(serialized_effects: []const sdf_effect.Serialized
                 sdf_effect.deinit(text.effects);
                 text.effects = try sdf_effect.deserialize(serialized_effects, std.heap.page_allocator);
                 try chars.requestCharsSdfs(text.*);
+                if (text.sdf_tex) |*sdf_tex| {
+                    sdf_tex.*.is_outdated = true;
+                }
                 // if (text.typo_props.is_sdf_shared) {
                 // const loss = sdf_drawing.getRatioPxPerSdfTexel(text.bounds) * sdf_drawing.getCombineSdfRatio();
                 // _ = loss; // autofix
@@ -1488,6 +1508,10 @@ pub fn addFont(font_id: u32) !void {
                     const result = try text.computeText(0, 0);
 
                     try chars.requestCharsSdfs(text.*);
+
+                    if (text.sdf_tex) |*sdf_tex| {
+                        sdf_tex.*.is_outdated = true;
+                    }
 
                     const is_text_area_enabled = state.tool == .Text and assets.selected_asset_id.isSec();
                     if (is_text_area_enabled and text.id == assets.selected_asset_id.getPrim()) {

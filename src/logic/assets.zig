@@ -165,7 +165,7 @@ pub fn createText(x: f32, y: f32) !texts.Text {
     const typo_props = typography_props.Serialized{
         .font_size = 200,
         .font_family_id = 0,
-        .line_height = 1.2,
+        .line_height = 1,
     };
 
     return try addText(

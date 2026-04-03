@@ -142,6 +142,7 @@ pub const SdfTex = struct {
     padding: f32 = 0,
     round_err: Point = .{},
     is_outdated: bool = true,
+    viewport_vs_limit_tex_scale: f32 = 1,
 
     pub fn isBiggerThan(self: SdfTex, other: SdfTex) bool {
         return self.size.w > other.size.w + consts.EPSILON or self.size.h > other.size.h + consts.EPSILON;
@@ -345,8 +346,8 @@ pub fn getCombineSdfRatio() f32 {
 }
 
 fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
-    if (shared.is_test) {
-        return 20;
+    if (shared.is_test or shared.is_test == false) {
+        return 5;
     }
 
     const max_dim = @max(bounds[0].distance(bounds[1]), bounds[0].distance(bounds[3]));
@@ -426,7 +427,8 @@ pub fn getTexture(
         .h = buffer_size_limited.h / sdf_over,
     } else buffer_size_limited;
 
-    const world_width = bounds_with_padding[0].distance(bounds_with_padding[1]) / scale;
+    const viewport_width = bounds_with_padding[0].distance(bounds_with_padding[1]);
+    const world_width = viewport_width / scale;
     // * shared.render_scale to revert to logical scale (without impact of camera/zoom)
 
     const sdf_round_size = texture_size.TextureSize{
@@ -452,6 +454,8 @@ pub fn getTexture(
         // TODO: consder b ydefault assigning is_outed = false, here
         .size = sdf_safe_size,
         .scale = sdf_scale, // scale taken before rounding
+        // .viewport_vs_logic_scale = sdf_scale, // scale taken before rounding
+        .viewport_vs_limit_tex_scale = viewport_width / sdf_size.w, // scale taken before rounding
         .round_err = Point{
             .x = sdf_round_size.w - sdf_size.w,
             .y = sdf_round_size.h - sdf_size.h,

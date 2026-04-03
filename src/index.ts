@@ -21,7 +21,7 @@ import { NO_ASSET_ID } from 'consts'
 import { downloadCanvas } from 'utils/downloadCanvas'
 
 export default async function initCreator({ canvas, ...props }: CreatorProps): Promise<CreatorAPI> {
-  const fakeMaxTexSize = 1000
+  const fakeMaxTexSize = 0
 
   let texturesLoading = 0
   let isMouseEventProcessing = false

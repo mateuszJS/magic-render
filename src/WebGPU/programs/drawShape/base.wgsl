@@ -36,10 +36,7 @@ fn getSample(pos: vec2f) -> vec4f {
 
   let max_coord = vec2i(textureDimensions(texture)) - vec2i(1, 1);
 
-  // let p00 = vec2i(floor_pos)                   ;
-  // let p10 = vec2i(floor_pos + vec2f(1.0, 0.0));
-  // let p01 = vec2i(floor_pos + vec2f(0.0, 1.0));
-  // let p11 = vec2i(floor_pos + vec2f(1.0, 1.0));
+
   let p00 = vec2u(clamp(vec2i(floor_pos),                   vec2i(0, 0), max_coord));
   let p10 = vec2u(clamp(vec2i(floor_pos + vec2f(1.0, 0.0)), vec2i(0, 0), max_coord));
   let p01 = vec2u(clamp(vec2i(floor_pos + vec2f(0.0, 1.0)), vec2i(0, 0), max_coord));
@@ -58,16 +55,13 @@ fn getSample(pos: vec2f) -> vec4f {
 
 
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
-  // let sdf = textureLoad(texture, vec2u(vsOut.uv));
-  // let sdf = getSample(vsOut.uv);
-  let sdf = textureLoad(texture, vec2i(vsOut.uv));
-
+  let sdf = getSample(vsOut.uv);
   ${TEST}
 
   let dist_derivative = fwidth(sdf.r);
 
   let safe_dist_derivative = select(0.0, dist_derivative, dist_derivative <= FWIDTH_VALID_LIMIT); // if too large -> 0
-  let alpha_smooth_factor = 0.0; // max(safe_dist_derivative * 0.5, EPSILON);
+  let alpha_smooth_factor = max(safe_dist_derivative * 0.5, EPSILON);
 
   let inner_alpha = smoothstep(u.dist_start - alpha_smooth_factor, u.dist_start + alpha_smooth_factor, sdf.r);
   let outer_alpha = smoothstep(u.dist_end - alpha_smooth_factor, u.dist_end + alpha_smooth_factor, sdf.r);
