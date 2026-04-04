@@ -50,19 +50,21 @@ struct Uniform {
 }
 
 fn getSampleSource(pos: vec2f) -> vec4f {
+  let min = vec2i(0);
   let source_dims_u = textureDimensions(source_tex);
-  let source_dims_i = vec2i(source_dims_u);
+  let max = vec2i(textureDimensions(source_tex)) - vec2i(1);
 
-  let clamped_pos = clamp(pos, vec2f(0.5), vec2f(source_dims_u) - vec2f(0.5));
-  let base_pos = clamped_pos - vec2f(0.5);
+  // We do not clamp pos on purpose. Textures always have empty 1 texel paddign around.
 
+
+  let base_pos = pos - vec2f(0.5);
   let floor_pos = vec2i(floor(base_pos));
   let fract_pos = base_pos - vec2f(floor_pos);
 
-  let p00 = vec2u(clamp(floor_pos, vec2i(0), source_dims_i - vec2i(1)));
-  let p10 = vec2u(clamp(floor_pos + vec2i(1, 0), vec2i(0), source_dims_i - vec2i(1)));
-  let p01 = vec2u(clamp(floor_pos + vec2i(0, 1), vec2i(0), source_dims_i - vec2i(1)));
-  let p11 = vec2u(clamp(floor_pos + vec2i(1, 1), vec2i(0), source_dims_i - vec2i(1)));
+  let p00 = vec2u(clamp(floor_pos,               min, max));
+  let p10 = vec2u(clamp(floor_pos + vec2i(1, 0), min, max));
+  let p01 = vec2u(clamp(floor_pos + vec2i(0, 1), min, max));
+  let p11 = vec2u(clamp(floor_pos + vec2i(1, 1), min, max));
 
   let c00 = textureLoad(source_tex, p00);
   let c10 = textureLoad(source_tex, p10);
