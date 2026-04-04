@@ -1,0 +1,1 @@
+Unfortunately currently I'd need to pay for github actions to get a machine with GPU support, otehrwise WebGPU cannot run(I assume WebGL can be imitated by CPU implementation). So All tests related ot running WebGPU gonna be skipped.

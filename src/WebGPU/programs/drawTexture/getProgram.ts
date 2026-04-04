@@ -1,37 +1,29 @@
-import shaderCode from "./shader.wgsl"
- 
+import { canvasMatrix } from '../initPrograms'
+import shaderCode from './shader.wgsl'
 
-const STRIDE = 4 + 2// + 1 + 1 + 4
-
-export default function getProgram(
-  device: GPUDevice,
-  presentationFormat: GPUTextureFormat
-) {
+const STRIDE_BYTES = 4 * 4
+export default function getProgram(device: GPUDevice, presentationFormat: GPUTextureFormat) {
   const module = device.createShaderModule({
-    label: 'texture module',
-    code: shaderCode
-  });
+    label: 'draw texture module',
+    code: shaderCode,
+  })
 
   const sampler = device.createSampler({
     minFilter: 'linear',
     magFilter: 'linear',
-  });
+  })
 
   const pipeline = device.createRenderPipeline({
-    label: 'texture pipeline',
+    label: 'draw texture pipeline',
     layout: 'auto',
     vertex: {
       module,
       entryPoint: 'vs',
       buffers: [
         {
-          arrayStride: STRIDE * 4,
+          arrayStride: STRIDE_BYTES,
           attributes: [
-            {shaderLocation: 0, offset: 0, format: 'float32x4'},  // destination position
-            {shaderLocation: 1, offset: 16, format: 'float32x2'},  // source position
-            // {shaderLocation: 2, offset: 16 + 8, format: 'float32'},  // source texture layer
-            // {shaderLocation: 3, offset: 16 + 8 + 4, format: 'float32'},  // index of color matrix
-            // {shaderLocation: 4, offset: 16 + 8 + 4 + 4, format: 'float32x3'},  // index of color matrix
+            { shaderLocation: 0, offset: 0, format: 'float32x4' }, // destination(xy) and source (zw) positions
           ] as const,
         },
       ],
@@ -39,76 +31,62 @@ export default function getProgram(
     fragment: {
       module,
       entryPoint: 'fs',
-      targets: [{
-        format: presentationFormat,
-        // blend: {
-        //   color: {
-        //     srcFactor: 'one',
-        //     dstFactor: 'one-minus-src-alpha'
-        //   },
-        //   alpha: {
-        //     srcFactor: 'one',
-        //     dstFactor: 'one-minus-src-alpha'
-        //   },
-        // },
-      }],
+      targets: [
+        {
+          format: presentationFormat,
+          blend: {
+            color: {
+              srcFactor: 'one',
+              dstFactor: 'one-minus-src-alpha',
+            },
+            alpha: {
+              srcFactor: 'one',
+              dstFactor: 'one-minus-src-alpha',
+            },
+          },
+        },
+      ],
     },
-    // depthStencil: {
-    //   depthWriteEnabled: true,
-    //   depthCompare: 'less',
-    //   format: 'depth24plus',
-    // },
-  });
+    multisample: {
+      count: 4,
+    },
+  })
 
-  const uniformBufferSize = (
-    16/*projection matrix*/
-  ) * 4;
-  const uniformBuffer = device.createBuffer({
-    label: 'uniforms',
-    size: uniformBufferSize,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-  });
-
-  const uniformValues = new Float32Array(uniformBufferSize / 4);
-  const kMatrixOffset = 0;
-  const matrixValue = uniformValues.subarray(kMatrixOffset, kMatrixOffset + 16);
+  // Cache bind groups per texture to avoid recreating them
+  const bindGroupCache = new WeakMap<GPUTexture, GPUBindGroup>()
 
   return function drawTexture(
     pass: GPURenderPassEncoder,
-    worldProjectionMatrix: Float32Array,
-    vertexData: Float32Array<ArrayBufferLike>,
-    texture: GPUTexture,
+    vertexData: DataView<ArrayBuffer>,
+    texture: GPUTexture
   ) {
-  const numVertices = Math.round(vertexData.length / STRIDE)
+    const numVertices = vertexData.byteLength / STRIDE_BYTES
 
+    const vertexBuffer = device.createBuffer({
+      label: 'draw texture - vertex buffer',
+      size: vertexData.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    })
 
-  const vertexBuffer = device.createBuffer({
-    label: 'vertex buffer vertices',
-    size: vertexData.byteLength,
-    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-  });
-  device.queue.writeBuffer(vertexBuffer, 0, vertexData);
+    device.queue.writeBuffer(vertexBuffer, 0, vertexData)
 
+    // Get or create bind group for this texture
+    let bindGroup = bindGroupCache.get(texture)
+    if (!bindGroup) {
+      bindGroup = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: canvasMatrix.buffer } },
+          { binding: 1, resource: sampler },
+          { binding: 2, resource: texture.createView() },
+        ],
+      })
+      bindGroupCache.set(texture, bindGroup)
+    }
 
-  // bind group should be pre-created and reuse instead of constantly initialized
-  const bindGroup = device.createBindGroup({
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: { buffer: uniformBuffer }},
-      { binding: 1, resource: sampler },
-      { binding: 2, resource: texture.createView() },
-    ],
-  });
-
-
-    pass.setPipeline(pipeline);
+    pass.setPipeline(pipeline)
     pass.setVertexBuffer(0, vertexBuffer)
-
-    matrixValue.set(worldProjectionMatrix)
-
-    device.queue.writeBuffer(uniformBuffer, 0, uniformValues);
-
-    pass.setBindGroup(0, bindGroup);
-    pass.draw(numVertices);
+    pass.setBindGroup(0, bindGroup)
+    pass.draw(numVertices)
   }
 }

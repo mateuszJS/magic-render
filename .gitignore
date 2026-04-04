@@ -1,5 +1,6 @@
 node_modules
-dist
+lib
+lib-test
 crate/bin
 crate/pkg
 crate/target
@@ -7,3 +8,9 @@ crate/wasm-pack.log
 **/.DS_Store
 .env
 .npmrc
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

@@ -1,10 +1,9 @@
 struct Vertex {
   @location(0) position: vec4f,
-  @location(1) uv: vec2f,
 };
 
 struct Uniforms {
-  worldViewProjection: mat4x4f,
+  cameraProjection: mat4x4f,
 };
 
 struct VertexOutput {
@@ -19,13 +18,17 @@ struct VertexOutput {
 @vertex fn vs(vert: Vertex) -> VertexOutput {
   var out: VertexOutput;
   // maybe we should pass offsets from the position instead of... position?
-  out.position = u.worldViewProjection * vert.position;
-  out.texCoord = vert.uv;
+  out.position = u.cameraProjection * vec4f(vert.position.xy, 0, 1);
+  out.texCoord = vert.position.zw;
   
   return out;
 }
 
 @fragment fn fs(in: VertexOutput) -> @location(0) vec4f {
-  let texel = textureSample(ourTexture, ourSampler, in.texCoord);
-  return texel;
+  return textureSample(ourTexture, ourSampler, in.texCoord);
+  // let color = textureSample(ourTexture, ourSampler, in.texCoord);
+  // if (color.a < 0.1) {
+  //   return vec4f(0, 0, 1, 0.1);
+  // }
+  // return color;
 }

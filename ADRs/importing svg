@@ -1,0 +1,2 @@
+Paper.js was not a good option because it lacks some properties (e.g., radial-gradient scale)
+and doesn't consistently distinguish groups from shapes, so we continue adding transparent rectangles.

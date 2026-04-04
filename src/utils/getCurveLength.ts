@@ -1,4 +1,5 @@
-import getBezierPos from "./getBezierPos";
+import { Point } from 'types'
+import getBezierPos from './getBezierPos'
 
 // precision describes how many samples on the curve we want to measure to calculate whole length
 // precision = 3, means 3 samples, 0, 0.5, 1. So total distance will be calculate between t = 0 -> t = 0.5, + t = 0.5 -> t = 1
@@ -11,15 +12,15 @@ export default function getCurveLength(
   p4: Point,
   precision: number
 ): number[] {
-  const distances: number[] = [0];
+  const distances: number[] = [0]
 
   for (let i = 0; i < precision; i++) {
-    const pointA = getBezierPos(p1, p2, p3, p4, i / precision);
-    const pointB = getBezierPos(p1, p2, p3, p4, (i + 1) / precision);
-    const distance = Math.hypot(pointA.x - pointB.x, pointA.y - pointB.y);
-    const prevDistance = distances[distances.length - 1];
-    distances.push(distance + prevDistance);
+    const pointA = getBezierPos(p1, p2, p3, p4, i / precision)
+    const pointB = getBezierPos(p1, p2, p3, p4, (i + 1) / precision)
+    const distance = Math.hypot(pointA.x - pointB.x, pointA.y - pointB.y)
+    const prevDistance = distances[distances.length - 1]
+    distances.push(distance + prevDistance)
   }
 
-  return distances;
+  return distances
 }

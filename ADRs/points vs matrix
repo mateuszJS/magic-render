@@ -1,0 +1,39 @@
+I have two options how assets(positon/scale/rotation) can stored.
+a) four points, each represents one corner
+b) width, height + 3x3 matrix
+
+Seems like matrix could simplify a lot of transformations but at the same time
+I need to store points with UV coordinates anyway.
+
+Thats why for now I'm going to stick with storing assets in a from of four points, each point is x,y,u,v.
+For transformations like scaling, rotations the matricies will be used.
+For transition is not useful since it's super easy to just add cursor position to points.
+
+This way we can share same transformation data(bounds [4]PointUV)
+between points(vector graphic) and distance field(raster).
+
+Caveat:
+This solution requires to maintain all points normalized. This might be difficult when a new point is added.
+Also how preview point gonna be handled, we should not keep recalculating all the points each time a preview point changes positon
+
+Now the process of renderign shape gonna be:
+
+- paths \* matrix
+- render signed distance fields
+- apply effect
+
+When user changes anything expect the paths, then only:
+
+- apply effect
+  is called again.
+
+If user moves asset, then boudning box should be recalculated? Do we need boudning box?
+Or actually there should be a matrix that is gonna be recalculated?
+we can update just matrix.
+
+That normalizing points is a bit weird.
+
+BUT also rendering:
+
+- we should render paths of the shape into a SDF texture without any bounding box trandofmrations/rotation.
+  and THEN use matrix to render that SDF texture!

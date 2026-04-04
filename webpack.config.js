@@ -1,72 +1,140 @@
-const path = require("path");
-const HtmlWebpackPlugin = require("html-webpack-plugin");
-const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
-const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
-// const PuppeteerPrerenderPlugin = require('puppeteer-prerender-plugin').PuppeteerPrerenderPlugin
+import { fileURLToPath } from 'url'
+import path from 'path'
+import { BundleAnalyzerPlugin } from 'webpack-bundle-analyzer'
+import HtmlWebpackPlugin from 'html-webpack-plugin'
+import TerserPlugin from 'terser-webpack-plugin'
 
+/* eslint-disable no-undef */ // node process isn't defined, but is provided while running webpack config
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isProd = process.env.NODE_ENV === 'production'
+const isTest = process.env.TEST_ENV === 'true'
+const bundleAnalyzer = false
 
-module.exports = {
+// Base configuration shared between both formats
+const baseConfig = {
   experiments: {
-		asyncWebAssembly: true
-	},
+    asyncWebAssembly: true,
+    futureDefaults: true,
+    outputModule: true, // webpack will output ECMAScript module syntax whenever possible
+  },
   mode: process.env.NODE_ENV,
-  entry: ["./src/index.ts"],
-  devtool: isProd ? undefined : "eval-source-map",
+  devtool: isProd ? 'source-map' : 'eval-source-map',
   watch: !isProd,
   devServer: {
-    // static: "./dist", // do not use it. It's gonna serve last SSG pages while dev mode
-    historyApiFallback: true // fallback to index.html while 404
+    // HMR doesn't support ESM
+    hot: false, // and anyway with canvas we would need to perform reload
+    liveReload: true,
+    server: 'https',
   },
   resolve: {
-    extensions: [".ts", ".js", '.wasm', '.wgsl', '.jpg', '.png'],
-    modules: [path.resolve(__dirname, "src"), "node_modules"],
-    /* useful with absolute imports, "src" dir now takes precedence over "node_modules",
-    otherwise you got an error:
-    Requests that start with a name are treated as module requests and resolve within module directories (node_modules).
-    */
+    extensions: ['.ts', '.js', '.wgsl', '.jpg', '.png', '.zig', '.woff2', '.ttf'],
+    modules: [path.resolve(__dirname, 'src'), 'node_modules'],
+    alias: {
+      // to load only needed parts of paper.js
+      paper: 'paper/dist/paper-core.js',
+    },
+    /* useful with absolute imports, "src" dir now takes precedence over "node_modules" */
+  },
+  output: {
+    filename: '[name].mjs',
+    library: {
+      type: 'module',
+    },
+    chunkFormat: 'module',
+    chunkLoading: 'import',
+    module: true,
   },
   module: {
     rules: [
       {
         test: /\.ts$/,
-        use: "ts-loader",
+        use: 'ts-loader',
         exclude: /node_modules/,
       },
       {
         test: /\.wgsl$/,
-        type: "asset/source",
+        type: 'asset/source',
       },
       {
-        test: /\.(png|jpg)$/,
-        type: "asset/resource",
+        test: /\.svg$/,
+        type: 'asset/source',
+      },
+      {
+        test: /\.woff2$/,
+        type: 'asset/resource',
+      },
+      {
+        test: /\.ttf$/,
+        type: 'asset/resource',
+      },
+      {
+        test: /\.zig$/,
+        exclude: /node_modules/,
+        use: {
+          loader: 'zigar-loader',
+          options: {
+            embedWASM: isProd,
+            // for now ReleaseFast gets stuck https://github.com/chung-leong/zigar/issues/666
+            // once solved we can come back to ReleaseFast
+            optimize: 'Debug', // we can play with ReleaseSmall also
+            // optimize: isProd ? 'ReleaseSmall' : 'Debug', // we can play with ReleaseSmall also
+          },
+        },
       },
     ],
   },
-  output: {
-    filename: '[name].[contenthash].js',
-    path: path.resolve(__dirname, "dist"),
-    clean: true,
-  },
-  optimization: {
-    // https://webpack.jakoblind.no/optimize/ suppose to give you suggestion how to improve build
-    runtimeChunk: "single", // split runtime code into a separate chunk using the
-    // looks like it's needed because each deployment, reach changes something
-    // so [contenthash] also gonna change each time
-    // it contains references to all modules, so changes in each deployment
 
-    moduleIds: 'deterministic', /* still some modules can change because order of improts has changed
-    so with deterministic module id, the order won't matter!! contenthash should stay the same*/
+  // Disable code splitting and runtime chunks
+  optimization: {
+    runtimeChunk: false,
+    splitChunks: false,
+    minimize: isProd,
+    minimizer: [
+      // used to remove license .txt file(comes from opentype library) + let's remove rest of unnecessary comments in the code
+      // https://github.com/webpack/webpack/issues/12506#issuecomment-767454504
+      new TerserPlugin({
+        terserOptions: {
+          format: {
+            comments: false,
+          },
+        },
+        extractComments: false,
+      }),
+    ],
+  },
+  plugins: [bundleAnalyzer && new BundleAnalyzerPlugin({})],
+}
+
+const libConfig = {
+  ...baseConfig,
+  entry: {
+    index: './src/index.ts',
+    types: './src/types.ts',
+  },
+  output: {
+    ...baseConfig.output,
+    path: path.resolve(__dirname, 'lib'),
+  },
+}
+
+// Test config
+const testConfig = {
+  ...baseConfig,
+  entry: { integrationTest: './integration-tests/index.ts' },
+  output: {
+    ...baseConfig.output,
+    path: path.resolve(__dirname, 'lib-test'),
   },
   plugins: [
+    ...baseConfig.plugins,
     new HtmlWebpackPlugin({
-      template: path.resolve(__dirname, "src/index.html"),
-    }),
-    isProd && new BundleAnalyzerPlugin({
-      analyzerMode: 'static' // 'server' had issue running along with PrerendererWebpackPlugin
-    }),
-    new WasmPackPlugin({
-      crateDirectory: path.resolve(__dirname, "crate"),
+      template: path.resolve(__dirname, 'integration-tests/template.html'),
+      inject: true,
+      chunks: ['integrationTest'],
+      scriptLoading: 'module',
     }),
   ],
-};
+}
+
+export default isProd && !isTest ? libConfig : testConfig

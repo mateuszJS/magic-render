@@ -1,0 +1,13 @@
+We are placing wasm code inline, encoded in base64 with JS code. It was too difficult(if it's even possible) to load wasm in any other way.
+
+- by defining it as a ESM -> webpack didn't allow to load wasm as a module, there was no config that helped, each time webpack generates fetch(path/to/node_modules/wasm) with WebAssembly initialisation
+- with fetch() -> bundle that will use the package won't know that it's a file(wasm) that needs to be included in the output. It's just a normal, ordinary fetch, so it won't magically resolve it to the node_modules asset and place it in the output/binary.
+
+Benefits of inlining WASM:
+
+- a framework doesn't need to know that there is any wasm used by the library, no weird configs needed or hacks to load the lib with wasm
+- loading is fast, instead of loading JS and then triggering wasm load, we load both in one file
+
+Drawbacks:
+
+- according to Claude Sonnet 3.7, base64 web assembly is 30% bigger than native wasm file

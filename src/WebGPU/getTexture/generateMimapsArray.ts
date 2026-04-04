@@ -51,12 +51,12 @@ export default function generateMips(
           return textureSample(ourTexture, ourSampler, fsInput.texcoord, 0);
         }
       `,
-    });
+    })
 
     sampler = device.createSampler({
       minFilter: 'linear',
       magFilter: 'linear',
-    });
+    })
   }
 
   if (!pipelineByFormat[texture.format]) {
@@ -72,20 +72,20 @@ export default function generateMips(
         entryPoint: 'fs',
         targets: [{ format: texture.format }],
       },
-    });
+    })
   }
-  const pipeline = pipelineByFormat[texture.format]!;
+  const pipeline = pipelineByFormat[texture.format]!
 
   const encoder = device.createCommandEncoder({
     label: 'mip gen encoder',
-  });
+  })
 
-  let width = texture.width;
-  let height = texture.height;
-  let baseMipLevel = 0;
+  let width = texture.width
+  let height = texture.height
+  let baseMipLevel = 0
   while (width > 1 || height > 1) {
-    width = Math.max(1, width / 2 | 0);
-    height = Math.max(1, height / 2 | 0);
+    width = Math.max(1, width / 2 | 0)
+    height = Math.max(1, height / 2 | 0)
 
     const bindGroup = device.createBindGroup({
       layout: pipeline.getBindGroupLayout(0),
@@ -93,9 +93,9 @@ export default function generateMips(
         { binding: 0, resource: sampler },
         { binding: 1, resource: texture.createView({baseMipLevel, mipLevelCount: 1, ...textureOptions}) },
       ],
-    });
+    })
 
-    ++baseMipLevel;
+    ++baseMipLevel
 
     // jsut testign if mipmaps are correctly using previous mimap to render next one
     // if (baseMipLevel === 3) {
@@ -118,15 +118,15 @@ export default function generateMips(
           storeOp: 'store',
         },
       ],
-    } as const;
+    } as const
 
-    const pass = encoder.beginRenderPass(renderPassDescriptor);
-    pass.setPipeline(pipeline);
-    pass.setBindGroup(0, bindGroup);
-    pass.draw(6);  // call our vertex shader 6 times
-    pass.end();
+    const pass = encoder.beginRenderPass(renderPassDescriptor)
+    pass.setPipeline(pipeline)
+    pass.setBindGroup(0, bindGroup)
+    pass.draw(6)  // call our vertex shader 6 times
+    pass.end()
   }
 
-  const commandBuffer = encoder.finish();
-  device.queue.submit([commandBuffer]);
-};
+  const commandBuffer = encoder.finish()
+  device.queue.submit([commandBuffer])
+}

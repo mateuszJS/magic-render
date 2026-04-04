@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+
+<head>
+  <base href="/">
+  <meta charset="utf-8" />
+  <title></title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap">
+  <style>
+    html,
+    body,
+    canvas {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      display: grid;
+      grid-template-columns: 100px minmax(0, 1fr);
+      overscroll-behavior: none;
+    }
+
+    canvas {
+      min-height: 0;
+    }
+
+    aside {
+      overflow-y: scroll;
+    }
+
+    aside>* {
+      display: block;
+      padding: 0.7rem 0;
+      border-top: 1px solid #777;
+      overflow-x: hidden;
+    }
+
+    [popover] {
+      margin: 0;
+      inset: auto;
+      position-area: top right;
+
+      &:popover-open {
+        display: flex;
+        flex-direction: column;
+      }
+
+      textarea {
+        width: 250px;
+        height: 250px;
+      }
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+  </style>
+</head>
+
+<body>
+  <aside>
+    <div>
+      <button id="reset-project">Reset Project</button>
+    </div>
+    <div>
+      <button id="download-canvas">Download Canvas</button>
+    </div>
+    <label>Add image<input type="file" id="add-image" /></label>
+    <label>Start project from images<input type="file" multiple id="start-project-from-images" /></label>
+    <p>Selected asset: <span id="selected-asset-id">0</span></p>
+    <p>Is processing events: <span id="is-processing-events">false</span></p>
+    <div><button id="remove-btn">Remove Asset</button></div>
+    <div><label>X Position<input type="range" id="x-slider" min="0" max="100" value="50" /></label></div>
+    <div><button id="undo-btn">Undo</button></div>
+    <div><button id="redo-btn">Redo</button></div>
+    <div>
+      Tools:
+      <select id="tools-select">
+        <option value="0">None</option>
+        <option value="1">Draw Shape</option>
+        <option value="2">Edit Shape</option>
+        <option value="3">Text</option>
+      </select>
+    </div>
+    <div>
+      <label>Shared text effects<input type="checkbox" id="shared-text-effects" /></label>
+    </div>
+    <div>
+      <button popovertarget="asset-bounds-popover">Asset Bounds</button>
+      <form id="asset-bounds-popover" popover="manual">
+        <b>Asset Coords:</b>
+        <textarea name="code" id="asset-bounds-content"></textarea>
+        <button>Apply</button>
+      </form>
+    </div>
+    <div>
+      <button popovertarget="asset-props-popover">Asset Props</button>
+      <form id="asset-props-popover" popover="manual">
+        <b>Asset Props:</b>
+        <textarea name="code" id="asset-props-content"></textarea>
+        <button>Apply</button>
+      </form>
+    </div>
+    <div>
+      <button popovertarget="asset-effects-popover">Asset Effects</button>
+      <form id="asset-effects-popover" popover="manual">
+        <b>Asset Effects:</b>
+        <textarea name="code" id="asset-effects-content"></textarea>
+        <button>Apply</button>
+      </form>
+    </div>
+    <label>
+      Font family:
+      <select id="font-family-select">
+        <option value="0">EB Garamond</option>
+        <option value="1">Google Sans</option>
+        <option value="2">Outfit WOFF2</option>
+        <option value="3">Outfit Bold TTF</option>
+        <option value="4">Outfit Thin TTF</option>
+      </select>
+    </label>
+
+    <label>
+      Font size:
+      <input type="range" id="font-size-input" value="40" min="1" max="500" />
+    </label>
+
+    <div>
+      <button popovertarget="project-size-popover">Project Size</button>
+      <form id="project-size-popover" popover>
+        <b>Project Size:</b>
+        <div><input name="width" type="number" /> x <input name="height" type="number" /></div>
+        <button>Apply</button>
+      </form>
+    </div>
+    <div>
+      <img id="preview" style="width: 100%; height: auto; aspect-ratio: 1; display: block;" />
+    </div>
+  </aside>
+  <canvas></canvas>
+</body>

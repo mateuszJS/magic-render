@@ -1,0 +1,1 @@
+- SDF textures and memory size - when more than 100 characters is drawn and zoom is on, then app on mobile crashes because of memory.
