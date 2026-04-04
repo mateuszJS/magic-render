@@ -282,7 +282,7 @@ pub const Shape = struct {
     }
 
     pub fn getSkeletonUniform(self: Shape) sdf_drawing.DrawUniform {
-        const stroke_width = path_utils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.ui_scale;
+        const stroke_width = path_utils.SKELETON_LINE_WIDTH * self.sdf_tex.scale * shared.ui_scale;
         return sdf_drawing.DrawUniform{
             .solid = .{
                 .dist_start = stroke_width * 0.5,
@@ -388,7 +388,7 @@ pub const Shape = struct {
         return points;
     }
 
-    pub fn getDrawBounds(self: Shape) [6]PointUV {
+    pub fn getDrawBounds(self: Shape, filter_margin: bool) [6]PointUV {
         // shape.sdf_size includes effects padding, safety padding and rounding error
         // to be able to compare them(obtain scale) together we have to calculate
         // world size -> bounds size + effects padding
@@ -400,13 +400,13 @@ pub const Shape = struct {
         return sdf_drawing.getDrawBounds(
             self.bounds,
             effects_padding_world,
-            self.getFilterMargin(),
+            if (filter_margin) self.getFilterMargin() else consts.POINT_ZERO,
             self.sdf_tex,
         );
     }
 
     pub fn getPickBounds(self: Shape) [6]images.PickVertex {
-        const bounds = self.getDrawBounds();
+        const bounds = self.getDrawBounds(false);
         var buffer: [6]images.PickVertex = undefined;
         for (bounds, 0..) |b, i| {
             buffer[i] = .{

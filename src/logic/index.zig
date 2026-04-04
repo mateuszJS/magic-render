@@ -896,13 +896,13 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
             },
             .shape => |*shape| {
                 if (shape.cache_texture_id) |cache_texture_id| {
-                    const bounds = shape.getDrawBounds();
+                    const bounds = shape.getDrawBounds(true);
                     webgpu_glue.draw_texture(
                         &bounds,
                         cache_texture_id,
                     );
                 } else {
-                    const bounds = shape.getDrawBounds();
+                    const bounds = shape.getDrawBounds(false);
                     for (shape.effects.items) |effect| {
                         webgpu_glue.draw_shape(
                             &bounds,
@@ -1016,15 +1016,11 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
         const hover_point_id = state.hovered_asset_id;
 
         if (assets.getSelectedShape()) |shape| {
-            // webgpu_glue.draw_shape(
-            //     &sdf_drawing.getDrawBounds(
-            //         shape.bounds,
-            //         shape.sdf_texture_padding,
-            //         null,
-            //     ),
-            //     shape.getSkeletonUniform(),
-            //     shape.sdf_texture_id,
-            // );
+            webgpu_glue.draw_shape(
+                &shape.getDrawBounds(false),
+                shape.getSkeletonUniform(),
+                shape.sdf_tex.id,
+            );
 
             const hover_id = if (shape.id == hover_point_id.getPrim()) hover_point_id else null;
             const vertex_data = try shape.getSkeletonDrawVertexData(

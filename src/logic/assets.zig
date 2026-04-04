@@ -165,14 +165,14 @@ pub fn createText(x: f32, y: f32) !texts.Text {
     };
 
     const typo_props = typography_props.Serialized{
-        .font_size = 200,
+        .font_size = 100,
         .font_family_id = 0,
         .line_height = 1,
     };
 
     return try addText(
         utils.generateId(),
-        "w",
+        "Type here",
         bounds,
         asset_props.Props{},
         effects,
