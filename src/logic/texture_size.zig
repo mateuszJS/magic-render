@@ -11,23 +11,26 @@ pub const TextureSize = struct {
 // iOS WebKit Metal crashes on rgba32float STORAGE_BINDING textures above ~32MB,
 // even though WebGPU reports much higher maxBufferSize/maxStorageBufferBindingSize.
 const MAX_SDF_TEXTURE_BYTES: f32 = 32 * 1024 * 1024; // 32MB hard cap
+// NOT USED for now
 
 // buffer size limits the size of rgba32float texture
 pub fn get_allowed_sdf_size(desired_size: TextureSize) TextureSize {
-    var size = desired_size;
-    const sdf_texture_size = size.w * size.h * 16;
+    // const sdf_texture_size = size.w * size.h * 16;
+    const max_texture_side = @sqrt(shared.max_buffer_size / 16); // just for sake of simplicity we transform buffer limit to texture size liek limit
+    // but ideally it should be posssible to have sumer short texture and etremly wide and still be under shared.max_buffer_size
 
-    // const effective_limit = @min(shared.max_buffer_size, MAX_SDF_TEXTURE_BYTES);
-    // if (sdf_texture_size > effective_limit) {
-    // const max_pixels = effective_limit / 16.0;
-    if (sdf_texture_size > shared.max_buffer_size) {
-        const max_pixels = shared.max_buffer_size / 16.0;
-        const ratio = max_pixels / (size.w * size.h);
-        size.w *= ratio;
-        size.h *= ratio;
-    }
+    const scale = max_texture_side / @max(desired_size.w, desired_size.h);
+    const ratio = @min(1.0, scale); // makes sure we only downscale
+    return TextureSize{ .w = desired_size.w * ratio, .h = desired_size.h * ratio };
 
-    return size;
+    // if (sdf_texture_size > shared.max_buffer_size) {
+    //     const max_pixels = shared.max_buffer_size / 16.0;
+    //     const ratio = max_pixels / (size.w * size.h);
+    //     size.w *= ratio;
+    //     size.h *= ratio;
+    // }
+
+    // return size;
 }
 
 pub fn get_allowed_size(width: f32, height: f32) TextureSize {

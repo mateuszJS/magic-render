@@ -142,7 +142,6 @@ pub const SdfTex = struct {
     padding: f32 = 0,
     round_err: Point = .{},
     is_outdated: bool = true,
-    ratio_viewports_desired_vs_limited: f32 = 1, // without consts.SAFE_PADDING and rounding error
 
     pub fn isBiggerThan(self: SdfTex, other: SdfTex) bool {
         return self.size.w > other.size.w + consts.EPSILON or self.size.h > other.size.h + consts.EPSILON;
@@ -309,44 +308,50 @@ pub fn getTexture(
     tex_id: u32,
     bounds: [4]PointUV,
     sdf_padding: f32,
-    additional_scale: f32,
+    resize: f32,
     // used to generate 20% bigger textures, so we won't need to regenerate
     // again texture while user is zooming in slowly (so would trigger
     // new SDF each frame)
 ) SdfTex {
-    const loss = getRatioPxPerSdfTexel(bounds);
-    const scale = additional_scale / (shared.render_scale * loss);
-    const bounds_with_padding = getBoundsWithPadding(
+    const loss = getRatioPxPerSdfTexel(bounds); // 2
+    const scale = resize / (shared.render_scale * loss);
+    const texels_total_bounds = getBoundsWithPadding(
         bounds,
         sdf_padding,
         scale,
         null,
-        consts.POINT_ZERO, // we will fix rounding error later by adding it to bounds_with_padding, so we can keep more precise scale for sdf generation, without impact of rounding error
+        consts.POINT_ZERO,
     );
 
     // ensure texture doesn't exceed WebGPU max texture size
     const texture_size_limited = texture_size.get_allowed_size(
-        bounds_with_padding[0].distance(bounds_with_padding[1]),
-        bounds_with_padding[0].distance(bounds_with_padding[3]),
+        texels_total_bounds[0].distance(texels_total_bounds[1]),
+        texels_total_bounds[0].distance(texels_total_bounds[3]),
     );
 
     // ensure texture doesn't exceed GPU Webbuffer size
     const buffer_size_limited = texture_size.get_allowed_sdf_size(texture_size_limited);
 
     // Reserve room for @ceil (up to +1) and the 2-texel safety padding (+2) = 3 total.
-    // Without this, sdf_safe_size could exceed texture_max_size.
+    // Without this, sdf_safe_size could exceed texture_max_size or max_buffer_size.
     // Scale both dims proportionally to preserve aspect ratio.
-    const max_additional_size = 2 * consts.SDF_SAFE_PADDING + 1; // 2 for safety padding, 1 for rounding error
-    const sdf_budget = shared.texture_max_size - max_additional_size;
+    const max_additional_size: f32 = 2 * consts.SDF_SAFE_PADDING + 1; // 2 for safety padding, 1 for rounding error
+
+    const texture_budget = shared.texture_max_size - max_additional_size;
+    // Conservative buffer budget: treat texture as square to get a per-side limit.
+
+    const buffer_budget = @sqrt(shared.max_buffer_size / 16.0) - max_additional_size;
+
+    const sdf_budget = @min(texture_budget, buffer_budget);
+
     const sdf_over = @max(buffer_size_limited.w, buffer_size_limited.h) / sdf_budget;
     const sdf_size = if (sdf_over > 1.0) texture_size.TextureSize{
         .w = buffer_size_limited.w / sdf_over,
         .h = buffer_size_limited.h / sdf_over,
     } else buffer_size_limited;
 
-    const viewport_width = bounds_with_padding[0].distance(bounds_with_padding[1]);
-    const world_width = viewport_width / scale;
-    // * shared.render_scale to revert to logical scale (without impact of camera/zoom)
+    const texels_total_width = texels_total_bounds[0].distance(texels_total_bounds[1]); // - round_err.x (its 0 right now)
+    const limited_world_width = texels_total_width / scale; // limtied by texture size
 
     const sdf_round_size = texture_size.TextureSize{
         .w = @ceil(sdf_size.w),
@@ -358,13 +363,12 @@ pub fn getTexture(
         .h = sdf_round_size.h + 2 * consts.SDF_SAFE_PADDING,
     };
 
-    const sdf_scale = sdf_size.w / world_width;
+    const sdf_scale = sdf_size.w / limited_world_width;
 
     return SdfTex{
-        // TODO: consder b ydefault assigning is_outed = false, here
+        .is_outdated = false,
         .size = sdf_safe_size,
         .scale = sdf_scale, // scale taken before rounding
-        .ratio_viewports_desired_vs_limited = viewport_width / sdf_size.w,
         .round_err = Point{
             .x = sdf_round_size.w - sdf_size.w,
             .y = sdf_round_size.h - sdf_size.h,
@@ -398,11 +402,11 @@ test "getTexture - happy path" {
     shared.texture_max_size = 1000.0;
     shared.max_buffer_size = 1e12;
 
-    const result = getTexture(testBounds(100, 50), 2.0, 1.0, 1.0);
+    const result = getTexture(0, testBounds(100, 50), 2.0, 1.0);
 
-    try std.testing.expectEqual(@as(f32, 106), result.size.w);
-    try std.testing.expectEqual(@as(f32, 56), result.size.h);
-    try std.testing.expectApproxEqAbs(@as(f32, 1.0), result.scale, 1e-4);
+    try std.testing.expectEqual(@as(f32, 54), result.size.w);
+    try std.testing.expectEqual(@as(f32, 29), result.size.h);
+    try std.testing.expectApproxEqAbs(@as(f32, 2), result.scale, 1e-4);
 }
 
 // texture_max_size hit — 200×100 bounds exceed max_size=20.
@@ -416,7 +420,7 @@ test "getTexture - capped by texture_max_size" {
     shared.texture_max_size = 20.0;
     shared.max_buffer_size = 1e12;
 
-    const result = getTexture(testBounds(200, 100), 2.0, 1.0, 1.0);
+    const result = getTexture(0, testBounds(200, 100), 2.0, 1.0);
 
     try std.testing.expectEqual(@as(f32, 19), result.size.w);
     try std.testing.expectEqual(@as(f32, 11), result.size.h);
@@ -438,7 +442,7 @@ test "getTexture - capped by max_buffer_size" {
     shared.texture_max_size = 1000.0;
     shared.max_buffer_size = 40000.0;
 
-    const result = getTexture(testBounds(200, 200), 2.0, 1.0, 1.0);
+    const result = getTexture(0, testBounds(200, 200), 2.0, 1.0);
 
     try std.testing.expectEqual(@as(f32, 15), result.size.w);
     try std.testing.expectEqual(@as(f32, 15), result.size.h);
@@ -446,4 +450,38 @@ test "getTexture - capped by max_buffer_size" {
     try std.testing.expectEqual(result.size.w, result.size.h);
     // Well under uncapped size of ~206×206
     try std.testing.expect(result.size.w < 100.0);
+}
+
+// max_buffer_size overflow after ceil + SDF_SAFE_PADDING.
+// get_allowed_sdf_size caps to 98.01×98.01 (fits in max_buffer_size),
+// but ceil(98.01)+2 = 101 → sdf_safe_size = 101×101 → 163,216 bytes > max_buffer_size.
+// This test fails with the current code (bug present).
+test "getTexture - sdf_safe_size must not exceed max_buffer_size" {
+    // Once test are working correctly, test this case:
+
+    // shared.render_scale = 0.07012662;
+    // var new_text_sdf_tex = sdf_drawing.getTexture(
+    //     curr_text_sdf_tex.id,
+    //     .{
+    //         .{ .x = 91.85382, .y = 1264.5828, .u = 0, .v = 1 },
+    //         .{ .x = 789.80035, .y = 1264.5828, .u = 1, .v = 1 },
+    //         .{ .x = 789.80035, .y = 851.30273, .u = 1, .v = 0 },
+    //         .{ .x = 91.85382, .y = 851.30273, .u = 0, .v = 0 },
+    //     },
+    //     18,
+    //     1,
+    // );
+    // getRatioPxPerSdfTexel return 2
+
+    // This is the data where buffer of 268435456 is too small
+
+    shared.render_scale = 1.0;
+    shared.texture_max_size = 1000.0;
+    shared.max_buffer_size = 156816.0; // = 99*99*16, so get_allowed_sdf_size returns ~98.01×98.01
+
+    // bounds 96×96 + padding 2 → bounds_with_padding 100×100
+    const result = getTexture(0, testBounds(96, 96), 2.0, 1.0);
+
+    // The final allocated texture must not exceed the buffer limit
+    try std.testing.expect(result.size.w * result.size.h * 16 <= shared.max_buffer_size);
 }

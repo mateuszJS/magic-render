@@ -59,7 +59,8 @@ pub const Text = struct {
     bounds: [4]PointUV,
     text_vertex: std.ArrayList(CharVertex),
 
-    sdf_tex: ?sdf_drawing.SdfTex = null,
+    is_sdf_shared: bool = false,
+    sdf_tex: sdf_drawing.SdfTex,
 
     props: asset_props.Props,
     effects: std.ArrayList(sdf_effect.Effect),
@@ -73,7 +74,8 @@ pub const Text = struct {
         props: asset_props.Props,
         input_effects: []const sdf_effect.Serialized,
         input_typo_props: typography_props.Serialized,
-        sdf_texture_id: ?u32,
+        sdf_texture_id: u32,
+        is_sdf_shared: bool,
     ) !Text {
         var text = Text{
             .id = id,
@@ -83,7 +85,8 @@ pub const Text = struct {
             .text_vertex = std.ArrayList(CharVertex).init(allocator),
             .props = props,
             .effects = try sdf_effect.deserialize(input_effects, allocator),
-            .sdf_tex = if (sdf_texture_id) |sdf_tex_id| sdf_drawing.SdfTex{ .id = sdf_tex_id } else null,
+            .sdf_tex = sdf_drawing.SdfTex{ .id = sdf_texture_id },
+            .is_sdf_shared = is_sdf_shared,
         };
 
         _ = try text.computeText(0, 0);
@@ -114,8 +117,8 @@ pub const Text = struct {
     ) !ComputeTextResult {
         defer chars.requestCharsSdfs(self.*) catch @panic("Failed to request SDFs for text chars in computeText");
 
-        if (self.sdf_tex) |*sdf_tex| {
-            sdf_tex.*.is_outdated = true;
+        if (self.is_sdf_shared) {
+            self.sdf_tex.is_outdated = true;
         }
 
         if (!fonts.fonts.contains(self.typo_props.font_family_id)) {
@@ -380,7 +383,7 @@ pub const Text = struct {
             self.bounds,
             effects_padding_world,
             Point{ .x = 0, .y = 0 },
-            self.sdf_tex orelse @panic("Text sdf texture should be set when calling getDrawBounds"),
+            self.sdf_tex,
         );
     }
 
@@ -409,8 +412,8 @@ pub const Text = struct {
             .props = self.props,
             .effects = try effects_list.toOwnedSlice(),
             .typo_props = self.typo_props.serialize(),
-            .sdf_texture_id = if (self.sdf_tex) |tex| tex.id else null,
-            .is_sdf_shared = self.sdf_tex != null,
+            .sdf_texture_id = self.sdf_tex.id,
+            .is_sdf_shared = self.is_sdf_shared,
         };
     }
 
@@ -429,7 +432,7 @@ pub const Serialized = struct {
     props: asset_props.Props,
     effects: []sdf_effect.Serialized,
     typo_props: typography_props.Serialized,
-    sdf_texture_id: ?u32,
+    sdf_texture_id: u32,
     is_sdf_shared: bool,
 
     pub fn compare(self: Serialized, other: Serialized) bool {

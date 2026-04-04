@@ -14,12 +14,13 @@ pub fn computeShape(
     bounds: [4]types.PointUV,
     padding: f32,
     points: []types.Point,
+    resize: f32,
 ) !sdf_drawing.SdfTex {
     const sdf_tex = sdf_drawing.getTexture(
         tex_id,
         bounds,
         padding,
-        1.0,
+        resize,
     );
 
     for (points) |*point| {

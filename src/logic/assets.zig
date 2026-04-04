@@ -108,7 +108,8 @@ pub fn addText(
     props: asset_props.Props,
     effects: []const sdf_effect.Serialized,
     typo_props: typography_props.Serialized,
-    sdf_texture_id: ?u32,
+    sdf_texture_id: u32,
+    is_sdf_shared: bool,
 ) !texts.Text {
     const id = if (id_or_zero == 0) utils.generateId() else id_or_zero;
     const text = try texts.Text.new(
@@ -120,6 +121,7 @@ pub fn addText(
         effects,
         typo_props,
         sdf_texture_id,
+        is_sdf_shared,
     );
     try assets.put(id, types.Asset{ .text = text });
     snapshots.triggerNewSnapshot(true, true);
@@ -175,7 +177,8 @@ pub fn createText(x: f32, y: f32) !texts.Text {
         asset_props.Props{},
         effects,
         typo_props,
-        null,
+        js_glue.createSdfTexture(),
+        true,
     );
 }
 
@@ -249,6 +252,7 @@ pub fn resetTo(snapshot_assets: []const types.AssetSerialized) !void {
                     text.effects,
                     text.typo_props,
                     text.sdf_texture_id,
+                    text.is_sdf_shared,
                 );
             },
         }
