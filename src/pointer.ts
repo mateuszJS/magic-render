@@ -7,7 +7,6 @@ const OUTSIDE_CANVAS = -1
 
 enum MouseMode {
   Pan,
-  Zoom,
   None,
 }
 
@@ -212,7 +211,8 @@ export default function initMouseController(
     (event) => {
       updatePointer(event)
       event.preventDefault()
-      if (mouseMode === MouseMode.Zoom) {
+
+      if (event.altKey) {
         const delta = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : -event.deltaX
         wheelZoom(delta)
       } else {
@@ -239,12 +239,6 @@ export default function initMouseController(
         document.activeElement?.tagName === 'INPUT' ||
         document.activeElement?.tagName === 'TEXTAREA'
 
-      if (event.key === 'Alt') {
-        // alt is the only key that works even if user is focused in an text area
-        mouseMode = MouseMode.Zoom
-        return
-      }
-
       if (isInputFocused) return
 
       switch (event.key) {
@@ -253,9 +247,6 @@ export default function initMouseController(
             canvas.style.cursor = 'grab'
             mouseMode = MouseMode.Pan
           }
-          break
-        case 'Alt':
-          mouseMode = MouseMode.Zoom
           break
         case 'Escape':
           Logic.commitChanges()
