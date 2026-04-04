@@ -68,7 +68,6 @@ export type TypoProps = {
   font_size: number
   font_family_id: number
   line_height: number
-  is_sdf_shared: boolean
 }
 
 /* type WITHOUT prefix "Zig" are used in API */
@@ -98,6 +97,7 @@ export type Text = {
   effects: Effect[]
   typo_props: TypoProps
   sdf_texture_id: number | null
+  is_sdf_shared: boolean
 }
 
 export type Asset = Image | Shape | Text
@@ -154,6 +154,7 @@ type ZigText = {
   effects: ZigEffect[]
   typo_props: TypoProps
   sdf_texture_id: number | null
+  is_sdf_shared: boolean
 }
 
 export type ZigAsset = { img: ZigImage } | { shape: ZigShape } | { text: ZigText }
@@ -172,6 +173,20 @@ export type CustomProgramError = {
   offset: number
 }
 
+export type CreatorProps = {
+  initialProjectWidth: number
+  initialProjectHeight: number
+  canvas: HTMLCanvasElement
+  uploadTexture: (url: string, onNewUrl: (newUrl: string) => void) => void
+  onSnapshotUpdate: (snapshot: ProjectSnapshot, commit: boolean) => void
+  onAssetSelect: (assetId: Id) => void
+  onIsProcessingFlagUpdate: (inProgress: boolean) => void
+  onPreviewUpdate: (canvas: HTMLCanvasElement) => void
+  onUpdateTool: (tool: CreatorTool) => void
+  getFontUrl: (fontId: number) => string
+  isTest: boolean
+}
+
 export type CreatorAPI = {
   addImages: (urls: string[]) => Promise<void>
   setSnapshot: (snapshot: ProjectSnapshot, withSnapshot: boolean) => Promise<void>
@@ -183,6 +198,7 @@ export type CreatorAPI = {
   updateAssetProps: (props: BasicProps, commit: boolean) => void // updates basic properties of selected asset
   updateAssetEffects: (effects: Effect[], commit: boolean) => void // updates only effects of selected asset
   updateAssetBounds: (bounds: PointUV[], commit: boolean) => void // updates bounds of selected asset
+  download: VoidFunction // triggers download of the current canvas content as an image
   INFINITE_DISTANCE_THRESHOLD: number // threshold value for considering a distance as "infinite" in SDF fill effects
   INFINITE_DISTANCE: number // maximum f32 value, used for SDF fill effects
 }

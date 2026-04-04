@@ -166,7 +166,7 @@ export default function runCreator(
     })
 
     computePass = encoder.beginComputePass()
-    Logic.computeSdfs()
+    Logic.computePhase()
     computePass.end()
 
     Logic.updateCache()

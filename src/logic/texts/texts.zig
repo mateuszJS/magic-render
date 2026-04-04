@@ -20,32 +20,30 @@ const sdf_effect = @import("../sdf/effect.zig");
 const ENTER_CHAR_CODE: u21 = 0xa;
 const SOFT_BREAK_MARKER: u21 = 0x2060;
 
-// Global text state, modified mainly in index.zig
-// do NOT include this in Text struct! Otherwise we would need to keep looping over all texts
-// to make sure we clear all startes when user select/clicks on a text
-pub var caret_position: u32 = 0;
-pub var selection_end_position: u32 = 0; // selection start is indicated by caret_position
-pub var last_caret_update: u32 = 0;
-
 pub const CharVertex = struct {
     relative_bounds: [4]PointUV,
     char: ?u21,
     origin: Point, // origin of the char (bottom left corner), useful for drawing selection/caret/picking
     last_in_line: bool = false,
 
-    pub fn getBoundsVertex(self: CharVertex, padding: f32, matrix: Matrix3x3) [6]PointUV {
-        const b = self.relative_bounds;
-        const p = padding;
-        return [_]PointUV{
-            // first triangle
-            matrix.getUV(.{ .x = b[3].x - p, .y = b[3].y - p, .u = 0.0, .v = 0.0 }),
-            matrix.getUV(.{ .x = b[0].x - p, .y = b[0].y + p, .u = 0.0, .v = 1.0 }),
-            matrix.getUV(.{ .x = b[1].x + p, .y = b[1].y + p, .u = 1.0, .v = 1.0 }),
-            // second triangle
-            matrix.getUV(.{ .x = b[1].x + p, .y = b[1].y + p, .u = 1.0, .v = 1.0 }),
-            matrix.getUV(.{ .x = b[2].x + p, .y = b[2].y - p, .u = 1.0, .v = 0.0 }),
-            matrix.getUV(.{ .x = b[3].x - p, .y = b[3].y - p, .u = 0.0, .v = 0.0 }),
-        };
+    pub fn getDrawBounds(self: CharVertex, effects_padding_world: f32, ch_sdf_tex: sdf_drawing.SdfTex, matrix: Matrix3x3) [6]PointUV {
+        var bounds: [4]PointUV = undefined;
+
+        for (self.relative_bounds, 0..) |p, i| {
+            bounds[i] = matrix.getUV(p);
+        }
+
+        // shape.sdf_size includes effects padding, safety padding and rounding error
+        // to be able to compare them(obtain scale) together we have to calculate
+        // world size -> bounds size + effects padding
+        // sdf size -> shape.sdf_size - effects padding - rounding error
+
+        return sdf_drawing.getDrawBounds(
+            bounds,
+            effects_padding_world,
+            Point{ .x = 0, .y = 0 },
+            ch_sdf_tex,
+        );
     }
 };
 
@@ -61,9 +59,8 @@ pub const Text = struct {
     bounds: [4]PointUV,
     text_vertex: std.ArrayList(CharVertex),
 
-    sdf_texture_id: ?u32 = null,
-    sdf_scale: f32 = 1.0,
-    is_sdf_outdated: bool = true,
+    is_sdf_shared: bool = false,
+    sdf_tex: sdf_drawing.SdfTex,
 
     props: asset_props.Props,
     effects: std.ArrayList(sdf_effect.Effect),
@@ -77,7 +74,8 @@ pub const Text = struct {
         props: asset_props.Props,
         input_effects: []const sdf_effect.Serialized,
         input_typo_props: typography_props.Serialized,
-        sdf_texture_id: ?u32,
+        sdf_texture_id: u32,
+        is_sdf_shared: bool,
     ) !Text {
         var text = Text{
             .id = id,
@@ -87,7 +85,8 @@ pub const Text = struct {
             .text_vertex = std.ArrayList(CharVertex).init(allocator),
             .props = props,
             .effects = try sdf_effect.deserialize(input_effects, allocator),
-            .sdf_texture_id = sdf_texture_id,
+            .sdf_tex = sdf_drawing.SdfTex{ .id = sdf_texture_id },
+            .is_sdf_shared = is_sdf_shared,
         };
 
         _ = try text.computeText(0, 0);
@@ -116,6 +115,12 @@ pub const Text = struct {
         selection_start: usize,
         selection_end: usize,
     ) !ComputeTextResult {
+        defer chars.requestCharsSdfs(self.*) catch @panic("Failed to request SDFs for text chars in computeText");
+
+        if (self.is_sdf_shared) {
+            self.sdf_tex.is_outdated = true;
+        }
+
         if (!fonts.fonts.contains(self.typo_props.font_family_id)) {
             return .{
                 .content = self.content,
@@ -193,8 +198,8 @@ pub const Text = struct {
             }
 
             const relative_bounds = self.getDrawRelativeBounds(
-                char_details.x,
-                char_details.y,
+                char_details.x, // NOTE: now sure if we should store it here
+                char_details.y, // it smells like unnecessary copy
                 char_details.width,
                 char_details.height,
                 .{
@@ -251,7 +256,7 @@ pub const Text = struct {
         std.heap.page_allocator.free(self.content); // free previous content
         self.content = try updated_content_bytes.toOwnedSlice();
 
-        self.is_sdf_outdated = true;
+        // self.is_sdf_outdated = true;
 
         return .{
             .content = self.content,
@@ -279,36 +284,6 @@ pub const Text = struct {
         return buffer;
     }
 
-    pub fn addCaretDrawVertex(
-        self: Text,
-        relative_start: Point,
-    ) ?[2]triangles.DrawInstance {
-        const matrix = Matrix3x3.getMatrixFromRectangleNoScale(self.bounds);
-        const relative_end = Point{
-            .x = relative_start.x,
-            .y = relative_start.y + self.typo_props.font_size * self.typo_props.line_height,
-        };
-
-        const CARET_BLINK_INTERVAL_MS = 700;
-        const blink = (shared.time_u32 / CARET_BLINK_INTERVAL_MS) % 2 == 0;
-        const newly_updated = shared.time_u32 - last_caret_update < 1000;
-
-        if (blink or newly_updated) {
-            var buffer: [2]triangles.DrawInstance = undefined;
-            const width = 3.0 * shared.render_scale;
-            lines.getDrawVertexData(
-                &buffer,
-                matrix.get(relative_start),
-                matrix.get(relative_end),
-                width,
-                .{ 255, 255, 255, 255 },
-                width / 2,
-            );
-            return buffer;
-        }
-        return null;
-    }
-
     pub fn getCaretIndex(self: Text, id: [4]u32, relative_x: f32) ?u32 {
         var caret_index = id[1];
         if (caret_index > 0) {
@@ -324,14 +299,6 @@ pub const Text = struct {
         }
 
         return null;
-    }
-
-    pub fn getSdfTextureId(self: *Text) u32 {
-        return if (self.sdf_texture_id) |sdf_texture_id| sdf_texture_id else b: {
-            const sdf_tex_id = js_glue.createSdfTexture();
-            self.sdf_texture_id = sdf_tex_id;
-            break :b sdf_tex_id;
-        };
     }
 
     pub fn addPickVertex(
@@ -409,6 +376,17 @@ pub const Text = struct {
         return triangles_buffer.toOwnedSlice();
     }
 
+    pub fn getDrawBounds(self: Text) [6]PointUV {
+        const effects_padding_world = sdf_drawing.getSdfPadding(self.effects.items);
+
+        return sdf_drawing.getDrawBounds(
+            self.bounds,
+            effects_padding_world,
+            Point{ .x = 0, .y = 0 },
+            self.sdf_tex,
+        );
+    }
+
     pub fn getDrawUniform(self: Text, effects: sdf_effect.Effect, sdf_scale: f32) sdf_drawing.DrawUniform {
         return sdf_drawing.getDrawUniform(
             effects,
@@ -434,7 +412,8 @@ pub const Text = struct {
             .props = self.props,
             .effects = try effects_list.toOwnedSlice(),
             .typo_props = self.typo_props.serialize(),
-            .sdf_texture_id = self.sdf_texture_id,
+            .sdf_texture_id = self.sdf_tex.id,
+            .is_sdf_shared = self.is_sdf_shared,
         };
     }
 
@@ -453,11 +432,13 @@ pub const Serialized = struct {
     props: asset_props.Props,
     effects: []sdf_effect.Serialized,
     typo_props: typography_props.Serialized,
-    sdf_texture_id: ?u32,
+    sdf_texture_id: u32,
+    is_sdf_shared: bool,
 
     pub fn compare(self: Serialized, other: Serialized) bool {
         const all_match = self.id == other.id and
             self.props.compare(other.props) and
+            self.is_sdf_shared == other.is_sdf_shared and
             utils.compareBounds(self.bounds, other.bounds) and
             self.typo_props.compare(other.typo_props) and
             sdf_effect.compareSerialized(self.effects, other.effects) and

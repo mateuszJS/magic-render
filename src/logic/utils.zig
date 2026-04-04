@@ -1,6 +1,7 @@
 const math = @import("std").math;
 const consts = @import("consts.zig");
 const PointUV = @import("types.zig").PointUV;
+const Matrix3x3 = @import("matrix.zig").Matrix3x3;
 
 pub fn findMidAngle(angle1: f32, angle2: f32) f32 {
     const x = math.cos(angle1) + math.cos(angle2);
@@ -18,7 +19,7 @@ pub fn getNextPowerOfTwo(value: f32) f32 {
 }
 
 pub fn equalF32(a: f32, b: f32) bool {
-    return @abs(a - b) < consts.EPSILON;
+    return @abs(a - b) <= consts.EPSILON;
 }
 
 // 0.001 tolerance for bounds comparison
@@ -44,4 +45,45 @@ pub fn createBounds(w: f32, h: f32) [4]PointUV {
         .{ .x = w, .y = 0, .u = 1, .v = 0 },
         .{ .x = 0, .y = 0, .u = 0, .v = 0 },
     };
+}
+
+pub fn transformBoundsUV(self: [4]PointUV, matrix: Matrix3x3) [6]PointUV {
+    const b = self.relative_bounds;
+    return [_]PointUV{
+        // first triangle
+        matrix.getUV(.{ .x = b[3].x, .y = b[3].y, .u = 0.0, .v = 0.0 }),
+        matrix.getUV(.{ .x = b[0].x, .y = b[0].y, .u = 0.0, .v = 1.0 }),
+        matrix.getUV(.{ .x = b[1].x, .y = b[1].y, .u = 1.0, .v = 1.0 }),
+        // second triangle
+        matrix.getUV(.{ .x = b[1].x, .y = b[1].y, .u = 1.0, .v = 1.0 }),
+        matrix.getUV(.{ .x = b[2].x, .y = b[2].y, .u = 1.0, .v = 0.0 }),
+        matrix.getUV(.{ .x = b[3].x, .y = b[3].y, .u = 0.0, .v = 0.0 }),
+    };
+}
+
+pub fn getNextStep(base: f32, input: f32) f32 {
+    // Rule 1: Minimum is 50
+    if (input <= base) return base;
+
+    // We want the next step strictly greater than the input.
+    // We normalize by dividing by 50.
+    const normalized = input / base;
+
+    // math.log2 for floats returns the exponent.
+    // Example: if normalized is 2.0, log2 is 1.0.
+    // We use floor + 1 to get the next power of 2 exponent.
+    const exponent = math.floor(math.log2(normalized)) + 1.0;
+
+    // Calculate 2^exponent
+    const next_p2 = math.pow(f32, 2.0, exponent);
+
+    // Return as integer
+    return base * next_p2;
+}
+
+var next_asset_id: u32 = consts.ASSET_ID_MIN;
+pub fn generateId() u32 {
+    const id = next_asset_id;
+    next_asset_id +%= 1;
+    return id;
 }

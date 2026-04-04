@@ -9,6 +9,7 @@ import collectShapesData from 'svgToShapes/collectShapesData'
 import { Asset } from 'types'
 import getShapesAssets from 'svgToShapes/getShapesAssets'
 import { device, storageFormat } from 'WebGPU/device'
+import { delayedDestroy } from 'WebGPU/programs/initPrograms'
 
 function getSvgSize(svgRoot: ElementNode, img?: HTMLImageElement) {
   const props = svgRoot.properties
@@ -62,7 +63,6 @@ export interface TextureSource {
   url: string
   texture?: GPUTexture
   hash?: string
-  data?: Uint8ClampedArray // it's time consuming to obtain data from a GPUTexture later
 }
 
 interface ImageExtractedData {
@@ -124,20 +124,22 @@ async function resolveTexture(
       return
     }
 
-    const { ctx } = getImageData(img, img.naturalWidth, img.naturalHeight)
-    const data = ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data
-    const hash = hashImageData(data)
+    // colorSpaceConversion: 'none' strips the embedded color profile (e.g. Display P3 from iPhone
+    // screenshots) and treats values as sRGB. Without this, Safari copies P3 values verbatim into
+    // an sRGB texture, producing oversaturated colors — while Chrome silently converts correctly.
+    const bitmap = await createImageBitmap(img, { colorSpaceConversion: 'none' })
+    const hash = hashImageData(bitmap)
 
-    existingTexture = findSameTexture(data, hash)
+    existingTexture = findSameTexture(hash)
     if (existingTexture !== null) {
       textures[textureId] = existingTexture
     } else {
-      textures[textureId].texture = createTextureFromSource(img, {
+      textures[textureId].texture = createTextureFromSource(bitmap, {
         flipY: true,
       })
-      textures[textureId].data = data
       textures[textureId].hash = hash
     }
+    bitmap.close()
 
     onLoad?.({
       width: img.width,
@@ -176,7 +178,7 @@ export function createCacheTexture(): number {
   return textureId
 }
 
-export function createComputeDepthTexture(width: number, height: number): number {
+export function createDisposableComputeDepthTexture(width: number, height: number): number {
   const textureId = textures.length
   const label = 'combineSdf - depth texture'
   const texture: GPUTexture = device.createTexture({
@@ -187,6 +189,9 @@ export function createComputeDepthTexture(width: number, height: number): number
   })
 
   textures.push({ url: label, texture })
+
+  delayedDestroy(texture)
+
   return textureId
 }
 
@@ -229,6 +234,7 @@ export function update(textureId: number, width: number, height: number): void {
   const texture: GPUTexture = device.createTexture({
     label: existingTex.label,
     size: [width, height],
+    // size: [Math.min(2000, width), Math.min(2000, height)],
     format: existingTex.format,
     usage: existingTex.usage,
   })
@@ -284,10 +290,13 @@ function getImageData(img: CanvasImageSource, width: number, height: number) {
 
 /**
  * A simple, non-cryptographic hash function (djb2) for raw pixel data.
- * @param data The Uint8ClampedArray from getImageData.
+ * @param bitmap The ImageBitmap to hash.
  * @returns A hash string.
  */
-function hashImageData(data: Uint8ClampedArray): string {
+function hashImageData(bitmap: ImageBitmap): string {
+  const { ctx } = getImageData(bitmap, bitmap.width, bitmap.height)
+  const data = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data
+
   let hash = 5381
   for (let i = 0; i < data.length; i++) {
     // Bitwise operations are fast
@@ -296,20 +305,10 @@ function hashImageData(data: Uint8ClampedArray): string {
   return String(hash)
 }
 
-function findSameTexture(imgData: Uint8ClampedArray, hash: string): TextureSource | null {
+function findSameTexture(hash: string): TextureSource | null {
   for (let i = 0; i < textures.length; i++) {
     const texture = textures[i]
     if (texture.hash === hash) {
-      // if hashes match, perform the more expensive full pixel check
-      if (imgData.length !== texture.data!.length) {
-        return null
-      }
-
-      for (let i = 0; i < imgData.length; i++) {
-        if (imgData[i] !== texture.data![i]) {
-          return null
-        }
-      }
       return texture
     }
   }

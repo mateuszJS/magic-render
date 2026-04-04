@@ -4,23 +4,33 @@ const shared = @import("shared.zig");
 const std = @import("std");
 
 pub const TextureSize = struct {
-    w: f32,
-    h: f32,
+    w: f32 = 0,
+    h: f32 = 0,
 };
+
+// iOS WebKit Metal crashes on rgba32float STORAGE_BINDING textures above ~32MB,
+// even though WebGPU reports much higher maxBufferSize/maxStorageBufferBindingSize.
+const MAX_SDF_TEXTURE_BYTES: f32 = 32 * 1024 * 1024; // 32MB hard cap
+// NOT USED for now
 
 // buffer size limits the size of rgba32float texture
 pub fn get_allowed_sdf_size(desired_size: TextureSize) TextureSize {
-    var size = desired_size;
-    const sdf_texture_size = size.w * size.h * 16;
+    // const sdf_texture_size = size.w * size.h * 16;
+    const max_texture_side = @sqrt(shared.max_buffer_size / 16); // just for sake of simplicity we transform buffer limit to texture size liek limit
+    // but ideally it should be posssible to have sumer short texture and etremly wide and still be under shared.max_buffer_size
 
-    if (sdf_texture_size > shared.max_buffer_size) {
-        const max_pixels = shared.max_buffer_size / 16.0;
-        const ratio = max_pixels / (size.w * size.h);
-        size.w *= ratio;
-        size.h *= ratio;
-    }
+    const scale = max_texture_side / @max(desired_size.w, desired_size.h);
+    const ratio = @min(1.0, scale); // makes sure we only downscale
+    return TextureSize{ .w = desired_size.w * ratio, .h = desired_size.h * ratio };
 
-    return size;
+    // if (sdf_texture_size > shared.max_buffer_size) {
+    //     const max_pixels = shared.max_buffer_size / 16.0;
+    //     const ratio = max_pixels / (size.w * size.h);
+    //     size.w *= ratio;
+    //     size.h *= ratio;
+    // }
+
+    // return size;
 }
 
 pub fn get_allowed_size(width: f32, height: f32) TextureSize {
@@ -50,7 +60,6 @@ pub fn get_safe_blur_dims(init_width: f32, bounds: [4]PointUV, gaussianBlur: Poi
     const cost = 3 * sigma.x * pixels + 3 * sigma.y * pixels;
 
     if (cost > MAX_COST) {
-        std.debug.print("DECREASING BECAUSE OF COST: {d} > {d}\n", .{ cost, MAX_COST });
         const scale_down = std.math.pow(f32, cost / MAX_COST, 1.0 / 3.0); // Cube root
         size.w /= scale_down;
         size.h /= scale_down;

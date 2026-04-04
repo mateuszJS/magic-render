@@ -8,15 +8,16 @@ export default async function generatePreview(
   creatorCanvas: HTMLCanvasElement,
   projectWidth: number,
   projectHeight: number,
-  scaleFactor: number, // we cannot calcualted it from previewCanvas because it's not added to DOM,
-  // so previewCanvas.clientWidth = 0
+  outputWidth: number,
+  outputHeight: number,
   capturePreview: (previewCtx: GPUCanvasContext, collectAndCleanup: VoidFunction) => void,
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void
 ) {
-  const size = 400
+  const pixelDensity = creatorCanvas.width / creatorCanvas.clientWidth
+
   const previewCanvas = document.createElement('canvas')
-  previewCanvas.width = size
-  previewCanvas.height = size
+  previewCanvas.width = outputWidth
+  previewCanvas.height = outputHeight
   const previewContext = previewCanvas.getContext('webgpu')!
 
   previewContext.configure({
@@ -27,7 +28,7 @@ export default async function generatePreview(
   // setup viewport for the preview
   const cameraCopy = { ...camera }
   setCamera(projectWidth, projectHeight, 'fill', previewCanvas)
-  Logic.updateRenderScale(scaleFactor)
+  Logic.updateRenderScale(1, pixelDensity)
 
   const collectAndCleanup = () => {
     onPreviewUpdate(previewCanvas)
@@ -36,7 +37,7 @@ export default async function generatePreview(
     camera.x = cameraCopy.x
     camera.y = cameraCopy.y
     camera.zoom = cameraCopy.zoom
-    Logic.updateRenderScale(creatorCanvas.width / (creatorCanvas.clientWidth * camera.zoom))
+    Logic.updateRenderScale(camera.zoom, creatorCanvas.width / creatorCanvas.clientWidth)
   }
 
   capturePreview(previewContext, collectAndCleanup)

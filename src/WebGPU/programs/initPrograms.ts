@@ -32,18 +32,22 @@ export const canvasMatrix: {
 } = { buffer: null as unknown as GPUBuffer } // should throw error when used before assigning
 export let pickCanvasMatrixBuffer: GPUBuffer
 
-let buffersToDestroy: Array<GPUBuffer | GPUTexture> = []
+let gpuObjectToDestroy: Array<GPUBuffer | GPUTexture> = []
 
 export function delayedDestroy(gpuObject: GPUBuffer | GPUTexture) {
-  buffersToDestroy.push(gpuObject)
+  gpuObjectToDestroy.push(gpuObject)
 }
 
 export function destroyGpuObjects() {
-  buffersToDestroy.forEach((buffer) => buffer.destroy())
-  buffersToDestroy = []
+  gpuObjectToDestroy.forEach((buffer) => buffer.destroy())
+  gpuObjectToDestroy = []
 }
 
-export default function initPrograms(device: GPUDevice, presentationFormat: GPUTextureFormat) {
+export default function initPrograms(
+  device: GPUDevice,
+  presentationFormat: GPUTextureFormat,
+  isTest: boolean
+) {
   canvasMatrix.buffer = device.createBuffer({
     label: 'uniforms',
     size: 16 /*projection matrix*/ * 4,
@@ -65,7 +69,8 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
     device,
     presentationFormat,
     solidFS,
-    1 /*dist_start*/ + 1 /*dist_end*/ + 2 /*padding*/ + 4 /*color*/
+    1 /*dist_start*/ + 1 /*dist_end*/ + 2 /*padding*/ + 4 /*color*/,
+    isTest
   )
   drawLinearGradientShape = getDrawShape(
     device,
@@ -77,7 +82,8 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
       1 /*padding*/ +
       2 /*start*/ +
       2 /*end*/ +
-      (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/
+      (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/,
+    isTest
   )
   drawRadialGradientShape = getDrawShape(
     device,
@@ -89,7 +95,8 @@ export default function initPrograms(device: GPUDevice, presentationFormat: GPUT
       1 /*radius_ratio*/ +
       2 /*start*/ +
       2 /*end*/ +
-      (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/
+      (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/,
+    isTest
   )
   pickShape = getPickShape(device, pickCanvasMatrixBuffer)
   computeShape = getComputeShape(device)

@@ -5,7 +5,7 @@ const bounding_box = @import("shapes/bounding_box.zig");
 pub var onAssetSelection: *const fn ([4]u32) void = undefined;
 pub var onUpdateTool: *const fn (u16) void = undefined;
 pub var createSdfTexture: *const fn () u32 = undefined;
-pub var createComputeDepthTexture: *const fn (u32, u32) u32 = undefined;
+pub var createDisposableComputeDepthTexture: *const fn (u32, u32) u32 = undefined;
 pub var getCharData: *const fn (u32, u21) SerializedCharDetails = undefined;
 pub var getKerning: *const fn (u32, u21, u21) f32 = undefined;
 

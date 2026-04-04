@@ -118,7 +118,7 @@ export default defineConfig({
   /* Run your local dev server before starting the tests */
   // if we deploy something to "staging" like environment, then we can get rid of that webServer local run
   webServer: {
-    command: 'npm run build && http-server lib-test -p 9275',
+    command: 'export TEST_ENV=true && npm run build && npx http-server lib-test -p 9275',
     url: 'http://127.0.0.1:9275',
     reuseExistingServer: !process.env.CI,
   },

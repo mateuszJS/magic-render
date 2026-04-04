@@ -12,12 +12,9 @@ struct CubicBezier {
 @group(0) @binding(0) var tex: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(1) var<storage, read> curves: array<vec2f>;
 
-@compute @workgroup_size($WORKING_GROUP_SIZE) fn cs(
+@compute @workgroup_size(1) fn cs(
   @builtin(global_invocation_id) id : vec3u
 )  {
-  let size = textureDimensions(tex);
-  if (id.x >= size.x || id.y >= size.y) {return;}
-
   let pos = vec2f(id.xy) + vec2f(0.5, 0.5);
   let shape_info = evaluate_shape(pos);
 
@@ -29,109 +26,122 @@ struct CubicBezier {
   ));
 }
 
+
+// Evaluate cubic Bézier at parameter t
 fn bezier_point(curve: CubicBezier, t: f32) -> vec2f {
   let t2 = t * t;
   let t3 = t2 * t;
   let one_minus_t = 1.0 - t;
   let one_minus_t2 = one_minus_t * one_minus_t;
   let one_minus_t3 = one_minus_t2 * one_minus_t;
-
-  return curve.p0 * one_minus_t3 +
-         3.0 * curve.p1 * t * one_minus_t2 +
-         3.0 * curve.p2 * t2 * one_minus_t +
+  
+  return curve.p0 * one_minus_t3 + 
+         3.0 * curve.p1 * t * one_minus_t2 + 
+         3.0 * curve.p2 * t2 * one_minus_t + 
          curve.p3 * t3;
 }
 
-// Evaluate P(t), P'(t) and P''(t) in one de Casteljau pass.
-// ~50% fewer arithmetic ops vs evaluating each separately.
-struct BezierEval {
-  p: vec2f,
-  dp: vec2f,   // P'(t)
-  ddp: vec2f,  // P''(t)
-}
-fn bezier_eval_all(curve: CubicBezier, t: f32) -> BezierEval {
-  let b0 = mix(curve.p0, curve.p1, t);
-  let b1 = mix(curve.p1, curve.p2, t);
-  let b2 = mix(curve.p2, curve.p3, t);
-  let c0 = mix(b0, b1, t);
-  let c1 = mix(b1, b2, t);
-  var result: BezierEval;
-  result.p   = mix(c0, c1, t);
-  result.dp  = 3.0 * (c1 - c0);
-  result.ddp = 6.0 * (b0 - 2.0 * b1 + b2);
-  return result;
+// First derivative of cubic Bézier
+fn bezier_derivative(curve: CubicBezier, t: f32) -> vec2f {
+  let one_minus_t = 1.0 - t;
+  return 3.0 * one_minus_t * one_minus_t * (curve.p1 - curve.p0) +
+         6.0 * t * one_minus_t * (curve.p2 - curve.p1) +
+         3.0 * t * t * (curve.p3 - curve.p2);
 }
 
-// Find closest point on cubic Bézier: Newton-Raphson on f(t)=dot(P(t)-q, P'(t))=0
+// Second derivative of cubic Bézier
+fn bezier_second_derivative(curve: CubicBezier, t: f32) -> vec2f {
+  return 6.0 * (1.0 - t) * (curve.p2 - 2.0 * curve.p1 + curve.p0) +
+         6.0 * t * (curve.p3 - 2.0 * curve.p2 + curve.p1);
+}
+
+// Find closest point on cubic Bézier curve to given point using analytical method
 fn closest_point_on_bezier(point: vec2f, curve: CubicBezier) -> f32 {
+  // At the closest point, (P(t) - point) ⊥ P'(t)
+  // This gives us: dot(P(t) - point, P'(t)) = 0
+  // We can solve this quintic equation analytically or use Newton-Raphson
+  
+  // Start with a good initial guess using the control polygon
   var best_t = initial_guess_closest_point(point, curve);
   // if there is any weird artifact in the middle of the shape, then it's most likely because of initial guess!
-
-  // Fixed 4 iterations — no early-exit branches so all GPU threads stay in lockstep.
-  for (var i = 0; i < 4; i++) {
-    let ev = bezier_eval_all(curve, best_t);
-    let diff = ev.p - point;
-    let f   = dot(diff, ev.dp);
-    let df  = dot(ev.dp, ev.dp) + dot(diff, ev.ddp);
-    let step = select(f / df, 0.0, abs(df) < 1e-8);
-    best_t = clamp(best_t - step, 0.0, 1.0);
+  
+  // Newton-Raphson to find exact solution
+  for (var i = 0; i < 5; i++) {
+    let curve_point = bezier_point(curve, best_t);
+    let derivative = bezier_derivative(curve, best_t);
+    let second_derivative = bezier_second_derivative(curve, best_t);
+    
+    let diff = curve_point - point;
+    
+    // f(t) = dot(P(t) - point, P'(t)) = 0
+    let f = dot(diff, derivative);
+    
+    // f'(t) = dot(P'(t), P'(t)) + dot(P(t) - point, P''(t))
+    let df = dot(derivative, derivative) + dot(diff, second_derivative);
+    
+    if (abs(df) < 1e-8) { break; }
+    
+    var new_t = best_t - f / df;
+    
+    // Clamp to valid range
+    new_t = clamp(new_t, 0.0, 1.0);
+    
+    if (abs(new_t - best_t) < 1e-8) { break; }
+    best_t = new_t;
   }
-
+  
   return best_t;
 }
 
-// Divide-and-conquer initial guess:
-//   Phase 1 — 8 coarse uniform samples to identify the best interval.
-//   Phase 2 — 5 ternary-search iterations within that interval.
-// Total: 8 + 10 = 18 bezier_point calls  vs  17+9 = 26 in the previous version.
-// Ternary search is guaranteed to find the minimum if the function is unimodal on
-// the identified interval, which is the common case for Bézier closest-point queries.
+// Get initial guess for closest point using hierarchical sampling
 fn initial_guess_closest_point(point: vec2f, curve: CubicBezier) -> f32 {
-  // Phase 1: coarse uniform scan
-  let COARSE = 7u; // 8 samples: t = 0, 1/7, ..., 1
+  // Stage 1: Coarse sampling to find approximate region
   var best_t = 0.0;
-  var min_dist_sq = 1e30;
-
-  for (var i = 0u; i <= COARSE; i++) {
-    let t = f32(i) / f32(COARSE);
-    let p = bezier_point(curve, t);
-    let d = dot(p - point, p - point);
-    if (d < min_dist_sq) {
-      min_dist_sq = d;
+  var min_dist_sq = 1e10;
+  
+  let coarse_samples = 16; // More samples for better coverage
+  for (var i = 0; i <= coarse_samples; i++) {
+    let t = f32(i) / f32(coarse_samples);
+    let curve_point = bezier_point(curve, t);
+    let dist_sq = dot(curve_point - point, curve_point - point);
+    
+    if (dist_sq < min_dist_sq) {
+      min_dist_sq = dist_sq;
       best_t = t;
     }
   }
-
-  // Phase 2: ternary search within ±one coarse step of best_t
-  let step = 1.0 / f32(COARSE);
-  var lo = max(0.0, best_t - step);
-  var hi = min(1.0, best_t + step);
-
-  for (var i = 0u; i < 5u; i++) {
-    let third = (hi - lo) / 3.0;
-    let m1 = lo + third;
-    let m2 = hi - third;
-    let p1 = bezier_point(curve, m1);
-    let p2 = bezier_point(curve, m2);
-    let d1 = dot(p1 - point, p1 - point);
-    let d2 = dot(p2 - point, p2 - point);
-    if (d1 < d2) { hi = m2; } else { lo = m1; }
+  
+  // Stage 2: Refine in the neighborhood of the best coarse sample
+  let refine_range = 1.0 / f32(coarse_samples); // Search around ±one sample interval
+  let t_min = max(0.0, best_t - refine_range);
+  let t_max = min(1.0, best_t + refine_range);
+  
+  let fine_samples = 8;
+  for (var i = 0; i <= fine_samples; i++) {
+    let t = t_min + (t_max - t_min) * f32(i) / f32(fine_samples);
+    let curve_point = bezier_point(curve, t);
+    let dist_sq = dot(curve_point - point, curve_point - point);
+    
+    if (dist_sq < min_dist_sq) {
+      min_dist_sq = dist_sq;
+      best_t = t;
+    }
   }
-
-  return (lo + hi) * 0.5;
+  
+  return best_t;
 }
 
 // Project point onto line segment and return parameter [0,1]
 fn project_point_to_line_segment(point: vec2f, line_start: vec2f, line_end: vec2f) -> f32 {
   let line_vec = line_end - line_start;
   let point_vec = point - line_start;
-
+  
   let line_length_sq = dot(line_vec, line_vec);
-
+  
   if (line_length_sq < 1e-8) {
     return 0.0; // Degenerate line
   }
-
+  
   let t = dot(point_vec, line_vec) / line_length_sq;
   return clamp(t, 0.0, 1.0);
 }
@@ -140,16 +150,16 @@ fn project_point_to_line_segment(point: vec2f, line_start: vec2f, line_end: vec2
 fn distance_to_line_segment(point: vec2f, line_start: vec2f, line_end: vec2f) -> f32 {
   let line_vec = line_end - line_start;
   let point_vec = point - line_start;
-
+  
   let line_length_sq = dot(line_vec, line_vec);
-
+  
   if (line_length_sq < 1e-8) {
     // Degenerate line - distance to start point
     return length(point_vec);
   }
-
+  
   let t = dot(point_vec, line_vec) / line_length_sq;
-
+  
   if (t <= 0.0) {
     // Closest point is the start of the line segment
     return length(point_vec);
@@ -168,62 +178,67 @@ fn line_winding_contribution(point: vec2f, line_start: vec2f, line_end: vec2f) -
   // Vector from query point to line endpoints
   let v1 = line_start - point;
   let v2 = line_end - point;
-
+  
   // Skip if either point is very close to avoid numerical issues
   let dist1 = length(v1);
   let dist2 = length(v2);
   if (dist1 < 1e-6 || dist2 < 1e-6) {
     return 0.0;
   }
-
+  
   // Normalize vectors
   let n1 = v1 / dist1;
   let n2 = v2 / dist2;
-
+  
   // Calculate signed angle using atan2 for proper quadrant handling
   let cross_prod = n1.x * n2.y - n1.y * n2.x;
   let dot_prod = dot(n1, n2);
-
+  
   // Use atan2 for proper quadrant handling
   let angle = atan2(cross_prod, dot_prod);
-
+  
   return angle / (2.0 * 3.14159);
 }
 
-// Ray casting: count intersections of horizontal ray with curve.
-// Reuses the previous sample as the left endpoint of each segment — cuts
-// bezier_point calls from 2×N to N+1 (64 → 17 with N=16).
+// Ray casting: count intersections of horizontal ray with curve
 fn ray_cast_curve_crossing(point: vec2f, curve: CubicBezier) -> i32 {
+  // Quick Y-bounds check - if point is outside Y range, no intersection possible
   let y_min = min(min(curve.p0.y, curve.p1.y), min(curve.p2.y, curve.p3.y));
   let y_max = max(max(curve.p0.y, curve.p1.y), max(curve.p2.y, curve.p3.y));
   let x_min = max(max(curve.p0.x, curve.p1.x), max(curve.p2.x, curve.p3.x));
-
+  
   if (point.y < y_min || point.y > y_max || point.x > x_min) {
     return 0;
   }
-
-  let samples = 16u;
+  
+  // Sample the curve at regular intervals to find intersections
   var crossings = 0;
-  var p_prev = bezier_point(curve, 0.0);
-
-  for (var i = 0u; i < samples; i++) {
-    let t_next = f32(i + 1u) / f32(samples);
-    let p_next = bezier_point(curve, t_next);
-
-    if (ray_crosses_segment(point, p_prev, p_next)) {
-      let intersection_x = get_ray_intersection_x(point.y, p_prev, p_next);
+  let samples = 32; // Good balance between accuracy and performance
+  
+  for (var i = 0; i < samples; i++) {
+    let t1 = f32(i) / f32(samples);
+    let t2 = f32(i + 1) / f32(samples);
+    
+    let p1 = bezier_point(curve, t1);
+    let p2 = bezier_point(curve, t2);
+    
+    // Check if this segment crosses the horizontal ray
+    if (ray_crosses_segment(point, p1, p2)) {
+      // Calculate the actual intersection X coordinate
+      let intersection_x = get_ray_intersection_x(point.y, p1, p2);
+      
+      // Only count if intersection is to the right of the point
       if (intersection_x > point.x) {
-        if (p_prev.y < point.y && p_next.y >= point.y) {
-          crossings += 1;
-        } else if (p_prev.y >= point.y && p_next.y < point.y) {
-          crossings -= 1;
+        // Determine crossing direction for proper winding
+        if (p1.y < point.y && p2.y >= point.y) {
+          crossings += 1; // Upward crossing
+        } else if (p1.y >= point.y && p2.y < point.y) {
+          crossings -= 1; // Downward crossing
         }
       }
     }
-
-    p_prev = p_next;
   }
-
+  
   return crossings;
 }
 
@@ -239,7 +254,7 @@ fn get_ray_intersection_x(ray_y: f32, p1: vec2f, p2: vec2f) -> f32 {
     // Horizontal line - return leftmost X
     return min(p1.x, p2.x);
   }
-
+  
   // Linear interpolation to find intersection X
   let t = (ray_y - p1.y) / (p2.y - p1.y);
   return p1.x + t * (p2.x - p1.x);
@@ -249,12 +264,12 @@ fn get_ray_intersection_x(ray_y: f32, p1: vec2f, p2: vec2f) -> f32 {
 fn distance_point_to_line(point: vec2f, line_start: vec2f, line_end: vec2f) -> f32 {
   let line_vec = line_end - line_start;
   let point_vec = point - line_start;
-
+  
   let line_length_sq = dot(line_vec, line_vec);
   if (line_length_sq < 1e-8) {
     return length(point_vec);
   }
-
+  
   let t = dot(point_vec, line_vec) / line_length_sq;
   let closest = line_start + clamp(t, 0.0, 1.0) * line_vec;
   return length(point - closest);
@@ -288,16 +303,20 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
     // straight line on both handles, not a case for just one straight handle,
     // those are changed to have sibling cp value
     let is_straight_line = curve.p1.x > STRAIGHT_LINE_THRESHOLD;
+    // let is_straight_line = curve.p1.x > STRAIGHT_LINE_THRESHOLD && curve.p2.x > STRAIGHT_LINE_THRESHOLD;
+
 
     if (is_straight_line) {
       // Handle as straight line from p0 to p3
-      let distance = distance_to_line_segment(point, curve.p0, curve.p3);
+      // if (u.stroke_width >= EPSILON) {
+        let distance = distance_to_line_segment(point, curve.p0, curve.p3);
+      // }
       if (distance < min_distance) {
         closest_curve_idx = i;
         closest_t = project_point_to_line_segment(point, curve.p0, curve.p3);
         min_distance = distance;
       }
-
+      
       // Simple ray casting for line segment
       if (ray_crosses_segment(point, curve.p0, curve.p3)) {
         let intersection_x = get_ray_intersection_x(point.y, curve.p0, curve.p3);
@@ -311,18 +330,23 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
       }
     } else {
       // Handle as normal cubic Bézier curve
-      let t = closest_point_on_bezier(point, curve);
-      let closest_point = bezier_point(curve, t);
-      let distance = length(point - closest_point);
-      if (distance < min_distance) {
-        closest_curve_idx = i;
-        closest_t = t;
-        min_distance = distance;
-      }
 
+      // if (u.stroke_width >= EPSILON) {
+        let t = closest_point_on_bezier(point, curve);
+        let closest_point = bezier_point(curve, t);
+        let distance = length(point - closest_point);
+        if (distance < min_distance) {
+          closest_curve_idx = i;
+          closest_t = t;
+          min_distance = distance;
+        }
+      // }
+      
       // Ray casting for curve
       total_crossings += ray_cast_curve_crossing(point, curve);
     }
+    
+    // min_distance = min(min_distance, distance);
   }
 
   var curve = CubicBezier(
@@ -340,8 +364,9 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
 
   let closest_point = bezier_point(curve, closest_t);
   let angle = PI + atan2(point.y - closest_point.y, point.x - closest_point.x);
-
+  
   // Determine if point is inside using odd-even rule (ray casting)
+  // Count total crossings and check if odd
   let crossing_count = abs(total_crossings);
   let is_inside = (crossing_count % 2) == 1;
 
@@ -349,6 +374,13 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
   // let is_inside = total_crossings != 0;
 
   let signed_dist = select(-min_distance, min_distance, is_inside);
-
+  // let pixel_gradient = fwidth(signed_dist);
+  
+  // Anti-aliased fill (negative distance = inside)
+  // let fill_alpha = smoothstep(pixel_gradient, -pixel_gradient, signed_dist);
+  
+  // Anti-aliased stroke (based on distance to curve boundary)
+  // let stroke_half_width = u.stroke_width * 0.5;
+  // let stroke_alpha = smoothstep(stroke_half_width + pixel_gradient, stroke_half_width - pixel_gradient, abs(signed_dist));
   return ShapeInfo(signed_dist, f32(closest_curve_idx) + closest_t, angle);
 }

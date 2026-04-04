@@ -1,4 +1,4 @@
-THis is npm package which creates web canvas graphics editor. It uses WebGPU and Zig compiled to WASM.
+This is an npm package which is a web canvas graphics editor. It uses WebGPU and Zig compiled to WASM.
 
 Check ADRs/ before making architectural decisions which do nto ofllow existing patterns.
 

@@ -25,3 +25,5 @@ cons:
 
 Conclusions:
 Maybe we should use the first way to create SDF, and then treat it as a shape? Because blur also needs to be handled!
+
+c) Today I did also an attempt to create SDF from paths - it's havier than I thought, pastign SDF itno large SDF texture works visibly faster than collecting large array with curves and gettign though entire text to fill it. Also this way we have to check entire text area, even in places where blank line happens

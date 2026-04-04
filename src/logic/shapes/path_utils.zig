@@ -54,8 +54,8 @@ pub fn getOppositeHandle(control_point: Point, handle: Point) Point {
 }
 
 const SKELETON_POINT_SIZE = 10.0;
-const PICK_POINT_SCALE = 2.0;
-pub const SKELETON_LINE_WIDTH = 3.0;
+const PICK_POINT_SCALE = 3.0;
+pub const SKELETON_LINE_WIDTH: f32 = 2.0;
 
 pub fn getVertexDrawSkeletonPoint(
     is_control_point: bool,
@@ -64,7 +64,7 @@ pub fn getVertexDrawSkeletonPoint(
 ) [2]triangles.DrawInstance {
     var buffer: [2]triangles.DrawInstance = undefined;
     const color = if (is_hovered) [_]u8{ 0, 255, 0, 255 } else [_]u8{ 0, 0, 255, 255 };
-    const size = SKELETON_POINT_SIZE * shared.render_scale;
+    const size = SKELETON_POINT_SIZE * shared.ui_scale;
     const radius = if (is_control_point) 0.0 else size / 2.0;
 
     rects.getDrawVertexData(
@@ -86,7 +86,7 @@ pub fn getVertexPickSkeletonPoint(
     point: Point,
     id: [4]u32,
 ) [2]triangles.PickInstance {
-    const size = SKELETON_POINT_SIZE * PICK_POINT_SCALE * shared.render_scale;
+    const size = SKELETON_POINT_SIZE * PICK_POINT_SCALE * shared.ui_scale;
     const radius = if (is_control_point) 0.0 else size / 2.0;
 
     return rects.getPickVertexData(
@@ -118,7 +118,7 @@ pub fn drawControlPoint(
                 local_buffer[0..2],
                 cp,
                 hp,
-                SKELETON_LINE_WIDTH * shared.render_scale,
+                SKELETON_LINE_WIDTH * shared.ui_scale,
                 [_]u8{ 0, 0, 255, 255 },
                 0.0,
             );

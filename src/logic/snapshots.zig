@@ -7,6 +7,7 @@ const shared = @import("shared.zig");
 const types = @import("types.zig");
 const std = @import("std");
 const asset_props = @import("asset_props.zig");
+const assets = @import("assets.zig");
 
 pub const ProjectSnapshot = struct {
     width: f32,
@@ -54,7 +55,7 @@ pub fn loop(state: State) !void {
 
 fn getCurrSnapshot(state: State) !ProjectSnapshot {
     var new_assets_update = std.ArrayList(AssetSerialized).init(std.heap.page_allocator);
-    var iterator = state.assets.iterator();
+    var iterator = assets.getIter();
     while (iterator.next()) |asset_entry| {
         switch (asset_entry.value_ptr.*) {
             .img => |img| {

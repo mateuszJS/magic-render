@@ -53,14 +53,23 @@
         height: 250px;
       }
     }
+
+    input[type="range"] {
+      width: 100%;
+    }
   </style>
 </head>
 
 <body>
   <aside>
+    <div>
+      <button id="reset-project">Reset Project</button>
+    </div>
+    <div>
+      <button id="download-canvas">Download Canvas</button>
+    </div>
     <label>Add image<input type="file" id="add-image" /></label>
     <label>Start project from images<input type="file" multiple id="start-project-from-images" /></label>
-    <label>Start project from project assets<input type="file" multiple id="start-project-from-assets" /></label>
     <p>Selected asset: <span id="selected-asset-id">0</span></p>
     <p>Is processing events: <span id="is-processing-events">false</span></p>
     <div><button id="remove-btn">Remove Asset</button></div>
@@ -95,6 +104,14 @@
         <button>Apply</button>
       </form>
     </div>
+    <div>
+      <button popovertarget="asset-effects-popover">Asset Effects</button>
+      <form id="asset-effects-popover" popover="manual">
+        <b>Asset Effects:</b>
+        <textarea name="code" id="asset-effects-content"></textarea>
+        <button>Apply</button>
+      </form>
+    </div>
     <label>
       Font family:
       <select id="font-family-select">
@@ -104,6 +121,11 @@
         <option value="3">Outfit Bold TTF</option>
         <option value="4">Outfit Thin TTF</option>
       </select>
+    </label>
+
+    <label>
+      Font size:
+      <input type="range" id="font-size-input" value="40" min="1" max="500" />
     </label>
 
     <div>

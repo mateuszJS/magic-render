@@ -1,9 +1,11 @@
 import shaderCode from './shader.wgsl'
 
+const WORKING_GROUP_SIZE = [16, 4, 1]
+
 export default function getClearComputeDepth(device: GPUDevice) {
   const shaderModule = device.createShaderModule({
     label: 'fill texture with max float shader module',
-    code: shaderCode,
+    code: shaderCode.replace('$WORKING_GROUP_SIZE', WORKING_GROUP_SIZE.join(', ')),
   })
 
   const pipeline = device.createComputePipeline({
@@ -27,8 +29,9 @@ export default function getClearComputeDepth(device: GPUDevice) {
     passEncoder.setPipeline(pipeline)
     passEncoder.setBindGroup(0, bindGroup)
 
-    // const workgroupsX = Math.ceil(width / 8 )
-    // const workgroupsY = Math.ceil(height / 8)
-    passEncoder.dispatchWorkgroups(texture.width, texture.height)
+    passEncoder.dispatchWorkgroups(
+      Math.ceil(texture.width / WORKING_GROUP_SIZE[0]),
+      Math.ceil(texture.height / WORKING_GROUP_SIZE[1])
+    )
   }
 }

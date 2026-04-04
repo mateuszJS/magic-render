@@ -54,6 +54,5 @@ export function toTypoProps(props: TypoProps): TypoProps {
     font_size: props.font_size,
     font_family_id: props.font_family_id,
     line_height: props.line_height,
-    is_sdf_shared: props.is_sdf_shared,
   }
 }

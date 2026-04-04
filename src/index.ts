@@ -10,15 +10,7 @@ import throttle from 'utils/throttle'
 import generatePreview from 'WebGPU/generatePreview'
 import * as Typing from 'typing'
 import * as Fonts from 'fonts'
-import {
-  Asset,
-  CreatorAPI,
-  CreatorTool,
-  Id,
-  ProjectSnapshot,
-  ZigAsset,
-  ZigProjectSnapshot,
-} from './types'
+import { Asset, CreatorAPI, CreatorProps, Id, ZigAsset, ZigProjectSnapshot } from './types'
 import { destroyCanvasTextures } from 'getCanvasRenderDescriptor'
 import setCamera from 'utils/setCamera'
 import { toZigEffects, toZigProps } from 'snapshots/convert'
@@ -26,37 +18,29 @@ import * as CustomPrograms from 'customPrograms'
 import * as Snapshots from 'snapshots/snapshots'
 import toZigAsset from 'snapshots/toZigAsset'
 import { NO_ASSET_ID } from 'consts'
+import { downloadCanvas } from 'utils/downloadCanvas'
 
-export default async function initCreator(
-  initialProjectWidth: number, // we could also set size along setSnapshot, but
-  initialProjectHeight: number, // this way we can setup camera, while resetting asset
-  // we don't know if camera should be updated or not(redo/udno doesnt update camera)
-  canvas: HTMLCanvasElement,
-  uploadTexture: (url: string, onNewUrl: (newUrl: string) => void) => void,
-  onSnapshotUpdate: (snapshot: ProjectSnapshot, commit: boolean) => void,
-  onAssetSelect: (assetId: Id) => void,
-  onIsProcessingFlagUpdate: (inProgress: boolean) => void,
-  onPreviewUpdate: (canvas: HTMLCanvasElement) => void,
-  onUpdateTool: (tool: CreatorTool) => void,
-  getFontUrl: (fontId: number) => string
-): Promise<CreatorAPI> {
+export default async function initCreator({ canvas, ...props }: CreatorProps): Promise<CreatorAPI> {
+  const fakeMaxTexSize = 0
+
   let texturesLoading = 0
   let isMouseEventProcessing = false
   const abortController = new AbortController()
 
   function updateIsProcessingFlag() {
-    onIsProcessingFlagUpdate(texturesLoading > 0 || isMouseEventProcessing)
+    props.onIsProcessingFlagUpdate(texturesLoading > 0 || isMouseEventProcessing)
   }
 
   let isDestroyed = false
   await setupDevice()
-  Snapshots.init(initialProjectWidth, initialProjectHeight)
+  Snapshots.init(props.initialProjectWidth, props.initialProjectHeight)
 
   Logic.initState(
     Snapshots.lastSnapshot.width,
     Snapshots.lastSnapshot.height,
-    device.limits.maxTextureDimension2D,
-    device.limits.maxBufferSize
+    fakeMaxTexSize || device.limits.maxTextureDimension2D,
+    device.limits.maxBufferSize,
+    props.isTest
   )
 
   Textures.init((texLoadings) => {
@@ -77,7 +61,7 @@ export default async function initCreator(
       // our aim is to notify UI about errors
       // Nothing has changed, so no error were provided!
       const assetsWithErrors = CustomPrograms.getAssetsWithError(snapshot.assets)
-      onSnapshotUpdate(
+      props.onSnapshotUpdate(
         {
           ...snapshot,
           assets: assetsWithErrors,
@@ -88,7 +72,7 @@ export default async function initCreator(
   }
 
   CustomPrograms.init(onProgramUpdate, onProgramError)
-  Fonts.init(getFontUrl)
+  Fonts.init(props.getFontUrl)
 
   // rotation doesnt work
   const context = canvas.getContext('webgpu')
@@ -102,7 +86,7 @@ export default async function initCreator(
   })
 
   function updateRenderScale() {
-    Logic.updateRenderScale(canvas.width / (canvas.clientWidth * camera.zoom))
+    Logic.updateRenderScale(camera.zoom, canvas.width / canvas.clientWidth)
   }
 
   let isCameraSet = false
@@ -115,7 +99,7 @@ export default async function initCreator(
     updateRenderScale()
   })
 
-  initPrograms(device, presentationFormat)
+  initPrograms(device, presentationFormat, props.isTest)
 
   initMouseController(
     canvas,
@@ -128,7 +112,7 @@ export default async function initCreator(
   )
 
   const throttledPreviewGenerator = throttle(() => {
-    if (isDestroyed || texturesLoading > 0) return
+    if (isDestroyed || texturesLoading > 0 || props.isTest) return
 
     generatePreview(
       device,
@@ -136,11 +120,10 @@ export default async function initCreator(
       canvas,
       Snapshots.lastSnapshot.width,
       Snapshots.lastSnapshot.height,
-      canvas.width / canvas.clientWidth, // it's pixels density
-      // we have to use DOM-attached canvas to obtain pixel density,
-      // otherwise clientWidth = 0
+      400,
+      400,
       capturePreview,
-      onPreviewUpdate
+      props.onPreviewUpdate
     )
   }, 1000 * 5)
 
@@ -157,10 +140,10 @@ export default async function initCreator(
 
   Logic.glueJsGeneral(
     onAssetUpdate,
-    (id) => onAssetSelect([...id] as Id),
-    onUpdateTool,
+    (id) => props.onAssetSelect([...id] as Id),
+    props.onUpdateTool,
     Textures.createSDF,
-    Textures.createComputeDepthTexture,
+    Textures.createDisposableComputeDepthTexture,
     Fonts.getCharData,
     Fonts.getKerning
   )
@@ -168,13 +151,18 @@ export default async function initCreator(
   function newAssetsSnapshot(commit: boolean) {
     // this function is not part of Logic.connect_on_asset_update_callback
     // only because once we update a texture url, we have to notify about the assets update
-    onSnapshotUpdate(Snapshots.lastSnapshot, commit)
+    props.onSnapshotUpdate(Snapshots.lastSnapshot, commit)
     if (commit) {
       triggerGeneratePreview()
     }
   }
 
-  Logic.connectTyping(Typing.enable, Typing.disable, Typing.updateContent, Typing.updateSelection)
+  Logic.connectTyping(
+    (text: string) => Typing.enable(text, canvas),
+    Typing.disable,
+    Typing.updateContent,
+    Typing.updateSelection
+  )
 
   const addImages: CreatorAPI['addImages'] = async (urls) => {
     const results = await Promise.allSettled(
@@ -198,7 +186,7 @@ export default async function initCreator(
                 }
 
                 if (isNewTexture) {
-                  uploadTexture(url, (newUrl) => {
+                  props.uploadTexture(url, (newUrl) => {
                     Textures.updateTextureUrl(textureId, newUrl)
                     newAssetsSnapshot(true)
                   })
@@ -233,6 +221,7 @@ export default async function initCreator(
 
     Snapshots.withSnapshotReady((snapshot) => {
       const assets = [...snapshot.assets, ...serializedAssets].map<ZigAsset>(toZigAsset)
+
       Logic.setSnapshot({ ...snapshot, assets }, true)
       triggerGeneratePreview()
     })
@@ -247,6 +236,7 @@ export default async function initCreator(
 
   const setSnapshot: CreatorAPI['setSnapshot'] = async (snapshot, withSnapshot) => {
     const assets = snapshot.assets.map<ZigAsset>(toZigAsset)
+
     Logic.setSnapshot({ ...snapshot, assets }, withSnapshot)
     triggerGeneratePreview()
   }
@@ -265,7 +255,7 @@ export default async function initCreator(
       device.destroy()
     },
     setTool: (tool) => {
-      onUpdateTool(tool)
+      props.onUpdateTool(tool)
       Logic.setTool(tool)
     },
     updateAssetProps: (props, commit) => {
@@ -278,6 +268,19 @@ export default async function initCreator(
     updateAssetTypoProps: (typoProps, commit) => {
       Fonts.loadFont(typoProps.font_family_id)
       Logic.setSelectedAssetTypoProps(typoProps, commit)
+    },
+    download: () => {
+      generatePreview(
+        device,
+        presentationFormat,
+        canvas,
+        Snapshots.lastSnapshot.width,
+        Snapshots.lastSnapshot.height,
+        Snapshots.lastSnapshot.width,
+        Snapshots.lastSnapshot.height,
+        capturePreview,
+        downloadCanvas
+      )
     },
     INFINITE_DISTANCE_THRESHOLD: Logic.INFINITE_DISTANCE * 0.9,
     // 90% of INFINITE_DISTANCE to provide a margin for floating-point errors

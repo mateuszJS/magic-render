@@ -45,7 +45,7 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
     const numVertices = vertexData.byteLength / STRIDE
 
     const uniformBuffer = device.createBuffer({
-      label: 'drawShape uniforms',
+      label: 'pickShape uniforms',
       size: uniformData.byteLength,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })

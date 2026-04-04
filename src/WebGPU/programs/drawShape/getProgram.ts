@@ -1,16 +1,18 @@
 import { delayedDestroy, canvasMatrix } from '../initPrograms'
 import baseCode from './base.wgsl'
+import baseTestCode from './base.test.wgsl'
 
 export default function getDrawShape(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
   fragmentShader: string,
   uniformSize: number,
+  isTest: boolean,
   onCompilation?: (info: GPUCompilationInfo) => void
 ) {
   const shaderModule = device.createShaderModule({
     label: 'drawShape shader',
-    code: baseCode + fragmentShader,
+    code: baseCode.replace('${TEST}', isTest ? baseTestCode : '') + fragmentShader,
   })
 
   if (onCompilation) {

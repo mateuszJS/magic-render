@@ -31,7 +31,8 @@ declare module '*.zig' {
     width: number,
     height: number,
     max_texture_size: number,
-    max_buffer_size: number
+    max_buffer_size: number,
+    isTest: boolean
   ) => void
   export const updateCache: VoidFunction
   export const removeAsset: () => void
@@ -49,7 +50,7 @@ declare module '*.zig' {
   export const onPointerDoubleClick: VoidFunction
   export const onPointerLeave: VoidFunction
   export const commitChanges: VoidFunction
-  export const updateRenderScale: (render_scale: number) => void
+  export const updateRenderScale: (zoom: number, pixel_density: number) => void
   export const updateTextContent: (
     text: string,
     selection_start: number,
@@ -135,7 +136,7 @@ declare module '*.zig' {
     onAssetSelection: (data: Id) => void,
     onUpdateTool: (new_tool: number) => void,
     createSdfTexture: () => number,
-    createComputeDepthTexture: (width: number, height: number) => number,
+    createDisposableComputeDepthTexture: (width: number, height: number) => number,
     getCharData: (font_id: number, char_code: number) => SerializedCharDetails,
     getKerning: (font_id: number, char_code_a: number, char_code_b: number) => number
   ): void
@@ -155,7 +156,7 @@ declare module '*.zig' {
   export const setCaretPosition: (selection_start: number, selection_end: number) => void
 
   export const tick: (time: DOMHighResTimeStamp) => boolean
-  export const computeSdfs: VoidFunction
+  export const computePhase: VoidFunction
   export const renderDraw: (is_ui_hidden: boolean) => void
   export const renderPick: VoidFunction
   export const deinitState: VoidFunction

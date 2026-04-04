@@ -1,4 +1,5 @@
 import * as Logic from 'logic/index.zig'
+import { camera, getWorldPointer } from 'pointer'
 
 const SOFT_BREAK_MARKER = '\u2060' // Word Joiner - stops navigation but invisible
 const SOFT_BREAK_PATTERN = /\u2060\n/g
@@ -98,7 +99,18 @@ function onBlur() {
   disable()
 }
 
-export function enable(text: string): void {
+export function enable(text: string, canvas: HTMLCanvasElement): void {
+  const [worldX, worldY] = getWorldPointer(canvas.height)
+  const onKeyboardOpen = () => {
+    window.visualViewport?.removeEventListener('resize', onKeyboardOpen)
+    const visibleHeight =
+      (window.visualViewport?.height ?? canvas.height / devicePixelRatio) * devicePixelRatio
+    camera.x = canvas.width / 2 - worldX * camera.zoom
+    camera.y = canvas.height - visibleHeight / 2 - worldY * camera.zoom
+    camera.redrawNeeded = true
+  }
+  window.visualViewport?.addEventListener('resize', onKeyboardOpen)
+
   if (!textarea) {
     const newEl = document.createElement('textarea')
     newEl.style.position = 'fixed'

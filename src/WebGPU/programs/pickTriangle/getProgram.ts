@@ -1,3 +1,4 @@
+import { delayedDestroy } from '../initPrograms'
 import shaderCode from './shader.wgsl'
 
 const INSTANCE_STRIDE =
@@ -51,6 +52,7 @@ export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
       size: vertexData.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
+    delayedDestroy(vertexBuffer)
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
 
     // Get or create bind group for this program

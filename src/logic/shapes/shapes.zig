@@ -53,9 +53,8 @@ pub const Shape = struct {
     effects: std.ArrayList(sdf_effect.Effect),
     bounds: [4]PointUV,
 
-    sdf_scale: f32 = 1.0,
-    outdated_sdf: bool, // if true, we need to recalculate SDF
-    sdf_texture_id: u32,
+    sdf_tex: sdf_drawing.SdfTex,
+
     should_update_sdf: bool, // throttled update,
     // less important than outdated_sdf which triggers instantly
     // this one triggers update on the next throttle event
@@ -65,9 +64,6 @@ pub const Shape = struct {
     cache_texture_id: ?u32,
 
     preview_point: ?Point = null,
-
-    sdf_size: TextureSize = .{ .w = 0, .h = 0 }, // stores the last size of computed sdf
-    // useful only while updating scale to avoid unnecessary regenerations if size hasn't grown
 
     pub fn new(
         id: u32,
@@ -94,8 +90,7 @@ pub const Shape = struct {
             .paths = paths_list,
             .props = props,
             .effects = try sdf_effect.deserialize(input_effects, allocator),
-            .sdf_texture_id = sdf_texture_id,
-            .outdated_sdf = true,
+            .sdf_tex = sdf_drawing.SdfTex{ .id = sdf_texture_id },
             .should_update_sdf = false,
             .bounds = input_bounds,
             .cache_texture_id = cache_texture_id,
@@ -133,7 +128,7 @@ pub const Shape = struct {
             return;
         }
 
-        self.outdated_sdf = true;
+        self.sdf_tex.is_outdated = true;
 
         const invert_matrix = Matrix3x3.getMatrixFromRectangle(self.bounds).inverse();
         const point = invert_matrix.get(absolute_point);
@@ -188,7 +183,7 @@ pub const Shape = struct {
 
         if (is_diff) {
             self.preview_point = p;
-            self.outdated_sdf = true;
+            self.sdf_tex.is_outdated = true;
         }
     }
 
@@ -237,7 +232,7 @@ pub const Shape = struct {
 
             const active_path = &self.paths.items[i];
             active_path.updateLastHandle(point);
-            self.outdated_sdf = true;
+            self.sdf_tex.is_outdated = true;
         }
     }
 
@@ -287,7 +282,7 @@ pub const Shape = struct {
     }
 
     pub fn getSkeletonUniform(self: Shape) sdf_drawing.DrawUniform {
-        const stroke_width = path_utils.SKELETON_LINE_WIDTH * self.sdf_scale * shared.render_scale;
+        const stroke_width = path_utils.SKELETON_LINE_WIDTH * self.sdf_tex.scale * shared.ui_scale;
         return sdf_drawing.DrawUniform{
             .solid = .{
                 .dist_start = stroke_width * 0.5,
@@ -341,21 +336,21 @@ pub const Shape = struct {
 
     pub fn getPickUniform(self: Shape, effect: sdf_effect.Effect) PickUniform {
         return PickUniform{
-            .dist_start = effect.dist_start * self.sdf_scale,
-            .dist_end = effect.dist_end * self.sdf_scale,
+            .dist_start = effect.dist_start * self.sdf_tex.scale,
+            .dist_end = effect.dist_end * self.sdf_tex.scale,
         };
     }
 
     pub fn getDrawUniform(self: Shape, effect: sdf_effect.Effect) sdf_drawing.DrawUniform {
         return sdf_drawing.getDrawUniform(
             effect,
-            self.sdf_scale,
+            self.sdf_tex.scale,
             self.props.opacity,
         );
     }
 
     pub fn getRelativePoints(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
-        if (!self.outdated_sdf and !self.should_update_sdf) {
+        if (!self.sdf_tex.is_outdated and !self.should_update_sdf) {
             @panic("getRelativePoints was called but the shape sdf was not marked as outdated!");
         }
         const check_points = try self.getAllPoints(
@@ -384,19 +379,34 @@ pub const Shape = struct {
             self.bounds[0].distance(self.bounds[3]),
         );
 
-        const padding = sdf_drawing.getSdfPadding(self.effects.items);
         for (points) |*point| {
             const scaled = scale.get(point);
-            point.x = padding + scaled.x;
-            point.y = padding + scaled.y;
+            point.x = scaled.x;
+            point.y = scaled.y;
         }
 
         return points;
     }
 
+    pub fn getDrawBounds(self: Shape, filter_margin: bool) [6]PointUV {
+        // shape.sdf_size includes effects padding, safety padding and rounding error
+        // to be able to compare them(obtain scale) together we have to calculate
+        // world size -> bounds size + effects padding
+        // sdf size -> shape.sdf_size - effects padding - rounding error
+
+        // TODO: move this and same secito nfrom texts.Text to dedicated function
+        const effects_padding_world = sdf_drawing.getSdfPadding(self.effects.items);
+
+        return sdf_drawing.getDrawBounds(
+            self.bounds,
+            effects_padding_world,
+            if (filter_margin) self.getFilterMargin() else consts.POINT_ZERO,
+            self.sdf_tex,
+        );
+    }
+
     pub fn getPickBounds(self: Shape) [6]images.PickVertex {
-        const sdf_padding = sdf_drawing.getSdfPadding(self.effects.items);
-        const bounds = sdf_drawing.getDrawBounds(self.bounds, sdf_padding, null);
+        const bounds = self.getDrawBounds(false);
         var buffer: [6]images.PickVertex = undefined;
         for (bounds, 0..) |b, i| {
             buffer[i] = .{
@@ -427,7 +437,7 @@ pub const Shape = struct {
             .bounds = self.bounds,
             .props = self.props,
             .effects = try sdf_effect.serialize(self.effects, allocator),
-            .sdf_texture_id = self.sdf_texture_id,
+            .sdf_texture_id = self.sdf_tex.id,
             .cache_texture_id = self.cache_texture_id,
         };
     }

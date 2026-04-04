@@ -66,6 +66,7 @@ export function saveSnapshot(snapshot: ZigProjectSnapshot) {
         props: toBasicProps(asset.text.props),
         effects: toEffects(asset.text.effects),
         sdf_texture_id: asset.text.sdf_texture_id,
+        is_sdf_shared: asset.text.is_sdf_shared,
       }
     } else {
       throw Error('Unknown asset type')

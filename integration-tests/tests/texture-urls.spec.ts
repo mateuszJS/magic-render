@@ -38,8 +38,9 @@ test("doesn't trigger texture upload while loading assets(existing project)", as
     path.join(__dirname, '../another-image-sample.jpg'),
   ]
 
-  const fileInput = (await page.$('#start-project-from-assets'))!
-  await fileInput.setInputFiles(testImagePaths)
+  const fileInput = (await page.$('#add-image'))!
+  await fileInput.setInputFiles(testImagePaths[0])
+  await fileInput.setInputFiles(testImagePaths[1])
 
   const assets = await utils.getAssetsState()
 

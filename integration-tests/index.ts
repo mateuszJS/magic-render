@@ -1,5 +1,5 @@
 import initCreator from '../src/index'
-import type { ProjectSnapshot } from '../src/types'
+import type { ProjectSnapshot, Shape, Image, Text } from '../src/types'
 import FontEBGaramond from './EBGaramond-VariableFont_wght.ttf'
 import FontGoogleSans from './GoogleSans-Regular.ttf'
 import OutfitWoff2 from './Outfit.woff2'
@@ -16,7 +16,7 @@ const fontsDictionary: Record<number, string> = {
 
 declare global {
   interface Window {
-    lastSnapshot: ProjectSnapshot
+    getLastSnapshot: () => ProjectSnapshot
   }
 }
 
@@ -36,16 +36,59 @@ async function test() {
   const assetBoundsTextarea = document.querySelector<HTMLTextAreaElement>('#asset-bounds-content')!
   const assetPropertiesTextarea =
     document.querySelector<HTMLTextAreaElement>('#asset-props-content')!
+  const assetEffectsTextarea =
+    document.querySelector<HTMLTextAreaElement>('#asset-effects-content')!
   const assetBoundsForm = document.querySelector<HTMLFormElement>('#asset-bounds-popover')!
   const assetPropsForm = document.querySelector<HTMLFormElement>('#asset-props-popover')!
+  const assetEffectsForm = document.querySelector<HTMLFormElement>('#asset-effects-popover')!
   const projectSizeForm = document.querySelector<HTMLFormElement>('#project-size-popover')!
   const xSlider = document.querySelector<HTMLInputElement>('#x-slider')!
   const fontFamilySelect = document.querySelector<HTMLSelectElement>('#font-family-select')!
+  const fontSizeInput = document.querySelector<HTMLInputElement>('#font-size-input')!
 
-  window.lastSnapshot = {
-    width: 0,
-    height: 0,
+  const BLANK_SNAPSHOT = {
+    width: 500,
+    height: 800,
     assets: [],
+  }
+
+  function getLastSnapshot() {
+    const lastSnapshot = window.localStorage.getItem('lastSnapshot')
+    if (lastSnapshot) {
+      return JSON.parse(lastSnapshot) as ProjectSnapshot
+    }
+    return BLANK_SNAPSHOT
+  }
+
+  window.getLastSnapshot = getLastSnapshot
+
+  function setLastSnapshot(snapshot: ProjectSnapshot) {
+    window.localStorage.setItem('lastSnapshot', JSON.stringify(snapshot))
+  }
+
+  function updatePropsPanels() {
+    const selectedAsset = getLastSnapshot().assets.find((asset) => asset.id === selectedAssetId)
+
+    if (selectedAsset) {
+      assetBoundsTextarea.value = JSON.stringify(selectedAsset.bounds, null, 2)
+
+      if ('props' in selectedAsset) {
+        assetPropertiesTextarea.value = JSON.stringify(selectedAsset.props, null, 2)
+      }
+
+      if ('effects' in selectedAsset) {
+        assetEffectsTextarea.value = JSON.stringify(selectedAsset.effects, null, 2)
+      }
+
+      if ('content' in selectedAsset) {
+        sharedTextEffects.style.display = 'block'
+        sharedTextEffects.checked = selectedAsset.is_sdf_shared
+        fontSizeInput.value = selectedAsset.typo_props.font_size.toString()
+        console.log(selectedAsset.typo_props.font_size)
+      } else {
+        sharedTextEffects.style.display = 'none'
+      }
+    }
   }
 
   let currentHistoryIndex = 0
@@ -53,28 +96,21 @@ async function test() {
   let selectedAssetId = 0
   const projectWidth = 1000
   const projectHeight = 1650
-  const creator = await initCreator(
-    projectWidth,
-    projectHeight,
+  const creator = await initCreator({
+    initialProjectWidth: projectWidth,
+    initialProjectHeight: projectHeight,
     canvas,
-    (url, setNewUrl) => {
+    uploadTexture: (url, setNewUrl) => {
       setNewUrl(`${newTextures}-${url}`)
       newTextures++
       // if (url.startsWith('http://our-domain.com')) {
       // setNewUrl('new url')
       // }
     },
-    (snapshot, commit) => {
-      window.lastSnapshot = snapshot
+    onSnapshotUpdate: (snapshot, commit) => {
+      setLastSnapshot(snapshot)
 
-      const selectedAsset = snapshot.assets.find((asset) => asset.id === selectedAssetId)
-
-      if (selectedAsset) {
-        assetBoundsTextarea.value = JSON.stringify(selectedAsset.bounds, null, 2)
-        if ('props' in selectedAsset) {
-          assetPropertiesTextarea.value = JSON.stringify(selectedAsset.props, null, 2)
-        }
-      }
+      updatePropsPanels()
 
       if (!commit) return
 
@@ -85,45 +121,51 @@ async function test() {
       }
       assetsUpdatesHistory.push(snapshot)
       currentHistoryIndex = assetsUpdatesHistory.length - 1
-      console.log(snapshot)
     },
-    (assetId) => {
+    onAssetSelect: (assetId) => {
       selectedAssetEl.textContent = assetId.toString()
       selectedAssetId = assetId[0]
-
-      window.lastSnapshot.assets.some((asset) => {
-        if (asset.id === selectedAssetId && 'content' in asset) {
-          sharedTextEffects.checked = asset.typo_props.is_sdf_shared
-          return true
-        }
-        return false
-      })
+      updatePropsPanels()
     },
-    (inProgress) => {
+    onIsProcessingFlagUpdate: (inProgress) => {
       isProcessingEventsEl.textContent = inProgress ? 'true' : 'false'
     },
-    (canvas) => {
+    onPreviewUpdate: (canvas) => {
       previewImg.src = canvas.toDataURL('image/png')
     },
-    (newTool) => {
+    onUpdateTool: (newTool) => {
       toolsSelect.value = newTool.toString()
-      console.log(`new tool: ${newTool}`)
     },
-    (fontId) => {
+    getFontUrl: (fontId) => {
       const font = fontsDictionary[fontId]
       if (!font) throw Error('Unknown font id: ' + fontId)
       return font
-    }
-  )
-
-  creator.setSnapshot(
-    {
-      width: projectWidth,
-      height: projectHeight,
-      assets: [],
     },
-    true
-  )
+    isTest: false,
+  })
+
+  type SerializedOutputAssetMerged = Image & Shape & Text
+  const lastSnapshot = getLastSnapshot()
+  const snaitizedLastSnapshot = {
+    ...lastSnapshot,
+    assets: (lastSnapshot.assets as SerializedOutputAssetMerged[]).map(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      ({ id, texture_id, cache_texture_id, sdf_texture_id, ...rest }) => rest
+    ),
+  }
+
+  creator.setSnapshot(snaitizedLastSnapshot, true)
+
+  const resetProjectBtn = document.querySelector<HTMLInputElement>('#reset-project')!
+  resetProjectBtn.addEventListener('click', () => {
+    setLastSnapshot(BLANK_SNAPSHOT)
+    window.location.reload()
+  })
+
+  const downloadCanvasBtn = document.querySelector<HTMLInputElement>('#download-canvas')!
+  downloadCanvasBtn.addEventListener('click', () => {
+    creator.download()
+  })
 
   const addImageInput = document.querySelector<HTMLInputElement>('#add-image')!
   addImageInput.addEventListener('change', (event) => {
@@ -144,8 +186,8 @@ async function test() {
     if (!files) return
 
     const snapshot = {
-      width: window.lastSnapshot.width,
-      height: window.lastSnapshot.height,
+      width: getLastSnapshot().width,
+      height: getLastSnapshot().height,
       assets: Array.from(files).map((file) => ({
         url: URL.createObjectURL(file),
       })),
@@ -153,25 +195,6 @@ async function test() {
 
     creator.setSnapshot(snapshot, true)
     startProjectInputFromImages.value = '' // reset input value to allow re-uploading the same file
-  })
-
-  const startProjectInputFromAssets = document.querySelector<HTMLInputElement>(
-    '#start-project-from-assets'
-  )!
-  startProjectInputFromAssets.addEventListener('change', (event) => {
-    const { files } = event.target as HTMLInputElement
-    if (!files) return
-
-    const PROJECT_SAMPLE = {
-      assets: Array.from(files).map((file) => ({
-        url: URL.createObjectURL(file),
-      })),
-      width: 500,
-      height: 500,
-    }
-
-    creator.setSnapshot(PROJECT_SAMPLE, true)
-    startProjectInputFromAssets.value = '' // reset input value to allow re-uploading the same file
   })
 
   removeAssetBtn.addEventListener('click', () => {
@@ -182,14 +205,14 @@ async function test() {
     currentHistoryIndex = Math.max(0, currentHistoryIndex - 1)
     const snapshot = assetsUpdatesHistory[currentHistoryIndex]
     creator.setSnapshot(snapshot, false)
-    window.lastSnapshot = snapshot
+    setLastSnapshot(snapshot)
   })
 
   redoBtn.addEventListener('click', () => {
     currentHistoryIndex = Math.min(assetsUpdatesHistory.length - 1, currentHistoryIndex + 1)
     const snapshot = assetsUpdatesHistory[currentHistoryIndex]
     creator.setSnapshot(snapshot, false)
-    window.lastSnapshot = snapshot
+    setLastSnapshot(snapshot)
   })
 
   toolsSelect.addEventListener('change', (event) => {
@@ -198,22 +221,20 @@ async function test() {
   })
 
   sharedTextEffects.addEventListener('change', () => {
-    const newAssets = window.lastSnapshot.assets.map((asset) => {
+    const newAssets = getLastSnapshot().assets.map((asset) => {
       if (asset.id === selectedAssetId && 'content' in asset) {
         return {
           ...asset,
-          typo_props: {
-            ...asset.typo_props,
-            is_sdf_shared: sharedTextEffects.checked,
-          },
+          is_sdf_shared: sharedTextEffects.checked,
         }
       }
 
       return asset
     })
+
     creator.setSnapshot(
       {
-        ...window.lastSnapshot,
+        ...getLastSnapshot(),
         assets: newAssets,
       },
       true
@@ -225,6 +246,7 @@ async function test() {
     const formData = new FormData(assetPropsForm)
     try {
       const newProps = JSON.parse(formData.get('code') as string)
+
       creator.updateAssetProps(newProps, true)
     } catch (e) {
       alert('Cannot parse JSON: ' + (e as Error).message)
@@ -242,6 +264,17 @@ async function test() {
     }
   })
 
+  assetEffectsForm.addEventListener('submit', function (e) {
+    e.preventDefault()
+    const formData = new FormData(assetEffectsForm)
+    try {
+      const newEffects = JSON.parse(formData.get('code') as string)
+      creator.updateAssetEffects(newEffects, true)
+    } catch (e) {
+      alert('Cannot parse JSON: ' + (e as Error).message)
+    }
+  })
+
   projectSizeForm.addEventListener('submit', function (e) {
     e.preventDefault()
     const formData = new FormData(projectSizeForm)
@@ -249,7 +282,7 @@ async function test() {
     const height = Number(formData.get('height'))
     creator.setSnapshot(
       {
-        assets: window.lastSnapshot.assets,
+        assets: getLastSnapshot().assets,
         width,
         height,
       },
@@ -268,7 +301,7 @@ async function test() {
     const bounds = asset.bounds
 
     if (!bounds) throw new Error('Asset has no bounds defined')
-    console.log(x, commit)
+
     const newBounds = bounds.map((point) => ({
       ...point,
       x: point.x + x,
@@ -293,6 +326,42 @@ async function test() {
       {
         ...selectedAsset.typo_props,
         font_family_id: fontFamilyId,
+      },
+      true
+    )
+  })
+
+  fontSizeInput.addEventListener('input', () => {
+    const lastCommittedSnapshot = assetsUpdatesHistory[currentHistoryIndex]
+    const selectedAsset = lastCommittedSnapshot.assets.find((a) => a.id === selectedAssetId)
+
+    if (!selectedAsset || !('content' in selectedAsset)) {
+      console.error('No selected text asset found')
+      return
+    }
+
+    creator.updateAssetTypoProps(
+      {
+        ...selectedAsset.typo_props,
+        font_size: fontSizeInput.valueAsNumber,
+      },
+      false
+    )
+  })
+
+  fontSizeInput.addEventListener('blur', () => {
+    const lastCommittedSnapshot = assetsUpdatesHistory[currentHistoryIndex]
+    const selectedAsset = lastCommittedSnapshot.assets.find((a) => a.id === selectedAssetId)
+
+    if (!selectedAsset || !('content' in selectedAsset)) {
+      console.error('No selected text asset found')
+      return
+    }
+
+    creator.updateAssetTypoProps(
+      {
+        ...selectedAsset.typo_props,
+        font_size: fontSizeInput.valueAsNumber,
       },
       true
     )

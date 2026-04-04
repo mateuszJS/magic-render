@@ -119,12 +119,14 @@ export function getCharData(fontId: number, char_code: number): Logic.Serialized
     width = 0
   }
 
+  const noVisual = width <= Number.EPSILON || correctedPaths.length === 0
+
   const result = new Logic.SerializedCharDetails({
     x: x1,
     y: -y2,
     width,
     height: -y1 - -y2,
-    sdf_texture_id: correctedPaths.length > 0 ? Textures.createSDF() : null,
+    sdf_texture_id: noVisual ? null : Textures.createSDF(),
   })
 
   result.setPaths(correctedPaths)

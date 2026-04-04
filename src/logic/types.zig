@@ -21,9 +21,7 @@ pub const Tool = enum(u16) {
 pub const State = struct {
     width: f32,
     height: f32,
-    assets: std.AutoArrayHashMap(u32, Asset),
     hovered_asset_id: AssetId,
-    selected_asset_id: AssetId,
     action: ActionType,
     tool: Tool,
     action_pointer_offset: Point,
@@ -60,8 +58,8 @@ pub const AssetSerialized = union(enum) {
 };
 
 pub const Point = extern struct {
-    x: f32,
-    y: f32,
+    x: f32 = 0,
+    y: f32 = 0,
 
     pub fn mid(self: Point, other: Point) Point {
         return Point{
@@ -121,4 +119,11 @@ pub const PointUV = extern struct {
             .y = self.y,
         };
     }
+};
+
+pub const Placement = struct {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
 };
