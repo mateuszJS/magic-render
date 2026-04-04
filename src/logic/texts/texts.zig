@@ -88,8 +88,6 @@ pub const Text = struct {
 
         _ = try text.computeText(0, 0);
 
-        try chars.requestCharsSdfs(text);
-
         return text;
     }
 
@@ -114,6 +112,12 @@ pub const Text = struct {
         selection_start: usize,
         selection_end: usize,
     ) !ComputeTextResult {
+        defer chars.requestCharsSdfs(self.*) catch @panic("Failed to request SDFs for text chars in computeText");
+
+        if (self.sdf_tex) |*sdf_tex| {
+            sdf_tex.*.is_outdated = true;
+        }
+
         if (!fonts.fonts.contains(self.typo_props.font_family_id)) {
             return .{
                 .content = self.content,
@@ -293,16 +297,6 @@ pub const Text = struct {
 
         return null;
     }
-
-    // pub fn getSdfTex(self: *Text) sdf_drawing.SdfTex {
-    //     return if (self.sdf_tex) |sdf_tex| sdf_tex else b: {
-    //         const sdf_tex = sdf_drawing.SdfTex{
-    //             .id = js_glue.createSdfTexture(),
-    //         };
-    //         self.sdf_tex = sdf_tex;
-    //         break :b sdf_tex;
-    //     };
-    // }
 
     pub fn addPickVertex(
         self: Text,

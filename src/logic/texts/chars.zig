@@ -8,9 +8,6 @@ const texts = @import("./texts.zig");
 const fonts = @import("./fonts.zig");
 const sdf_drawing = @import("../sdf/drawing.zig");
 
-const MIN_SDF_FONT_SIZE = 50; // below that we lose too many details
-// in SDF textures
-
 pub const Details = struct {
     x: f32,
     y: f32,
@@ -36,10 +33,9 @@ pub const Details = struct {
         }
 
         const font_size_world = font_size / shared.render_scale;
-        // const next_font_size = utils.getNextStep(MIN_SDF_FONT_SIZE, font_size_world);
-        const next_font_size = font_size_world;
-        if (next_font_size > self.viewport_font_size + consts.EPSILON) {
-            self.font_size = next_font_size * shared.render_scale; // in index.zig computeShape we already divide by render_scale
+
+        if (font_size_world > self.viewport_font_size + consts.EPSILON) {
+            self.font_size = font_size; // in index.zig computeShape we already divide by render_scale
             if (self.sdf_tex) |*sdf_tex| {
                 sdf_tex.is_outdated = true;
             }

@@ -30,12 +30,8 @@ pub const WebGpuProgramsInput = struct {
     pick_shape: *const fn ([]const images.PickVertex, shapes.PickUniform, u32) void,
 };
 
-// pub var web_gpu_programs: *const WebGpuPrograms = undefined;
-
 pub fn connect(programs: *const WebGpuProgramsInput) void {
     // https://github.com/chung-leong/zigar/wiki/JavaScript-to-Zig-function-conversion
-    // callback = cb orelse &none;
-    // webgpu_glue.web_gpu_programs = programs; // orelse WebGpuPrograms{};
 
     draw_texture = programs.draw_texture;
     draw_triangle = programs.draw_triangle;

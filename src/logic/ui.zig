@@ -45,11 +45,13 @@ pub fn generateUiElementsSdf() !void {
         const option_points = try shape.getRelativePoints(allocator);
         if (option_points) |points| {
             const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
+
             shape.sdf_tex = try computeShape(
                 shape.sdf_tex.id,
                 shape.bounds,
                 sdf_padding,
                 points,
+                1,
             );
         }
     }
