@@ -1,3 +1,4 @@
+import { delayedDestroy } from '../initPrograms'
 import shaderCode from './shader.wgsl'
 
 const STRIDE = (4 /*position*/ + 4) /*id*/ * 4
@@ -57,6 +58,7 @@ export default function getProgram(device: GPUDevice, matrixBuffer: GPUBuffer) {
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
+    delayedDestroy(vertexBuffer)
 
     // Get or create bind group for this texture
     let bindGroup = bindGroupCache.get(texture)
