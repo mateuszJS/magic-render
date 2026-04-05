@@ -112,7 +112,7 @@ export enum CreatorTool {
   SelectAsset = 0,
   DrawBezierCurve = 1,
   SelectNode = 2,
-  Text = 3,
+  // Text = 3, it does exist i nzig ,but user should be never be able ot choose it manually
 }
 
 /* type with prefix "Zig" mirrors the data coming from/to the zig module */
@@ -201,4 +201,5 @@ export type CreatorAPI = {
   download: VoidFunction // triggers download of the current canvas content as an image
   INFINITE_DISTANCE_THRESHOLD: number // threshold value for considering a distance as "infinite" in SDF fill effects
   INFINITE_DISTANCE: number // maximum f32 value, used for SDF fill effects
+  addText: VoidFunction
 }

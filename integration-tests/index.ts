@@ -45,6 +45,11 @@ async function test() {
   const xSlider = document.querySelector<HTMLInputElement>('#x-slider')!
   const fontFamilySelect = document.querySelector<HTMLSelectElement>('#font-family-select')!
   const fontSizeInput = document.querySelector<HTMLInputElement>('#font-size-input')!
+  const addTextBtn = document.querySelector<HTMLButtonElement>('#add-text-btn')!
+
+  addTextBtn.addEventListener('click', () => {
+    creator.addText()
+  })
 
   const BLANK_SNAPSHOT = {
     width: 500,

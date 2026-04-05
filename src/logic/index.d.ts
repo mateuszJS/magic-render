@@ -161,6 +161,7 @@ declare module '*.zig' {
   export const renderPick: VoidFunction
   export const deinitState: VoidFunction
   export const setTool: (tool: number) => void
+  export const addText: VoidFunction
 
   export const importUiElement: (
     id: UiElementType,

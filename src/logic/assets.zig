@@ -132,12 +132,11 @@ pub fn removeSelected() void {
     _ = assets.orderedRemove(selected_asset_id.getPrim());
 }
 
-pub fn createText(x: f32, y: f32) !texts.Text {
-    const max_width = 300.0;
+pub fn createText(x: f32, y: f32, width: f32, font_size: f32, line_height: f32) !texts.Text {
     const bounds = [4]types.PointUV{
         .{ .x = x, .y = y, .u = 0.0, .v = 1.0 },
-        .{ .x = x + max_width, .y = y, .u = 1.0, .v = 1.0 },
-        .{ .x = x + max_width, .y = y - 1.0, .u = 1.0, .v = 0.0 },
+        .{ .x = x + width, .y = y, .u = 1.0, .v = 1.0 },
+        .{ .x = x + width, .y = y - 1.0, .u = 1.0, .v = 0.0 },
         .{ .x = x, .y = y - 1.0, .u = 0.0, .v = 0.0 },
     };
 
@@ -165,9 +164,9 @@ pub fn createText(x: f32, y: f32) !texts.Text {
     };
 
     const typo_props = typography_props.Serialized{
-        .font_size = 100,
+        .font_size = font_size,
         .font_family_id = 0,
-        .line_height = 1,
+        .line_height = line_height,
     };
 
     return try addText(

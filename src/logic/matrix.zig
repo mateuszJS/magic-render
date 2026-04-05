@@ -222,7 +222,9 @@ pub const Matrix3x3 = struct {
         var matrix = Matrix3x3.translation(rect_points[0].x, rect_points[0].y);
         matrix.rotate(rect_points[0].angleTo(rect_points[1]));
         return matrix;
-    } // scales the matrix around a pivot point (px, py
+    }
+
+    // scales the matrix around a pivot point (px, py)
     pub fn pivotScale(self: *Matrix3x3, sx: f32, sy: f32, px: f32, py: f32) void {
         self.* = Matrix3x3.multiply(self.*, Matrix3x3.from([_]f32{
             sx, 0,  px * (1 - sx),

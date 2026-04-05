@@ -240,6 +240,21 @@ pub fn updateTextContent(
     }
 }
 
+pub fn addText() !void {
+    const width = 300.0;
+    const font_size = 72.0;
+    const line_height = 1.0;
+
+    const new_text = try assets.createText(
+        (state.width - width) / 2.0,
+        (state.height + font_size * line_height) / 2.0,
+        width,
+        font_size,
+        line_height,
+    );
+    try setSelectedAsset(AssetId{ ._prim = new_text.id });
+}
+
 // @param auto_select - whether to select asset on pointer down, useufl for dekstop users
 pub fn onPointerDown(x: f32, y: f32) !void {
     state.redraw_needed = true;
@@ -247,25 +262,19 @@ pub fn onPointerDown(x: f32, y: f32) !void {
     if (state.tool == .Text) {
         try setSelectedAsset(state.hovered_asset_id);
 
-        const text: texts.Text = if (assets.getSelectedText()) |text| b: {
-            break :b text.*;
-        } else b: {
-            const new_text = try assets.createText(x, y);
-            try setSelectedAsset(AssetId{ ._prim = new_text.id });
-            break :b new_text;
-        };
+        if (assets.getSelectedText()) |text| {
+            enable_typing(text.content);
 
-        enable_typing(text.content);
+            if (state.hovered_asset_id.isSec()) {
+                assets.selected_asset_id.setSec(state.hovered_asset_id.getSec());
 
-        if (state.hovered_asset_id.isSec()) {
-            assets.selected_asset_id.setSec(state.hovered_asset_id.getSec());
+                const caret_index = state.hovered_asset_id.getSec();
+                setCaretPosition(caret_index, caret_index);
+                update_text_selection(caret_index, caret_index);
+            }
 
-            const caret_index = state.hovered_asset_id.getSec();
-            setCaretPosition(caret_index, caret_index);
-            update_text_selection(caret_index, caret_index);
+            state.action = .TextSelection;
         }
-
-        state.action = .TextSelection;
     } else if (state.tool == Tool.DrawShape) {
         if (assets.getSelectedShape() == null) {
             const id = try assets.createShape();
@@ -825,44 +834,38 @@ pub fn computePhase() !void {
                     );
 
                     const bounds_height = text.bounds[0].distance(text.bounds[3]);
+                    const matrix = Matrix3x3.translation(
+                        text_padding,
+                        bounds_height + text_padding,
+                    );
 
                     for (text.text_vertex.items) |vertex| {
                         if (vertex.char) |char| {
                             const ch_d = try fonts.get(text.typo_props.font_family_id, char);
 
                             if (ch_d.sdf_tex) |char_sdf_tex| {
-                                const char_padding = ch_d.font_size * ch_d.max_ratio_padding_to_font_size;
+                                // Should always work alike renderDraw when each character is rendered separately form own SDFs
 
-                                const start_x = vertex.relative_bounds[3].x - char_padding;
-                                const start_y = bounds_height + vertex.relative_bounds[3].y - char_padding;
-                                const end_x = vertex.relative_bounds[1].x + char_padding;
-                                const end_y = bounds_height + vertex.relative_bounds[1].y + char_padding;
+                                const padding_world = text.typo_props.font_size * ch_d.max_ratio_padding_to_font_size;
+                                const bounds_texel = vertex.getDrawBounds(
+                                    padding_world,
+                                    char_sdf_tex,
+                                    matrix,
+                                    text.sdf_tex.scale,
+                                );
 
-                                var placement = types.Placement{
-                                    .x = start_x * char_sdf_tex.scale - consts.SDF_SAFE_PADDING,
-                                    .y = start_y * char_sdf_tex.scale - consts.SDF_SAFE_PADDING,
-                                    .width = (end_x - start_x) * char_sdf_tex.scale + 2 * consts.SDF_SAFE_PADDING + char_sdf_tex.round_err.x,
-                                    .height = (end_y - start_y) * char_sdf_tex.scale + 2 * consts.SDF_SAFE_PADDING + char_sdf_tex.round_err.y,
+                                const texel_placement = types.Placement{
+                                    .x = bounds_texel[4].x + consts.SDF_SAFE_PADDING,
+                                    .y = bounds_texel[4].y + consts.SDF_SAFE_PADDING,
+                                    .width = bounds_texel[4].distance(bounds_texel[2]),
+                                    .height = bounds_texel[4].distance(bounds_texel[0]),
                                 };
-
-                                const char_viewport_font_size = ch_d.font_size * char_sdf_tex.scale;
-                                const text_viewport_font_size = text.typo_props.font_size * text.sdf_tex.scale;
-                                const ratio_viewport_font_sizes = text_viewport_font_size / char_viewport_font_size;
-
-                                placement.x *= ratio_viewport_font_sizes;
-                                placement.y *= ratio_viewport_font_sizes;
-                                placement.width *= ratio_viewport_font_sizes;
-                                placement.height *= ratio_viewport_font_sizes;
-
-                                const combined_sdf_padding = text_padding * text.sdf_tex.scale + consts.SDF_SAFE_PADDING;
-                                placement.x += combined_sdf_padding;
-                                placement.y += combined_sdf_padding;
 
                                 webgpu_glue.combine_sdf(
                                     text.sdf_tex.id,
                                     char_sdf_tex.id,
                                     compute_depth_texture_id,
-                                    placement,
+                                    texel_placement,
                                 );
                             }
                         }
@@ -942,14 +945,15 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                             const ch_d = try fonts.get(text.typo_props.font_family_id, char);
 
                             if (ch_d.sdf_tex) |char_sdf_tex| {
+                                // Should always work alike computePhase combinign chars sdf into text sdf
                                 const char_sdf_viewport_font_size = ch_d.font_size * char_sdf_tex.scale;
                                 const sdf_scale = char_sdf_viewport_font_size / text.typo_props.font_size;
 
                                 const bounds = vertex.getDrawBounds(
                                     text.typo_props.font_size * ch_d.max_ratio_padding_to_font_size,
-                                    // ch_d.font_size * ch_d.max_ratio_padding_to_font_size,
                                     char_sdf_tex,
                                     matrix,
+                                    1.0,
                                 );
 
                                 for (text.effects.items) |effect| {
