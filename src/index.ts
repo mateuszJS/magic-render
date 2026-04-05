@@ -112,7 +112,8 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
   )
 
   const throttledPreviewGenerator = throttle(() => {
-    if (isDestroyed || texturesLoading > 0 || props.isTest) return
+    const disableMinaitures = false
+    if (isDestroyed || texturesLoading > 0 || props.isTest || disableMinaitures) return
 
     generatePreview(
       device,
@@ -243,6 +244,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
 
   return {
     addImages,
+    addText: Logic.addText,
     removeAsset: Logic.removeAsset,
     setSnapshot,
     destroy: () => {

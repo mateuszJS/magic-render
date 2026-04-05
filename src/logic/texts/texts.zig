@@ -26,7 +26,13 @@ pub const CharVertex = struct {
     origin: Point, // origin of the char (bottom left corner), useful for drawing selection/caret/picking
     last_in_line: bool = false,
 
-    pub fn getDrawBounds(self: CharVertex, effects_padding_world: f32, ch_sdf_tex: sdf_drawing.SdfTex, matrix: Matrix3x3) [6]PointUV {
+    pub fn getDrawBounds(
+        self: CharVertex,
+        effects_padding_world: f32,
+        ch_sdf_tex: sdf_drawing.SdfTex,
+        matrix: Matrix3x3,
+        scale: f32,
+    ) [6]PointUV {
         var bounds: [4]PointUV = undefined;
 
         for (self.relative_bounds, 0..) |p, i| {
@@ -43,6 +49,7 @@ pub const CharVertex = struct {
             effects_padding_world,
             Point{ .x = 0, .y = 0 },
             ch_sdf_tex,
+            scale,
         );
     }
 };
@@ -384,6 +391,7 @@ pub const Text = struct {
             effects_padding_world,
             Point{ .x = 0, .y = 0 },
             self.sdf_tex,
+            1.0,
         );
     }
 

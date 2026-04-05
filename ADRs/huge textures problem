@@ -1,0 +1,35 @@
+When char has font size of 1, and effect of 130, and then we icnrease font_size to 18,
+then it produced effect padding of 130 * 180.
+
+The texture is super huge, yet, not much detail is stored in area futher from the char paths.
+
+What if instead we store max up to 3x font size effect padding, and after 
+if we want to render HUGE padding effect, we just use small source texture(liek star below)
+and take SDF value from the closest texel.
+Closest counting as the texture is a circle actually, not rectangle/square.
+Because futher away we are form the effect, mroe ciruclar it gets.
+Unless we introduce pseudo signed distance field.
+
+┌─────────────────────────────────────────┐
+│   currently drawn pixel/texel           │
+│          ┌─┐                            │
+│          └─┘_                           │
+│              \                          │
+│               \                         │
+│                \                        │
+│                 \ Closest SDF texel     │
+│               ┌─┌─┐────────┐ with data  │
+│               │ └─┘ /\     │            │
+│               │____/  \____│            │
+│               │\          /│            │
+│               │ >        < │            │
+│               │/___    ___\│            │
+│               │    \  /    │            │
+│               │     \/     │            │
+│               └────────────┘            │
+│                                         │
+│                                         │
+│                                         │
+│                                         │
+│                                         │
+└─────────────────────────────────────────┘

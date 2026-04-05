@@ -402,6 +402,7 @@ pub const Shape = struct {
             effects_padding_world,
             if (filter_margin) self.getFilterMargin() else consts.POINT_ZERO,
             self.sdf_tex,
+            1.0,
         );
     }
 

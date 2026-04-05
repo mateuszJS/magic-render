@@ -208,10 +208,10 @@ pub fn getBoundsWithPadding(
 
     buffer[0].x = (bounds[0].x - offset_x.x - offset_y.x) * scale;
     // I assume this -1 is related to texutre coordinate system, it just works
-    buffer[0].y = (bounds[0].y - offset_x.y - offset_y.y) * scale + tex_round_err.y * axis_y.y * -1;
+    buffer[0].y = (bounds[0].y - offset_x.y - offset_y.y) * scale - tex_round_err.y * axis_y.y;
 
     buffer[1].x = (bounds[1].x + offset_x.x - offset_y.x) * scale + tex_round_err.x * axis_x.x;
-    buffer[1].y = (bounds[1].y + offset_x.y - offset_y.y) * scale + tex_round_err.y * axis_y.y * -1;
+    buffer[1].y = (bounds[1].y + offset_x.y - offset_y.y) * scale - tex_round_err.y * axis_y.y;
 
     buffer[2].x = (bounds[2].x + offset_x.x + offset_y.x) * scale + tex_round_err.x * axis_x.x;
     buffer[2].y = (bounds[2].y + offset_x.y + offset_y.y) * scale;
@@ -227,6 +227,7 @@ pub fn getDrawBounds(
     effects_padding_world: f32,
     filter_margin: ?Point,
     sdf_tex: SdfTex,
+    scale: f32,
 ) [6]PointUV {
     const world_width = bounds[0].distance(bounds[1]) + 2 * effects_padding_world;
 
@@ -244,7 +245,7 @@ pub fn getDrawBounds(
     const bounds_with_padding = getBoundsWithPadding(
         bounds,
         padding_world,
-        1,
+        scale,
         filter_margin,
         scaled_sdf_round_err,
     );
@@ -330,6 +331,7 @@ pub fn getTexture(
     );
 
     // ensure texture doesn't exceed GPU Webbuffer size
+    // SO if we claculate biudget below ,then this is not needed at all?
     const buffer_size_limited = texture_size.get_allowed_sdf_size(texture_size_limited);
 
     // Reserve room for @ceil (up to +1) and the 2-texel safety padding (+2) = 3 total.
