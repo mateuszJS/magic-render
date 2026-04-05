@@ -15,13 +15,6 @@ struct CubicBezier {
   p3: vec2f,
 };
 
-fn bezier_tangent(curve: CubicBezier, t: f32) -> vec2f {
-  let one_minus_t = 1.0 - t;
-  return 3.0 * one_minus_t * one_minus_t * (curve.p1 - curve.p0) +
-         6.0 * one_minus_t * t            * (curve.p2 - curve.p1) +
-         3.0 * t           * t            * (curve.p3 - curve.p2);
-}
-
 fn bezier_point(curve: CubicBezier, t: f32) -> vec2f {
   let t2 = t * t;
   let t3 = t2 * t;
@@ -122,11 +115,8 @@ fn getSample(pos: vec2f) -> vec4f {
   
 
   let pos = bezier_point(curve, curve_t);
-  let tangent = bezier_tangent(curve, curve_t);
-  let to_pixel = vsOut.uv - pos;
-  // 2D cross product: tangent x to_pixel — positive = left side, negative = right side
-  let side = tangent.x * to_pixel.y - tangent.y * to_pixel.x;
-  let dist_to_curve = sign(side);
+  // let dist_to_curve = length(pos - vsOut.uv) / 1 * sign(sdf.g);
+  let dist_to_curve = sign(sdf.g);
   // let dist_to_curve = vsOut.uv.x / 500; // * sign(sdf.r)
 
   if (length(pos - vsOut.uv) < 0.15) {

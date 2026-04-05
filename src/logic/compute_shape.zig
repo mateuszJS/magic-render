@@ -46,7 +46,7 @@ pub fn computeShape(
         point.y += consts.SDF_SAFE_PADDING + sdf_tex.padding;
     }
 
-    sdf_tex.points = points;
+    sdf_tex.points = try std.heap.page_allocator.dupe(types.Point, points);
 
     webgpu_glue.compute_shape(
         points,

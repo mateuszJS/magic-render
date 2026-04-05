@@ -1,0 +1,9 @@
+rgba32float texture is way too big, it crashes Webkit on iphone.
+
+What is the plan is to store just curve index + t value in a r16float.
+
+TO know if you are inside or outside we can store red channe lwit hnegative or positive value... OR
+
+Switch from using raycasting/widning number and dissallow hoels in a shape UNLESS we do it intentionally by boolean oepration (so inner curve direciton is reversed) or in fonts (so their inner cuvre direciton is reversE).
+
+This way we can use jsut tangent fast oepraiton in FRAGMENT SHADER to determine where pixels lives.

@@ -71,6 +71,10 @@ export default function getDrawShape(
     uniformDataView: DataView<ArrayBuffer>,
     curvesDataView: DataView<ArrayBuffer>
   ) {
+    // console.log('================curvesDataView')
+    // for (let i = 0; i < curvesDataView.byteLength; i += 4) {
+    //   console.log(curvesDataView.getFloat32(i, true))
+    // }
     const boundBoxBuffer = device.createBuffer({
       label: 'drawShape vertex buffer',
       size: boundingBoxDataView.byteLength,
