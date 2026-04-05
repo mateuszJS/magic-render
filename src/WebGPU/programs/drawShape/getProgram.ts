@@ -68,7 +68,8 @@ export default function getDrawShape(
     passEncoder: GPURenderPassEncoder,
     sdfTexture: GPUTexture,
     boundingBoxDataView: DataView<ArrayBuffer>,
-    uniformDataView: DataView<ArrayBuffer>
+    uniformDataView: DataView<ArrayBuffer>,
+    curvesDataView: DataView<ArrayBuffer>
   ) {
     const boundBoxBuffer = device.createBuffer({
       label: 'drawShape vertex buffer',
@@ -86,6 +87,14 @@ export default function getDrawShape(
     device.queue.writeBuffer(uniformBuffer, 0, uniformDataView)
     delayedDestroy(uniformBuffer)
 
+    const curvesBuffer = device.createBuffer({
+      label: 'computeShape curves buffer',
+      size: curvesDataView.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    })
+    device.queue.writeBuffer(curvesBuffer, 0, curvesDataView)
+    delayedDestroy(curvesBuffer)
+
     passEncoder.setPipeline(pipeline)
 
     const bindGroup = device.createBindGroup({
@@ -95,6 +104,7 @@ export default function getDrawShape(
         { binding: 0, resource: { buffer: uniformBuffer } },
         { binding: 1, resource: sdfTexture.createView() },
         { binding: 2, resource: { buffer: canvasMatrix.buffer } },
+        { binding: 3, resource: { buffer: curvesBuffer } },
       ],
     })
 

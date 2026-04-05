@@ -350,5 +350,10 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
 
   let signed_dist = select(-min_distance, min_distance, is_inside);
 
-  return ShapeInfo(signed_dist, f32(closest_curve_idx) + closest_t, angle);
+  let t = f32(closest_curve_idx) + closest_t + 1.0; // plus one to avoid 0
+  // 0 cannot indicate if its negative or positive
+  let signed_t = select(-t, t, is_inside);
+  // let signed_t = t;
+
+  return ShapeInfo(signed_dist, signed_t, angle);
 }

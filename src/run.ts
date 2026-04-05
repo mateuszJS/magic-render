@@ -104,7 +104,9 @@ export default function runCreator(
         sigmaPerPassY
       )
     },
-    draw_shape: (bound_box_data, uniform_data, textureId) => {
+    draw_shape: (bound_box_data, uniform_data, textureId, curves_data) => {
+      const curvesDataView = curves_data['*'].dataView
+
       let program
       let uniform
       if ('linear' in uniform_data && uniform_data.linear) {
@@ -125,7 +127,13 @@ export default function runCreator(
       }
 
       const boundBoxDataView = bound_box_data['*'].dataView
-      program(renderPass, Textures.getTexture(textureId), boundBoxDataView, uniform.dataView)
+      program(
+        renderPass,
+        Textures.getTexture(textureId),
+        boundBoxDataView,
+        uniform.dataView,
+        curvesDataView
+      )
     },
     pick_texture: (vertex_data, texture_id) => {
       const dataView = vertex_data['*'].dataView

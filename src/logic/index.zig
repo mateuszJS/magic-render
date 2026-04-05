@@ -686,6 +686,7 @@ pub fn updateCache() void {
                             &vertex_bounds,
                             shape.getDrawUniform(effect),
                             shape.sdf_tex.id,
+                            shape.sdf_tex.points,
                         );
                     }
 
@@ -762,13 +763,17 @@ pub fn computePhase() !void {
                     point.y *= ch_d.font_size;
                 }
 
-                ch_d.sdf_tex = try computeShape(
+                var new_sdf_tex = try computeShape(
                     ch_sdf_tex.id,
                     bounds,
                     padding,
                     points,
                     consts.SDF_RESIZE_STEP,
                 );
+
+                new_sdf_tex.points = points;
+
+                ch_d.sdf_tex = new_sdf_tex;
 
                 ch_d.viewport_font_size = consts.SDF_RESIZE_STEP * ch_d.font_size / shared.render_scale;
             }
@@ -820,6 +825,8 @@ pub fn computePhase() !void {
                         text_padding,
                         consts.SDF_RESIZE_STEP,
                     );
+
+                    // text.sdf_tex.points = .{};
 
                     const compute_depth_texture_id = js_glue.createDisposableComputeDepthTexture(
                         @intFromFloat(text.sdf_tex.size.w),
@@ -911,6 +918,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                             &bounds,
                             shape.getDrawUniform(effect),
                             shape.sdf_tex.id,
+                            shape.sdf_tex.points,
                         );
                     }
                 }
@@ -929,6 +937,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                             &bounds,
                             text.getDrawUniform(effect, text.sdf_tex.scale),
                             text.sdf_tex.id,
+                            text.sdf_tex.points,
                         );
                     }
 
@@ -961,6 +970,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                                         &bounds,
                                         text.getDrawUniform(effect, sdf_scale),
                                         char_sdf_tex.id,
+                                        char_sdf_tex.points,
                                     );
                                 }
                             }
@@ -1024,6 +1034,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 &shape.getDrawBounds(false),
                 shape.getSkeletonUniform(),
                 shape.sdf_tex.id,
+                shape.sdf_tex.points,
             );
 
             const hover_id = if (shape.id == hover_point_id.getPrim()) hover_point_id else null;

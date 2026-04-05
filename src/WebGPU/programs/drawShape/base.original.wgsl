@@ -8,35 +8,12 @@ const FWIDTH_VALID_LIMIT = 3.402823466e+10;
 // real shape SDF values and the default background value, so we ignore
 // derivatives larger than FWIDTH_VALID_LIMIT.
 
-struct CubicBezier {
-  p0: vec2f,
-  p1: vec2f,
-  p2: vec2f,
-  p3: vec2f,
-};
-
-fn bezier_point(curve: CubicBezier, t: f32) -> vec2f {
-  let t2 = t * t;
-  let t3 = t2 * t;
-  let one_minus_t = 1.0 - t;
-  let one_minus_t2 = one_minus_t * one_minus_t;
-  let one_minus_t3 = one_minus_t2 * one_minus_t;
-
-  return curve.p0 * one_minus_t3 +
-         3.0 * curve.p1 * t * one_minus_t2 +
-         3.0 * curve.p2 * t2 * one_minus_t +
-         curve.p3 * t3;
-}
-
-
 struct Vertex {
   @location(0) position: vec4f,
 };
 
 @group(0) @binding(1) var texture: texture_storage_2d<rgba32float, read>;
 @group(0) @binding(2) var<uniform> camera_projection: mat4x4f;
-@group(0) @binding(3) var<storage, read> curves: array<vec2f>;
-// consider witchign to uniform if possible
 
 struct VSOutput {
   @builtin(position) position: vec4f,
@@ -52,11 +29,6 @@ struct VSOutput {
     vert.position.zw,
   );
 }
-
-const BILINEAR_T_THRESHOLD = 0.5;
-// all texels which has diff with nearest texel < BILINEAR_T_THRESHOLD
-// will be included in bilinear interpolation.
-// It helps avoid interpolating t from totally different places
 
 fn getSample(pos: vec2f) -> vec4f {
   let floor_pos = floor(pos - 0.5);
@@ -75,61 +47,24 @@ fn getSample(pos: vec2f) -> vec4f {
   let c01 = textureLoad(texture, p01);
   let c11 = textureLoad(texture, p11);
 
-  let nearest_g = select(
-    select(c00.g, c10.g, fract_pos.x >= 0.5),
-    select(c01.g, c11.g, fract_pos.x >= 0.5),
-    fract_pos.y >= 0.5
-  );
+  let top = mix(c00, c10, fract_pos.x);
+  let bottom = mix(c01, c11, fract_pos.x);
 
-  let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), abs(c00.g - nearest_g) < BILINEAR_T_THRESHOLD);
-  let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), abs(c10.g - nearest_g) < BILINEAR_T_THRESHOLD);
-  let w01 = select(0.0, (1.0 - fract_pos.x) * fract_pos.y,         abs(c01.g - nearest_g) < BILINEAR_T_THRESHOLD);
-  let w11 = select(0.0, fract_pos.x         * fract_pos.y,         abs(c11.g - nearest_g) < BILINEAR_T_THRESHOLD);
-
-  let total_w = w00 + w10 + w01 + w11;
-  return (c00 * w00 + c10 * w10 + c01 * w01 + c11 * w11) / total_w;
+  return mix(top, bottom, fract_pos.y);
 }
 
 
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
   let sdf = getSample(vsOut.uv);
-  // let sdf = textureLoad(texture, vec2i(vsOut.uv));
-
-  let _unused = arrayLength(&curves);
-  let abs_g = abs(sdf.g);
-  let curve_index = u32(abs_g) - 1u;
-  let curve_t = fract(abs_g);
-  
-
-  let curve = CubicBezier(
-    curves[curve_index * 4 + 0],
-    curves[curve_index * 4 + 1],
-    curves[curve_index * 4 + 2],
-    curves[curve_index * 4 + 3]
-  );
-  
-
-  let pos = bezier_point(curve, curve_t);
-  let dist_to_curve = length(pos - vsOut.uv) / 1 * sign(sdf.g);
-  // let dist_to_curve = vsOut.uv.x / 500; // * sign(sdf.r)
-
-  
-  return vec4f(-dist_to_curve, 0, dist_to_curve, 1.0);
-  // return vec4f(sdf.r, 0, 0, 1.0);
-  
-
-
-
-
   ${TEST}
 
-  let dist_derivative = fwidth(dist_to_curve);
+  let dist_derivative = fwidth(sdf.r);
 
   let safe_dist_derivative = select(0.0, dist_derivative, dist_derivative <= FWIDTH_VALID_LIMIT); // if too large -> 0
   let alpha_smooth_factor = max(safe_dist_derivative * 0.5, EPSILON);
 
-  let inner_alpha = smoothstep(u.dist_start - alpha_smooth_factor, u.dist_start + alpha_smooth_factor, dist_to_curve);
-  let outer_alpha = smoothstep(u.dist_end - alpha_smooth_factor, u.dist_end + alpha_smooth_factor, dist_to_curve);
+  let inner_alpha = smoothstep(u.dist_start - alpha_smooth_factor, u.dist_start + alpha_smooth_factor, sdf.r);
+  let outer_alpha = smoothstep(u.dist_end - alpha_smooth_factor, u.dist_end + alpha_smooth_factor, sdf.r);
   let alpha = outer_alpha - inner_alpha;
   let color = getColor(sdf, vsOut.uv, vsOut.norm_uv);
   let result = vec4f(color.rgb, color.a * alpha);

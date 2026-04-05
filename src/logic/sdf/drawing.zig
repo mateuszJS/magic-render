@@ -142,6 +142,7 @@ pub const SdfTex = struct {
     padding: f32 = 0,
     round_err: Point = .{},
     is_outdated: bool = true,
+    points: []const Point = undefined,
 
     pub fn isBiggerThan(self: SdfTex, other: SdfTex) bool {
         return self.size.w > other.size.w + consts.EPSILON or self.size.h > other.size.h + consts.EPSILON;
@@ -377,6 +378,7 @@ pub fn getTexture(
         },
         .padding = sdf_padding * sdf_scale,
         .id = tex_id,
+        .points = undefined,
     };
 }
 

@@ -68,7 +68,7 @@ pub const DrawVertex = struct {
 
 pub fn draw(
     dataset: []DrawVertex,
-    draw_shape: *const fn ([]const PointUV, sdf_drawing.DrawUniform, u32) void,
+    draw_shape: *const fn ([]const PointUV, sdf_drawing.DrawUniform, u32, []const Point) void,
 ) !void {
     for (dataset) |data| {
         if (elements.get(@intFromEnum(data.icon))) |shape| {
@@ -100,6 +100,7 @@ pub fn draw(
                 &vertex,
                 uniform,
                 shape.sdf_tex.id,
+                shape.sdf_tex.points,
             );
         }
     }
