@@ -34,13 +34,6 @@ fn bezier_eval_all(curve: CubicBezier, t: f32) -> BezierEval {
   return result;
 }
 
-/*
-1. Find intiial value (have to be close to solution)
-2. Find the slope of the tangent lien at that point
-3. Find where that tangent line intersects X axis
-4. 
-*/
-
 // Refine an initial t guess to the true closest point using Newton-Raphson
 fn refine_closest_t(point: vec2f, curve: CubicBezier, initial_t: f32) -> f32 {
   var t = initial_t;
@@ -221,8 +214,6 @@ fn getSample(pos: vec2f) -> vec4f {
   );
   
 
-  let min_dist = getMinRefinedDist(vsOut.uv, vsOut.uv);
-
   // Refine t with NR — curve_index is nearest-neighbor locked so it won't diverge
   let refined_t = refine_closest_t(vsOut.uv, curve, curve_t);
   let pos = bezier_point(curve, refined_t);
@@ -230,14 +221,10 @@ fn getSample(pos: vec2f) -> vec4f {
   let to_pixel = vsOut.uv - pos;
   // 2D cross product: tangent x to_pixel — positive = left side, negative = right side
   let side = tangent.x * to_pixel.y - tangent.y * to_pixel.x;
-  let tangent_sign = sign(side);
-  // Only trust tangent cross product near the boundary and when tangent is not degenerate.
-  // Far from the curve, NR can converge to a wrong local minimum — stored sign is reliable there.
-  let near_boundary = min_dist < 0.65;
-  let tangent_valid = dot(tangent, tangent) > 0.01;
-  let dist_to_curve = select(sign(sdf.g), tangent_sign, near_boundary && tangent_valid);
+  let dist_to_curve = sign(side);
 
-  if (min_dist < 0.01) {
+  let min_dist = getMinRefinedDist(vsOut.uv, vsOut.uv);
+  if (min_dist < 0.2) {
     return vec4f(0, 0, 1, 1);
   }
   

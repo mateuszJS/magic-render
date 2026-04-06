@@ -34,13 +34,6 @@ fn bezier_eval_all(curve: CubicBezier, t: f32) -> BezierEval {
   return result;
 }
 
-/*
-1. Find intiial value (have to be close to solution)
-2. Find the slope of the tangent lien at that point
-3. Find where that tangent line intersects X axis
-4. 
-*/
-
 // Refine an initial t guess to the true closest point using Newton-Raphson
 fn refine_closest_t(point: vec2f, curve: CubicBezier, initial_t: f32) -> f32 {
   var t = initial_t;
@@ -237,7 +230,7 @@ fn getSample(pos: vec2f) -> vec4f {
   let tangent_valid = dot(tangent, tangent) > 0.01;
   let dist_to_curve = select(sign(sdf.g), tangent_sign, near_boundary && tangent_valid);
 
-  if (min_dist < 0.01) {
+  if (min_dist < 0.2) {
     return vec4f(0, 0, 1, 1);
   }
   

@@ -34,13 +34,6 @@ fn bezier_eval_all(curve: CubicBezier, t: f32) -> BezierEval {
   return result;
 }
 
-/*
-1. Find intiial value (have to be close to solution)
-2. Find the slope of the tangent lien at that point
-3. Find where that tangent line intersects X axis
-4. 
-*/
-
 // Refine an initial t guess to the true closest point using Newton-Raphson
 fn refine_closest_t(point: vec2f, curve: CubicBezier, initial_t: f32) -> f32 {
   var t = initial_t;
@@ -104,52 +97,6 @@ const BILINEAR_T_THRESHOLD = 0.5;
 // all texels which has diff with nearest texel < BILINEAR_T_THRESHOLD
 // will be included in bilinear interpolation.
 // It helps avoid interpolating t from totally different places
-
-fn g_to_curve_pos(g: f32) -> vec2f {
-  let abs_g = abs(g);
-  let curve_index = u32(abs_g) - 1u;
-  let curve_t = fract(abs_g);
-  let curve = CubicBezier(
-    curves[curve_index * 4 + 0],
-    curves[curve_index * 4 + 1],
-    curves[curve_index * 4 + 2],
-    curves[curve_index * 4 + 3]
-  );
-  return bezier_point(curve, curve_t);
-}
-
-fn g_to_refined_dist(g: f32, pixel: vec2f) -> f32 {
-  let abs_g = abs(g);
-  let curve_index = u32(abs_g) - 1u;
-  let curve_t = fract(abs_g);
-  let curve = CubicBezier(
-    curves[curve_index * 4 + 0],
-    curves[curve_index * 4 + 1],
-    curves[curve_index * 4 + 2],
-    curves[curve_index * 4 + 3]
-  );
-  let refined_t = refine_closest_t(pixel, curve, curve_t);
-  return length(bezier_point(curve, refined_t) - pixel);
-}
-
-// NR-refine distance from each of the 4 neighboring texels and return minimum.
-// This covers junction pixels where the nearest curve may differ from nearest_g.
-fn getMinRefinedDist(pos: vec2f, pixel: vec2f) -> f32 {
-  let floor_pos = floor(pos - 0.5);
-  let max_coord = vec2i(textureDimensions(texture)) - vec2i(1, 1);
-
-  let p00 = vec2u(clamp(vec2i(floor_pos),                   vec2i(0, 0), max_coord));
-  let p10 = vec2u(clamp(vec2i(floor_pos + vec2f(1.0, 0.0)), vec2i(0, 0), max_coord));
-  let p01 = vec2u(clamp(vec2i(floor_pos + vec2f(0.0, 1.0)), vec2i(0, 0), max_coord));
-  let p11 = vec2u(clamp(vec2i(floor_pos + vec2f(1.0, 1.0)), vec2i(0, 0), max_coord));
-
-  let d00 = g_to_refined_dist(textureLoad(texture, p00).g, pixel);
-  let d10 = g_to_refined_dist(textureLoad(texture, p10).g, pixel);
-  let d01 = g_to_refined_dist(textureLoad(texture, p01).g, pixel);
-  let d11 = g_to_refined_dist(textureLoad(texture, p11).g, pixel);
-
-  return min(min(d00, d10), min(d01, d11));
-}
 
 fn getSample(pos: vec2f) -> vec4f {
   let floor_pos = floor(pos - 0.5);
@@ -221,23 +168,14 @@ fn getSample(pos: vec2f) -> vec4f {
   );
   
 
-  let min_dist = getMinRefinedDist(vsOut.uv, vsOut.uv);
-
-  // Refine t with NR — curve_index is nearest-neighbor locked so it won't diverge
-  let refined_t = refine_closest_t(vsOut.uv, curve, curve_t);
-  let pos = bezier_point(curve, refined_t);
-  let tangent = bezier_tangent(curve, refined_t);
+  let pos = bezier_point(curve, curve_t);
+  let tangent = bezier_tangent(curve, curve_t);
   let to_pixel = vsOut.uv - pos;
   // 2D cross product: tangent x to_pixel — positive = left side, negative = right side
   let side = tangent.x * to_pixel.y - tangent.y * to_pixel.x;
-  let tangent_sign = sign(side);
-  // Only trust tangent cross product near the boundary and when tangent is not degenerate.
-  // Far from the curve, NR can converge to a wrong local minimum — stored sign is reliable there.
-  let near_boundary = min_dist < 0.65;
-  let tangent_valid = dot(tangent, tangent) > 0.01;
-  let dist_to_curve = select(sign(sdf.g), tangent_sign, near_boundary && tangent_valid);
+  let dist_to_curve = sign(side);
 
-  if (min_dist < 0.01) {
+  if (length(pos - vsOut.uv) < 0.2) {
     return vec4f(0, 0, 1, 1);
   }
   
