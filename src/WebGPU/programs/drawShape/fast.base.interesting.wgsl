@@ -108,6 +108,13 @@ fn getSample(pos: vec2f) -> vec4f {
 }
 
 
+fn dist_to_segment(p: vec2f, a: vec2f, b: vec2f) -> f32 {
+  let ab = b - a;
+  let len_sq = dot(ab, ab);
+  let t = clamp(dot(p - a, ab) / max(len_sq, 1e-10), 0.0, 1.0);
+  return length(p - (a + t * ab));
+}
+
 fn g_to_bezier_pos(g: f32) -> vec2f {
   let abs_g = abs(g);
   let idx = u32(abs_g) - 1u;
@@ -120,6 +127,7 @@ fn g_to_bezier_pos(g: f32) -> vec2f {
 
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
   let sdf = getSample(vsOut.uv);
+  let _unused = arrayLength(&curves);
 
   let dist_to_curve = sign(sdf.g);
 
@@ -136,15 +144,13 @@ fn g_to_bezier_pos(g: f32) -> vec2f {
   let pos01 = g_to_bezier_pos(g01);
   let pos11 = g_to_bezier_pos(g11);
 
-  let d00 = length(pos00 - vsOut.uv);
-  let d10 = length(pos10 - vsOut.uv);
-  let d01 = length(pos01 - vsOut.uv);
-  let d11 = length(pos11 - vsOut.uv);
-
-  let min_dist = min(min(d00, d10), min(d01, d11));
-
-  // let pos = g_to_bezier_pos(sdf.g);
-  // let d_blended = length(pos - vsOut.uv);
+  // Project pixel onto each adjacent segment and take the minimum distance.
+  // This fills the gaps between sampled points — a pixel between two dots
+  // is ~0 from the segment connecting them, not ~0.5 from each dot.
+  let min_dist = min(
+    min(dist_to_segment(vsOut.uv, pos00, pos10), dist_to_segment(vsOut.uv, pos01, pos11)),
+    min(dist_to_segment(vsOut.uv, pos00, pos01), dist_to_segment(vsOut.uv, pos10, pos11))
+  );
 
   if (min_dist < 0.2) {
     return vec4f(0, 0, 1, 1);

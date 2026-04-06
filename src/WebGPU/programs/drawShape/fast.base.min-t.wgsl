@@ -81,17 +81,6 @@ fn getSample(pos: vec2f) -> vec4f {
     fract_pos.y >= 0.5
   );
 
-  let second_nearest_g = min(
-    min(
-      select(c00.g, 1e30, abs(c00.g - nearest_g) < 1e-5),
-      select(c10.g, 1e30, abs(c10.g - nearest_g) < 1e-5)
-    ),
-    min(
-      select(c01.g, 1e30, abs(c01.g - nearest_g) < 1e-5),
-      select(c11.g, 1e30, abs(c11.g - nearest_g) < 1e-5)
-    )
-  );
-
   let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), abs(c00.g - nearest_g) < BILINEAR_T_THRESHOLD);
   let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), abs(c10.g - nearest_g) < BILINEAR_T_THRESHOLD);
   let w01 = select(0.0, (1.0 - fract_pos.x) * fract_pos.y,         abs(c01.g - nearest_g) < BILINEAR_T_THRESHOLD);
@@ -99,7 +88,6 @@ fn getSample(pos: vec2f) -> vec4f {
 
   let total_w = w00 + w10 + w01 + w11;
   let blended = (c00 * w00 + c10 * w10 + c01 * w01 + c11 * w11) / total_w;
-  // return vec4f(0, second_nearest_g, 0, 1);
   return blended;
 
   // let pos_count = i32(c00.g > 0.0) + i32(c10.g > 0.0) + i32(c01.g > 0.0) + i32(c11.g > 0.0);
@@ -108,14 +96,18 @@ fn getSample(pos: vec2f) -> vec4f {
 }
 
 
-fn g_to_bezier_pos(g: f32) -> vec2f {
+// Decode a texel's g channel into a distance from that stored bezier point to `pixel`.
+fn dist_from_texel_g(g: f32, pixel: vec2f) -> f32 {
   let abs_g = abs(g);
   let idx = u32(abs_g) - 1u;
-  let t   = fract(abs_g);
-  return bezier_point(CubicBezier(
-    curves[idx * 4 + 0], curves[idx * 4 + 1],
-    curves[idx * 4 + 2], curves[idx * 4 + 3]
-  ), t);
+  let t = fract(abs_g);
+  let c = CubicBezier(
+    curves[idx * 4 + 0],
+    curves[idx * 4 + 1],
+    curves[idx * 4 + 2],
+    curves[idx * 4 + 3]
+  );
+  return length(bezier_point(c, t) - pixel);
 }
 
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
@@ -123,28 +115,21 @@ fn g_to_bezier_pos(g: f32) -> vec2f {
 
   let dist_to_curve = sign(sdf.g);
 
-  // Read 4 raw texels and evaluate the stored bezier point for each.
+  // Sample all 4 neighboring texels and pick the minimum distance to the curve.
+  // This avoids the dot artifact from using a single bilinearly-interpolated t,
+  // which is rarely the true closest-t for the current sub-pixel position.
   let floor_pos = floor(vsOut.uv - 0.5);
   let max_coord = vec2i(textureDimensions(texture)) - vec2i(1, 1);
-  let g00 = textureLoad(texture, vec2u(clamp(vec2i(floor_pos),              vec2i(0,0), max_coord))).g;
-  let g10 = textureLoad(texture, vec2u(clamp(vec2i(floor_pos + vec2f(1,0)), vec2i(0,0), max_coord))).g;
-  let g01 = textureLoad(texture, vec2u(clamp(vec2i(floor_pos + vec2f(0,1)), vec2i(0,0), max_coord))).g;
-  let g11 = textureLoad(texture, vec2u(clamp(vec2i(floor_pos + vec2f(1,1)), vec2i(0,0), max_coord))).g;
+  let g00 = textureLoad(texture, vec2u(clamp(vec2i(floor_pos),                   vec2i(0,0), max_coord))).g;
+  let g10 = textureLoad(texture, vec2u(clamp(vec2i(floor_pos + vec2f(1,0)),       vec2i(0,0), max_coord))).g;
+  let g01 = textureLoad(texture, vec2u(clamp(vec2i(floor_pos + vec2f(0,1)),       vec2i(0,0), max_coord))).g;
+  let g11 = textureLoad(texture, vec2u(clamp(vec2i(floor_pos + vec2f(1,1)),       vec2i(0,0), max_coord))).g;
 
-  let pos00 = g_to_bezier_pos(g00);
-  let pos10 = g_to_bezier_pos(g10);
-  let pos01 = g_to_bezier_pos(g01);
-  let pos11 = g_to_bezier_pos(g11);
-
-  let d00 = length(pos00 - vsOut.uv);
-  let d10 = length(pos10 - vsOut.uv);
-  let d01 = length(pos01 - vsOut.uv);
-  let d11 = length(pos11 - vsOut.uv);
-
+  let d00 = dist_from_texel_g(g00, vsOut.uv);
+  let d10 = dist_from_texel_g(g10, vsOut.uv);
+  let d01 = dist_from_texel_g(g01, vsOut.uv);
+  let d11 = dist_from_texel_g(g11, vsOut.uv);
   let min_dist = min(min(d00, d10), min(d01, d11));
-
-  // let pos = g_to_bezier_pos(sdf.g);
-  // let d_blended = length(pos - vsOut.uv);
 
   if (min_dist < 0.2) {
     return vec4f(0, 0, 1, 1);
