@@ -92,7 +92,7 @@ export default function getDrawShape(
     delayedDestroy(uniformBuffer)
 
     const curvesBuffer = device.createBuffer({
-      label: 'computeShape curves buffer',
+      label: 'drawShape curves buffer',
       size: curvesDataView.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     })

@@ -757,13 +757,18 @@ pub fn computePhase() !void {
                 const bounds = utils.createBounds(ch_w, ch_h);
                 const padding = ch_d.font_size * ch_d.*.max_ratio_padding_to_font_size;
 
-                const points = try allocator.dupe(types.Point, ch_d.points);
+                const points = try std.heap.page_allocator.dupe(types.Point, ch_d.points);
                 for (points) |*point| {
+                    if (path_utils.isStraightLineHandle(point.*)) {
+                        continue;
+                    }
                     point.x *= ch_d.font_size;
                     point.y *= ch_d.font_size;
                 }
 
-                var new_sdf_tex = try computeShape(
+                ch_sdf_tex.deinit();
+
+                const new_sdf_tex = try computeShape(
                     ch_sdf_tex.id,
                     bounds,
                     padding,
@@ -771,7 +776,7 @@ pub fn computePhase() !void {
                     consts.SDF_RESIZE_STEP,
                 );
 
-                new_sdf_tex.points = points;
+                // new_sdf_tex.points = points;
 
                 ch_d.sdf_tex = new_sdf_tex;
 
@@ -794,13 +799,14 @@ pub fn computePhase() !void {
                 const option_points = try shape.getRelativePoints(allocator);
                 if (option_points) |points| {
                     const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
-                    const copy_points = try allocator.dupe(types.Point, points);
+                    const points_copy = try std.heap.page_allocator.dupe(types.Point, points);
 
+                    shape.sdf_tex.deinit();
                     shape.sdf_tex = try computeShape(
                         shape.sdf_tex.id,
                         shape.bounds,
                         sdf_padding,
-                        copy_points,
+                        points_copy,
                         consts.SDF_RESIZE_STEP,
                     );
                     shape.outdated_cache = true;
@@ -819,6 +825,7 @@ pub fn computePhase() !void {
 
                     const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
 
+                    text.sdf_tex.deinit();
                     text.sdf_tex = sdf_drawing.getTexture(
                         text.sdf_tex.id,
                         text.bounds,

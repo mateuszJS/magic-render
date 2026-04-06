@@ -46,6 +46,7 @@ pub fn generateUiElementsSdf() !void {
         if (option_points) |points| {
             const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
 
+            shape.sdf_tex.deinit();
             shape.sdf_tex = try computeShape(
                 shape.sdf_tex.id,
                 shape.bounds,

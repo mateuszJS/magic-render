@@ -14,7 +14,7 @@ pub fn computeShape(
     tex_id: u32,
     bounds: [4]types.PointUV,
     padding: f32,
-    points: []types.Point,
+    points: []types.Point, // safe copy, should not modify original points
     resize: f32,
 ) !sdf_drawing.SdfTex {
     var sdf_tex = sdf_drawing.getTexture(
@@ -26,10 +26,14 @@ pub fn computeShape(
 
     for (points, 0..) |*point, i| {
         if (path_utils.isStraightLineHandle(point.*)) {
+            // std.debug.print("i: {d}\n", .{i % 4});
             // NOTE: doesnt work
             if (i % 4 == 1) {
                 point.x = points[i - 1].x;
                 point.y = points[i - 1].y;
+
+                continue; // this point already was multiplied by computations below
+                // avoid doign it again
             } else if (i % 4 == 2) {
                 // not sure if that case is even possible
                 point.x = points[i + 1].x;
@@ -46,10 +50,10 @@ pub fn computeShape(
         point.y += consts.SDF_SAFE_PADDING + sdf_tex.padding;
     }
 
-    sdf_tex.points = try std.heap.page_allocator.dupe(types.Point, points);
+    sdf_tex.points = points;
 
     webgpu_glue.compute_shape(
-        points,
+        sdf_tex.points,
         @intFromFloat(sdf_tex.size.w),
         @intFromFloat(sdf_tex.size.h),
         sdf_tex.id,

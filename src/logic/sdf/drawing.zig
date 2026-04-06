@@ -142,10 +142,17 @@ pub const SdfTex = struct {
     padding: f32 = 0,
     round_err: Point = .{},
     is_outdated: bool = true,
-    points: []const Point = undefined,
+    points: []const Point = &.{},
 
     pub fn isBiggerThan(self: SdfTex, other: SdfTex) bool {
         return self.size.w > other.size.w + consts.EPSILON or self.size.h > other.size.h + consts.EPSILON;
+    }
+
+    pub fn deinit(self: *SdfTex) void {
+        if (self.points.len != 0) {
+            std.heap.page_allocator.free(self.points);
+            self.points = &.{};
+        }
     }
 };
 
@@ -264,7 +271,7 @@ pub fn getDrawBounds(
 
 fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
     if (shared.is_test or shared.is_test == false) {
-        return 2;
+        return 20;
     }
 
     const max_dim = @max(bounds[0].distance(bounds[1]), bounds[0].distance(bounds[3]));
@@ -378,7 +385,6 @@ pub fn getTexture(
         },
         .padding = sdf_padding * sdf_scale,
         .id = tex_id,
-        .points = undefined,
     };
 }
 
