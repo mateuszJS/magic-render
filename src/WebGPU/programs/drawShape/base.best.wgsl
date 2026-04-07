@@ -80,16 +80,11 @@ fn getSample(pos: vec2f) -> Sample {
   let c01 = textureLoad(texture, p01);
   let c11 = textureLoad(texture, p11);
 
-  let pos00 = g_to_bezier_pos(c00.g);
-  let pos10 = g_to_bezier_pos(c10.g);
-  let pos01 = g_to_bezier_pos(c01.g);
-  let pos11 = g_to_bezier_pos(c11.g);
-
-  // let nearest_g = select(
-  //   select(c00.g, c10.g, fract_pos.x >= 0.5),
-  //   select(c01.g, c11.g, fract_pos.x >= 0.5),
-  //   fract_pos.y >= 0.5
-  // );
+  let nearest_g = select(
+    select(c00.g, c10.g, fract_pos.x >= 0.5),
+    select(c01.g, c11.g, fract_pos.x >= 0.5),
+    fract_pos.y >= 0.5
+  );
 
   // let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), abs(c00.g - nearest_g) < BILINEAR_T_THRESHOLD);
   // let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), abs(c10.g - nearest_g) < BILINEAR_T_THRESHOLD);
@@ -100,31 +95,25 @@ fn getSample(pos: vec2f) -> Sample {
   let w01 = (1.0 - fract_pos.x) * fract_pos.y;
   let w11 = fract_pos.x         * fract_pos.y;
 
-  // let total_w = w00 + w10 + w01 + w11;
-  // let blended = (c00.g * w00 + c10.g * w10 + c01.g * w01 + c11.g * w11) / total_w;
-
-  let t00 = abs(c00.g) - 1;
-  let t10 = abs(c10.g) - 1;
-  let t01 = abs(c01.g) - 1;
-  let t11 = abs(c11.g) - 1;
-
-  let blended = (t00 * w00 + t10 * w10 + t01 * w01 + t11 * w11);
-  // let blended = (t00 * 0.25 + t10 * 0.25 + t01 * 0.25 + t11 * 0.25);
+  let total_w = w00 + w10 + w01 + w11;
+  let blended = (c00.g * w00 + c10.g * w10 + c01.g * w01 + c11.g * w11) / total_w;
 
 
 
+  let pos00 = g_to_bezier_pos(c00.g);
+  let pos10 = g_to_bezier_pos(c10.g);
+  let pos01 = g_to_bezier_pos(c01.g);
+  let pos11 = g_to_bezier_pos(c11.g);
+
+  let d00 = length(pos00 - pos);
+  let d10 = length(pos10 - pos);
+  let d01 = length(pos01 - pos);
+  let d11 = length(pos11 - pos);
+
+  let min_dist = min(min(d00, d10), min(d01, d11));
 
 
-  // let d00 = length(pos00 - pos);
-  // let d10 = length(pos10 - pos);
-  // let d01 = length(pos01 - pos);
-  // let d11 = length(pos11 - pos);
-
-  // let min_dist = min(min(d00, d10), min(d01, d11));
-
-
-  return Sample(blended, 0);
-  // return Sample(blended, min_dist);
+  return Sample(blended, min_dist);
 }
 
 
@@ -132,50 +121,26 @@ fn g_to_bezier_pos(g: f32) -> vec2f {
   let abs_g = abs(g);
   let idx = u32(abs_g) - 1u;
   let t   = fract(abs_g);
-  let curve = CubicBezier(
-    curves[idx * 4 + 0],
-    curves[idx * 4 + 1],
-    curves[idx * 4 + 2],
-    curves[idx * 4 + 3]
-  );
-  return bezier_point(curve, t);
+  return bezier_point(CubicBezier(
+    curves[idx * 4 + 0], curves[idx * 4 + 1],
+    curves[idx * 4 + 2], curves[idx * 4 + 3]
+  ), t);
 }
 
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
   let sdf = getSample(vsOut.uv);
 
-  // let dist_to_curve = sign(sdf.t);
+  let dist_to_curve = sign(sdf.t);
 
-  // if (sdf.distance < 0.2) {
-  //   return vec4f(0, 0, 1, 1);
-  // }
+  if (sdf.distance < 0.2) {
+    return vec4f(0, 0, 1, 1);
+  }
 
-  // return vec4f(-dist_to_curve, dist_to_curve, 0, 1.0);
+  return vec4f(-dist_to_curve, dist_to_curve, 0, 1.0);
   // return vec4f(sdf.r, 0, 0, 1.0);
   
 
-  let max_coord = vec2i(textureDimensions(texture)) - vec2i(1);
-  let texel = vec2u(clamp(vec2i(vsOut.uv), vec2i(0), max_coord));
-  let g = sdf.t + 1;
-  // let g = textureLoad(texture, texel).g;
 
-  // Decode the nearest curve point stored in this texel, then compute
-  // the actual Euclidean distance from the output pixel to that curve point.
-  // sign(g): +1 = inside (distance grows inward), -1 = outside (distance < 0)
-  let curve_pos = g_to_bezier_pos(g);
-  let _sdf = length(curve_pos - vsOut.uv);
-
-  // Grid: fract(uv) tells how far into the current texel we are (0..1).
-  // Dividing by fwidth gives distance in screen pixels from the nearest edge.
-  let fw = fwidth(vsOut.uv);
-  let grid = min(fract(vsOut.uv) / fw, (1.0 - fract(vsOut.uv)) / fw);
-  let on_grid = min(grid.x, grid.y) < 0.5;
-  // let on_grid = false;
-
-  return vec4f(1 - _sdf, select(0.0, 1.0, on_grid), fract(sdf.t), 1.0);
-
-  // let sdf = getSample(vsOut.uv);
-  let dist_to_curve: f32 = 0;
 
 
   ${TEST}

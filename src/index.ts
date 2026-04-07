@@ -21,7 +21,7 @@ import { NO_ASSET_ID } from 'consts'
 import { downloadCanvas } from 'utils/downloadCanvas'
 
 export default async function initCreator({ canvas, ...props }: CreatorProps): Promise<CreatorAPI> {
-  const fakeMaxTexSize = 0
+  const fakeMaxTexSize = 20
 
   let texturesLoading = 0
   let isMouseEventProcessing = false
@@ -112,7 +112,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
   )
 
   const throttledPreviewGenerator = throttle(() => {
-    const disableMinaitures = false
+    const disableMinaitures = true
     if (isDestroyed || texturesLoading > 0 || props.isTest || disableMinaitures) return
 
     generatePreview(
