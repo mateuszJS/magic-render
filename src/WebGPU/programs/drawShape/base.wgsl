@@ -67,6 +67,26 @@ struct Sample {
   distance: f32,
 };
 
+// Given a uniform arc-length value, binary search uniform_t to find the
+// corresponding c_g (curve_index + local_t) value.
+fn uniform_t_to_relative_t(s: f32) -> f32 {
+  let len = arrayLength(&uniform_t);
+  var lo = 0u;
+  var hi = len - 1u;
+  while (lo + 1u < hi) {
+    let mid = (lo + hi) / 2u;
+    if (uniform_t[mid] <= s) { lo = mid; } else { hi = mid; }
+  }
+  let t_lo = uniform_t[lo];
+  let t_hi = uniform_t[hi];
+  let frac = select(0.0, (s - t_lo) / (t_hi - t_lo), t_hi > t_lo);
+  // lo index maps to: curve = lo/4, quarter = lo%4
+  let ci = lo / u32(UNIFORM_T_SAMPLING);
+  let quarter = lo % u32(UNIFORM_T_SAMPLING);
+  let local_t = (f32(quarter) + frac) / UNIFORM_T_SAMPLING;
+  return f32(ci) + local_t;
+}
+
 fn getSample(pos: vec2f) -> Sample {
   let floor_pos = floor(pos - 0.5);
   let fract_pos = pos - 0.5 - floor_pos;
@@ -138,10 +158,12 @@ fn getSample(pos: vec2f) -> Sample {
   let _diff10 = abs(get_uniform_t(c10_g) - get_uniform_t(nearest_g_by_pos));
   let _diff01 = abs(get_uniform_t(c01_g) - get_uniform_t(nearest_g_by_pos));
   let _diff11 = abs(get_uniform_t(c11_g) - get_uniform_t(nearest_g_by_pos));
+  // TODO: blend uniform_t, not raw t
 
 
 
-  let angle_threshold = PI * 10.5;
+
+  let angle_threshold = PI * 0.9;
 
   let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), _diff00 < BILINEAR_T_THRESHOLD && abs(ndiff00) < angle_threshold);
   let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), _diff10 < BILINEAR_T_THRESHOLD && abs(ndiff10) < angle_threshold);
@@ -197,7 +219,8 @@ fn getSample(pos: vec2f) -> Sample {
 
   let total_w = w00 + w10 + w01 + w11;
   // Fall back to nearest texel when all neighbors are excluded (total_w == 0).
-  let blended = (c00_g * w00 + c10_g * w10 + c01_g * w01 + c11_g * w11) / total_w;
+  let uniform_blended = (get_uniform_t(c00_g) * w00 + get_uniform_t(c10_g) * w10 + get_uniform_t(c01_g) * w01 + get_uniform_t(c11_g) * w11) / total_w;
+  let blended = uniform_t_to_relative_t(uniform_blended);
   // Claude claims its possible
   // let blended = select(
   //   (c00_g * w00 + c10_g * w10 + c01_g * w01 + c11_g * w11) / total_w,
