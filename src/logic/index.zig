@@ -687,6 +687,7 @@ pub fn updateCache() void {
                             shape.getDrawUniform(effect),
                             shape.sdf_tex.id,
                             shape.sdf_tex.points,
+                            shape.sdf_tex.uniform_t,
                         );
                     }
 
@@ -926,6 +927,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                             shape.getDrawUniform(effect),
                             shape.sdf_tex.id,
                             shape.sdf_tex.points,
+                            shape.sdf_tex.uniform_t,
                         );
                     }
                 }
@@ -945,6 +947,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                             text.getDrawUniform(effect, text.sdf_tex.scale),
                             text.sdf_tex.id,
                             text.sdf_tex.points,
+                            text.sdf_tex.uniform_t,
                         );
                     }
 
@@ -978,6 +981,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                                         text.getDrawUniform(effect, sdf_scale),
                                         char_sdf_tex.id,
                                         char_sdf_tex.points,
+                                        char_sdf_tex.uniform_t,
                                     );
                                 }
                             }
@@ -1042,6 +1046,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 shape.getSkeletonUniform(),
                 shape.sdf_tex.id,
                 shape.sdf_tex.points,
+                shape.sdf_tex.uniform_t,
             );
 
             const hover_id = if (shape.id == hover_point_id.getPrim()) hover_point_id else null;

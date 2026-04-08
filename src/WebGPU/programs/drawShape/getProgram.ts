@@ -69,7 +69,8 @@ export default function getDrawShape(
     sdfTexture: GPUTexture,
     boundingBoxDataView: DataView<ArrayBuffer>,
     uniformDataView: DataView<ArrayBuffer>,
-    curvesDataView: DataView<ArrayBuffer>
+    curvesDataView: DataView<ArrayBuffer>,
+    uniformTDataView: DataView<ArrayBuffer>
   ) {
     // console.log('================curvesDataView')
     // for (let i = 0; i < curvesDataView.byteLength; i += 4) {
@@ -99,6 +100,14 @@ export default function getDrawShape(
     device.queue.writeBuffer(curvesBuffer, 0, curvesDataView)
     delayedDestroy(curvesBuffer)
 
+    const uniformTBuffer = device.createBuffer({
+      label: 'drawShape uniform T buffer',
+      size: uniformTDataView.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    })
+    device.queue.writeBuffer(uniformTBuffer, 0, uniformTDataView)
+    delayedDestroy(uniformTBuffer)
+
     passEncoder.setPipeline(pipeline)
 
     const bindGroup = device.createBindGroup({
@@ -109,6 +118,7 @@ export default function getDrawShape(
         { binding: 1, resource: sdfTexture.createView() },
         { binding: 2, resource: { buffer: canvasMatrix.buffer } },
         { binding: 3, resource: { buffer: curvesBuffer } },
+        { binding: 4, resource: { buffer: uniformTBuffer } },
       ],
     })
 

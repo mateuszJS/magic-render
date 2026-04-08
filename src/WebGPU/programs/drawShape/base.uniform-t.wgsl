@@ -89,6 +89,12 @@ fn getSample(pos: vec2f) -> Sample {
   let c01_g = abs(textureLoad(texture, p01).g) - 1;
   let c11_g = abs(textureLoad(texture, p11).g) - 1;
 
+  let nearest_g = select(
+    select(c00_g, c10_g, fract_pos.x >= 0.5),
+    select(c01_g, c11_g, fract_pos.x >= 0.5),
+    fract_pos.y >= 0.5
+  );
+
   let pos00 = g_to_bezier_pos(c00_g + 1);
   let pos10 = g_to_bezier_pos(c10_g + 1);
   let pos01 = g_to_bezier_pos(c01_g + 1);
@@ -98,63 +104,27 @@ fn getSample(pos: vec2f) -> Sample {
   let d10 = max(1e-6, length(pos10 - pos));
   let d01 = max(1e-6, length(pos01 - pos));
   let d11 = max(1e-6, length(pos11 - pos));
-  
   let nearest_g_by_pos = select(
-    select(c00_g, c10_g, d10 < d00),
-    select(c01_g, c11_g, d11 < d01),
-    min(d01, d11) < min(d00, d10)
+    select(pos00, pos10, d10 < d00),
+    select(pos01, pos11, d11 < d01),
+    min(pos01, pos11) < min(pos00, pos10)
   );
 
-  // let nearest_g_by_pos = select(
-  //   select(pos00, pos10, d10 < d00),
-  //   select(pos01, pos11, d11 < d01),
-  //   min(pos01, pos11) < min(pos00, pos10)
-  // );
+
+  // let w00 = select(0.0, 1/d00, length(pos00 - nearest_g_by_pos) < BILINEAR_T_THRESHOLD_POS);
+  // let w10 = select(0.0, 1/d10, length(pos10 - nearest_g_by_pos) < BILINEAR_T_THRESHOLD_POS);
+  // let w01 = select(0.0, 1/d01, length(pos01 - nearest_g_by_pos) < BILINEAR_T_THRESHOLD_POS);
+  // let w11 = select(0.0, 1/d11, length(pos11 - nearest_g_by_pos) < BILINEAR_T_THRESHOLD_POS);
+  let diff00 = abs(get_uniform_t(c00_g) - get_uniform_t(nearest_g));
+  let diff10 = abs(get_uniform_t(c10_g) - get_uniform_t(nearest_g));
+  let diff01 = abs(get_uniform_t(c01_g) - get_uniform_t(nearest_g));
+  let diff11 = abs(get_uniform_t(c11_g) - get_uniform_t(nearest_g));
 
 
-  let tan00 = g_to_bezier_tangent(c00_g + 1);
-  let tan10 = g_to_bezier_tangent(c10_g + 1);
-  let tan01 = g_to_bezier_tangent(c01_g + 1);
-  let tan11 = g_to_bezier_tangent(c11_g + 1);
-  let a00 = atan2(tan00.y, tan00.x);
-  let a10 = atan2(tan10.y, tan10.x);
-  let a01 = atan2(tan01.y, tan01.x);
-  let a11 = atan2(tan11.y, tan11.x);
-
-  let naerest_tan = g_to_bezier_tangent(nearest_g_by_pos + 1);
-  let nearest_tan_a = atan2(naerest_tan.y, naerest_tan.x);
-
-  let diff00 = a00 - nearest_tan_a;
-  let diff10 = a10 - nearest_tan_a;
-  let diff01 = a01 - nearest_tan_a;
-  let diff11 = a11 - nearest_tan_a;
-  // Normalize to (-PI, PI] to handle wraparound
-  let ndiff00 = diff00 - round(diff00 / (2.0 * PI)) * (2.0 * PI);
-  let ndiff10 = diff10 - round(diff10 / (2.0 * PI)) * (2.0 * PI);
-  let ndiff01 = diff01 - round(diff01 / (2.0 * PI)) * (2.0 * PI);
-  let ndiff11 = diff11 - round(diff11 / (2.0 * PI)) * (2.0 * PI);
-
-  let _diff00 = abs(get_uniform_t(c00_g) - get_uniform_t(nearest_g_by_pos));
-  let _diff10 = abs(get_uniform_t(c10_g) - get_uniform_t(nearest_g_by_pos));
-  let _diff01 = abs(get_uniform_t(c01_g) - get_uniform_t(nearest_g_by_pos));
-  let _diff11 = abs(get_uniform_t(c11_g) - get_uniform_t(nearest_g_by_pos));
-
-
-
-  let angle_threshold = PI * 10.5;
-
-  let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), _diff00 < BILINEAR_T_THRESHOLD && abs(ndiff00) < angle_threshold);
-  let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), _diff10 < BILINEAR_T_THRESHOLD && abs(ndiff10) < angle_threshold);
-  let w01 = select(0.0, (1.0 - fract_pos.x) * fract_pos.y,         _diff01 < BILINEAR_T_THRESHOLD && abs(ndiff01) < angle_threshold);
-  let w11 = select(0.0, fract_pos.x         * fract_pos.y,         _diff11 < BILINEAR_T_THRESHOLD && abs(ndiff11) < angle_threshold);
-
-
-
-
-  // let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), diff00 < BILINEAR_T_THRESHOLD);
-  // let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), diff10 < BILINEAR_T_THRESHOLD);
-  // let w01 = select(0.0, (1.0 - fract_pos.x) * fract_pos.y,         diff01 < BILINEAR_T_THRESHOLD);
-  // let w11 = select(0.0, fract_pos.x         * fract_pos.y,         diff11 < BILINEAR_T_THRESHOLD);
+  let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), diff00 < BILINEAR_T_THRESHOLD);
+  let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), diff10 < BILINEAR_T_THRESHOLD);
+  let w01 = select(0.0, (1.0 - fract_pos.x) * fract_pos.y,         diff01 < BILINEAR_T_THRESHOLD);
+  let w11 = select(0.0, fract_pos.x         * fract_pos.y,         diff11 < BILINEAR_T_THRESHOLD);
   
   // let w00 = (1.0 - fract_pos.x) * (1.0 - fract_pos.y);
   // let w10 = fract_pos.x         * (1.0 - fract_pos.y);
@@ -196,14 +166,8 @@ fn getSample(pos: vec2f) -> Sample {
 
 
   let total_w = w00 + w10 + w01 + w11;
-  // Fall back to nearest texel when all neighbors are excluded (total_w == 0).
+  // let blended = (pos00 * w00 + pos10 * w10 + pos01 * w01 + pos11 * w11) / total_w;
   let blended = (c00_g * w00 + c10_g * w10 + c01_g * w01 + c11_g * w11) / total_w;
-  // Claude claims its possible
-  // let blended = select(
-  //   (c00_g * w00 + c10_g * w10 + c01_g * w01 + c11_g * w11) / total_w,
-  //   nearest_g,by_pos
-  //   total_w < 1e-6
-  // );
 
   return Sample(blended, 0);
   // return Sample(blended, min_dist);
@@ -227,26 +191,6 @@ fn get_uniform_t(t: f32) -> f32 {
   return mix(uniform_t[lower_idx], uniform_t[upper_idx], frac);
 }
 
-// Cubic bezier tangent (unnormalized) at local t encoded in g.
-fn g_to_bezier_tangent(g: f32) -> vec2f {
-  let abs_g = abs(g);
-  let idx = u32(abs_g) - 1u;
-  let t = fract(abs_g);
-  let p0 = curves[idx * 4 + 0];
-  let p1 = curves[idx * 4 + 1];
-  let p2 = curves[idx * 4 + 2];
-  let p3 = curves[idx * 4 + 3];
-
-  let is_straight_line = p1.x > STRAIGHT_LINE_THRESHOLD;
-  if (is_straight_line) {
-    return normalize(p3 - p0);
-  }
-
-
-  let mt = 1.0 - t;
-  return 3.0 * (mt * mt * (p1 - p0) + 2.0 * mt * t * (p2 - p1) + t * t * (p3 - p2));
-}
-
 fn g_to_bezier_pos(g: f32) -> vec2f {
   let abs_g = abs(g);
   let idx = u32(abs_g) - 1u;
@@ -257,13 +201,6 @@ fn g_to_bezier_pos(g: f32) -> vec2f {
     curves[idx * 4 + 2],
     curves[idx * 4 + 3]
   );
-
-
-  let is_straight_line = curve.p1.x > STRAIGHT_LINE_THRESHOLD;
-  if (is_straight_line) {
-    return mix(curve.p0, curve.p3, t);
-  }
-
   return bezier_point(curve, t);
 }
 
@@ -284,7 +221,7 @@ fn g_to_bezier_pos(g: f32) -> vec2f {
 
   let max_coord = vec2i(textureDimensions(texture)) - vec2i(1);
   let texel = vec2u(clamp(vec2i(vsOut.uv), vec2i(0), max_coord));
-  let g = abs(sdf.t) + 1;
+  let g = sdf.t + 1;
   // let g = textureLoad(texture, texel).g;
 
   // Decode the nearest curve point stored in this texel, then compute

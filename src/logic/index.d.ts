@@ -124,7 +124,8 @@ declare module '*.zig' {
       bound_box_data: ArrayPointerDataView,
       uniformData: ShapeDrawUniform,
       sdf_texture_id: number,
-      curves_data: ArrayPointerDataView
+      curves_data: ArrayPointerDataView,
+      uniform_t: ArrayPointerDataView
     ) => void
     pick_shape: (
       bound_box_data: ArrayPointerDataView,

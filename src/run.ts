@@ -104,8 +104,9 @@ export default function runCreator(
         sigmaPerPassY
       )
     },
-    draw_shape: (bound_box_data, uniform_data, textureId, curves_data) => {
+    draw_shape: (bound_box_data, uniform_data, textureId, curves_data, uniform_t) => {
       const curvesDataView = curves_data['*'].dataView
+      const uniformDataView = uniform_t['*'].dataView
 
       let program
       let uniform
@@ -132,7 +133,8 @@ export default function runCreator(
         Textures.getTexture(textureId),
         boundBoxDataView,
         uniform.dataView,
-        curvesDataView
+        curvesDataView,
+        uniformDataView
       )
     },
     pick_texture: (vertex_data, texture_id) => {

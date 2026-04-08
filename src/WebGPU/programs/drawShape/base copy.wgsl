@@ -89,6 +89,12 @@ fn getSample(pos: vec2f) -> Sample {
   let c01_g = abs(textureLoad(texture, p01).g) - 1;
   let c11_g = abs(textureLoad(texture, p11).g) - 1;
 
+  let nearest_g = select(
+    select(c00_g, c10_g, fract_pos.x >= 0.5),
+    select(c01_g, c11_g, fract_pos.x >= 0.5),
+    fract_pos.y >= 0.5
+  );
+
   let pos00 = g_to_bezier_pos(c00_g + 1);
   let pos10 = g_to_bezier_pos(c10_g + 1);
   let pos01 = g_to_bezier_pos(c01_g + 1);
@@ -112,16 +118,16 @@ fn getSample(pos: vec2f) -> Sample {
   // );
 
 
-  let tan00 = g_to_bezier_tangent(c00_g + 1);
-  let tan10 = g_to_bezier_tangent(c10_g + 1);
-  let tan01 = g_to_bezier_tangent(c01_g + 1);
-  let tan11 = g_to_bezier_tangent(c11_g + 1);
+  let tan00 = g_to_bezier_tangent(c00_g);
+  let tan10 = g_to_bezier_tangent(c10_g);
+  let tan01 = g_to_bezier_tangent(c01_g);
+  let tan11 = g_to_bezier_tangent(c11_g);
   let a00 = atan2(tan00.y, tan00.x);
   let a10 = atan2(tan10.y, tan10.x);
   let a01 = atan2(tan01.y, tan01.x);
   let a11 = atan2(tan11.y, tan11.x);
 
-  let naerest_tan = g_to_bezier_tangent(nearest_g_by_pos + 1);
+  let naerest_tan = g_to_bezier_tangent(nearest_g_by_pos);
   let nearest_tan_a = atan2(naerest_tan.y, naerest_tan.x);
 
   let diff00 = a00 - nearest_tan_a;
@@ -141,7 +147,7 @@ fn getSample(pos: vec2f) -> Sample {
 
 
 
-  let angle_threshold = PI * 10.5;
+  let angle_threshold = PI * 1000;
 
   let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), _diff00 < BILINEAR_T_THRESHOLD && abs(ndiff00) < angle_threshold);
   let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), _diff10 < BILINEAR_T_THRESHOLD && abs(ndiff10) < angle_threshold);
@@ -197,13 +203,11 @@ fn getSample(pos: vec2f) -> Sample {
 
   let total_w = w00 + w10 + w01 + w11;
   // Fall back to nearest texel when all neighbors are excluded (total_w == 0).
-  let blended = (c00_g * w00 + c10_g * w10 + c01_g * w01 + c11_g * w11) / total_w;
-  // Claude claims its possible
-  // let blended = select(
-  //   (c00_g * w00 + c10_g * w10 + c01_g * w01 + c11_g * w11) / total_w,
-  //   nearest_g,by_pos
-  //   total_w < 1e-6
-  // );
+  let blended = select(
+    (c00_g * w00 + c10_g * w10 + c01_g * w01 + c11_g * w11) / total_w,
+    nearest_g,
+    total_w < 1e-6
+  );
 
   return Sample(blended, 0);
   // return Sample(blended, min_dist);
@@ -236,13 +240,6 @@ fn g_to_bezier_tangent(g: f32) -> vec2f {
   let p1 = curves[idx * 4 + 1];
   let p2 = curves[idx * 4 + 2];
   let p3 = curves[idx * 4 + 3];
-
-  let is_straight_line = p1.x > STRAIGHT_LINE_THRESHOLD;
-  if (is_straight_line) {
-    return normalize(p3 - p0);
-  }
-
-
   let mt = 1.0 - t;
   return 3.0 * (mt * mt * (p1 - p0) + 2.0 * mt * t * (p2 - p1) + t * t * (p3 - p2));
 }
@@ -257,13 +254,6 @@ fn g_to_bezier_pos(g: f32) -> vec2f {
     curves[idx * 4 + 2],
     curves[idx * 4 + 3]
   );
-
-
-  let is_straight_line = curve.p1.x > STRAIGHT_LINE_THRESHOLD;
-  if (is_straight_line) {
-    return mix(curve.p0, curve.p3, t);
-  }
-
   return bezier_point(curve, t);
 }
 
@@ -284,7 +274,7 @@ fn g_to_bezier_pos(g: f32) -> vec2f {
 
   let max_coord = vec2i(textureDimensions(texture)) - vec2i(1);
   let texel = vec2u(clamp(vec2i(vsOut.uv), vec2i(0), max_coord));
-  let g = abs(sdf.t) + 1;
+  let g = sdf.t + 1;
   // let g = textureLoad(texture, texel).g;
 
   // Decode the nearest curve point stored in this texel, then compute

@@ -56,7 +56,7 @@ struct VSOutput {
   );
 }
 
-const BILINEAR_T_THRESHOLD = 1.5;
+const BILINEAR_T_THRESHOLD = 10.5;
 const BILINEAR_T_THRESHOLD_POS = 2;
 // all texels which has diff with nearest texel < BILINEAR_T_THRESHOLD
 // will be included in bilinear interpolation.
@@ -84,10 +84,17 @@ fn getSample(pos: vec2f) -> Sample {
   let c01 = textureLoad(texture, p01);
   let c11 = textureLoad(texture, p11);
   
-  let c00_g = abs(textureLoad(texture, p00).g) - 1;
-  let c10_g = abs(textureLoad(texture, p10).g) - 1;
-  let c01_g = abs(textureLoad(texture, p01).g) - 1;
-  let c11_g = abs(textureLoad(texture, p11).g) - 1;
+  // abs(g) < 1 means the texel was never written (shape doesn't cover it).
+  // Those texels have the sentinel value -3.4e38, which would produce garbage.
+  let valid00 = abs(c00.g) >= 1.0;
+  let valid10 = abs(c10.g) >= 1.0;
+  let valid01 = abs(c01.g) >= 1.0;
+  let valid11 = abs(c11.g) >= 1.0;
+
+  let c00_g = abs(c00.g) - 1;
+  let c10_g = abs(c10.g) - 1;
+  let c01_g = abs(c01.g) - 1;
+  let c11_g = abs(c11.g) - 1;
 
   let pos00 = g_to_bezier_pos(c00_g + 1);
   let pos10 = g_to_bezier_pos(c10_g + 1);
@@ -143,10 +150,16 @@ fn getSample(pos: vec2f) -> Sample {
 
   let angle_threshold = PI * 10.5;
 
-  let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), _diff00 < BILINEAR_T_THRESHOLD && abs(ndiff00) < angle_threshold);
-  let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), _diff10 < BILINEAR_T_THRESHOLD && abs(ndiff10) < angle_threshold);
-  let w01 = select(0.0, (1.0 - fract_pos.x) * fract_pos.y,         _diff01 < BILINEAR_T_THRESHOLD && abs(ndiff01) < angle_threshold);
-  let w11 = select(0.0, fract_pos.x         * fract_pos.y,         _diff11 < BILINEAR_T_THRESHOLD && abs(ndiff11) < angle_threshold);
+  let w00 = (1.0 - fract_pos.x) * (1.0 - fract_pos.y);
+  let w10 = fract_pos.x         * (1.0 - fract_pos.y);
+  let w01 = (1.0 - fract_pos.x) * fract_pos.y;
+  let w11 = fract_pos.x         * fract_pos.y;
+
+
+  // let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), _diff00 < BILINEAR_T_THRESHOLD && abs(ndiff00) < angle_threshold);
+  // let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), _diff10 < BILINEAR_T_THRESHOLD && abs(ndiff10) < angle_threshold);
+  // let w01 = select(0.0, (1.0 - fract_pos.x) * fract_pos.y,         _diff01 < BILINEAR_T_THRESHOLD && abs(ndiff01) < angle_threshold);
+  // let w11 = select(0.0, fract_pos.x         * fract_pos.y,         _diff11 < BILINEAR_T_THRESHOLD && abs(ndiff11) < angle_threshold);
 
 
 
@@ -205,7 +218,8 @@ fn getSample(pos: vec2f) -> Sample {
   //   total_w < 1e-6
   // );
 
-  return Sample(blended, 0);
+  return Sample((c01_g * (1.0 - fract_pos.y) + c00_g * fract_pos.y), 0);
+  // return Sample(blended, 0);
   // return Sample(blended, min_dist);
 }
 
@@ -220,6 +234,10 @@ fn get_uniform_t(t: f32) -> f32 {
   let quarter_f = local_t * UNIFORM_T_SAMPLING;
   let quarter = u32(floor(quarter_f));
   let frac = fract(quarter_f);
+
+  // let quarter = min(u32(floor(quarter_f)), u32(UNIFORM_T_SAMPLING) - 1u);
+  // let frac = quarter_f - f32(quarter); // fract within the quarter
+
 
   let lower_idx = ci * u32(UNIFORM_T_SAMPLING) + quarter;
   let upper_idx = lower_idx + 1u;
@@ -268,6 +286,10 @@ fn g_to_bezier_pos(g: f32) -> vec2f {
 }
 
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
+  // let test = textureLoad(texture, vec2i(vsOut.uv)).g;
+  // return vec4f(fract(test), 0, 0, 1);
+
+
   let sdf = getSample(vsOut.uv);
 
   let xxx = arrayLength(&uniform_t);
@@ -284,7 +306,7 @@ fn g_to_bezier_pos(g: f32) -> vec2f {
 
   let max_coord = vec2i(textureDimensions(texture)) - vec2i(1);
   let texel = vec2u(clamp(vec2i(vsOut.uv), vec2i(0), max_coord));
-  let g = abs(sdf.t) + 1;
+  let g = sdf.t + 1;
   // let g = textureLoad(texture, texel).g;
 
   // Decode the nearest curve point stored in this texel, then compute
@@ -305,7 +327,7 @@ fn g_to_bezier_pos(g: f32) -> vec2f {
 
   
 
-  return vec4f((1 - _sdf), select(0.0, 1.0, on_grid), 0, 1.0);
+  return vec4f(sdf.t % 1, select(0.0, 1.0, on_grid), 0, 1.0);
 
   // let sdf = getSample(vsOut.uv);
   let dist_to_curve: f32 = 0;
