@@ -64,6 +64,10 @@ export default function getDrawShape(
     },
   })
 
+  const sampler = device.createSampler({
+    label: 'drawShape sampler',
+  })
+
   return function drawShape(
     passEncoder: GPURenderPassEncoder,
     sdfTexture: GPUTexture,

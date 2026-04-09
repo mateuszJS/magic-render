@@ -16,6 +16,7 @@ import {
   combineSdf,
   clearSdf,
   clearComputeDepth,
+  renderShapeSdf,
 } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
 import PickManager from 'WebGPU/pick'
@@ -68,23 +69,24 @@ export default function runCreator(
     compute_shape: (curves_data, width, height, textureId) => {
       const curvesDataView = curves_data['*'].dataView
       Textures.update(textureId, width, height)
-      computeShape(computePass, curvesDataView, Textures.getTexture(textureId))
+      renderShapeSdf(encoder, curvesDataView, Textures.getTexture(textureId))
+      // computeShape(computePass, curvesDataView, Textures.getTexture(textureId))
     },
     clear_sdf: (sdfTextureId, computeDepthTextureId, width, height) => {
       Textures.update(sdfTextureId, width, height)
       Textures.update(computeDepthTextureId, width, height)
 
-      clearSdf(computePass, Textures.getTexture(sdfTextureId))
-      clearComputeDepth(computePass, Textures.getTexture(computeDepthTextureId))
+      // clearSdf(computePass, Textures.getTexture(sdfTextureId))
+      // clearComputeDepth(computePass, Textures.getTexture(computeDepthTextureId))
     },
     combine_sdf: (destinationTexId, sourceTexId, computeDepthTextureId, placementData) => {
-      combineSdf(
-        computePass,
-        Textures.getTexture(destinationTexId),
-        Textures.getTexture(sourceTexId),
-        Textures.getTexture(computeDepthTextureId),
-        placementData.dataView
-      )
+      // combineSdf(
+      //   computePass,
+      //   Textures.getTexture(destinationTexId),
+      //   Textures.getTexture(sourceTexId),
+      //   Textures.getTexture(computeDepthTextureId),
+      //   placementData.dataView
+      // )
     },
     draw_blur: (
       textureId,
@@ -159,25 +161,29 @@ export default function runCreator(
   const lastPickPointer: Point = { x: 0, y: 0 }
 
   /*===========PRERENDER ICONS SDF===============*/
-  encoder = device.createCommandEncoder({
-    label: 'prerender ui elements SDF',
-  })
-  computePass = encoder.beginComputePass()
-  Logic.generateUiElementsSdf()
-  computePass.end()
-  device.queue.submit([encoder.finish()])
+  // encoder = device.createCommandEncoder({
+  //   label: 'prerender ui elements SDF',
+  // })
+  // computePass = encoder.beginComputePass({
+  //   label: 'prerender ui elements SDF compute pass',
+  // })
+  // Logic.generateUiElementsSdf()
+  // computePass.end()
+  // device.queue.submit([encoder.finish()])
 
   /*===========MAIN LOOP FUNCTION===============*/
   function draw(now: DOMHighResTimeStamp, previewCtx?: GPUCanvasContext) {
     const isDrawNeeded = Logic.tick(now) || camera.redrawNeeded
 
     encoder = device.createCommandEncoder({
-      label: 'draw canvas main encoder',
+      label: 'main encoder',
     })
 
-    computePass = encoder.beginComputePass()
+    // computePass = encoder.beginComputePass({
+    //   label: 'main compute pass',
+    // })
     Logic.computePhase()
-    computePass.end()
+    // computePass.end()
 
     Logic.updateCache()
 

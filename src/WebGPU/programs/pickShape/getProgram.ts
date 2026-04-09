@@ -42,6 +42,9 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
     uniformData: DataView<ArrayBuffer>,
     sdfTexture: GPUTexture
   ) {
+    if (true == true) {
+      return
+    }
     const numVertices = vertexData.byteLength / STRIDE
 
     const uniformBuffer = device.createBuffer({

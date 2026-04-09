@@ -35,6 +35,7 @@ export default function getCombineSdf(device: GPUDevice) {
     passEncoder.setPipeline(pipeline)
 
     const bindGroup = device.createBindGroup({
+      label: 'combineSdf bind group',
       layout: pipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: destinationTex.createView() },

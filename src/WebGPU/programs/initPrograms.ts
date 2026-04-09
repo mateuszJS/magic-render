@@ -12,6 +12,7 @@ import getComputeShape from './computeShape/getProgram'
 import getCombineSdf from './combineSdf/getProgram'
 import getClearComputeDepth from './clearComputeDepth/getProgram'
 import getClearSdf from './clearSdf/getProgram'
+import getRenderShapeSdf from './renderShapeSdf/getProgram'
 
 export let drawTriangle: ReturnType<typeof getDrawTriangle>
 export let drawBlur: ReturnType<typeof getBlur>
@@ -26,6 +27,7 @@ export let computeShape: ReturnType<typeof getComputeShape>
 export let combineSdf: ReturnType<typeof getCombineSdf>
 export let clearComputeDepth: ReturnType<typeof getClearComputeDepth>
 export let clearSdf: ReturnType<typeof getClearSdf>
+export let renderShapeSdf: ReturnType<typeof getRenderShapeSdf>
 
 export const canvasMatrix: {
   buffer: GPUBuffer
@@ -103,4 +105,5 @@ export default function initPrograms(
   combineSdf = getCombineSdf(device)
   clearComputeDepth = getClearComputeDepth(device)
   clearSdf = getClearSdf(device)
+  renderShapeSdf = getRenderShapeSdf(device)
 }

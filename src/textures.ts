@@ -201,8 +201,8 @@ export function createSDF(): number {
   const texture: GPUTexture = device.createTexture({
     label,
     size: [1, 1],
-    format: 'rgba32float',
-    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+    format: 'r16float',
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
   })
 
   textures.push({ url: label, texture })
@@ -214,8 +214,8 @@ export function emptySDF(textureId: number, width: number, height: number): void
   const texture: GPUTexture = device.createTexture({
     label,
     size: [width, height],
-    format: 'rgba32float',
-    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+    format: 'r16float',
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
   })
 
   textures[textureId].texture?.destroy()
