@@ -880,8 +880,6 @@ pub fn computePhase() !void {
                                     .initial_t = @as(f32, @floatFromInt(all_points.items.len / 4)),
                                 };
 
-                                std.debug.print("text.sdf_tex.scale {d}\n", .{text.sdf_tex.scale});
-
                                 const transformed_points = try std.heap.page_allocator.dupe(types.Point, char_sdf_tex.points);
                                 const scale_x = texel_placement.width / char_sdf_tex.size.w;
                                 const scale_y = texel_placement.height / char_sdf_tex.size.h;
