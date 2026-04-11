@@ -389,12 +389,6 @@ pub const Shape = struct {
     }
 
     pub fn getDrawBounds(self: Shape, filter_margin: bool) [6]PointUV {
-        // shape.sdf_size includes effects padding, safety padding and rounding error
-        // to be able to compare them(obtain scale) together we have to calculate
-        // world size -> bounds size + effects padding
-        // sdf size -> shape.sdf_size - effects padding - rounding error
-
-        // TODO: move this and same secito nfrom texts.Text to dedicated function
         const effects_padding_world = sdf_drawing.getSdfPadding(self.effects.items);
 
         return sdf_drawing.getDrawBounds(

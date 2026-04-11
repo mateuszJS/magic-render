@@ -1099,11 +1099,14 @@ pub fn renderPick() !void {
                 webgpu_glue.pick_texture(&vertex_data, img.texture_id);
             },
             .shape => |shape| {
+                const bounds = shape.getPickBounds();
                 for (shape.effects.items) |effect| {
                     webgpu_glue.pick_shape(
-                        &shape.getPickBounds(),
+                        &bounds,
                         shape.getPickUniform(effect),
                         shape.sdf_tex.id,
+                        shape.sdf_tex.points,
+                        shape.sdf_tex.uniform_t,
                     );
                 }
             },

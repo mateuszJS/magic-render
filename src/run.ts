@@ -173,12 +173,17 @@ export default function runCreator(
       const dataView = vertex_data['*'].dataView
       pickTexture(pickPass, dataView, Textures.getTextureSafe(texture_id))
     },
-    pick_shape: (bound_box_data, uniform, textureId) => {
+    pick_shape: (bound_box_data, uniform, textureId, curves_data, uniform_t) => {
+      const curvesDataView = curves_data['*'].dataView
+      const uniformDataView = uniform_t['*'].dataView
+
       pickShape(
         pickPass,
         bound_box_data['*'].dataView,
         uniform.dataView,
-        Textures.getTexture(textureId)
+        Textures.getTexture(textureId),
+        curvesDataView,
+        uniformDataView
       )
     },
     pick_triangle: (vertex_data) => {

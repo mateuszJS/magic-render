@@ -16,7 +16,7 @@ pub var draw_blur: *const fn (u32, u32, u32, u32, f32, f32) void = undefined;
 pub var draw_shape: *const fn ([]const types.PointUV, sdf_drawing.DrawUniform, u32, []const types.Point, []const f32) void = undefined;
 pub var pick_texture: *const fn ([]const images.PickVertex, u32) void = undefined;
 pub var pick_triangle: *const fn ([]const triangles.PickInstance) void = undefined;
-pub var pick_shape: *const fn ([]const images.PickVertex, shapes.PickUniform, u32) void = undefined;
+pub var pick_shape: *const fn ([]const images.PickVertex, shapes.PickUniform, u32, []const types.Point, []const f32) void = undefined;
 
 pub const CombineSdfUniform = struct {
     x: f32,
@@ -38,7 +38,7 @@ pub const WebGpuProgramsInput = struct {
     draw_shape: *const fn ([]const types.PointUV, sdf_drawing.DrawUniform, u32, []const types.Point, []const f32) void,
     pick_texture: *const fn ([]const images.PickVertex, u32) void,
     pick_triangle: *const fn ([]const triangles.PickInstance) void,
-    pick_shape: *const fn ([]const images.PickVertex, shapes.PickUniform, u32) void,
+    pick_shape: *const fn ([]const images.PickVertex, shapes.PickUniform, u32, []const types.Point, []const f32) void,
 };
 
 pub fn connect(programs: *const WebGpuProgramsInput) void {
