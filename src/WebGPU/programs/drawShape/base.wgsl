@@ -1,7 +1,7 @@
 const STRAIGHT_LINE_THRESHOLD = 1e10;
 const EPSILON = 1e-10;
 const PI = 3.141592653589793;
-const FWIDTH_VALID_LIMIT = 3.402823466e+10;
+const FWIDTH_VALID_LIMIT = 100;
 // Shapes share a single SDF texture. Pixels not covered by any shape are
 // initialized to -3.402823466e+38 before per-shape SDF values are written.
 // This creates extremely large distance derivatives at the boundary between
@@ -40,7 +40,7 @@ struct Vertex {
 // @group(0) @binding(1) var texture: texture_storage_2d<rgba32float, read>;
 @group(0) @binding(2) var<uniform> camera_projection: mat4x4f;
 @group(0) @binding(3) var<storage, read> curves: array<vec2f>;
-@group(0) @binding(4) var<storage, read> uniform_t: array<f32>;
+// @group(0) @binding(4) var<storage, read> uniform_t: array<f32>;
 // @group(0) @binding(5) var ourSampler: sampler;
 // consider witchign to uniform if possible
 
@@ -67,74 +67,52 @@ const BILINEAR_T_THRESHOLD_POS = 2;
 
 struct Sample {
   t: f32,
-  distance: f32,
+  sign: f32,
 };
 
-// Given a uniform arc-length value, binary search uniform_t to find the
-// corresponding c_g (curve_index + local_t) value.
-fn uniform_t_to_relative_t(s: f32) -> f32 {
-  let len = arrayLength(&uniform_t);
-  var lo = 0u;
-  var hi = len - 1u;
-  while (lo + 1u < hi) {
-    let mid = (lo + hi) / 2u;
-    if (uniform_t[mid] <= s) { lo = mid; } else { hi = mid; }
-  }
-  let t_lo = uniform_t[lo];
-  let t_hi = uniform_t[hi];
-  let frac = select(0.0, (s - t_lo) / (t_hi - t_lo), t_hi > t_lo);
-  // lo index maps to: curve = lo/4, quarter = lo%4
-  let ci = lo / u32(UNIFORM_T_SAMPLING);
-  let quarter = lo % u32(UNIFORM_T_SAMPLING);
-  let local_t = (f32(quarter) + frac) / UNIFORM_T_SAMPLING;
-  return f32(ci) + local_t;
-}
-
-fn getSample(pos: vec2f) -> f32 {
+fn getSample(pos: vec2f) -> Sample {
     let floor_pos = floor(pos - 0.5);
   let fract_pos = pos - 0.5 - floor_pos;
 
   let max_coord = vec2i(vec2i(textureDimensions(texture)) - vec2i(1, 1));
 
-
-  // let p00 = vec2u(clamp(vec2i(floor_pos),                   vec2i(0, 0), max_coord));
-  // let p10 = vec2u(clamp(vec2i(floor_pos + vec2f(1.0, 0.0)), vec2i(0, 0), max_coord));
-  // let p01 = vec2u(clamp(vec2i(floor_pos + vec2f(0.0, 1.0)), vec2i(0, 0), max_coord));
-  // let p11 = vec2u(clamp(vec2i(floor_pos + vec2f(1.0, 1.0)), vec2i(0, 0), max_coord));
   let p00 = vec2u(clamp(vec2i(floor_pos                  ), vec2i(0, 0), max_coord));
   let p10 = vec2u(clamp(vec2i(floor_pos + vec2f(1.0, 0.0)), vec2i(0, 0), max_coord));
   let p01 = vec2u(clamp(vec2i(floor_pos + vec2f(0.0, 1.0)), vec2i(0, 0), max_coord));
   let p11 = vec2u(clamp(vec2i(floor_pos + vec2f(1.0, 1.0)), vec2i(0, 0), max_coord));
 
   // textureSample(ourTexture, ourSampler, fsInput.texcoord);
-  let c00 = textureLoad(texture, p00, 0).r;
-  let c10 = textureLoad(texture, p10, 0).r;
-  let c01 = textureLoad(texture, p01, 0).r;
-  let c11 = textureLoad(texture, p11, 0).r;
+  let raw_c00 = textureLoad(texture, p00, 0).r;
+  let raw_c10 = textureLoad(texture, p10, 0).r;
+  let raw_c01 = textureLoad(texture, p01, 0).r;
+  let raw_c11 = textureLoad(texture, p11, 0).r;
 
-  // textureLoad(texture_2d<f32>, sampler, vec2<f32>, abstract-int)'
-  // let c00 = textureLoad(texture, p00).r;
-  // let c10 = textureLoad(texture, p10).r;
-  // let c01 = textureLoad(texture, p01).r;
-  // let c11 = textureLoad(texture, p11).r;
+  let c00 = abs(raw_c00) - 1;
+  let c10 = abs(raw_c10) - 1;
+  let c01 = abs(raw_c01) - 1;
+  let c11 = abs(raw_c11) - 1;
 
-  // let g10 = select(c00, c10, abs(c10 - c00) < BILINEAR_T_THRESHOLD);
-  // let g01 = select(c00, c01, abs(c01 - c00) < BILINEAR_T_THRESHOLD);
-  // let g11 = select(c00, c11, abs(c11 - c00) < BILINEAR_T_THRESHOLD);
+  let g10 = select(c00, c10, abs(c10 - c00) < BILINEAR_T_THRESHOLD);
+  let g01 = select(c00, c01, abs(c01 - c00) < BILINEAR_T_THRESHOLD);
+  let g11 = select(c00, c11, abs(c11 - c00) < BILINEAR_T_THRESHOLD);
 
-  // let top = mix(abs(c00), abs(g10), fract_pos.x);
-  // let bottom = mix(abs(g01), abs(g11), fract_pos.x);
+  let top = mix(c00, g10, fract_pos.x);
+  let bottom = mix(g01, g11, fract_pos.x);
+  let final_t = mix(top, bottom, fract_pos.y);
 
-  // let final_t = mix(top, bottom, fract_pos.y);
-  let final_t = abs(c00);
+  // Pick sign from the nearest texel to pos (not always p00)
+  let nearest_raw = select(
+    select(raw_c00, raw_c01, fract_pos.y >= 0.5),
+    select(raw_c10, raw_c11, fract_pos.y >= 0.5),
+    fract_pos.x >= 0.5
+  );
 
-  return final_t * sign(c00);
+  return Sample(final_t, sign(nearest_raw));
 }
 
-fn g_to_bezier_pos(g: f32) -> vec2f {
-  let abs_g = abs(g);
-  let idx = u32(abs_g) - 1u;
-  let t   = fract(abs_g);
+fn g_to_bezier_pos(global_t: f32) -> vec2f {
+  let idx = u32(global_t);
+  let local_t = fract(global_t);
   let curve = CubicBezier(
     curves[idx * 4 + 0],
     curves[idx * 4 + 1],
@@ -142,36 +120,32 @@ fn g_to_bezier_pos(g: f32) -> vec2f {
     curves[idx * 4 + 3]
   );
 
-
   let is_straight_line = curve.p1.x > STRAIGHT_LINE_THRESHOLD;
   if (is_straight_line) {
-    return mix(curve.p0, curve.p3, t);
+    return mix(curve.p0, curve.p3, local_t);
   }
 
-  return bezier_point(curve, t);
+  return bezier_point(curve, local_t);
 }
 
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
-  let g = getSample(vsOut.uv);
-  let curve_pos = g_to_bezier_pos(g);
-  let distance = length(curve_pos - vsOut.uv);// * sign(g);
-  let x = arrayLength(&uniform_t);
-
-
-  // return vec4f(distance / 50, 0, 0, 1.0);
-
+  let sample = getSample(vsOut.uv);
+  let curve_pos = g_to_bezier_pos(sample.t);
+  let distance = length(curve_pos - vsOut.uv);
+  let signed_distance = distance * sample.sign;
 
   ${TEST}
 
-  let dist_derivative = fwidth(distance);
+  let dist_derivative = fwidth(signed_distance);
 
   let safe_dist_derivative = select(0.0, dist_derivative, dist_derivative <= FWIDTH_VALID_LIMIT); // if too large -> 0
-  let alpha_smooth_factor = max(safe_dist_derivative * 0.5, EPSILON);
+  let alpha_smooth_factor = safe_dist_derivative * 1;
+  // let alpha_smooth_factor = max(safe_dist_derivative * 1, EPSILON);
 
-  let inner_alpha = smoothstep(u.dist_start - alpha_smooth_factor, u.dist_start + alpha_smooth_factor, distance);
-  let outer_alpha = smoothstep(u.dist_end - alpha_smooth_factor, u.dist_end + alpha_smooth_factor, distance);
+  let inner_alpha = smoothstep(u.dist_start - alpha_smooth_factor, u.dist_start + alpha_smooth_factor, signed_distance);
+  let outer_alpha = smoothstep(u.dist_end - alpha_smooth_factor, u.dist_end + alpha_smooth_factor, signed_distance);
   let alpha = outer_alpha - inner_alpha;
-  let color = getColor(vec4f(distance, 0, 0, 1), vsOut.uv, vsOut.norm_uv);
+  let color = getColor(vec4f(signed_distance, 0, 0, 1), vsOut.uv, vsOut.norm_uv);
   let result = vec4f(color.rgb, color.a * alpha);
 
   // if (result.a < EPSILON) {

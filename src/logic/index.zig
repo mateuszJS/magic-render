@@ -841,7 +841,7 @@ pub fn computePhase() !void {
                         @intFromFloat(text.sdf_tex.size.h),
                     );
 
-                    webgpu_glue.clear_sdf(
+                    webgpu_glue.start_combine_sdf(
                         text.sdf_tex.id,
                         compute_depth_texture_id,
                         @intFromFloat(text.sdf_tex.size.w),
@@ -853,6 +853,9 @@ pub fn computePhase() !void {
                         text_padding,
                         bounds_height + text_padding,
                     );
+
+                    var all_points = std.ArrayList(types.Point).init(std.heap.page_allocator);
+                    defer all_points.deinit();
 
                     for (text.text_vertex.items) |vertex| {
                         if (vertex.char) |char| {
@@ -869,22 +872,41 @@ pub fn computePhase() !void {
                                     text.sdf_tex.scale,
                                 );
 
-                                const texel_placement = types.Placement{
+                                const texel_placement = webgpu_glue.CombineSdfUniform{
                                     .x = bounds_texel[4].x + consts.SDF_SAFE_PADDING,
                                     .y = bounds_texel[4].y + consts.SDF_SAFE_PADDING,
                                     .width = bounds_texel[4].distance(bounds_texel[2]),
                                     .height = bounds_texel[4].distance(bounds_texel[0]),
+                                    .initial_t = @as(f32, @floatFromInt(all_points.items.len / 4)),
                                 };
+
+                                std.debug.print("text.sdf_tex.scale {d}\n", .{text.sdf_tex.scale});
+
+                                const transformed_points = try std.heap.page_allocator.dupe(types.Point, char_sdf_tex.points);
+                                const scale_x = texel_placement.width / char_sdf_tex.size.w;
+                                const scale_y = texel_placement.height / char_sdf_tex.size.h;
+                                for (transformed_points) |*p| {
+                                    p.x = texel_placement.x + p.x * scale_x;
+                                    p.y = texel_placement.y + p.y * scale_y;
+                                }
 
                                 webgpu_glue.combine_sdf(
                                     text.sdf_tex.id,
                                     char_sdf_tex.id,
                                     compute_depth_texture_id,
                                     texel_placement,
+                                    transformed_points,
                                 );
+
+                                try all_points.appendSlice(transformed_points);
                             }
                         }
                     }
+
+                    std.heap.page_allocator.free(text.sdf_tex.points);
+                    text.sdf_tex.points = try all_points.toOwnedSlice();
+
+                    webgpu_glue.finish_combine_sdf();
                 }
             },
         }

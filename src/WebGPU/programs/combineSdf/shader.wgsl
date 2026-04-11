@@ -1,78 +1,87 @@
+const STRAIGHT_LINE_THRESHOLD = 1e10;
+
 struct Uniform {
   placement_start: vec2f,
   placement_size: vec2f,
+  initial_t: f32,
 };
 
-@group(0) @binding(0) var destination_tex: texture_storage_2d<rgba32float, write>;
-@group(0) @binding(1) var source_tex: texture_storage_2d<rgba32float, read>;
-@group(0) @binding(2) var depth_tex: texture_storage_2d<r32float, read_write>;
-@group(0) @binding(3) var<uniform> u: Uniform;
+@group(0) @binding(0) var source_tex: texture_2d<f32>;
+@group(0) @binding(1) var<uniform> u: Uniform;
+@group(0) @binding(2) var<storage, read> curves: array<vec2f>;
 
-@compute @workgroup_size($WORKING_GROUP_SIZE) fn cs(
-  @builtin(global_invocation_id) id : vec3u
-)  {
-  if (any(u.placement_size <= vec2f(0.0))) {
-    return;
-  }
+struct VSOutput {
+  @builtin(position) position: vec4f,
+};
 
-  let placement_min = floor(u.placement_start);
-  let placement_max = ceil(u.placement_start + u.placement_size);
+const vertex_list = array<vec2f, 6>(
+  vec2f(-1.0, -1.0), vec2f( 1.0, -1.0), vec2f(-1.0,  1.0),
+  vec2f(-1.0,  1.0), vec2f( 1.0, -1.0), vec2f( 1.0,  1.0),
+);
 
-  let dest_pos = vec2i(placement_min) + vec2i(id.xy);
-
-  if (any(vec2f(dest_pos) >= placement_max)) {
-    return;
-  }
-
-  let dest_dims = vec2i(textureDimensions(destination_tex));
-  if (any(dest_pos < vec2i(0)) || any(dest_pos >= dest_dims)) {
-    return;
-  }
-
-  let dest_center = vec2f(dest_pos) + vec2f(0.5);
-  let local = (dest_center - u.placement_start) / u.placement_size;
-
-  if (any(local < vec2f(0.0)) || any(local >= vec2f(1.0))) {
-    return;
-  }
-
-  let source_size = vec2f(textureDimensions(source_tex));
-  let source_sample_pos = local * source_size;
-  let source_texel = getSampleSource(source_sample_pos);
-  let scale = source_size / u.placement_size;
-  let scaled_dist = source_texel.r / scale.x; // we assume all sizes keeps their ratio width / height, so we can use .x or .y here
-  let depth = textureLoad(depth_tex, dest_pos).r;
-
-  if (scaled_dist > depth) {
-    textureStore(destination_tex, dest_pos, vec4f(scaled_dist, source_texel.g, source_texel.b, source_texel.a));
-    textureStore(depth_tex, dest_pos, vec4f(scaled_dist));
-  }
+@vertex fn vs(@builtin(vertex_index) idx: u32) -> VSOutput {
+  return VSOutput(vec4f(vertex_list[idx], 0.0, 1.0));
 }
 
-fn getSampleSource(pos: vec2f) -> vec4f {
-  let min = vec2i(0);
-  let source_dims_u = textureDimensions(source_tex);
-  let max = vec2i(textureDimensions(source_tex)) - vec2i(1);
+struct FSOutput {
+  @location(0) color: f32,
+  @builtin(frag_depth) depth: f32,
+};
 
-  // We do not clamp pos on purpose. Textures always have empty 1 texel paddign around.
+@fragment fn fs(vsOut: VSOutput) -> FSOutput {
+  let dest_center = vsOut.position.xy;
+  let local = (dest_center - u.placement_start) / u.placement_size;
+  let source_size = vec2f(textureDimensions(source_tex));
+  let source_sample_pos = local * source_size;
+  let source_texel = textureLoad(source_tex, vec2u(source_sample_pos), 0);
+
+  let sanitized_t = abs(source_texel.r) - 1.0;
+  let closest_curve_point = g_to_bezier_pos(sanitized_t);
+  let distance = length(dest_center - closest_curve_point);
+  let scaled_dist = 0.5 + sign(source_texel.r) * distance / 1000;//max(source_size.x, source_size.y);
+
+  return FSOutput(
+    (1.0 + u.initial_t + sanitized_t) * sign(source_texel.r),
+    scaled_dist,
+  );
+}
+
+fn bezier_point(curve: CubicBezier, t: f32) -> vec2f {
+  let t2 = t * t;
+  let t3 = t2 * t;
+  let one_minus_t = 1.0 - t;
+  let one_minus_t2 = one_minus_t * one_minus_t;
+  let one_minus_t3 = one_minus_t2 * one_minus_t;
+
+  return curve.p0 * one_minus_t3 +
+         3.0 * curve.p1 * t * one_minus_t2 +
+         3.0 * curve.p2 * t2 * one_minus_t +
+         curve.p3 * t3;
+}
 
 
-  let base_pos = pos - vec2f(0.5);
-  let floor_pos = vec2i(floor(base_pos));
-  let fract_pos = base_pos - vec2f(floor_pos);
+struct CubicBezier {
+  p0: vec2f,
+  p1: vec2f,
+  p2: vec2f,
+  p3: vec2f,
+};
 
-  let p00 = vec2u(clamp(floor_pos,               min, max));
-  let p10 = vec2u(clamp(floor_pos + vec2i(1, 0), min, max));
-  let p01 = vec2u(clamp(floor_pos + vec2i(0, 1), min, max));
-  let p11 = vec2u(clamp(floor_pos + vec2i(1, 1), min, max));
 
-  let c00 = textureLoad(source_tex, p00);
-  let c10 = textureLoad(source_tex, p10);
-  let c01 = textureLoad(source_tex, p01);
-  let c11 = textureLoad(source_tex, p11);
+fn g_to_bezier_pos(global_t: f32) -> vec2f {
+  let idx = u32(global_t);
+  let local_t = fract(global_t);
+  let curve = CubicBezier(
+    curves[idx * 4 + 0],
+    curves[idx * 4 + 1],
+    curves[idx * 4 + 2],
+    curves[idx * 4 + 3]
+  );
 
-  let top = mix(c00, c10, fract_pos.x);
-  let bottom = mix(c01, c11, fract_pos.x);
+  let is_straight_line = curve.p1.x > STRAIGHT_LINE_THRESHOLD;
+  if (is_straight_line) {
+    return mix(curve.p0, curve.p3, local_t);
+  }
 
-  return mix(top, bottom, fract_pos.y);
+  return bezier_point(curve, local_t);
 }

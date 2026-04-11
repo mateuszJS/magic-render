@@ -281,7 +281,7 @@ pub fn getDrawBounds(
 
 fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
     if (shared.is_test or shared.is_test == false) {
-        return 2;
+        return 1;
     }
 
     const max_dim = @max(bounds[0].distance(bounds[1]), bounds[0].distance(bounds[3]));

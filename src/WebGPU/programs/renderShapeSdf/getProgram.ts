@@ -17,7 +17,7 @@ export default function getComputeShape(device: GPUDevice) {
     fragment: {
       module: shaderModule,
       entryPoint: 'fs',
-      targets: [{ format: 'r16float' }],
+      targets: [{ format: 'r32float' }],
     },
   })
 

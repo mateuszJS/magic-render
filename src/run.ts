@@ -41,8 +41,8 @@ export default function runCreator(
   onEmptyEvents: VoidFunction // call when there is no more events to process
 ) {
   let pickPass: GPURenderPassEncoder
-  let computePass: GPUComputePassEncoder
   let encoder: GPUCommandEncoder
+  let combineSdfRenderPass: GPURenderPassEncoder
 
   const pickManager = new PickManager(device)
 
@@ -72,21 +72,51 @@ export default function runCreator(
       renderShapeSdf(encoder, curvesDataView, Textures.getTexture(textureId))
       // computeShape(computePass, curvesDataView, Textures.getTexture(textureId))
     },
-    clear_sdf: (sdfTextureId, computeDepthTextureId, width, height) => {
+    start_combine_sdf: (sdfTextureId, computeDepthTextureId, width, height) => {
       Textures.update(sdfTextureId, width, height)
       Textures.update(computeDepthTextureId, width, height)
 
-      // clearSdf(computePass, Textures.getTexture(sdfTextureId))
-      // clearComputeDepth(computePass, Textures.getTexture(computeDepthTextureId))
+      combineSdfRenderPass = encoder.beginRenderPass({
+        label: 'combone SDFs',
+        colorAttachments: [
+          {
+            view: Textures.getTexture(sdfTextureId).createView(),
+            loadOp: 'clear',
+            clearValue: {
+              r: -3.402823466e38,
+              g: 0,
+              b: 0,
+              a: 0,
+            },
+            storeOp: 'store',
+          },
+        ],
+        depthStencilAttachment: {
+          view: Textures.getTexture(computeDepthTextureId).createView(),
+          depthClearValue: 0, //-3.402823466e38,
+          depthLoadOp: 'clear',
+          depthStoreOp: 'store',
+        },
+      })
     },
-    combine_sdf: (destinationTexId, sourceTexId, computeDepthTextureId, placementData) => {
-      // combineSdf(
-      //   computePass,
-      //   Textures.getTexture(destinationTexId),
-      //   Textures.getTexture(sourceTexId),
-      //   Textures.getTexture(computeDepthTextureId),
-      //   placementData.dataView
-      // )
+    combine_sdf: (
+      destinationTexId,
+      sourceTexId,
+      computeDepthTextureId,
+      uniformData,
+      curves_data
+    ) => {
+      const curvesDataView = curves_data['*'].dataView
+      combineSdf(
+        combineSdfRenderPass,
+        Textures.getTexture(destinationTexId),
+        Textures.getTexture(sourceTexId),
+        uniformData.dataView,
+        curvesDataView
+      )
+    },
+    finish_combine_sdf: () => {
+      combineSdfRenderPass.end()
     },
     draw_blur: (
       textureId,
@@ -161,15 +191,12 @@ export default function runCreator(
   const lastPickPointer: Point = { x: 0, y: 0 }
 
   /*===========PRERENDER ICONS SDF===============*/
-  // encoder = device.createCommandEncoder({
-  //   label: 'prerender ui elements SDF',
-  // })
-  // computePass = encoder.beginComputePass({
-  //   label: 'prerender ui elements SDF compute pass',
-  // })
-  // Logic.generateUiElementsSdf()
-  // computePass.end()
-  // device.queue.submit([encoder.finish()])
+
+  encoder = device.createCommandEncoder({
+    label: 'prerender ui elements SDF',
+  })
+  Logic.generateUiElementsSdf()
+  device.queue.submit([encoder.finish()])
 
   /*===========MAIN LOOP FUNCTION===============*/
   function draw(now: DOMHighResTimeStamp, previewCtx?: GPUCanvasContext) {
@@ -179,12 +206,7 @@ export default function runCreator(
       label: 'main encoder',
     })
 
-    // computePass = encoder.beginComputePass({
-    //   label: 'main compute pass',
-    // })
     Logic.computePhase()
-    // computePass.end()
-
     Logic.updateCache()
 
     const matrix = getCanvasMatrix(previewCtx?.canvas || creatorCanvas)
