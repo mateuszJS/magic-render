@@ -132,7 +132,9 @@ declare module '*.zig' {
     pick_shape: (
       bound_box_data: ArrayPointerDataView,
       uniformData: PointerDataView,
-      sdf_texture_id: number
+      sdf_texture_id: number,
+      curves_data: ArrayPointerDataView,
+      uniform_t: ArrayPointerDataView
     ) => void
   }) => void
   export function glueJsGeneral(

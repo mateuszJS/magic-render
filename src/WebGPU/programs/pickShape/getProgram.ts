@@ -40,11 +40,10 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
     pass: GPURenderPassEncoder,
     vertexData: DataView<ArrayBuffer>,
     uniformData: DataView<ArrayBuffer>,
-    sdfTexture: GPUTexture
+    sdfTexture: GPUTexture,
+    curvesDataView: DataView<ArrayBuffer>,
+    uniformTDataView: DataView<ArrayBuffer>
   ) {
-    if (true == true) {
-      return
-    }
     const numVertices = vertexData.byteLength / STRIDE
 
     const uniformBuffer = device.createBuffer({
@@ -56,12 +55,28 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
     delayedDestroy(uniformBuffer)
 
     const vertexBuffer = device.createBuffer({
-      label: 'pick texture - vertex buffer',
+      label: 'pickShape - vertex buffer',
       size: vertexData.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(vertexBuffer, 0, vertexData)
     delayedDestroy(vertexBuffer)
+
+    const curvesBuffer = device.createBuffer({
+      label: 'pickShape curves buffer',
+      size: curvesDataView.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    })
+    device.queue.writeBuffer(curvesBuffer, 0, curvesDataView)
+    delayedDestroy(curvesBuffer)
+
+    const uniformTBuffer = device.createBuffer({
+      label: 'pickShape uniform T buffer',
+      size: uniformTDataView.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    })
+    device.queue.writeBuffer(uniformTBuffer, 0, uniformTDataView)
+    delayedDestroy(uniformTBuffer)
 
     // Get or create bind group for this texture
     const bindGroup = device.createBindGroup({
@@ -70,6 +85,7 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
         { binding: 0, resource: { buffer: matrixBuffer } },
         { binding: 1, resource: { buffer: uniformBuffer } },
         { binding: 2, resource: sdfTexture.createView() },
+        { binding: 3, resource: { buffer: curvesBuffer } },
       ],
     })
 
