@@ -9,24 +9,24 @@ struct CubicBezier {
   p3: vec2f,
 };
 
-@group(0) @binding(0) var tex: texture_storage_2d<rgba32float, write>;
-@group(0) @binding(1) var<storage, read> curves: array<vec2f>;
+@group(0) @binding(0) var<storage, read> curves: array<vec2f>;
 
-@compute @workgroup_size($WORKING_GROUP_SIZE) fn cs(
-  @builtin(global_invocation_id) id : vec3u
-)  {
-  let size = textureDimensions(tex);
-  if (id.x >= size.x || id.y >= size.y) {return;}
+struct VSOutput {
+  @builtin(position) position: vec4f,
+};
 
-  let pos = vec2f(id.xy) + vec2f(0.5, 0.5);
+@vertex fn vs(@builtin(vertex_index) idx: u32) -> VSOutput {
+  var pos = array<vec2f, 6>(
+    vec2f(-1.0, -1.0), vec2f( 1.0, -1.0), vec2f(-1.0,  1.0),
+    vec2f(-1.0,  1.0), vec2f( 1.0, -1.0), vec2f( 1.0,  1.0),
+  );
+  return VSOutput(vec4f(pos[idx], 0.0, 1.0));
+}
+
+@fragment fn fs(vsOut: VSOutput) -> @location(0) f32 {
+  let pos = vsOut.position.xy;
   let shape_info = evaluate_shape(pos);
-
-  textureStore(tex, id.xy, vec4f(
-    shape_info.signed_distance,
-    shape_info.t,
-    shape_info.angle,
-    1.0
-  ));
+  return shape_info.t;
 }
 
 fn bezier_point(curve: CubicBezier, t: f32) -> vec2f {

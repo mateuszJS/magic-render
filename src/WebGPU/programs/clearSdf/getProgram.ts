@@ -17,6 +17,7 @@ export default function getClearSdf(device: GPUDevice) {
 
   return function clearSdf(passEncoder: GPUComputePassEncoder, texture: GPUTexture) {
     const bindGroup = device.createBindGroup({
+      label: 'clearSdf bind group',
       layout: pipeline.getBindGroupLayout(0),
       entries: [
         {

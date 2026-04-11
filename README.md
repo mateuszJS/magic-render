@@ -10,7 +10,7 @@ https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.htm
 
 # Releasing versions
 
-Each Pull Request has to be merged with squash, the following naming convention needs to be respected:
+Each Pull Request has to be merged with squash (currnetly to `main`, we have dropped `next` branch),, the following naming convention needs to be respected:
 
 | Commit Message                                                                                                                                                                                   | Release Type                                                                                                |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
@@ -35,14 +35,14 @@ npm link @mateuszjs/magic-render
 In the repo where you want to put local version of the package.
 Remember to build package to see an update!
 
-# Glossary
+## Glossary
 
-## Units:
+### Units:
 
-viewport - value expressed in pixels which will be rendered on the screen. This is exavtly how many pixels will be rendered, already includes retina. It's device physical pixel, not CSS pixel.
+- `Viewport` - value expressed in pixels which will be rendered onto the screen. Represents exactly how many pixels will be rendered, already includes retina/non-retina. It's physical device pixel, not CSS pixel.
 
-world - values expressed in abstract units used in project. This unit is absolute, never changes, does not depend on anything. This is how all sizes of all assets and assets' properties are kept expressed.
+- `World` - values expressed in abstract units used in projects. This unit is absolute, never changes, does not depend on anything. This is how all sizes of all assets and assets' properties are kept expressed in zig state and snapshots.
 
-texel - value expressed in texels, ususally in SDF texture texels. It corresponds to how many texels will be used in the SDF texture.
+- `Texel` - value expressed in texels (pixel but for texture), usually in SDF texture texels. It corresponds to how many texels will be used in the SDF texture.
 
-Often when no unit is used, value is expressed in world coordinates OR the unit is obvious from the function context.
+_Often when no unit is used, a value is expressed in the world coordinates OR the unit is obvious from the context._

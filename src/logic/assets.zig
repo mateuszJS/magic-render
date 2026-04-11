@@ -177,7 +177,7 @@ pub fn createText(x: f32, y: f32, width: f32, font_size: f32, line_height: f32) 
         effects,
         typo_props,
         js_glue.createSdfTexture(),
-        true,
+        false,
     );
 }
 

@@ -142,9 +142,27 @@ pub const SdfTex = struct {
     padding: f32 = 0,
     round_err: Point = .{},
     is_outdated: bool = true,
+    points: []const Point = &.{},
+    uniform_t: []const f32 = &.{}, // map real bezier t to real distance along the curve
+    // each bezier curve gets 4 samples, if the curve is just a line of length 2 it would be
+    // {0.5, 1.0, 1.5, 2.0, next curve values.....}
+    // then the next curve values are coming like ...2.1, 2.2, 2.6, 5.4}
+    // each value representing distance at t = 25%, t = 50%, t = 75%, t = 100% of the curve
+    // It's used in shader to map relative bezier "t" value to absolute distance along the curve
 
     pub fn isBiggerThan(self: SdfTex, other: SdfTex) bool {
         return self.size.w > other.size.w + consts.EPSILON or self.size.h > other.size.h + consts.EPSILON;
+    }
+
+    pub fn deinit(self: *SdfTex) void {
+        if (self.points.len != 0) {
+            std.heap.page_allocator.free(self.points);
+            self.points = &.{};
+        }
+        if (self.uniform_t.len != 0) {
+            std.heap.page_allocator.free(self.uniform_t);
+            self.uniform_t = &.{};
+        }
     }
 };
 
@@ -263,7 +281,7 @@ pub fn getDrawBounds(
 
 fn getRatioPxPerSdfTexel(bounds: [4]PointUV) f32 {
     if (shared.is_test or shared.is_test == false) {
-        return 2;
+        return 1;
     }
 
     const max_dim = @max(bounds[0].distance(bounds[1]), bounds[0].distance(bounds[3]));

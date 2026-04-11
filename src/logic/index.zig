@@ -686,6 +686,8 @@ pub fn updateCache() void {
                             &vertex_bounds,
                             shape.getDrawUniform(effect),
                             shape.sdf_tex.id,
+                            shape.sdf_tex.points,
+                            shape.sdf_tex.uniform_t,
                         );
                     }
 
@@ -756,19 +758,28 @@ pub fn computePhase() !void {
                 const bounds = utils.createBounds(ch_w, ch_h);
                 const padding = ch_d.font_size * ch_d.*.max_ratio_padding_to_font_size;
 
-                const points = try allocator.dupe(types.Point, ch_d.points);
+                const points = try std.heap.page_allocator.dupe(types.Point, ch_d.points);
                 for (points) |*point| {
+                    if (path_utils.isStraightLineHandle(point.*)) {
+                        continue;
+                    }
                     point.x *= ch_d.font_size;
                     point.y *= ch_d.font_size;
                 }
 
-                ch_d.sdf_tex = try computeShape(
+                ch_sdf_tex.deinit();
+
+                const new_sdf_tex = try computeShape(
                     ch_sdf_tex.id,
                     bounds,
                     padding,
                     points,
                     consts.SDF_RESIZE_STEP,
                 );
+
+                // new_sdf_tex.points = points;
+
+                ch_d.sdf_tex = new_sdf_tex;
 
                 ch_d.viewport_font_size = consts.SDF_RESIZE_STEP * ch_d.font_size / shared.render_scale;
             }
@@ -789,13 +800,14 @@ pub fn computePhase() !void {
                 const option_points = try shape.getRelativePoints(allocator);
                 if (option_points) |points| {
                     const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
-                    const copy_points = try allocator.dupe(types.Point, points);
+                    const points_copy = try std.heap.page_allocator.dupe(types.Point, points);
 
+                    shape.sdf_tex.deinit();
                     shape.sdf_tex = try computeShape(
                         shape.sdf_tex.id,
                         shape.bounds,
                         sdf_padding,
-                        copy_points,
+                        points_copy,
                         consts.SDF_RESIZE_STEP,
                     );
                     shape.outdated_cache = true;
@@ -814,6 +826,7 @@ pub fn computePhase() !void {
 
                     const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
 
+                    text.sdf_tex.deinit();
                     text.sdf_tex = sdf_drawing.getTexture(
                         text.sdf_tex.id,
                         text.bounds,
@@ -821,12 +834,14 @@ pub fn computePhase() !void {
                         consts.SDF_RESIZE_STEP,
                     );
 
+                    // text.sdf_tex.points = .{};
+
                     const compute_depth_texture_id = js_glue.createDisposableComputeDepthTexture(
                         @intFromFloat(text.sdf_tex.size.w),
                         @intFromFloat(text.sdf_tex.size.h),
                     );
 
-                    webgpu_glue.clear_sdf(
+                    webgpu_glue.start_combine_sdf(
                         text.sdf_tex.id,
                         compute_depth_texture_id,
                         @intFromFloat(text.sdf_tex.size.w),
@@ -838,6 +853,9 @@ pub fn computePhase() !void {
                         text_padding,
                         bounds_height + text_padding,
                     );
+
+                    var all_points = std.ArrayList(types.Point).init(std.heap.page_allocator);
+                    defer all_points.deinit();
 
                     for (text.text_vertex.items) |vertex| {
                         if (vertex.char) |char| {
@@ -854,22 +872,39 @@ pub fn computePhase() !void {
                                     text.sdf_tex.scale,
                                 );
 
-                                const texel_placement = types.Placement{
+                                const texel_placement = webgpu_glue.CombineSdfUniform{
                                     .x = bounds_texel[4].x + consts.SDF_SAFE_PADDING,
                                     .y = bounds_texel[4].y + consts.SDF_SAFE_PADDING,
                                     .width = bounds_texel[4].distance(bounds_texel[2]),
                                     .height = bounds_texel[4].distance(bounds_texel[0]),
+                                    .initial_t = @as(f32, @floatFromInt(all_points.items.len / 4)),
                                 };
+
+                                const transformed_points = try std.heap.page_allocator.dupe(types.Point, char_sdf_tex.points);
+                                const scale_x = texel_placement.width / char_sdf_tex.size.w;
+                                const scale_y = texel_placement.height / char_sdf_tex.size.h;
+                                for (transformed_points) |*p| {
+                                    p.x = texel_placement.x + p.x * scale_x;
+                                    p.y = texel_placement.y + p.y * scale_y;
+                                }
 
                                 webgpu_glue.combine_sdf(
                                     text.sdf_tex.id,
                                     char_sdf_tex.id,
                                     compute_depth_texture_id,
                                     texel_placement,
+                                    transformed_points,
                                 );
+
+                                try all_points.appendSlice(transformed_points);
                             }
                         }
                     }
+
+                    std.heap.page_allocator.free(text.sdf_tex.points);
+                    text.sdf_tex.points = try all_points.toOwnedSlice();
+
+                    webgpu_glue.finish_combine_sdf();
                 }
             },
         }
@@ -911,6 +946,8 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                             &bounds,
                             shape.getDrawUniform(effect),
                             shape.sdf_tex.id,
+                            shape.sdf_tex.points,
+                            shape.sdf_tex.uniform_t,
                         );
                     }
                 }
@@ -929,6 +966,8 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                             &bounds,
                             text.getDrawUniform(effect, text.sdf_tex.scale),
                             text.sdf_tex.id,
+                            text.sdf_tex.points,
+                            text.sdf_tex.uniform_t,
                         );
                     }
 
@@ -961,6 +1000,8 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                                         &bounds,
                                         text.getDrawUniform(effect, sdf_scale),
                                         char_sdf_tex.id,
+                                        char_sdf_tex.points,
+                                        char_sdf_tex.uniform_t,
                                     );
                                 }
                             }
@@ -1024,6 +1065,8 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 &shape.getDrawBounds(false),
                 shape.getSkeletonUniform(),
                 shape.sdf_tex.id,
+                shape.sdf_tex.points,
+                shape.sdf_tex.uniform_t,
             );
 
             const hover_id = if (shape.id == hover_point_id.getPrim()) hover_point_id else null;

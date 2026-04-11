@@ -108,7 +108,7 @@ declare module '*.zig' {
       height: number,
       sdf_texture_id: number
     ) => void
-    clear_sdf: (
+    start_combine_sdf: (
       sdfTextureId: number,
       computeDepthTextureId: number,
       width: number,
@@ -118,12 +118,16 @@ declare module '*.zig' {
       destinationTexId: number,
       sourceTexId: number,
       computeDepthTextureId: number,
-      uniformData: PointerDataView
+      uniformData: PointerDataView,
+      curves_data: ArrayPointerDataView
     ) => void
+    finish_combine_sdf: () => void
     draw_shape: (
       bound_box_data: ArrayPointerDataView,
       uniformData: ShapeDrawUniform,
-      sdf_texture_id: number
+      sdf_texture_id: number,
+      curves_data: ArrayPointerDataView,
+      uniform_t: ArrayPointerDataView
     ) => void
     pick_shape: (
       bound_box_data: ArrayPointerDataView,
