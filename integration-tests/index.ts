@@ -147,6 +147,7 @@ async function test() {
       return font
     },
     isTest: false,
+    disableMinaitures: false,
   })
 
   type SerializedOutputAssetMerged = Image & Shape & Text

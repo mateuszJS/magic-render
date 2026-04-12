@@ -185,6 +185,7 @@ export type CreatorProps = {
   onUpdateTool: (tool: CreatorTool) => void
   getFontUrl: (fontId: number) => string
   isTest: boolean
+  disableMinaitures: boolean
 }
 
 export type CreatorAPI = {
