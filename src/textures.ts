@@ -1,4 +1,4 @@
-import { getLoadingTexture, getErrorTexture } from 'loadingTexture'
+import { getLoadingTexture, getErrorTexture } from 'placeholderTexture'
 import { createTextureFromSource } from 'WebGPU/getTexture'
 import { parse, RootNode, ElementNode } from 'svg-parser'
 import addUiElement from 'svgToShapes/addUiElement'
@@ -9,7 +9,6 @@ import collectShapesData from 'svgToShapes/collectShapesData'
 import { Asset } from 'types'
 import getShapesAssets from 'svgToShapes/getShapesAssets'
 import { device, storageFormat } from 'WebGPU/device'
-import { delayedDestroy } from 'WebGPU/programs/initPrograms'
 
 function getSvgSize(svgRoot: ElementNode, img?: HTMLImageElement) {
   const props = svgRoot.properties
@@ -62,13 +61,11 @@ function addIcon(id: UiElementType, svg: string) {
 export interface TextureSource {
   url: string
   texture?: GPUTexture
-  hash?: string
 }
 
 interface ImageExtractedData {
   width: number
   height: number
-  isNewTexture?: boolean
   shapeAssets?: Asset[]
   error?: unknown
 }
@@ -102,7 +99,6 @@ async function resolveTexture(
   try {
     const [img, svgTree] = await Promise.all([getImage(url), getSvgRoot(url)])
 
-    let existingTexture: TextureSource | null = null
     if (svgTree) {
       const svgRoot = svgTree.children[0] as ElementNode
       const [svgWidth, svgHeight] = getSvgSize(svgRoot, img)
@@ -128,23 +124,16 @@ async function resolveTexture(
     // screenshots) and treats values as sRGB. Without this, Safari copies P3 values verbatim into
     // an sRGB texture, producing oversaturated colors — while Chrome silently converts correctly.
     const bitmap = await createImageBitmap(img, { colorSpaceConversion: 'none' })
-    const hash = hashImageData(bitmap)
 
-    existingTexture = findSameTexture(hash)
-    if (existingTexture !== null) {
-      textures[textureId] = existingTexture
-    } else {
-      textures[textureId].texture = createTextureFromSource(bitmap, {
-        flipY: true,
-      })
-      textures[textureId].hash = hash
-    }
+    textures[textureId].texture = createTextureFromSource(bitmap, {
+      flipY: true,
+    })
+
     bitmap.close()
 
     onLoad?.({
       width: img.width,
       height: img.height,
-      isNewTexture: !existingTexture,
     })
   } catch (error) {
     console.error(error)
@@ -190,8 +179,6 @@ export function createDisposableComputeDepthTexture(width: number, height: numbe
 
   textures.push({ url: label, texture })
 
-  // delayedDestroy(texture)
-
   return textureId
 }
 
@@ -234,7 +221,6 @@ export function update(textureId: number, width: number, height: number): void {
   const texture: GPUTexture = device.createTexture({
     label: existingTex.label,
     size: [width, height],
-    // size: [Math.min(2000, width), Math.min(2000, height)],
     format: existingTex.format,
     usage: existingTex.usage,
   })
@@ -279,41 +265,6 @@ export function getTextureCache(id: number, expectWidth: number, expectHeight: n
 
 export function getUrl(textureId: number): string {
   return textures[textureId].url
-}
-
-function getImageData(img: CanvasImageSource, width: number, height: number) {
-  const canvas = new OffscreenCanvas(width, height)
-  const ctx = canvas.getContext('2d')!
-  ctx.drawImage(img, 0, 0, width, height)
-  return { canvas, ctx }
-}
-
-/**
- * A simple, non-cryptographic hash function (djb2) for raw pixel data.
- * @param bitmap The ImageBitmap to hash.
- * @returns A hash string.
- */
-function hashImageData(bitmap: ImageBitmap): string {
-  const { ctx } = getImageData(bitmap, bitmap.width, bitmap.height)
-  const data = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data
-
-  let hash = 5381
-  for (let i = 0; i < data.length; i++) {
-    // Bitwise operations are fast
-    hash = (hash << 5) + hash + data[i] /* hash * 33 + c */
-  }
-  return String(hash)
-}
-
-function findSameTexture(hash: string): TextureSource | null {
-  for (let i = 0; i < textures.length; i++) {
-    const texture = textures[i]
-    if (texture.hash === hash) {
-      return texture
-    }
-  }
-
-  return null
 }
 
 export function updateTextureUrl(textureId: number, url: string) {

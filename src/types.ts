@@ -177,7 +177,7 @@ export type CreatorProps = {
   initialProjectWidth: number
   initialProjectHeight: number
   canvas: HTMLCanvasElement
-  uploadTexture: (url: string, onNewUrl: (newUrl: string) => void) => void
+  onExternalTextureCreation: (url: string, onNewUrl: (newUrl: string) => void) => void
   onSnapshotUpdate: (snapshot: ProjectSnapshot, commit: boolean) => void
   onAssetSelect: (assetId: Id) => void
   onIsProcessingFlagUpdate: (inProgress: boolean) => void
