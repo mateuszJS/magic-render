@@ -7,10 +7,12 @@
     "target": "es6",
     "allowJs": true,
     "moduleResolution": "bundler",
-    "baseUrl": "./src",
-    "typeRoots": ["./node_modules/@webgpu/types"], // added because of WebGPU types.
-    // Also we should add node_modules/@types, because typeRoots override default typeRoots, not extends
-    // BUT it makes impossible to exclude "node_modules/@types/jsdom" which throws issues while during compilation in TS definition
+    "paths": {
+      "*": ["./src/*"]
+    },
+    "types": ["@webgpu/types"], // added because of WebGPU types.
+    // Using "types" (not "typeRoots") so TS resolves the package directly via normal module resolution.
+    // This also avoids pulling in node_modules/@types/jsdom which throws issues during compilation in TS definition.
     "skipLibCheck": false, // we need this to check out local .d.ts ambient definition for *.zig
 
     // everything below is just suggested by https://www.npmjs.com/package/@tsconfig/recommended

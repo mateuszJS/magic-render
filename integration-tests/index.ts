@@ -105,12 +105,9 @@ async function test() {
     initialProjectWidth: projectWidth,
     initialProjectHeight: projectHeight,
     canvas,
-    uploadTexture: (url, setNewUrl) => {
+    onExternalTextureCreation: (url, setNewUrl) => {
       setNewUrl(`${newTextures}-${url}`)
       newTextures++
-      // if (url.startsWith('http://our-domain.com')) {
-      // setNewUrl('new url')
-      // }
     },
     onSnapshotUpdate: (snapshot, commit) => {
       setLastSnapshot(snapshot)

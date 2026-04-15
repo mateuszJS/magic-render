@@ -135,7 +135,10 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
 
   const onAssetUpdate = (snapshot: ZigProjectSnapshot, commit: boolean) => {
     Snapshots.saveSnapshot(snapshot)
-    newAssetsSnapshot(commit)
+    props.onSnapshotUpdate(Snapshots.lastSnapshot, commit)
+    if (commit) {
+      triggerGeneratePreview()
+    }
   }
 
   Logic.glueJsGeneral(
@@ -147,15 +150,6 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     Fonts.getCharData,
     Fonts.getKerning
   )
-
-  function newAssetsSnapshot(commit: boolean) {
-    // this function is not part of Logic.connect_on_asset_update_callback
-    // only because once we update a texture url, we have to notify about the assets update
-    props.onSnapshotUpdate(Snapshots.lastSnapshot, commit)
-    if (commit) {
-      triggerGeneratePreview()
-    }
-  }
 
   Logic.connectTyping(
     (text: string) => Typing.enable(text, canvas),
@@ -169,42 +163,47 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
       urls.map<Promise<Asset | Asset[]>>(
         (url) =>
           new Promise((resolve, reject) => {
-            const textureId = Textures.add(
-              url,
-              ({ width, height, isNewTexture, shapeAssets, error }) => {
-                // we wait to add image once points are known. The other option was to add image first
-                // with "default" points and then update it once texture is loaded.
-                // However, that would cause issues with undo/redo since we would have history
-                // snapshot with "default" points and then update it to the real points.
+            const textureId = Textures.add(url, ({ width, height, shapeAssets, error }) => {
+              // we wait to add image once points are known. The other option was to add image first
+              // with "default" points and then update it once texture is loaded.
+              // However, that would cause issues with undo/redo since we would have history
+              // snapshot with "default" points and then update it to the real points.
 
-                if (error) {
-                  return reject(error)
-                }
-
-                if (shapeAssets) {
-                  return resolve(shapeAssets)
-                }
-
-                if (isNewTexture) {
-                  props.uploadTexture(url, (newUrl) => {
-                    Textures.updateTextureUrl(textureId, newUrl)
-                    newAssetsSnapshot(true)
-                  })
-                }
-
-                return resolve({
-                  id: NO_ASSET_ID,
-                  bounds: getDefaultPoints(
-                    width,
-                    height,
-                    Snapshots.lastSnapshot.width,
-                    Snapshots.lastSnapshot.height
-                  ),
-                  texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
-                  url,
-                })
+              if (error) {
+                return reject(error)
               }
-            )
+
+              if (shapeAssets) {
+                return resolve(shapeAssets)
+              }
+
+              props.onExternalTextureCreation(url, (newUrl) => {
+                Textures.updateTextureUrl(textureId, newUrl)
+
+                const newAssets = Snapshots.lastSnapshot.assets.map<Asset>((asset) => {
+                  if ('url' in asset && asset.url === url) {
+                    return {
+                      ...asset,
+                      url: newUrl,
+                    }
+                  }
+                  return asset
+                })
+                Snapshots.lastSnapshot.assets = newAssets
+              })
+
+              return resolve({
+                id: NO_ASSET_ID,
+                bounds: getDefaultPoints(
+                  width,
+                  height,
+                  Snapshots.lastSnapshot.width,
+                  Snapshots.lastSnapshot.height
+                ),
+                texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
+                url,
+              })
+            })
           })
       )
     )
