@@ -1,6 +1,6 @@
 import getDrawShape from 'WebGPU/programs/drawShape/getProgram'
 import customProgramWrapper from 'WebGPU/programs/drawShape/custom-program-wrapper.wgsl'
-import { device, presentationFormat } from 'WebGPU/device'
+import { device, presentationFormat } from 'WebGPU/setupDevice'
 import { Asset, CustomProgramError, Effect } from 'types'
 import drawShapeShaderBase from 'WebGPU/programs/drawShape/base.wgsl'
 

@@ -1,7 +1,7 @@
 import canvasSizeObserver from 'WebGPU/canvasSizeObserver'
-import setupDevice, { device, presentationFormat } from 'WebGPU/device'
+import { device, setupDevice, presentationFormat } from 'WebGPU/setupDevice'
 import initPrograms from 'WebGPU/programs/initPrograms'
-import runCreator from 'run'
+import { runCreator } from 'run'
 import * as Logic from './logic/index.zig'
 import initMouseController, { camera } from 'pointer'
 import getDefaultPoints from 'utils/getDefaultPoints'
@@ -32,7 +32,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
   }
 
   let isDestroyed = false
-  await setupDevice()
+  await setupDevice(props.captureError)
   Snapshots.init(props.initialProjectWidth, props.initialProjectHeight)
 
   Logic.initState(
@@ -163,47 +163,51 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
       urls.map<Promise<Asset | Asset[]>>(
         (url) =>
           new Promise((resolve, reject) => {
-            const textureId = Textures.add(url, ({ width, height, shapeAssets, error }) => {
-              // we wait to add image once points are known. The other option was to add image first
-              // with "default" points and then update it once texture is loaded.
-              // However, that would cause issues with undo/redo since we would have history
-              // snapshot with "default" points and then update it to the real points.
+            const textureId = Textures.add(
+              url,
+              props.captureError,
+              ({ width, height, shapeAssets, error }) => {
+                // we wait to add image once points are known. The other option was to add image first
+                // with "default" points and then update it once texture is loaded.
+                // However, that would cause issues with undo/redo since we would have history
+                // snapshot with "default" points and then update it to the real points.
 
-              if (error) {
-                return reject(error)
-              }
+                if (error) {
+                  return reject(error)
+                }
 
-              if (shapeAssets) {
-                return resolve(shapeAssets)
-              }
+                if (shapeAssets) {
+                  return resolve(shapeAssets)
+                }
 
-              props.onExternalTextureCreation(url, (newUrl) => {
-                Textures.updateTextureUrl(textureId, newUrl)
+                props.onExternalTextureCreation(url, (newUrl) => {
+                  Textures.updateTextureUrl(textureId, newUrl)
 
-                const newAssets = Snapshots.lastSnapshot.assets.map<Asset>((asset) => {
-                  if ('url' in asset && asset.url === url) {
-                    return {
-                      ...asset,
-                      url: newUrl,
+                  const newAssets = Snapshots.lastSnapshot.assets.map<Asset>((asset) => {
+                    if ('url' in asset && asset.url === url) {
+                      return {
+                        ...asset,
+                        url: newUrl,
+                      }
                     }
-                  }
-                  return asset
+                    return asset
+                  })
+                  Snapshots.lastSnapshot.assets = newAssets
                 })
-                Snapshots.lastSnapshot.assets = newAssets
-              })
 
-              return resolve({
-                id: NO_ASSET_ID,
-                bounds: getDefaultPoints(
-                  width,
-                  height,
-                  Snapshots.lastSnapshot.width,
-                  Snapshots.lastSnapshot.height
-                ),
-                texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
-                url,
-              })
-            })
+                return resolve({
+                  id: NO_ASSET_ID,
+                  bounds: getDefaultPoints(
+                    width,
+                    height,
+                    Snapshots.lastSnapshot.width,
+                    Snapshots.lastSnapshot.height
+                  ),
+                  texture_id: textureId, // if there is no points, then for sure there is no asset.textureId
+                  url,
+                })
+              }
+            )
           })
       )
     )
@@ -219,25 +223,37 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
       .flatMap((result) => (Array.isArray(result.value) ? [...result.value] : [result.value]))
 
     Snapshots.withSnapshotReady((snapshot) => {
-      const assets = [...snapshot.assets, ...serializedAssets].map<ZigAsset>(toZigAsset)
-
-      Logic.setSnapshot({ ...snapshot, assets }, true)
-      triggerGeneratePreview()
+      setSnapshot(
+        {
+          ...snapshot,
+          assets: [...snapshot.assets, ...serializedAssets],
+        },
+        true
+      )
     })
   }
 
-  const { stopRAF, capturePreview } = runCreator(canvas, context, device, () => {
-    isMouseEventProcessing = false
-    updateIsProcessingFlag()
-  })
+  const { stopRAF, capturePreview } = runCreator(
+    canvas,
+    context,
+    device,
+    () => {
+      isMouseEventProcessing = false
+      updateIsProcessingFlag()
+    },
+    props.captureError
+  )
 
   Fonts.loadFont(0)
 
   const setSnapshot: CreatorAPI['setSnapshot'] = async (snapshot, withSnapshot) => {
-    const assets = snapshot.assets.map<ZigAsset>(toZigAsset)
-
-    Logic.setSnapshot({ ...snapshot, assets }, withSnapshot)
-    triggerGeneratePreview()
+    try {
+      const assets = snapshot.assets.map<ZigAsset>((asset) => toZigAsset(asset, props.captureError))
+      Logic.setSnapshot({ ...snapshot, assets }, withSnapshot)
+      triggerGeneratePreview()
+    } catch (err) {
+      props.captureError(err)
+    }
   }
 
   return {

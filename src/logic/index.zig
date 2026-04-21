@@ -1178,11 +1178,21 @@ pub fn setSnapshot(snapshot: snapshots.ProjectSnapshot, with_snapshot: bool) !vo
 }
 
 pub fn deinitState() !void {
+    state = types.State{
+        .width = 0,
+        .height = 0,
+        .hovered_asset_id = AssetId{},
+        .action = ActionType.None,
+        .tool = Tool.None,
+        .action_pointer_offset = types.Point{ .x = 0.0, .y = 0.0 }, // indicates pointer position when action has started, useful for transformatiosn with ctrl/shift
+        .init_action_bounds = undefined,
+        .redraw_needed = true,
+    };
+
     assets.selected_asset_id = AssetId{};
     try assets.resetTo(&.{}); // reinit with empty snapshot to deinit all assets
     UI.deinit();
     snapshots.deinit();
-    state.hovered_asset_id = AssetId{};
     webgpu_glue.deinit();
     // state itself is not destoyed as it will be reinitalized before usage
     // and has no reference to memory to free

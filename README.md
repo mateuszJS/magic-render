@@ -33,7 +33,7 @@ npm link @mateuszjs/magic-render
 ```
 
 In the repo where you want to put local version of the package.
-Remember to build package to see an update!
+Remember to build package to see an update! To unlink call `npm unlink @mateuszjs/magic-render`
 
 ## Glossary
 
