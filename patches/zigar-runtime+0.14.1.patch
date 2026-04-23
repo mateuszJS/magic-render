@@ -1,8 +1,8 @@
 diff --git a/node_modules/zigar-runtime/dist/features/module-loading.js b/node_modules/zigar-runtime/dist/features/module-loading.js
-index d82ce94..6e4e361 100644
+index 4c9d511..c1b8d93 100644
 --- a/node_modules/zigar-runtime/dist/features/module-loading.js
 +++ b/node_modules/zigar-runtime/dist/features/module-loading.js
-@@ -202,7 +202,7 @@ var moduleLoading = mixin({
+@@ -163,7 +163,7 @@ var moduleLoading = mixin({
      displayPanic(address, len) {
        const array = new Uint8Array(this.memory.buffer, address, len);
        const msg = decodeText(array);

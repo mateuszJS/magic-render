@@ -88,10 +88,11 @@ pub const @"meta(zigar)" = struct {
         };
     }
 
-    pub fn isFieldString(comptime T: type, comptime field_name: std.meta.FieldEnum(T)) bool {
+    pub fn isFieldString(comptime T: type, comptime field_name: []const u8) bool {
+        _ = field_name;
         return switch (T) {
-            texts.Serialized => field_name == .content,
-            texts.ComputeTextResult => field_name == .content,
+            texts.Serialized => true,
+            texts.ComputeTextResult => true,
             else => false,
         };
     }
