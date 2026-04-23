@@ -219,16 +219,6 @@ export function runCreator(
       })
 
       Logic.computePhase()
-
-      /* Uncaught TypeError: Cannot perform get DataView.prototype.byteLength on a detached or out-of-bounds ArrayBuffer
-    at get DataView.prototype.byteLength (<anonymous>)
-    at any (data-copying.js:40:31)
-    at C.updateShadows (memory-mapping.js:87:7)
-    at C.invokeThunk (call-marshaling-outbound.js:98:10)
-    at Object.updateCache (call-marshaling-outbound.js:22:26)
-    at y (run.ts:215:5)
-    Happened when created a shap with jsut one point(cliked Escape when selectic the second point)
-    */
       Logic.updateCache()
 
       const matrix = getCanvasMatrix(previewCtx?.canvas || creatorCanvas)
