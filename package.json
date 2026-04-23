@@ -26,7 +26,7 @@
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test-e2e": "npx playwright test",
     "format": "eslint --fix \"src/**/*.{ts,js}\" \"integration-tests/**/*.{ts,js}\"",
-    "postinstall": "patch-package"
+    "postinstall": "[ -f node_modules/.bin/patch-package ] && patch-package || true"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
