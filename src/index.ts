@@ -74,7 +74,6 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
   CustomPrograms.init(onProgramUpdate, onProgramError)
   Fonts.init(props.getFontUrl)
 
-  // rotation doesnt work
   const context = canvas.getContext('webgpu')
   if (!context) throw Error('WebGPU from canvas needs to be always provided')
 

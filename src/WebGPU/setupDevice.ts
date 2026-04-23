@@ -4,13 +4,13 @@ export let storageFormat: GPUTextureFormat
 
 export async function setupDevice(captureError: (error: unknown) => void) {
   if (!navigator.gpu) {
-    throw Error('this browser does not support WebGPU')
+    throw Error('X-WEBGPU - this browser does not support WebGPU')
   }
 
   const adapter = await navigator.gpu.requestAdapter()
 
   if (!adapter) {
-    throw Error('this browser supports webgpu but it appears disabled')
+    throw Error('X-WEBGPU - this browser supports webgpu but it appears disabled')
   }
   const hasBGRA8unormStorage = adapter.features.has('bgra8unorm-storage')
 

@@ -58,7 +58,9 @@
     "webpack-bundle-analyzer": "^4.10.2",
     "webpack-cli": "^6.0.1",
     "webpack-dev-server": "^5.2.0",
-    "zigar-loader": "^0.14.1"
+    "zigar-compiler": "0.14.1",
+    "zigar-loader": "0.14.1",
+    "zigar-runtime": "0.14.1"
   },
   "exports": {
     "./package.json": "./package.json",
