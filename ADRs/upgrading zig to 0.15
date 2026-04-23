@@ -1,0 +1,4 @@
+Firstly repalce all usage of managed ArrayList/ArrayHashMap with unmanaged version where allocator is passed to each method when is needed and no to "init" method
+
+
+I've tried to update but there is way to many random errors, seems liek msot of them were caused by Zigar.
