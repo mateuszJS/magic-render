@@ -8,7 +8,7 @@ import RotateIcon from '../icons/rotate.svg'
 import collectShapesData from 'svgToShapes/collectShapesData'
 import { Asset } from 'types'
 import getShapesAssets from 'svgToShapes/getShapesAssets'
-import { device, storageFormat } from 'WebGPU/device'
+import { device, storageFormat } from 'WebGPU/setupDevice'
 
 function getSvgSize(svgRoot: ElementNode, img?: HTMLImageElement) {
   const props = svgRoot.properties
@@ -70,7 +70,11 @@ interface ImageExtractedData {
   error?: unknown
 }
 
-export function add(url: string, onLoad?: (data: ImageExtractedData) => void): number {
+export function add(
+  url: string,
+  captureError: (error: unknown) => void,
+  onLoad?: (data: ImageExtractedData) => void
+): number {
   const sameUrl = textures.find((t) => t.url === url)
   if (sameUrl) {
     onLoad?.({
@@ -86,7 +90,7 @@ export function add(url: string, onLoad?: (data: ImageExtractedData) => void): n
   const textureId = textures.length
   // we allow duplicates in textures array
   textures.push({ url })
-  resolveTexture(url, textureId, onLoad)
+  resolveTexture(url, textureId, captureError, onLoad)
 
   return textureId
 }
@@ -94,6 +98,7 @@ export function add(url: string, onLoad?: (data: ImageExtractedData) => void): n
 async function resolveTexture(
   url: string,
   textureId: number,
+  captureError: (error: unknown) => void,
   onLoad?: (data: ImageExtractedData) => void
 ) {
   try {
@@ -136,7 +141,7 @@ async function resolveTexture(
       height: img.height,
     })
   } catch (error) {
-    console.error(error)
+    captureError(error)
     textures[textureId].texture = textureErrorPlaceholder
     onLoad?.({ error, width: 0, height: 0 })
     // onLoad has to be called, otherwise the Promise(waiting for onLoad)

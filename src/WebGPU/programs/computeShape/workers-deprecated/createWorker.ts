@@ -1,4 +1,4 @@
-import { device } from 'WebGPU/device'
+import { device } from 'WebGPU/setupDevice'
 import * as Textures from 'textures'
 import { computeShape } from 'WebGPU/programs/initPrograms'
 

@@ -3,7 +3,7 @@ import { toZigEffects, toZigProps } from './convert'
 import { NO_ASSET_ID } from 'consts'
 import * as Textures from 'textures'
 
-export default function toZigAsset(asset: Asset): ZigAsset {
+export default function toZigAsset(asset: Asset, captureError: (error: unknown) => void): ZigAsset {
   if ('paths' in asset) {
     // it's a shape
     return {
@@ -38,11 +38,10 @@ export default function toZigAsset(asset: Asset): ZigAsset {
       img: {
         id: asset.id || NO_ASSET_ID,
         bounds: asset.bounds,
-        texture_id: asset.texture_id || Textures.add(asset.url), // if we got points, so we have url on the server for sure
+        texture_id: asset.texture_id || Textures.add(asset.url, captureError), // if we got points, so we have url on the server for sure
       },
     }
   }
 
-  console.error(asset)
-  throw Error('unknown asset scenario')
+  throw Error('Unknown asset: ' + asset)
 }

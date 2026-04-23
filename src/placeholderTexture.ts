@@ -1,4 +1,4 @@
-import { device, presentationFormat } from 'WebGPU/device'
+import { device, presentationFormat } from 'WebGPU/setupDevice'
 
 function createTexture(
   textureData: Uint8Array<ArrayBuffer>,

@@ -1,0 +1,13 @@
+diff --git a/node_modules/zigar-runtime/dist/features/module-loading.js b/node_modules/zigar-runtime/dist/features/module-loading.js
+index d82ce94..6e4e361 100644
+--- a/node_modules/zigar-runtime/dist/features/module-loading.js
++++ b/node_modules/zigar-runtime/dist/features/module-loading.js
+@@ -202,7 +202,7 @@ var moduleLoading = mixin({
+     displayPanic(address, len) {
+       const array = new Uint8Array(this.memory.buffer, address, len);
+       const msg = decodeText(array);
+-      console.error(`Zig panic: ${msg}`);
++      throw new Error(`Zig panic: ${msg}`);
+     },
+   } ),
+ });

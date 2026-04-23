@@ -143,6 +143,7 @@ async function test() {
       if (!font) throw Error('Unknown font id: ' + fontId)
       return font
     },
+    captureError: (err: unknown) => console.error(err),
     isTest: false,
     disableMinaitures: false,
   })

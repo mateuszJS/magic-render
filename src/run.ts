@@ -34,11 +34,12 @@ export function updateRenderPass(newRenderPass: GPURenderPassEncoder) {
   renderPass = newRenderPass
 }
 
-export default function runCreator(
+export function runCreator(
   creatorCanvas: HTMLCanvasElement,
   context: GPUCanvasContext,
   device: GPUDevice,
-  onEmptyEvents: VoidFunction // call when there is no more events to process
+  onEmptyEvents: VoidFunction, // call when there is no more events to process
+  captureError: (err: unknown) => void
 ) {
   let pickPass: GPURenderPassEncoder
   let encoder: GPUCommandEncoder
@@ -200,74 +201,83 @@ export default function runCreator(
   encoder = device.createCommandEncoder({
     label: 'prerender ui elements SDF',
   })
-  Logic.generateUiElementsSdf()
+  try {
+    console.log('Logic.generateUiElementsSdf()')
+    Logic.generateUiElementsSdf()
+  } catch (err) {
+    captureError(err)
+  }
   device.queue.submit([encoder.finish()])
 
   /*===========MAIN LOOP FUNCTION===============*/
   function draw(now: DOMHighResTimeStamp, previewCtx?: GPUCanvasContext) {
-    const isDrawNeeded = Logic.tick(now) || camera.redrawNeeded
+    try {
+      const isDrawNeeded = Logic.tick(now) || camera.redrawNeeded
 
-    encoder = device.createCommandEncoder({
-      label: 'main encoder',
-    })
+      encoder = device.createCommandEncoder({
+        label: 'main encoder',
+      })
 
-    Logic.computePhase()
-    Logic.updateCache()
+      Logic.computePhase()
+      Logic.updateCache()
 
-    const matrix = getCanvasMatrix(previewCtx?.canvas || creatorCanvas)
-    device.queue.writeBuffer(canvasMatrix.buffer, 0, matrix)
+      const matrix = getCanvasMatrix(previewCtx?.canvas || creatorCanvas)
+      device.queue.writeBuffer(canvasMatrix.buffer, 0, matrix)
 
-    // time = performance.now()
-    if (isDrawNeeded) {
-      const canvasDescriptor = getCanvasRenderDescriptor(previewCtx || context, device)
-      renderPass = encoder.beginRenderPass(canvasDescriptor)
-      Logic.renderDraw(!!previewCtx)
-      renderPass.end()
-      camera.redrawNeeded = false
-    }
+      // time = performance.now()
+      if (isDrawNeeded) {
+        const canvasDescriptor = getCanvasRenderDescriptor(previewCtx || context, device)
+        renderPass = encoder.beginRenderPass(canvasDescriptor)
+        Logic.renderDraw(!!previewCtx)
+        renderPass.end()
+        camera.redrawNeeded = false
+      }
 
-    if (previewCtx) {
+      if (previewCtx) {
+        const commandBuffer = encoder.finish()
+        device.queue.submit([commandBuffer])
+        destroyGpuObjects()
+        return
+      }
+
+      if (pointer.afterPickEventsQueue.length === 0) {
+        onEmptyEvents()
+      }
+
+      const needsUpdatePick =
+        pointer.afterPickEventsQueue.length > 0 ||
+        lastPickPointer.x !== pointer.x ||
+        lastPickPointer.y !== pointer.y
+
+      if (needsUpdatePick) {
+        lastPickPointer.x = pointer.x
+        lastPickPointer.y = pointer.y
+        const pickMatrix = pickManager.createMatrix(creatorCanvas, matrix)
+        device.queue.writeBuffer(pickCanvasMatrixBuffer, 0, pickMatrix)
+        const pick = pickManager.startPicking(encoder)
+        pickPass = pick.pass
+        Logic.renderPick()
+        pick.end()
+      }
+
       const commandBuffer = encoder.finish()
       device.queue.submit([commandBuffer])
+
+      // const computePass = timingHelper.beginComputePass(encoder, { label: 'blur-pass' })
+      // timingHelper.getResult().then((gpuTime) => {
+      //   if (typeof gpuTime === 'number') {
+      //     gpuAverage.addSample(gpuTime / 1000)
+      //   }
+      // })
+
       destroyGpuObjects()
-      return
+
+      pickManager.asyncPick()
+
+      rafId = requestAnimationFrame(draw)
+    } catch (err) {
+      captureError(err)
     }
-
-    if (pointer.afterPickEventsQueue.length === 0) {
-      onEmptyEvents()
-    }
-
-    const needsUpdatePick =
-      pointer.afterPickEventsQueue.length > 0 ||
-      lastPickPointer.x !== pointer.x ||
-      lastPickPointer.y !== pointer.y
-
-    if (needsUpdatePick) {
-      lastPickPointer.x = pointer.x
-      lastPickPointer.y = pointer.y
-      const pickMatrix = pickManager.createMatrix(creatorCanvas, matrix)
-      device.queue.writeBuffer(pickCanvasMatrixBuffer, 0, pickMatrix)
-      const pick = pickManager.startPicking(encoder)
-      pickPass = pick.pass
-      Logic.renderPick()
-      pick.end()
-    }
-
-    const commandBuffer = encoder.finish()
-    device.queue.submit([commandBuffer])
-
-    // const computePass = timingHelper.beginComputePass(encoder, { label: 'blur-pass' })
-    // timingHelper.getResult().then((gpuTime) => {
-    //   if (typeof gpuTime === 'number') {
-    //     gpuAverage.addSample(gpuTime / 1000)
-    //   }
-    // })
-
-    destroyGpuObjects()
-
-    pickManager.asyncPick()
-
-    rafId = requestAnimationFrame(draw)
   }
 
   rafId = requestAnimationFrame(draw)

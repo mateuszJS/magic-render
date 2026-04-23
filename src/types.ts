@@ -184,6 +184,7 @@ export type CreatorProps = {
   onPreviewUpdate: (canvas: HTMLCanvasElement) => void
   onUpdateTool: (tool: CreatorTool) => void
   getFontUrl: (fontId: number) => string
+  captureError: (error: unknown) => void
   isTest: boolean
   disableMinaitures: boolean
 }

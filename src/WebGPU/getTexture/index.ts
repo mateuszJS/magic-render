@@ -1,4 +1,4 @@
-import { device, presentationFormat } from 'WebGPU/device'
+import { device, presentationFormat } from 'WebGPU/setupDevice'
 import createCheckedImageData from './createCheckedImageData'
 import generateMipmapsArray from './generateMimapsArray'
 
