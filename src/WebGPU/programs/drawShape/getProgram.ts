@@ -118,7 +118,7 @@ export default function getDrawShape(
         { binding: 1, resource: sdfTexture.createView() },
         { binding: 2, resource: { buffer: canvasMatrix.buffer } },
         { binding: 3, resource: { buffer: curvesBuffer } },
-        // { binding: 4, resource: { buffer: uniformTBuffer } },
+        { binding: 4, resource: { buffer: uniformTBuffer } },
       ],
     })
 

@@ -9,6 +9,7 @@ import collectShapesData from 'svgToShapes/collectShapesData'
 import { Asset } from 'types'
 import getShapesAssets from 'svgToShapes/getShapesAssets'
 import { device, storageFormat } from 'WebGPU/setupDevice'
+import { delayedDestroy, destroyGpuObjects } from 'WebGPU/programs/initPrograms'
 
 function getSvgSize(svgRoot: ElementNode, img?: HTMLImageElement) {
   const props = svgRoot.properties
@@ -183,6 +184,9 @@ export function createDisposableComputeDepthTexture(width: number, height: numbe
   })
 
   textures.push({ url: label, texture })
+
+  delayedDestroy(texture)
+  // TODO: also remove entry fro textures
 
   return textureId
 }

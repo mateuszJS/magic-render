@@ -202,7 +202,6 @@ export function runCreator(
     label: 'prerender ui elements SDF',
   })
   try {
-    console.log('Logic.generateUiElementsSdf()')
     Logic.generateUiElementsSdf()
   } catch (err) {
     captureError(err)
