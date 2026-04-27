@@ -266,10 +266,10 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
   }
 
   let curve = CubicBezier(p0, p1, p2, p3);
-  let orig_pos = bezier_point(curve, t);
+  let orig_pos = bezier_point(curve, t); // store original to ensure not worst results than we already have
   let mt = 1.0 - t;
   let dp  = 3.0 * (mt * mt * (p1 - p0) + 2.0 * mt * t * (p2 - p1) + t * t * (p3 - p2));
-  let ddp = 6.0 * ((1.0 - t) * (p2 - 2.0 * p1 + p0) + t * (p3 - 2.0 * p2 + p1));
+  let ddp = 6.0 * ((1.0 - t) * (p2 - 2.0 * p1 + p0) + t * (p3 - 2.0 * p2 + p1)); // ful netwon demonimator (weird artifacts with voershootign if far form curve)
   let diff = orig_pos - pos;
   // Full Newton denominator (includes curvature term) prevents overshooting
   // on the concave side of high-curvature curves.
@@ -289,10 +289,10 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
   // Decode the nearest curve point stored in this texel, then compute
   // the actual Euclidean distance from the output pixel to that curve point.
   // sign(g): +1 = inside (distance grows inward), -1 = outside (distance < 0)
-  // let curve_pos = g_to_bezier_pos(g);
+  let curve_pos = g_to_bezier_pos(g);
 
   // Refine the bilinear t estimate to the true nearest point on the curve.
-  let curve_pos = refine_curve_pos(vsOut.uv, g);
+  // let curve_pos = refine_curve_pos(vsOut.uv, g);
 
   let distance = length(curve_pos - vsOut.uv) * -sdf.distance;
 
@@ -303,7 +303,7 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
   let on_grid = min(grid.x, grid.y) < 0.5;
   // let on_grid = false;
 
-  // return vec4f((1 - distance), select(0.0, 1.0, on_grid), 0, 1.0);
+  return vec4f((1 - distance), select(0.0, 1.0, on_grid), 0, 1.0);
 
 
   ${TEST}
