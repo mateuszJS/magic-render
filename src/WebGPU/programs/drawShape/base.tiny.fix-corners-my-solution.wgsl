@@ -151,7 +151,9 @@ fn getSample(pos: vec2f) -> Sample {
     let pp2 = curves[prev_idx * 4u + 2u];
     let pp3 = curves[prev_idx * 4u + 3u];
 
-    // End tangent of prev curve at t=1.
+    // End tangent of prev curve at t=1. For straight lines use chord direction;
+    // for bezier use derivative at t=1. Both extend the curve as an infinite line
+    // through the corner point.
     let prev_tan_raw = select(3.0 * (pp3 - pp2), pp3 - pp0, pp1.x > STRAIGHT_LINE_THRESHOLD);
     let prev_tan_len = length(prev_tan_raw);
     let prev_tan_n = select(vec2f(1.0, 0.0), prev_tan_raw / prev_tan_len, prev_tan_len > 1e-8);
@@ -159,25 +161,20 @@ fn getSample(pos: vec2f) -> Sample {
     let cur_tan_len = length(nearest_tan);
     let cur_tan_n = select(vec2f(1.0, 0.0), nearest_tan / cur_tan_len, cur_tan_len > 1e-8);
 
-    // cross2d = cur × prev. For CW winding in Y-down:
-    //   > 0  →  concave corner (inner notch, e.g. T's inner corners)
-    //   < 0  →  convex corner  (outer corner, e.g. T's outer corners)
-    let cross_2d = cur_tan_n.x * prev_tan_n.y - cur_tan_n.y * prev_tan_n.x;
+    let diff = pos - nearest_pos;
 
-    if (abs(cross_2d) > 0.3) {
+    // Perpendicular distance from pos to each infinite tangent line through the corner.
+    // cross2d(diff, tangent_normalized) = |diff| * sin(angle) = perpendicular distance.
+    let dist_to_prev_line = abs(diff.x * prev_tan_n.y - diff.y * prev_tan_n.x);
+    let dist_to_cur_line  = abs(diff.x * cur_tan_n.y  - diff.y * cur_tan_n.x);
+
+    // The curve whose infinite line is further from pos owns that region of space.
+    // Its normal correctly classifies inside/outside for both convex and concave corners.
+    if (dist_to_prev_line > dist_to_cur_line) {
       let prev_normal = vec2f(-prev_tan_raw.y, prev_tan_raw.x);
-      let sign_cur  = sign(dot(pos - nearest_pos, inward_normal));
-      let sign_prev = sign(dot(pos - nearest_pos, prev_normal));
-      // Concave: inside if EITHER half-plane says inside (max).
-      //   A fragment inside the shape near a notch can be outside one half-plane but never both.
-      // Convex: inside only if BOTH half-planes say inside (min).
-      //   A fragment in the outside wedge satisfies one half-plane but not the other.
-      if (cross_2d > 0.0) {
-        nearest_sign = max(sign_cur, sign_prev);
-      } else {
-        nearest_sign = min(sign_cur, sign_prev);
-      }
+      nearest_sign = sign(dot(diff, prev_normal));
     }
+    // else: nearest_sign from cur tangent already computed above is correct
   }
 
 
@@ -333,10 +330,10 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
   // Decode the nearest curve point stored in this texel, then compute
   // the actual Euclidean distance from the output pixel to that curve point.
   // sign(g): +1 = inside (distance grows inward), -1 = outside (distance < 0)
-  // let curve_pos = g_to_bezier_pos(g);
+  let curve_pos = g_to_bezier_pos(g);
 
   // Refine the bilinear t estimate to the true nearest point on the curve.
-  let curve_pos = refine_curve_pos(vsOut.uv, g);
+  // let curve_pos = refine_curve_pos(vsOut.uv, g);
 
   let distance = length(curve_pos - vsOut.uv) * -sdf.distance;
 
