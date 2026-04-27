@@ -165,7 +165,7 @@ fn getSample(pos: vec2f) -> Sample {
     let cross_2d = cur_tan_n.x * prev_tan_n.y - cur_tan_n.y * prev_tan_n.x;
 
     if (abs(cross_2d) > 0.3) {
-      let prev_normal = vec2f(-prev_tan_raw.y, prev_tan_raw.x);
+      let prev_normal = vec2f(-prev_tan_n.y, prev_tan_n.x);
       let sign_cur  = sign(dot(pos - nearest_pos, inward_normal));
       let sign_prev = sign(dot(pos - nearest_pos, prev_normal));
       // Concave: inside if EITHER half-plane says inside (max).
@@ -263,12 +263,21 @@ fn g_to_bezier_tangent(g: f32) -> vec2f {
 
   let is_straight_line = p1.x > STRAIGHT_LINE_THRESHOLD;
   if (is_straight_line) {
-    return normalize(p3 - p0);
+    let chord = p3 - p0;
+    let len_sq = dot(chord, chord);
+    return select(vec2f(1.0, 0.0), chord * inverseSqrt(len_sq), len_sq > 1e-12);
   }
 
 
   let mt = 1.0 - t;
-  return 3.0 * (mt * mt * (p1 - p0) + 2.0 * mt * t * (p2 - p1) + t * t * (p3 - p2));
+  let deriv = 3.0 * (mt * mt * (p1 - p0) + 2.0 * mt * t * (p2 - p1) + t * t * (p3 - p2));
+
+  // Degenerate case: p1==p0 at t=0 (or p2==p3 at t=1) makes the cubic derivative zero.
+  // Fall back to chord direction so inward_normal is never (0,0).
+  if (dot(deriv, deriv) < 1e-12) {
+    return normalize(p3 - p0);
+  }
+  return deriv;
 }
 
 fn g_to_bezier_pos(g: f32) -> vec2f {
@@ -333,10 +342,10 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
   // Decode the nearest curve point stored in this texel, then compute
   // the actual Euclidean distance from the output pixel to that curve point.
   // sign(g): +1 = inside (distance grows inward), -1 = outside (distance < 0)
-  // let curve_pos = g_to_bezier_pos(g);
+  let curve_pos = g_to_bezier_pos(g);
 
   // Refine the bilinear t estimate to the true nearest point on the curve.
-  let curve_pos = refine_curve_pos(vsOut.uv, g);
+  // let curve_pos = refine_curve_pos(vsOut.uv, g);
 
   let distance = length(curve_pos - vsOut.uv) * -sdf.distance;
 
@@ -347,6 +356,7 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
   let on_grid = min(grid.x, grid.y) < 0.5;
   // let on_grid = false;
 
+  return vec4f(abs(distance), select(0.0, 1.0, on_grid), abs(sdf.t) / 5, 1.0);
   // return vec4f((1 - distance), select(0.0, 1.0, on_grid), 0, 1.0);
 
 
