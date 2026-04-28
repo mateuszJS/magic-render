@@ -156,7 +156,16 @@ fn getSample(pos: vec2f) -> Sample {
     let pp3 = curves[prev_idx * 4u + 3u];
 
     // End tangent of prev curve at t=1.
-    let prev_tan_raw = select(3.0 * (pp3 - pp2), pp3 - pp0, pp1.x > STRAIGHT_LINE_THRESHOLD);
+    // For a "no-handle" corner the prev curve's out-handle sits on its endpoint
+    // (pp2 == pp3), so 3*(pp3-pp2) collapses to zero. Mirror g_to_bezier_tangent's
+    // degenerate-case fallback and use the chord direction instead — otherwise
+    // prev_tan_n would silently become (1, 0) and produce a wedge of wrong-sign
+    // pixels at every mixed (handled ↔ no-handle) junction.
+    let prev_chord = pp3 - pp0;
+    let prev_deriv_t1 = 3.0 * (pp3 - pp2);
+    let prev_is_line = pp1.x > STRAIGHT_LINE_THRESHOLD;
+    let prev_deriv_degen = dot(prev_deriv_t1, prev_deriv_t1) < 1e-12;
+    let prev_tan_raw = select(prev_deriv_t1, prev_chord, prev_is_line || prev_deriv_degen);
     let prev_tan_len = length(prev_tan_raw);
     let prev_tan_n = select(vec2f(1.0, 0.0), prev_tan_raw / prev_tan_len, prev_tan_len > 1e-8);
 
@@ -230,14 +239,6 @@ fn getSample(pos: vec2f) -> Sample {
   let _diff10 = abs(ut10 - ut_nearest);
   let _diff01 = abs(ut01 - ut_nearest);
   let _diff11 = abs(ut11 - ut_nearest);
-
-  
-
-  let max_d = max(max(d00, d10), max(d01, d11));
-  // let w00 = (max_d - d00) / max_d;
-  // let w10 = (max_d - d10) / max_d;
-  // let w01 = (max_d - d01) / max_d;
-  // let w11 = (max_d - d11) / max_d;
 
   let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), _diff00 < BILINEAR_T_THRESHOLD && abs(ndiff00) < BILINEAR_ANGLE_THRESHOLD);
   let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), _diff10 < BILINEAR_T_THRESHOLD && abs(ndiff10) < BILINEAR_ANGLE_THRESHOLD);
