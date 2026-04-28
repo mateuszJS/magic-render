@@ -8,6 +8,8 @@ const FWIDTH_VALID_LIMIT = 3.402823466e+10;
 // real shape SDF values and the default background value, so we ignore
 // derivatives larger than FWIDTH_VALID_LIMIT.
 
+const BILINEAR_T_THRESHOLD = 1.5;
+const BILINEAR_ANGLE_THRESHOLD = PI * 0.7;
 const UNIFORM_T_SAMPLING = 4.0;
 
 struct CubicBezier {
@@ -57,7 +59,7 @@ struct VSOutput {
   );
 }
 
-const BILINEAR_T_THRESHOLD = 1.5;
+
 // all texels which has diff with nearest texel < BILINEAR_T_THRESHOLD
 // will be included in bilinear interpolation.
 // It helps avoid interpolating t from totally different places
@@ -229,7 +231,7 @@ fn getSample(pos: vec2f) -> Sample {
   let _diff01 = abs(ut01 - ut_nearest);
   let _diff11 = abs(ut11 - ut_nearest);
 
-  let angle_threshold = PI * 0.7;
+  
 
   let max_d = max(max(d00, d10), max(d01, d11));
   // let w00 = (max_d - d00) / max_d;
@@ -237,10 +239,10 @@ fn getSample(pos: vec2f) -> Sample {
   // let w01 = (max_d - d01) / max_d;
   // let w11 = (max_d - d11) / max_d;
 
-  let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), _diff00 < BILINEAR_T_THRESHOLD && abs(ndiff00) < angle_threshold);
-  let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), _diff10 < BILINEAR_T_THRESHOLD && abs(ndiff10) < angle_threshold);
-  let w01 = select(0.0, (1.0 - fract_pos.x) * fract_pos.y,         _diff01 < BILINEAR_T_THRESHOLD && abs(ndiff01) < angle_threshold);
-  let w11 = select(0.0, fract_pos.x         * fract_pos.y,         _diff11 < BILINEAR_T_THRESHOLD && abs(ndiff11) < angle_threshold);
+  let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), _diff00 < BILINEAR_T_THRESHOLD && abs(ndiff00) < BILINEAR_ANGLE_THRESHOLD);
+  let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), _diff10 < BILINEAR_T_THRESHOLD && abs(ndiff10) < BILINEAR_ANGLE_THRESHOLD);
+  let w01 = select(0.0, (1.0 - fract_pos.x) * fract_pos.y,         _diff01 < BILINEAR_T_THRESHOLD && abs(ndiff01) < BILINEAR_ANGLE_THRESHOLD);
+  let w11 = select(0.0, fract_pos.x         * fract_pos.y,         _diff11 < BILINEAR_T_THRESHOLD && abs(ndiff11) < BILINEAR_ANGLE_THRESHOLD);
 
   let total_w = w00 + w10 + w01 + w11;
   // Fallback to nearest when all neighbours are filtered (e.g. at a very sharp corner).
@@ -361,10 +363,10 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
   // Decode the nearest curve point stored in this texel, then compute
   // the actual Euclidean distance from the output pixel to that curve point.
   // sign(g): +1 = inside (distance grows inward), -1 = outside (distance < 0)
-  let curve_pos = g_to_bezier_pos(g);
+  // let curve_pos = g_to_bezier_pos(g);
 
   // Refine the bilinear t estimate to the true nearest point on the curve.
-  // let curve_pos = refine_curve_pos(vsOut.uv, g);
+  let curve_pos = refine_curve_pos(vsOut.uv, g);
 
   let distance = length(curve_pos - vsOut.uv) * -sdf.distance;
 
