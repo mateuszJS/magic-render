@@ -141,9 +141,12 @@ fn getSample(pos: vec2f) -> Sample {
   let inward_normal = vec2f(-nearest_tan.y, nearest_tan.x);
   var nearest_sign = sign(dot(pos - nearest_pos, inward_normal));
 
+  // Junction at t≈0 (start of this curve = end of prev curve).
+  // The renderShapeSdf baking snaps t≥1 to t=0 of the next curve, so this
+  // branch handles both exact-t=0 texels and near-endpoint NR convergence.
   if (fract(nearest_g_by_pos) < 1e-5) {
     let num_curves_u = arrayLength(&curves) / 4u;
-    let cur_idx = u32(nearest_g_by_pos);
+    let cur_idx = u32(nearest_g_by_pos) % num_curves_u;
     let prev_idx = (cur_idx + num_curves_u - 1u) % num_curves_u;
     let pp0 = curves[prev_idx * 4u + 0u];
     let pp1 = curves[prev_idx * 4u + 1u];
@@ -202,14 +205,29 @@ fn getSample(pos: vec2f) -> Sample {
   let ndiff01 = diff01 - round(diff01 / (2.0 * PI)) * (2.0 * PI);
   let ndiff11 = diff11 - round(diff11 / (2.0 * PI)) * (2.0 * PI);
 
-  let _diff00 = abs(get_uniform_t(c00_g) - get_uniform_t(nearest_g_by_pos));
-  let _diff10 = abs(get_uniform_t(c10_g) - get_uniform_t(nearest_g_by_pos));
-  let _diff01 = abs(get_uniform_t(c01_g) - get_uniform_t(nearest_g_by_pos));
-  let _diff11 = abs(get_uniform_t(c11_g) - get_uniform_t(nearest_g_by_pos));
-  // TODO: blend uniform_t, not raw t
+  // Circular arc-length wrapping: map each neighbor's uniform_t to the half-period
+  // closest to ut_nearest so that blending across the shape's start/end seam is
+  // smooth.  Without this, one side of the seam has ut ≈ 0 and the other has
+  // ut ≈ total_arc; their raw difference is ~total_arc, which either exceeds the
+  // threshold (gap with threshold=1.5) or blends to the wrong mid-arc point
+  // (missing stroke with threshold=1000.5).
+  // TLDR; smooth the end of the path with the beginning of the path
+  let total_arc_len = uniform_t[arrayLength(&uniform_t) - 1u];
+  let inv_arc = select(0.0, 1.0 / total_arc_len, total_arc_len > 1e-8);
+  let ut_nearest = get_uniform_t(nearest_g_by_pos);
+  let ut00_raw = get_uniform_t(c00_g);
+  let ut10_raw = get_uniform_t(c10_g);
+  let ut01_raw = get_uniform_t(c01_g);
+  let ut11_raw = get_uniform_t(c11_g);
+  let ut00 = ut00_raw + total_arc_len * round((ut_nearest - ut00_raw) * inv_arc);
+  let ut10 = ut10_raw + total_arc_len * round((ut_nearest - ut10_raw) * inv_arc);
+  let ut01 = ut01_raw + total_arc_len * round((ut_nearest - ut01_raw) * inv_arc);
+  let ut11 = ut11_raw + total_arc_len * round((ut_nearest - ut11_raw) * inv_arc);
 
-
-
+  let _diff00 = abs(ut00 - ut_nearest);
+  let _diff10 = abs(ut10 - ut_nearest);
+  let _diff01 = abs(ut01 - ut_nearest);
+  let _diff11 = abs(ut11 - ut_nearest);
 
   let angle_threshold = PI * 0.7;
 
@@ -225,7 +243,9 @@ fn getSample(pos: vec2f) -> Sample {
   let w11 = select(0.0, fract_pos.x         * fract_pos.y,         _diff11 < BILINEAR_T_THRESHOLD && abs(ndiff11) < angle_threshold);
 
   let total_w = w00 + w10 + w01 + w11;
-  let uniform_blended = (get_uniform_t(c00_g) * w00 + get_uniform_t(c10_g) * w10 + get_uniform_t(c01_g) * w01 + get_uniform_t(c11_g) * w11) / total_w;
+  // Fallback to nearest when all neighbours are filtered (e.g. at a very sharp corner).
+  let uniform_blended_raw = select(ut_nearest, (ut00 * w00 + ut10 * w10 + ut01 * w01 + ut11 * w11) / total_w, total_w > 1e-6);
+  let uniform_blended = clamp(uniform_blended_raw, 0.0, total_arc_len);
   let blended = uniform_t_to_relative_t(uniform_blended);
 
   return Sample(blended, nearest_sign);
@@ -355,7 +375,7 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
   let on_grid = min(grid.x, grid.y) < 0.5;
   // let on_grid = false;
 
-  return vec4f(abs(distance), select(0.0, 1.0, on_grid), abs(sdf.t) / 5, 1.0);
+  // return vec4f(abs(distance), select(0.0, 1.0, on_grid), abs(sdf.t) / 5, 1.0);
   // return vec4f((1 - distance), select(0.0, 1.0, on_grid), 0, 1.0);
 
 
