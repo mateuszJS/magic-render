@@ -58,7 +58,6 @@ struct VSOutput {
 }
 
 const BILINEAR_T_THRESHOLD = 1.5;
-const BILINEAR_T_THRESHOLD_POS = 2;
 // all texels which has diff with nearest texel < BILINEAR_T_THRESHOLD
 // will be included in bilinear interpolation.
 // It helps avoid interpolating t from totally different places

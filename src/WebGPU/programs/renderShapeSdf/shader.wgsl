@@ -325,6 +325,17 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
     }
   }
 
+  // t=1.0 of curve i and t=0.0 of curve i+1 are the same point.
+  // Normalise to t=0 of the next curve so that c_g (= curve_idx + t) never
+  // reaches num_curves, which would be an out-of-bounds index in the fragment
+  // shader.  For intermediate curves this is a no-op (i+1 < num_curves).
+  // For the last curve it remaps to curve 0, making the junction-handling
+  // branch in base.wgsl fire with cur_idx=0 / prev_idx=N-1 as intended.
+  if (closest_t >= 1.0) {
+    closest_curve_idx = (closest_curve_idx + 1u) % num_curves;
+    closest_t = 0.0;
+  }
+
   var curve = CubicBezier(
     curves[closest_curve_idx * 4 + 0],
     curves[closest_curve_idx * 4 + 1],
