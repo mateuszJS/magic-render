@@ -24,11 +24,16 @@
 //   pixel units. (length × −Sample.distance.) Chosen so smoothstep(start, end)
 //   reads strokes naturally.
 //
-// UNIFORM_T STORAGE
-//   `uniform_t` is a flat storage buffer of cumulative arc lengths sampled at
-//   t = 0, 1/4, 2/4, 3/4 of every curve, plus one trailing total-length entry.
-//   Size = 4*N + 1.  get_uniform_t() is the forward map (g → arc length);
-//   uniform_t_to_relative_t() is the inverse (binary search).
+// ARC LENGTH STORAGE
+//   `arc_lengths` is a flat storage buffer of cumulative arc lengths sampled
+//   at t = 0, 1/4, 2/4, 3/4 of every curve, plus one trailing total-length
+//   entry. Size = 4*N + 1.
+//   "Arc length" = physical distance along the curve, NOT the bezier parameter
+//   t. The two are nonlinearly related (sharp bends compress t, stretched
+//   regions expand it), so blending in arc-length space matches what the eye
+//   sees on the path.
+//   g_to_arc()    is the forward map (g → arc length).
+//   arc_to_g()    is the inverse (binary search).
 // =============================================================================
 
 const STRAIGHT_LINE_THRESHOLD = 1e10;
@@ -40,16 +45,16 @@ const PI = 3.141592653589793;
 const FWIDTH_VALID_LIMIT = 3.402823466e+10;
 
 // Bilinear-blend filtering thresholds (per neighbour vs nearest texel):
-//   T_THRESHOLD       : max arc-length difference (≈ one texel of arc) before a
-//                       neighbour is dropped from the blend. Empirical.
+//   ARC_THRESHOLD      : max arc-length difference (≈ one texel of arc) before
+//                        a neighbour is dropped from the blend. Empirical.
 //   ANGLE_DOT_THRESHOLD: equivalent to |angle(tan_n) − angle(nearest_tan)| < 0.7π
-//                       expressed as cos(0.7π) ≈ −0.809 on UNIT tangents — a
-//                       single dot product, no atan2 / no wraparound bookkeeping.
-const BILINEAR_T_THRESHOLD = 1.5;
+//                        expressed as cos(0.7π) ≈ −0.809 on UNIT tangents — a
+//                        single dot product, no atan2 / no wraparound bookkeeping.
+const BILINEAR_ARC_THRESHOLD = 1.5;
 const BILINEAR_ANGLE_DOT_THRESHOLD = -0.809016994; // cos(0.7 * PI)
 
 // Number of stored arc-length samples per curve (at t = 0, 1/4, 2/4, 3/4).
-const UNIFORM_T_SAMPLING = 4.0;
+const ARC_SAMPLES_PER_CURVE = 4.0;
 
 // fract(g) below this counts as "exactly at curve start" (= a junction texel).
 // The baker snaps t≥1 to t=0 of the next curve, so junctions ARE exactly 0,
@@ -90,8 +95,26 @@ struct Vertex {
 @group(0) @binding(1) var texture: texture_2d<f32>;
 @group(0) @binding(2) var<uniform> camera_projection: mat4x4f;
 @group(0) @binding(3) var<storage, read> curves: array<vec2f>;
-@group(0) @binding(4) var<storage, read> uniform_t: array<f32>;
-// consider switching uniform_t to a uniform buffer if size permits
+@group(0) @binding(4) var<storage, read> arc_lengths: array<f32>;
+// consider switching arc_lengths to a uniform buffer if size permits
+
+// Per-shape geometric metadata. Pre-computed CPU-side and pushed once per draw
+// so the fragment shader doesn't have to re-derive any of this per pixel.
+//
+//   texture_size   — texture dimensions in texels (= vec2f(textureDimensions(texture))).
+//   total_arc_len  — arc_lengths[length-1]. Saves one storage-buffer load.
+//   num_curves     — arrayLength(&curves) / 4. Avoids the runtime length query.
+//
+// Layout (uniform address space, total 16 bytes, struct alignment 16):
+//   off  0 : texture_size    (vec2f, align 8)
+//   off  8 : total_arc_len   (f32,   align 4)
+//   off 12 : num_curves      (u32,   align 4)
+struct PathMetrics {
+  texture_size: vec2f,
+  total_arc_len: f32,
+  num_curves: u32,
+};
+@group(0) @binding(5) var<uniform> path_metrics: PathMetrics;
 
 struct VSOutput {
   @builtin(position) position: vec4f,
@@ -100,10 +123,9 @@ struct VSOutput {
 };
 
 @vertex fn vs(vert: Vertex) -> VSOutput {
-  let size = textureDimensions(texture);
   return VSOutput(
     camera_projection * vec4f(vert.position.xy, 0.0, 1.0),
-    vert.position.zw * vec2f(size),
+    vert.position.zw * path_metrics.texture_size,
     vert.position.zw,
   );
 }
@@ -121,7 +143,7 @@ struct Neighbour {
   g: f32,        // texel's stored g (fract = local t, floor = curve index)
   pos: vec2f,    // bezier position at g
   tan: vec2f,    // UNIT tangent at g  (g_to_bezier_tangent always normalises)
-  ut: f32,       // raw cumulative arc length at g (pre-seam-wrap)
+  arc: f32,      // raw cumulative arc length at g (pre-seam-wrap)
 };
 
 fn loadNeighbour(coord: vec2u) -> Neighbour {
@@ -131,28 +153,28 @@ fn loadNeighbour(coord: vec2u) -> Neighbour {
     g,
     g_to_bezier_pos(g + 1.0),
     g_to_bezier_tangent(g + 1.0),
-    get_uniform_t(g),
+    g_to_arc(g),
   );
 }
 
-// Inverse arc-length map: arc length s → g (curve_idx + local_t).
-fn uniform_t_to_relative_t(s: f32) -> f32 {
-  let len = arrayLength(&uniform_t);
+// Inverse arc-length map: arc length → g (curve_idx + local_t).
+fn arc_to_g(arc: f32) -> f32 {
+  let len = arrayLength(&arc_lengths);
   // Empty / single-entry buffer: no curves to look up. Return start.
   if (len < 2u) { return 0.0; }
   var lo = 0u;
   var hi = len - 1u;
   while (lo + 1u < hi) {
     let mid = (lo + hi) / 2u;
-    if (uniform_t[mid] <= s) { lo = mid; } else { hi = mid; }
+    if (arc_lengths[mid] <= arc) { lo = mid; } else { hi = mid; }
   }
-  let t_lo = uniform_t[lo];
-  let t_hi = uniform_t[hi];
-  let frac = select(0.0, (s - t_lo) / (t_hi - t_lo), t_hi > t_lo);
+  let arc_lo = arc_lengths[lo];
+  let arc_hi = arc_lengths[hi];
+  let frac = select(0.0, (arc - arc_lo) / (arc_hi - arc_lo), arc_hi > arc_lo);
   // lo index maps to: curve = lo/4, quarter = lo%4
-  let ci = lo / u32(UNIFORM_T_SAMPLING);
-  let quarter = lo % u32(UNIFORM_T_SAMPLING);
-  let local_t = (f32(quarter) + frac) / UNIFORM_T_SAMPLING;
+  let ci = lo / u32(ARC_SAMPLES_PER_CURVE);
+  let quarter = lo % u32(ARC_SAMPLES_PER_CURVE);
+  let local_t = (f32(quarter) + frac) / ARC_SAMPLES_PER_CURVE;
   return f32(ci) + local_t;
 }
 
@@ -160,7 +182,7 @@ fn getSample(pos: vec2f) -> Sample {
   let floor_pos = floor(pos - 0.5);
   let fract_pos = pos - 0.5 - floor_pos;
 
-  let max_coord = vec2i(textureDimensions(texture)) - vec2i(1, 1);
+  let max_coord = vec2i(path_metrics.texture_size) - vec2i(1, 1);
 
   let p00 = vec2u(clamp(vec2i(floor_pos),                   vec2i(0, 0), max_coord));
   let p10 = vec2u(clamp(vec2i(floor_pos + vec2f(1.0, 0.0)), vec2i(0, 0), max_coord));
@@ -170,7 +192,7 @@ fn getSample(pos: vec2f) -> Sample {
   // ---------------------------------------------------------------------------
   // Fetch the four corner texels once and cache everything we need from each.
   // Replaces what used to be 4 separate textureLoads + 4 g_to_bezier_pos +
-  // 4 g_to_bezier_tangent + 4 get_uniform_t scattered through the function,
+  // 4 g_to_bezier_tangent + 4 g_to_arc scattered through the function,
   // each reloading the same `curves[]` entries.
   // ---------------------------------------------------------------------------
   let n00 = loadNeighbour(p00);
@@ -192,7 +214,7 @@ fn getSample(pos: vec2f) -> Sample {
   let nearest_g   = select(select(n00.g,   n10.g,   prefer_x_lo), select(n01.g,   n11.g,   prefer_x_hi), prefer_top);
   let nearest_pos = select(select(n00.pos, n10.pos, prefer_x_lo), select(n01.pos, n11.pos, prefer_x_hi), prefer_top);
   let nearest_tan = select(select(n00.tan, n10.tan, prefer_x_lo), select(n01.tan, n11.tan, prefer_x_hi), prefer_top);
-  let nearest_ut  = select(select(n00.ut,  n10.ut,  prefer_x_lo), select(n01.ut,  n11.ut,  prefer_x_hi), prefer_top);
+  let nearest_arc = select(select(n00.arc, n10.arc, prefer_x_lo), select(n01.arc, n11.arc, prefer_x_hi), prefer_top);
 
   // ---------------------------------------------------------------------------
   // Sign: tangent-based half-plane test.
@@ -206,7 +228,7 @@ fn getSample(pos: vec2f) -> Sample {
   var nearest_sign = sign(dot(pos - nearest_pos, inward_normal));
 
   if (fract(nearest_g) < T_JUNCTION_EPS) {
-    let num_curves_u = arrayLength(&curves) / 4u;
+    let num_curves_u = path_metrics.num_curves;
     let cur_idx = u32(nearest_g) % num_curves_u;
     let prev_idx = (cur_idx + num_curves_u - 1u) % num_curves_u;
     let pp0 = curves[prev_idx * 4u + 0u];
@@ -247,21 +269,21 @@ fn getSample(pos: vec2f) -> Sample {
   //     (avoids smearing across folds): cheap dot-product test on UNIT tangents.
   //   - Drop a neighbour whose arc length is too far from nearest's (avoids
   //     smearing across distant parts of the path).
-  //   - Wrap each neighbour's arc length to the period closest to nearest_ut
+  //   - Wrap each neighbour's arc length to the period closest to nearest_arc
   //     so the start/end seam blends smoothly.
   // ---------------------------------------------------------------------------
-  let total_arc_len = uniform_t[arrayLength(&uniform_t) - 1u];
+  let total_arc_len = path_metrics.total_arc_len;
   let inv_arc = select(0.0, 1.0 / total_arc_len, total_arc_len > 1e-8);
 
-  let ut00 = n00.ut + total_arc_len * round((nearest_ut - n00.ut) * inv_arc);
-  let ut10 = n10.ut + total_arc_len * round((nearest_ut - n10.ut) * inv_arc);
-  let ut01 = n01.ut + total_arc_len * round((nearest_ut - n01.ut) * inv_arc);
-  let ut11 = n11.ut + total_arc_len * round((nearest_ut - n11.ut) * inv_arc);
+  let arc00 = n00.arc + total_arc_len * round((nearest_arc - n00.arc) * inv_arc);
+  let arc10 = n10.arc + total_arc_len * round((nearest_arc - n10.arc) * inv_arc);
+  let arc01 = n01.arc + total_arc_len * round((nearest_arc - n01.arc) * inv_arc);
+  let arc11 = n11.arc + total_arc_len * round((nearest_arc - n11.arc) * inv_arc);
 
-  let dt00 = abs(ut00 - nearest_ut);
-  let dt10 = abs(ut10 - nearest_ut);
-  let dt01 = abs(ut01 - nearest_ut);
-  let dt11 = abs(ut11 - nearest_ut);
+  let arc_diff_00 = abs(arc00 - nearest_arc);
+  let arc_diff_10 = abs(arc10 - nearest_arc);
+  let arc_diff_01 = abs(arc01 - nearest_arc);
+  let arc_diff_11 = abs(arc11 - nearest_arc);
 
   // Tangents are unit-length, so dot == cos(angle).
   let cos00 = dot(n00.tan, nearest_tan);
@@ -269,10 +291,10 @@ fn getSample(pos: vec2f) -> Sample {
   let cos01 = dot(n01.tan, nearest_tan);
   let cos11 = dot(n11.tan, nearest_tan);
 
-  let keep00 = dt00 < BILINEAR_T_THRESHOLD && cos00 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  let keep10 = dt10 < BILINEAR_T_THRESHOLD && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  let keep01 = dt01 < BILINEAR_T_THRESHOLD && cos01 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  let keep11 = dt11 < BILINEAR_T_THRESHOLD && cos11 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  let keep00 = arc_diff_00 < BILINEAR_ARC_THRESHOLD && cos00 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  let keep10 = arc_diff_10 < BILINEAR_ARC_THRESHOLD && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  let keep01 = arc_diff_01 < BILINEAR_ARC_THRESHOLD && cos01 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  let keep11 = arc_diff_11 < BILINEAR_ARC_THRESHOLD && cos11 > BILINEAR_ANGLE_DOT_THRESHOLD;
 
   let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), keep00);
   let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), keep10);
@@ -281,35 +303,35 @@ fn getSample(pos: vec2f) -> Sample {
 
   let total_w = w00 + w10 + w01 + w11;
   // Fallback to nearest when all neighbours are filtered (e.g. very sharp corner).
-  let uniform_blended_raw = select(nearest_ut,
-                                   (ut00 * w00 + ut10 * w10 + ut01 * w01 + ut11 * w11) / total_w,
-                                   total_w > 1e-6);
-  let uniform_blended = clamp(uniform_blended_raw, 0.0, total_arc_len);
-  let blended = uniform_t_to_relative_t(uniform_blended);
+  let arc_blended_raw = select(nearest_arc,
+                               (arc00 * w00 + arc10 * w10 + arc01 * w01 + arc11 * w11) / total_w,
+                               total_w > 1e-6);
+  let arc_blended = clamp(arc_blended_raw, 0.0, total_arc_len);
+  let blended = arc_to_g(arc_blended);
 
   return Sample(blended, nearest_sign);
 }
 
-// Forward arc-length map: g → cumulative arc length.
-fn get_uniform_t(t: f32) -> f32 {
-  let ci = u32(floor(t));
-  let local_t = fract(t);
+// Forward arc-length map: g → cumulative arc length along the path.
+fn g_to_arc(g: f32) -> f32 {
+  let ci = u32(floor(g));
+  let local_t = fract(g);
 
   // Which quarter of the curve are we in? [0..3]
-  let quarter_f = local_t * UNIFORM_T_SAMPLING;
+  let quarter_f = local_t * ARC_SAMPLES_PER_CURVE;
   let quarter = u32(floor(quarter_f));
   let frac = fract(quarter_f);
 
-  let lower_idx = ci * u32(UNIFORM_T_SAMPLING) + quarter;
+  let lower_idx = ci * u32(ARC_SAMPLES_PER_CURVE) + quarter;
   let upper_idx = lower_idx + 1u;
 
-  // Buffer is sized 4*N+1 and callers pass t < N, so upper_idx ≤ 4N is in
+  // Buffer is sized 4*N+1 and callers pass g < N, so upper_idx ≤ 4N is in
   // bounds. The clamps below are defensive in case of an unexpected overflow
   // (e.g. a caller passing exactly N or NaN-driven indexing).
-  let max_idx = arrayLength(&uniform_t) - 1u;
+  let max_idx = arrayLength(&arc_lengths) - 1u;
   let safe_lower = min(lower_idx, max_idx);
   let safe_upper = min(upper_idx, max_idx);
-  return mix(uniform_t[safe_lower], uniform_t[safe_upper], frac);
+  return mix(arc_lengths[safe_lower], arc_lengths[safe_upper], frac);
 }
 
 // UNIT tangent at local t encoded in g. Always returns a unit-length vector
