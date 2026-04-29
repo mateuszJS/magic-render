@@ -140,6 +140,7 @@ struct Sample {
 // per-texel quantities we'll need. Computed once in loadNeighbour() so the
 // downstream nearest-pick / corner / blend stages never reload `curves[]`.
 struct Neighbour {
+  // TODO: do we still need that (t+1) * negative or positive. Do we depend on sign of that? Or we only calcualte side base of tangent?
   g: f32,        // texel's stored g (fract = local t, floor = curve index)
   pos: vec2f,    // bezier position at g
   tan: vec2f,    // UNIT tangent at g  (g_to_bezier_tangent always normalises)
@@ -429,6 +430,7 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
 
   // Refine the bilinear t estimate to the true nearest point on the curve.
   let curve_pos = refine_curve_pos(vsOut.uv, g);
+  // TODO: shouldn't we also return refined "g"?
 
   // Negative inside, positive outside, in pixel-space units (see header).
   let distance = length(curve_pos - vsOut.uv) * -sdf.distance;
@@ -450,7 +452,11 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
   let inner_alpha = smoothstep(u.dist_start - alpha_smooth_factor, u.dist_start + alpha_smooth_factor, distance);
   let outer_alpha = smoothstep(u.dist_end   - alpha_smooth_factor, u.dist_end   + alpha_smooth_factor, distance);
   let alpha = outer_alpha - inner_alpha;
-  let color = getColor(vec4f(distance, sdf.t, 0, 1), vsOut.uv, vsOut.norm_uv);
-  // color = vec4f(sdf.r / 100.0, sdf.g % 1, sdf.b / (2 * PI), 1.0);
+  var color = getColor(vec4f(distance, sdf.t, 0, 1), vsOut.uv, vsOut.norm_uv);
+  
+  let angle = atan2(curve_pos.x - vsOut.uv.x, curve_pos.y - vsOut.uv.y);
+  color = vec4f(0, sdf.t % 1.01, 0, 1.0);
+  // color = vec4f(distance / 10.0, sdf.t % 1, angle / (2 * PI), 1.0);
+  
   return vec4f(color.rgb, color.a * alpha);
 }
