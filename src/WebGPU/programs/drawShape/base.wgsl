@@ -88,6 +88,45 @@ fn is_straight_line_marker(p1: vec2f) -> bool {
   return p1.x > STRAIGHT_LINE_THRESHOLD;
 }
 
+// Find the previous curve in the SAME closed sub-path as cur_idx.
+//
+// The curve buffer concatenates all sub-paths of a shape. Within one closed
+// path, consecutive curves share an endpoint: curves[K].p0 == curves[K-1].p3.
+// At a path boundary (curve K is the FIRST of a new sub-path), this equality
+// breaks — that's our boundary detector.
+//
+// For most curves the previous-in-path is just (cur - 1 + N) % N. But for the
+// FIRST curve of any sub-path, that wrap would cross into a different path. We
+// detect that case and walk forward from `cur_idx` to find the LAST curve of
+// the current path (whose p3 wraps cleanly back to cur_idx's p0).
+//
+// Cost: cheap path (one vec2 compare) for non-boundary cases; O(curves-in-path)
+// for the rare first-of-path case. Only invoked at junction fragments.
+fn prev_curve_in_path(cur_idx: u32, num_curves: u32) -> u32 {
+  // Alternative version of this function(look for next path) lives in renderShapeSdf/shader.wgsl
+  let cur_p0 = curves[cur_idx * 4u + 0u];
+  let candidate_prev = (cur_idx + num_curves - 1u) % num_curves;
+  let candidate_p3 = curves[candidate_prev * 4u + 3u];
+  let bridge = candidate_p3 - cur_p0;
+  if (dot(bridge, bridge) < 1e-6) {
+    return candidate_prev;
+  }
+
+  // cur_idx is the first curve of its path. Walk forward looking for the LAST
+  // curve of this path: a curve i whose p3 doesn't match the next curve's p0.
+  var i = cur_idx;
+  for (var k = 0u; k < num_curves; k = k + 1u) {
+    let next_i  = (i + 1u) % num_curves;
+    let i_p3    = curves[i * 4u + 3u];
+    let next_p0 = curves[next_i * 4u + 0u];
+    let gap     = i_p3 - next_p0;
+    if (dot(gap, gap) > 1e-6) { return i; }
+    i = next_i;
+  }
+  // Single-curve "path" or fully connected ring — fall back to the simple wrap.
+  return candidate_prev;
+}
+
 struct Vertex {
   @location(0) position: vec4f,
 };
@@ -231,7 +270,7 @@ fn getSample(pos: vec2f) -> Sample {
   if (fract(nearest_g) < T_JUNCTION_EPS) {
     let num_curves_u = path_metrics.num_curves;
     let cur_idx = u32(nearest_g) % num_curves_u;
-    let prev_idx = (cur_idx + num_curves_u - 1u) % num_curves_u;
+    let prev_idx = prev_curve_in_path(cur_idx, num_curves_u);
     let pp0 = curves[prev_idx * 4u + 0u];
     let pp1 = curves[prev_idx * 4u + 1u];
     let pp2 = curves[prev_idx * 4u + 2u];
@@ -455,7 +494,7 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
   var color = getColor(vec4f(distance, sdf.t, 0, 1), vsOut.uv, vsOut.norm_uv);
   
   let angle = atan2(curve_pos.x - vsOut.uv.x, curve_pos.y - vsOut.uv.y);
-  color = vec4f(0, sdf.t % 1.01, 0, 1.0);
+  // color = vec4f(distance, sdf.t % 100, 0, 1.0);
   // color = vec4f(distance / 10.0, sdf.t % 1, angle / (2 * PI), 1.0);
   
   return vec4f(color.rgb, color.a * alpha);

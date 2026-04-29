@@ -325,14 +325,44 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
     }
   }
 
-  // t=1.0 of curve i and t=0.0 of curve i+1 are the same point.
-  // Normalise to t=0 of the next curve so that c_g (= curve_idx + t) never
-  // reaches num_curves, which would be an out-of-bounds index in the fragment
-  // shader.  For intermediate curves this is a no-op (i+1 < num_curves).
-  // For the last curve it remaps to curve 0, making the junction-handling
-  // branch in base.wgsl fire with cur_idx=0 / prev_idx=N-1 as intended.
+  // t=1.0 of curve i and t=0.0 of curve i+1 are the same point on the path.
+  // Normalise to t=0 of the next-curve-in-the-same-path so that c_g (= curve_idx + t)
+  // never reaches num_curves and so the fragment-shader corner branch sees a
+  // consistent fract(g) == 0 invariant at every junction(between start and end of path).
+  //
+  // MULTI-PATH SHAPES (e.g. letters with counters like "q", "e"):
+  //   The curve buffer stores all paths concatenated. Naively wrapping with
+  //   (i+1) % N would jump from the LAST curve of path A to the FIRST curve of
+  //   path B — geometrically meaningless and produces visible artifacts at
+  //   path-boundary fragments. Instead we detect path boundaries from the data:
+  //   a curve K starts a new path iff curves[K].p0 != curves[K-1].p3 (no shared
+  //   endpoint). When the simple (i+1) wrap would cross a boundary, we instead
+  //   wrap to the FIRST curve of the path that contains `closest_curve_idx`.
   if (closest_t >= 1.0) {
-    closest_curve_idx = (closest_curve_idx + 1u) % num_curves;
+    // Alternative version of this block of code(look for previous path) lives in drawShape/base.wgsl
+    let next_idx = (closest_curve_idx + 1u) % num_curves;
+    let cur_p3   = curves[closest_curve_idx * 4u + 3u];
+    let next_p0  = curves[next_idx * 4u + 0u];
+    let bridge   = next_p0 - cur_p3;
+
+    if (dot(bridge, bridge) < 1e-6) {
+      // Same-path neighbours; simple wrap is correct.
+      closest_curve_idx = next_idx;
+    } else {
+      // We're at the END of a path. Walk backwards from `closest_curve_idx`
+      // until we find a curve whose own p0 doesn't match the previous curve's
+      // p3 — that's the FIRST curve of this path.
+      var i = closest_curve_idx;
+      for (var k = 0u; k < num_curves; k = k + 1u) {
+        let prev_i  = (i + num_curves - 1u) % num_curves;
+        let prev_p3 = curves[prev_i * 4u + 3u];
+        let i_p0    = curves[i * 4u + 0u];
+        let gap     = prev_p3 - i_p0;
+        if (dot(gap, gap) > 1e-6) { break; } // i is first of this path
+        i = prev_i;
+      }
+      closest_curve_idx = i;
+    }
     closest_t = 0.0;
   }
 
