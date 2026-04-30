@@ -14,7 +14,7 @@ pub fn computeShape(
     tex_id: u32,
     bounds: [4]types.PointUV,
     padding: f32,
-    points: []types.Point, // safe copy, should not modify original points
+    points: []types.Point, // it has to be a safe copy allocated with on a heap
     resize: f32,
 ) !sdf_drawing.SdfTex {
     var sdf_tex = sdf_drawing.getTexture(

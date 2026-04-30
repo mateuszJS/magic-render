@@ -574,7 +574,7 @@ fn drawBorder(allocator: std.mem.Allocator) !void {
         webgpu_glue.draw_triangle(triangle_vertex_data.items);
     }
 
-    try UI.draw(ui_vertex_data.items, webgpu_glue.draw_shape);
+    try UI.draw(ui_vertex_data.items);
 }
 
 fn drawProjectBackground() void {
