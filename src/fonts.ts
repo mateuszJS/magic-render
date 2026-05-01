@@ -7,6 +7,7 @@ import { Point } from 'types'
 import decompressWoff2 from 'utils/decompressWoff2.mjs'
 import { isStraightHandle } from 'svgToShapes/utils'
 import { STRAIGHT_LINE_HANDLE } from 'svgToShapes/const'
+import * as PreviewTrigger from './previewTrigger'
 
 const DEFAULT_SPACE = 250 // expressed in font units
 const ENTER = 10
@@ -28,6 +29,7 @@ export async function loadFont(fontId: number) {
   fonts.set(fontId, null)
   let fontBuffer: ArrayBuffer | null = null
   try {
+    PreviewTrigger.updateResourcesFlag('font-load-start')
     const url = getFontUrl(fontId)
     const res = await fetch(url)
     fontBuffer = await res.arrayBuffer()
@@ -52,6 +54,8 @@ export async function loadFont(fontId: number) {
     } else {
       console.error('Failed to load font', err)
     }
+  } finally {
+    PreviewTrigger.updateResourcesFlag('font-load-end')
   }
 }
 

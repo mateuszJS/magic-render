@@ -94,7 +94,7 @@ pub const Matrix3x3 = struct {
         const H = -(a * f - c * d);
         const I = a * e - b * d;
         const det = a * A + b * B + c * C;
-        if (@abs(det) < 1e-6) @panic("Matrix not invertible");
+        if (@abs(det) < 1e-6) @panic("Matrix not invertable");
         // for example when scale is set to zero, we are unable to "invert" it to know previous value
         const inv_det = 1.0 / det;
         return Matrix3x3{

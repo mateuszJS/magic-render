@@ -199,8 +199,8 @@ pub const Shape = struct {
         const new_width = box.max_x - box.min_x;
         const new_height = box.max_y - box.min_y;
 
-        if (utils.equalF32(new_width, 0) or utils.equalF32(new_height, 0)) {
-            return; // No valid bounding box
+        if (new_width < 1e-6 or new_height < 1e-6) {
+            return; // No valid bounding box, we gonna get not invertable matrix out of it
         }
 
         // Normalize points to [0,1] range
