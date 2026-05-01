@@ -1,4 +1,4 @@
-import { getCustomProgram, getCustomProgramId } from 'customPrograms'
+import * as CustomPrograms from 'customPrograms'
 import { Fill, ZigFill } from 'types'
 import assertUnreachable from 'utils/assertUnreachable'
 
@@ -45,12 +45,12 @@ export function toFill(fill: ZigFill): Fill {
   }
 
   if ('program_id' in fill && typeof fill.program_id === 'number') {
-    const program = getCustomProgram(fill.program_id)
+    const { code, errors } = CustomPrograms.getCodeData(fill.program_id)
     return {
       program: {
-        code: program.code,
+        code: code,
         id: fill.program_id,
-        errors: program.errors,
+        errors: errors,
       },
     }
   }
@@ -108,7 +108,7 @@ export function toZigFill(fill: Fill): ZigFill {
 
   if ('program' in fill) {
     return {
-      program_id: getCustomProgramId(fill.program.id, fill.program.code),
+      program_id: CustomPrograms.getProgramId(fill.program.id, fill.program.code),
     } as ZigFill
   }
 

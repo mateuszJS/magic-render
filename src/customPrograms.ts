@@ -1,13 +1,14 @@
 import getDrawShape from 'WebGPU/programs/drawShape/getProgram'
 import customProgramWrapper from 'WebGPU/programs/drawShape/custom-program-wrapper.wgsl'
 import { device, presentationFormat } from 'WebGPU/setupDevice'
-import { Asset, CustomProgramError, Effect } from 'types'
+import { CustomProgramError } from 'types'
 import drawShapeShaderBase from 'WebGPU/programs/drawShape/base.wgsl'
+import * as Logic from './logic/index.zig'
 
 interface CustomProgram {
   code: string
-  callback: ReturnType<typeof getDrawShape>
   errors: CustomProgramError[]
+  execute: ReturnType<typeof getDrawShape> | null
 }
 
 const CUSTOM_CODE_PLACEHOLDER = '${CUSTOM_PROGRAM_CODE}'
@@ -29,23 +30,35 @@ Callback holds last/alternative successfully compiled code.
 Old, unused id should be cleaned up at
 some point in the future(e.g. during setSnapshot) */
 let customPrograms: Map<number, CustomProgram>
+let placeholderProgram: ReturnType<typeof getDrawShape> | null
 let altProgramOnErr: ReturnType<typeof getDrawShape> | null
 let programIdCounter: number
-let updateSnapshot: VoidFunction = () => {}
-let onProgramUpdate: (programId: number) => void = () => {}
 
-export function init(
-  newOnProgramUpdate: typeof onProgramUpdate,
-  newUpdateSnapshot: typeof updateSnapshot
-): void {
+export function init(): void {
   customPrograms = new Map<number, CustomProgram>()
+  placeholderProgram = null
   altProgramOnErr = null
   programIdCounter = 0
-  onProgramUpdate = newOnProgramUpdate
-  updateSnapshot = newUpdateSnapshot
 }
 
-function getAlternativeProgramOnError() {
+function getPlaceholderProgram() {
+  if (!placeholderProgram) {
+    placeholderProgram = getDrawShape(
+      device,
+      presentationFormat,
+      customProgramWrapper.replace(CUSTOM_CODE_PLACEHOLDER, 'color=vec4f(0);'),
+      4 * 4,
+      false,
+      (info) => {
+        console.warn('Alternative program compilation info:', info)
+      }
+    )
+  }
+
+  return placeholderProgram
+}
+
+function getFailedProgram() {
   if (!altProgramOnErr) {
     altProgramOnErr = getDrawShape(
       device,
@@ -64,25 +77,23 @@ function getAlternativeProgramOnError() {
   return altProgramOnErr
 }
 
-function createProgram(
-  code: string,
-  newId: number,
-  placeholderProgramCb: ReturnType<typeof getDrawShape>
-): CustomProgram {
+function createProgram(code: string, newId: number): CustomProgram {
   const program: CustomProgram = {
     code,
-    callback: placeholderProgramCb,
     errors: [],
+    execute: null,
   }
 
-  const compiledProgramCb = getDrawShape(
+  const executeCallback = getDrawShape(
     device,
     presentationFormat,
     customProgramWrapper.replace('${CUSTOM_PROGRAM_CODE}', code),
     4 * 4,
     false,
     (info) => {
+      Logic.invalidateCacheByProgram(newId)
       const errors = info.messages.filter((msg) => msg.type === 'error')
+
       if (errors.length > 0) {
         program.errors = errors.map<CustomProgramError>((err) => ({
           length: err.length,
@@ -91,85 +102,45 @@ function createProgram(
           message: err.message,
           offset: err.offset - CUSTOM_PROGRAM_STRING_OFFSET,
         }))
-        updateSnapshot()
       } else {
-        program.callback = compiledProgramCb
-        onProgramUpdate(newId)
+        program.execute = executeCallback
       }
     }
   )
+
   return program
 }
 
-export function getCustomProgramId(id: number | undefined, code: string): number {
-  let placeholderProgramCb = getAlternativeProgramOnError()
-
-  if (typeof id === 'number') {
-    const program = customPrograms.get(id)
-    if (program) {
-      if (program.code === code) {
-        return id // cached program is still valid
-      } else {
-        placeholderProgramCb = program.callback
-        customPrograms.delete(id) // outdated cache
-      }
+// On first snapshot, there is no programId assigned yet
+export function getProgramId(programId: number | undefined, code: string): number {
+  if (programId) {
+    const program = customPrograms.get(programId)
+    if (program && program.code === code) {
+      // program is still good
+      return programId
     }
+    // TODO: think about removing, we cannot do it right away because it might be used next frame still
+    // we should probably "schedule" program for deletion
   }
 
   const newId = programIdCounter++
-  customPrograms.set(newId, createProgram(code, newId, placeholderProgramCb))
+  customPrograms.set(newId, createProgram(code, newId))
   return newId
 }
 
-export function getCustomProgram(programId: number): CustomProgram {
+export function getCodeData(programId: number): CustomProgram {
   const program = customPrograms.get(programId)
   if (!program) throw Error('Unknown program id: ' + programId)
   return program
 }
 
-function getEffectWithError(effect: Effect): Effect {
-  if ('program' in effect.fill && typeof effect.fill.program.id === 'number') {
-    const program = getCustomProgram(effect.fill.program.id)
-    return {
-      ...effect,
-      fill: {
-        ...effect.fill,
-        program: {
-          ...effect.fill.program,
-          errors: program.errors,
-        },
-      },
-    }
+export function getExecutable(programId: number): ReturnType<typeof getDrawShape> {
+  const program = customPrograms.get(programId)
+  if (!program) throw Error('Unknown program id: ' + programId)
+
+  if (program.execute === null) {
+    return program.errors.length > 0 ? getFailedProgram() : getPlaceholderProgram()
   }
-  return effect
-}
 
-export function getAssetsWithError(assets: Asset[]) {
-  return assets.map<Asset>((asset) =>
-    'props' in asset
-      ? {
-          ...asset,
-          effects: asset.effects.map(getEffectWithError),
-        }
-      : asset
-  )
-}
-
-export function getAssetIdsByProgramId(assets: Asset[], programId: number): number[] {
-  return assets
-    .filter((asset) => {
-      if ('props' in asset) {
-        return asset.effects.some(
-          (effect) => 'program' in effect.fill && effect.fill.program.id === programId
-        )
-      }
-      return false
-    })
-    .map(
-      (asset) =>
-        asset.id ||
-        (() => {
-          throw Error('Asset id is missing')
-        })()
-    )
+  return program.execute
 }

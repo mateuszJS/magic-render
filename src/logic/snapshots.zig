@@ -101,12 +101,12 @@ fn generateNewSnapshot(state: State) !void {
     }
     // we might consider different params/data structure, to be more precise about only 3 scenarios available
     // 1. history update -> compare & save in zig, do not produce snapshot
-    // 2. preview of changes -> do not compare & save in zig but DO produce snapshot
+    // 2. preview of changes -> do not compare & save in zig(commit = false) but DO produce snapshot
     // 3. normal/common changes -> with comparing & saving & generating a snapshot
 
     const curr_snapshot = try getCurrSnapshot(state);
     if (commit) {
-        // if it's not a commit, then we do not care about limiting snapshots
+        // if it's not a commit, we don't compare not save the snapshot in the state
         const is_project_size_same = utils.equalF32(last_project_snapshot.width, state.width) and utils.equalF32(last_project_snapshot.height, state.height);
         if (is_project_size_same and curr_snapshot.assets.len == last_project_snapshot.assets.len) {
             var all_match = true;

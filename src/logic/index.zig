@@ -1159,7 +1159,7 @@ pub fn renderPick() !void {
     }
 }
 
-pub fn setSnapshot(snapshot: snapshots.ProjectSnapshot, with_snapshot: bool) !void {
+pub fn setSnapshot(snapshot: snapshots.ProjectSnapshot, with_snapshot: bool, commit: bool) !void {
     state.redraw_needed = true;
     state.width = snapshot.width;
     state.height = snapshot.height;
@@ -1174,7 +1174,7 @@ pub fn setSnapshot(snapshot: snapshots.ProjectSnapshot, with_snapshot: bool) !vo
         try setSelectedAsset(AssetId{});
     }
     snapshots.skip_snapshot = false;
-    snapshots.triggerNewSnapshot(with_snapshot, true);
+    snapshots.triggerNewSnapshot(with_snapshot, commit);
 }
 
 pub fn deinitState() !void {
@@ -1376,6 +1376,30 @@ pub fn onBlurTextArea() void {
         assets.selected_asset_id = AssetId.fromArray(.{ assets.selected_asset_id.getPrim(), 0, 0, 0 });
         caret.position = 0;
         caret.selection_end_position = 0;
+    }
+}
+
+pub fn invalidateCacheByProgram(program_id: u32) void {
+    var iter = assets.getIter();
+    while (iter.next()) |asset| {
+        switch (asset.value_ptr.*) {
+            .shape => |*shape| {
+                for (shape.effects.items) |effect| {
+                    switch (effect.fill) {
+                        .program_id => |id| {
+                            if (id == program_id) {
+                                state.redraw_needed = true;
+                                shape.outdated_cache = true;
+                                snapshots.triggerNewSnapshot(true, false);
+                                break;
+                            }
+                        },
+                        else => {},
+                    }
+                }
+            },
+            else => {},
+        }
     }
 }
 

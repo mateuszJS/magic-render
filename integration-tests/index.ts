@@ -89,7 +89,6 @@ async function test() {
         sharedTextEffects.style.display = 'block'
         sharedTextEffects.checked = selectedAsset.is_sdf_shared
         fontSizeInput.value = selectedAsset.typo_props.font_size.toString()
-        console.log(selectedAsset.typo_props.font_size)
       } else {
         sharedTextEffects.style.display = 'none'
       }
@@ -158,7 +157,7 @@ async function test() {
     ),
   }
 
-  creator.setSnapshot(snaitizedLastSnapshot, true)
+  creator.setSnapshot(snaitizedLastSnapshot, { produceSnapshot: false, addHistoryEntry: true })
 
   const resetProjectBtn = document.querySelector<HTMLInputElement>('#reset-project')!
   resetProjectBtn.addEventListener('click', () => {
@@ -197,7 +196,7 @@ async function test() {
       })),
     }
 
-    creator.setSnapshot(snapshot, true)
+    creator.setSnapshot(snapshot, { produceSnapshot: false, addHistoryEntry: true })
     startProjectInputFromImages.value = '' // reset input value to allow re-uploading the same file
   })
 
@@ -208,14 +207,14 @@ async function test() {
   undoBtn.addEventListener('click', () => {
     currentHistoryIndex = Math.max(0, currentHistoryIndex - 1)
     const snapshot = assetsUpdatesHistory[currentHistoryIndex]
-    creator.setSnapshot(snapshot, false)
+    creator.setSnapshot(snapshot, { produceSnapshot: false, addHistoryEntry: true })
     setLastSnapshot(snapshot)
   })
 
   redoBtn.addEventListener('click', () => {
     currentHistoryIndex = Math.min(assetsUpdatesHistory.length - 1, currentHistoryIndex + 1)
     const snapshot = assetsUpdatesHistory[currentHistoryIndex]
-    creator.setSnapshot(snapshot, false)
+    creator.setSnapshot(snapshot, { produceSnapshot: false, addHistoryEntry: true })
     setLastSnapshot(snapshot)
   })
 
@@ -241,7 +240,7 @@ async function test() {
         ...getLastSnapshot(),
         assets: newAssets,
       },
-      true
+      { produceSnapshot: true, addHistoryEntry: true }
     )
   })
 
@@ -290,7 +289,7 @@ async function test() {
         width,
         height,
       },
-      true
+      { produceSnapshot: true, addHistoryEntry: true }
     )
   })
 

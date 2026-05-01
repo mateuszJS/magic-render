@@ -36,7 +36,11 @@ declare module '*.zig' {
   ) => void
   export const updateCache: VoidFunction
   export const removeAsset: () => void
-  export const setSnapshot: (snapshot: ZigProjectSnapshot, with_snapshot: boolean) => void
+  export const setSnapshot: (
+    snapshot: ZigProjectSnapshot,
+    with_snapshot: boolean,
+    commit: boolean
+  ) => void
 
   export const onUpdatePick: (id: Id) => void
   export const onPointerDown: (x: number, y: number) => void
@@ -187,4 +191,5 @@ declare module '*.zig' {
   export const INFINITE_DISTANCE: number
 
   export const invalidateCache: (ids: number[]) => void
+  export const invalidateCacheByProgram: (id: number) => void
 }

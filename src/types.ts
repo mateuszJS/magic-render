@@ -191,7 +191,10 @@ export type CreatorProps = {
 
 export type CreatorAPI = {
   addImages: (urls: string[]) => Promise<void>
-  setSnapshot: (snapshot: ProjectSnapshot, withSnapshot: boolean) => Promise<void>
+  setSnapshot: (
+    snapshot: ProjectSnapshot,
+    options: { produceSnapshot: boolean; addHistoryEntry: boolean }
+  ) => Promise<void>
   removeAsset: VoidFunction
   destroy: VoidFunction
   setTool: (tool: CreatorTool) => void

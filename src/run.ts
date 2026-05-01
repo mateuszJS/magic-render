@@ -25,7 +25,7 @@ import { camera, pointer } from 'pointer'
 import * as Textures from 'textures'
 import { endCache, startCache } from 'WebGPU/textureCache'
 import { BoundingBox, Point } from 'types'
-import { getCustomProgram } from 'customPrograms'
+import * as CustomPrograms from 'customPrograms'
 import assertUnreachable from 'utils/assertUnreachable'
 // import { TimingHelper, NonNegativeRollingAverage } from 'WebGPU/TimingHelper'
 
@@ -154,7 +154,7 @@ export function runCreator(
         uniform = uniform_data.solid
       } else if ('program' in uniform_data && uniform_data.program) {
         const programId = uniform_data.program.dataView.getUint32(0, true)
-        program = getCustomProgram(programId).callback
+        program = CustomPrograms.getExecutable(programId)
         uniform = uniform_data.program
       } else {
         assertUnreachable(uniform_data)

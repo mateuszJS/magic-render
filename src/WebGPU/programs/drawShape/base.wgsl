@@ -473,6 +473,7 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
 
   // Negative inside, positive outside, in pixel-space units (see header).
   let distance = length(curve_pos - vsOut.uv) * -sdf.distance;
+  let angle = atan2(curve_pos.y - vsOut.uv.y, curve_pos.x - vsOut.uv.x);
 
   // Grid: fract(uv) is how far into the current texel we are (0..1).
   // Dividing by fwidth gives distance in screen pixels from the nearest edge.
@@ -491,9 +492,8 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
   let inner_alpha = smoothstep(u.dist_start - alpha_smooth_factor, u.dist_start + alpha_smooth_factor, distance);
   let outer_alpha = smoothstep(u.dist_end   - alpha_smooth_factor, u.dist_end   + alpha_smooth_factor, distance);
   let alpha = outer_alpha - inner_alpha;
-  var color = getColor(vec4f(distance, sdf.t, 0, 1), vsOut.uv, vsOut.norm_uv);
+  var color = getColor(distance, sdf.t, angle, vsOut.uv, vsOut.norm_uv);
   
-  let angle = atan2(curve_pos.x - vsOut.uv.x, curve_pos.y - vsOut.uv.y);
   // color = vec4f(distance, sdf.t % 100, 0, 1.0);
   // color = vec4f(distance / 10.0, sdf.t % 1, angle / (2 * PI), 1.0);
   
