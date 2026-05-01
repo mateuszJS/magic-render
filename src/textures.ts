@@ -186,7 +186,7 @@ export function createDisposableComputeDepthTexture(width: number, height: numbe
   textures.push({ url: label, texture })
 
   delayedDestroy(texture)
-  // TODO: also remove entry fro textures
+  // TODO: also remove the entry from textures map
 
   return textureId
 }
