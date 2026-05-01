@@ -2,7 +2,7 @@ import setCamera from 'utils/setCamera'
 import { camera } from '../pointer'
 import Logic from 'logic/index.zig'
 
-export default async function generatePreview(
+export async function captureCanvas(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
   creatorCanvas: HTMLCanvasElement,

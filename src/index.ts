@@ -6,8 +6,7 @@ import * as Logic from './logic/index.zig'
 import initMouseController, { camera } from 'pointer'
 import getDefaultPoints from 'utils/getDefaultPoints'
 import * as Textures from 'textures'
-import throttle from 'utils/throttle'
-import generatePreview from 'WebGPU/generatePreview'
+import { captureCanvas } from 'WebGPU/captureCanvas'
 import * as Typing from 'typing'
 import * as Fonts from 'fonts'
 import { Asset, CreatorAPI, CreatorProps, Id, ZigAsset, ZigProjectSnapshot } from './types'
@@ -19,19 +18,19 @@ import * as Snapshots from 'snapshots/snapshots'
 import toZigAsset from 'snapshots/toZigAsset'
 import { NO_ASSET_ID } from 'consts'
 import { downloadCanvas } from 'utils/downloadCanvas'
+import * as PreviewTrigger from './previewTrigger'
 
 export default async function initCreator({ canvas, ...props }: CreatorProps): Promise<CreatorAPI> {
   const fakeMaxTexSize = 40
 
-  let texturesLoading = 0
   let isMouseEventProcessing = false
   const abortController = new AbortController()
 
   function updateIsProcessingFlag() {
-    props.onIsProcessingFlagUpdate(texturesLoading > 0 || isMouseEventProcessing)
+    // TODO: add back resources loading status and trigger each time reosurces are loaded
+    props.onIsProcessingFlagUpdate(isMouseEventProcessing)
   }
 
-  let isDestroyed = false
   await setupDevice(props.captureError)
   Snapshots.init(props.initialProjectWidth, props.initialProjectHeight)
 
@@ -43,11 +42,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     props.isTest
   )
 
-  Textures.init((texLoadings) => {
-    texturesLoading = texLoadings
-    updateIsProcessingFlag()
-    triggerGeneratePreview()
-  })
+  Textures.init()
 
   CustomPrograms.init()
   Fonts.init(props.getFontUrl)
@@ -88,33 +83,11 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     abortController.signal
   )
 
-  const throttledPreviewGenerator = throttle(() => {
-    if (isDestroyed || texturesLoading > 0 || props.isTest || props.disableMinaitures) return
-
-    generatePreview(
-      device,
-      presentationFormat,
-      canvas,
-      Snapshots.lastSnapshot.width,
-      Snapshots.lastSnapshot.height,
-      400,
-      400,
-      capturePreview,
-      props.onPreviewUpdate
-    )
-  }, 1000 * 5)
-
-  const triggerGeneratePreview = () => {
-    if (texturesLoading === 0) {
-      throttledPreviewGenerator()
-    }
-  }
-
   const onAssetUpdate = (snapshot: ZigProjectSnapshot, commit: boolean) => {
     Snapshots.saveSnapshot(snapshot)
     props.onSnapshotUpdate(Snapshots.lastSnapshot, commit)
     if (commit) {
-      triggerGeneratePreview()
+      PreviewTrigger.safeGeneratePreview()
     }
   }
 
@@ -221,6 +194,15 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     props.captureError
   )
 
+  if (!props.isTest && !props.disableMinaitures) {
+    PreviewTrigger.init({
+      canvas,
+      capturePreview,
+      onPreviewUpdate: props.onPreviewUpdate,
+      onResourcesLoad: updateIsProcessingFlag,
+    })
+  }
+
   Fonts.loadFont(0)
 
   const setSnapshot: CreatorAPI['setSnapshot'] = async (
@@ -230,7 +212,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     try {
       const assets = snapshot.assets.map<ZigAsset>((asset) => toZigAsset(asset, props.captureError))
       Logic.setSnapshot({ ...snapshot, assets }, produceSnapshot, addHistoryEntry)
-      triggerGeneratePreview()
+      PreviewTrigger.safeGeneratePreview()
     } catch (err) {
       props.captureError(err)
     }
@@ -242,7 +224,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     removeAsset: Logic.removeAsset,
     setSnapshot,
     destroy: () => {
-      isDestroyed = true
+      PreviewTrigger.markDeviceDestroyed()
       abortController.abort()
       stopRAF()
       Logic.deinitState()
@@ -266,7 +248,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
       Logic.setSelectedAssetTypoProps(typoProps, commit)
     },
     download: () => {
-      generatePreview(
+      captureCanvas(
         device,
         presentationFormat,
         canvas,

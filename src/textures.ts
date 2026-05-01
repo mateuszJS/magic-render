@@ -10,6 +10,7 @@ import { Asset } from 'types'
 import getShapesAssets from 'svgToShapes/getShapesAssets'
 import { device, storageFormat } from 'WebGPU/setupDevice'
 import { delayedDestroy, destroyGpuObjects } from 'WebGPU/programs/initPrograms'
+import * as PreviewTrigger from './previewTrigger'
 
 function getSvgSize(svgRoot: ElementNode, img?: HTMLImageElement) {
   const props = svgRoot.properties
@@ -34,15 +35,11 @@ function extractSizeFromSvgViewbox(viewbox: string) {
 let textures: TextureSource[]
 let textureLoadingPlaceholder: GPUTexture
 let textureErrorPlaceholder: GPUTexture
-let updateProcessing: () => void
-let texturesLoading: number
 
-export function init(_updateProcessing: (loadingTextures: number) => void): void {
+export function init(): void {
   textures = []
   textureLoadingPlaceholder = getLoadingTexture()
   textureErrorPlaceholder = getErrorTexture()
-  texturesLoading = 0
-  updateProcessing = () => _updateProcessing(texturesLoading)
 
   addIcon(0, RotateIcon)
 }
@@ -85,8 +82,7 @@ export function add(
     return textures.indexOf(sameUrl)
   }
 
-  texturesLoading++
-  updateProcessing()
+  PreviewTrigger.updateResourcesFlag('texture-load-start')
 
   const textureId = textures.length
   // we allow duplicates in textures array
@@ -148,8 +144,7 @@ async function resolveTexture(
     // onLoad has to be called, otherwise the Promise(waiting for onLoad)
     // will not resolve and the caller will keep waiting
   } finally {
-    texturesLoading--
-    updateProcessing()
+    PreviewTrigger.updateResourcesFlag('texture-load-end')
   }
 }
 

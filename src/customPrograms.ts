@@ -4,6 +4,7 @@ import { device, presentationFormat } from 'WebGPU/setupDevice'
 import { CustomProgramError } from 'types'
 import drawShapeShaderBase from 'WebGPU/programs/drawShape/base.wgsl'
 import * as Logic from './logic/index.zig'
+import * as PreviewTrigger from './previewTrigger'
 
 interface CustomProgram {
   code: string
@@ -84,6 +85,8 @@ function createProgram(code: string, newId: number): CustomProgram {
     execute: null,
   }
 
+  PreviewTrigger.updateResourcesFlag('program-load-start')
+
   const executeCallback = getDrawShape(
     device,
     presentationFormat,
@@ -105,6 +108,8 @@ function createProgram(code: string, newId: number): CustomProgram {
       } else {
         program.execute = executeCallback
       }
+
+      PreviewTrigger.updateResourcesFlag('program-load-end')
     }
   )
 
