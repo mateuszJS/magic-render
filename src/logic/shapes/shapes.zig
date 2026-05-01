@@ -380,6 +380,7 @@ pub const Shape = struct {
         );
 
         for (points) |*point| {
+            if (path_utils.isStraightLineHandle(point.*)) continue;
             const scaled = scale.get(point);
             point.x = scaled.x;
             point.y = scaled.y;

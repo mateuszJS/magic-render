@@ -21,7 +21,7 @@ import { NO_ASSET_ID } from 'consts'
 import { downloadCanvas } from 'utils/downloadCanvas'
 
 export default async function initCreator({ canvas, ...props }: CreatorProps): Promise<CreatorAPI> {
-  const fakeMaxTexSize = 0
+  const fakeMaxTexSize = 40
 
   let texturesLoading = 0
   let isMouseEventProcessing = false
@@ -49,29 +49,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     triggerGeneratePreview()
   })
 
-  const onProgramUpdate = (programId: number) => {
-    Snapshots.withSnapshotReady((snapshot) => {
-      const assetIds = CustomPrograms.getAssetIdsByProgramId(snapshot.assets, programId)
-      Logic.invalidateCache(assetIds)
-    })
-  }
-
-  const onProgramError = () => {
-    Snapshots.withSnapshotReady((snapshot) => {
-      // our aim is to notify UI about errors
-      // Nothing has changed, so no error were provided!
-      const assetsWithErrors = CustomPrograms.getAssetsWithError(snapshot.assets)
-      props.onSnapshotUpdate(
-        {
-          ...snapshot,
-          assets: assetsWithErrors,
-        },
-        false
-      )
-    })
-  }
-
-  CustomPrograms.init(onProgramUpdate, onProgramError)
+  CustomPrograms.init()
   Fonts.init(props.getFontUrl)
 
   const context = canvas.getContext('webgpu')
@@ -227,7 +205,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
           ...snapshot,
           assets: [...snapshot.assets, ...serializedAssets],
         },
-        true
+        { produceSnapshot: true, addHistoryEntry: true }
       )
     })
   }
@@ -245,10 +223,13 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
 
   Fonts.loadFont(0)
 
-  const setSnapshot: CreatorAPI['setSnapshot'] = async (snapshot, withSnapshot) => {
+  const setSnapshot: CreatorAPI['setSnapshot'] = async (
+    snapshot,
+    { produceSnapshot, addHistoryEntry }
+  ) => {
     try {
       const assets = snapshot.assets.map<ZigAsset>((asset) => toZigAsset(asset, props.captureError))
-      Logic.setSnapshot({ ...snapshot, assets }, withSnapshot)
+      Logic.setSnapshot({ ...snapshot, assets }, produceSnapshot, addHistoryEntry)
       triggerGeneratePreview()
     } catch (err) {
       props.captureError(err)

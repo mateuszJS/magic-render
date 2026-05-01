@@ -64,18 +64,23 @@ export default function getDrawShape(
     },
   })
 
+  // PathMetrics uniform layout (must match base.wgsl `struct PathMetrics`):
+  //   off  0 : texture_size    vec2f  (dimensions in texels)
+  //   off  8 : total_arc_len   f32
+  //   off 12 : num_curves      u32
+  // Total: 16 bytes (matches WGSL uniform alignment for the struct).
+  const PATH_METRICS_BYTES = 16
+  // Size of one cubic curve in `curves` storage buffer: 4 vec2f × 8 bytes.
+  const CURVE_STRIDE_BYTES = 4 * 2 * 4
+
   return function drawShape(
     passEncoder: GPURenderPassEncoder,
     sdfTexture: GPUTexture,
     boundingBoxDataView: DataView<ArrayBuffer>,
     uniformDataView: DataView<ArrayBuffer>,
     curvesDataView: DataView<ArrayBuffer>,
-    uniformTDataView: DataView<ArrayBuffer>
+    arcLengthsDataView: DataView<ArrayBuffer>
   ) {
-    // console.log('================curvesDataView')
-    // for (let i = 0; i < curvesDataView.byteLength; i += 4) {
-    //   console.log(curvesDataView.getFloat32(i, true))
-    // }
     const boundBoxBuffer = device.createBuffer({
       label: 'drawShape vertex buffer',
       size: boundingBoxDataView.byteLength,
@@ -100,13 +105,38 @@ export default function getDrawShape(
     device.queue.writeBuffer(curvesBuffer, 0, curvesDataView)
     delayedDestroy(curvesBuffer)
 
-    const uniformTBuffer = device.createBuffer({
-      label: 'drawShape uniform T buffer',
-      size: uniformTDataView.byteLength,
+    const arcLengthsBuffer = device.createBuffer({
+      label: 'drawShape arc lengths buffer',
+      size: arcLengthsDataView.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     })
-    device.queue.writeBuffer(uniformTBuffer, 0, uniformTDataView)
-    delayedDestroy(uniformTBuffer)
+    device.queue.writeBuffer(arcLengthsBuffer, 0, arcLengthsDataView)
+    delayedDestroy(arcLengthsBuffer)
+
+    // Build the PathMetrics uniform from the data we already have.
+    // `total_arc_len` is the last entry of arc_lengths (cumulative arc length
+    // at end of last curve). `num_curves` is the curve count derived from
+    // the curves storage buffer's byte length.
+    const metricsArrayBuffer = new ArrayBuffer(PATH_METRICS_BYTES)
+    const metricsF32 = new Float32Array(metricsArrayBuffer)
+    const metricsU32 = new Uint32Array(metricsArrayBuffer)
+    const totalArcLen =
+      arcLengthsDataView.byteLength >= 4
+        ? arcLengthsDataView.getFloat32(arcLengthsDataView.byteLength - 4, true)
+        : 0
+    const numCurves = (curvesDataView.byteLength / CURVE_STRIDE_BYTES) | 0
+    metricsF32[0] = sdfTexture.width // texture_size.x
+    metricsF32[1] = sdfTexture.height // texture_size.y
+    metricsF32[2] = totalArcLen // total_arc_len
+    metricsU32[3] = numCurves // num_curves
+
+    const pathMetricsBuffer = device.createBuffer({
+      label: 'drawShape path metrics',
+      size: PATH_METRICS_BYTES,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    })
+    device.queue.writeBuffer(pathMetricsBuffer, 0, metricsArrayBuffer)
+    delayedDestroy(pathMetricsBuffer)
 
     passEncoder.setPipeline(pipeline)
 
@@ -118,7 +148,8 @@ export default function getDrawShape(
         { binding: 1, resource: sdfTexture.createView() },
         { binding: 2, resource: { buffer: canvasMatrix.buffer } },
         { binding: 3, resource: { buffer: curvesBuffer } },
-        // { binding: 4, resource: { buffer: uniformTBuffer } },
+        { binding: 4, resource: { buffer: arcLengthsBuffer } },
+        { binding: 5, resource: { buffer: pathMetricsBuffer } },
       ],
     })
 

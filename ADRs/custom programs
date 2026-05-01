@@ -1,4 +1,4 @@
 I've tried to use failing program as any other. But here is the issue, if a program fails then the whole encoder fails, so all assumptions like "sdf should be generated" don't hold anymore.
-It complicates whole renderign logic on each step(by handling that edge case).
+It complicates whole rendering logic on each step(by handling that edge case).
 
 Because of that, we switch approach, firstly let's validate if program works, if not, use alternative program, if works, then fine. This way we can awlays be sure that encoder won't fail because of custom programs.

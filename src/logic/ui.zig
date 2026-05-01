@@ -31,18 +31,15 @@ pub fn importUiElement(
         0,
         std.heap.page_allocator,
     );
+
     try elements.put(id, shape);
 }
 
 pub fn generateUiElementsSdf() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
     var iterator = elements.iterator();
     while (iterator.next()) |entry| {
         var shape = entry.value_ptr;
-        const option_points = try shape.getRelativePoints(allocator);
+        const option_points = try shape.getRelativePoints(std.heap.page_allocator);
         if (option_points) |points| {
             const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
 
@@ -67,10 +64,7 @@ pub const DrawVertex = struct {
     color: @Vector(4, f32),
 };
 
-pub fn draw(
-    dataset: []DrawVertex,
-    draw_shape: *const fn ([]const PointUV, sdf_drawing.DrawUniform, u32, []const Point, []const f32) void,
-) !void {
+pub fn draw(dataset: []DrawVertex) !void {
     for (dataset) |data| {
         if (elements.get(@intFromEnum(data.icon))) |shape| {
             const uniform = sdf_drawing.DrawUniform{
@@ -97,7 +91,7 @@ pub fn draw(
                 .{ .x = p.x - hw, .y = p.y - hh, .u = 0.0, .v = 0.0 },
             };
 
-            draw_shape(
+            webgpu_glue.draw_shape(
                 &vertex,
                 uniform,
                 shape.sdf_tex.id,

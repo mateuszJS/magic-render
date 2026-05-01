@@ -7,3 +7,5 @@ TO know if you are inside or outside we can store red channe lwit hnegative or p
 Switch from using raycasting/widning number and dissallow hoels in a shape UNLESS we do it intentionally by boolean oepration (so inner curve direciton is reversed) or in fonts (so their inner cuvre direciton is reversE).
 
 This way we can use jsut tangent fast oepraiton in FRAGMENT SHADER to determine where pixels lives.
+
+And there was one more attempt with Claude Opus 4.7 with Adpative Thinking. Still failed to make SDF good enough.
