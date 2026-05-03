@@ -175,6 +175,8 @@ struct VSOutput {
 struct Sample {
   t: f32,
   distance: f32,  // +1 inside, -1 outside
+  total_weight: f32,
+  number_of_valid_neighbors: f32,
 };
 
 // One cached neighbour (a single texel near the fragment) plus all the
@@ -373,7 +375,12 @@ fn getSample(pos: vec2f) -> Sample {
   let arc_blended = clamp(arc_blended_raw, 0.0, total_arc_len);
   let blended_global_t = arc_to_g(arc_blended);
 
-  return Sample(blended_global_t, nearest_sign);
+  let number_of_valid_neighbors = 0.0 +
+    select(0.0, 1.0, keep00) +
+    select(0.0, 1.0, keep01) +
+    select(0.0, 1.0, keep10) +
+    select(0.0, 1.0, keep11);
+  return Sample(blended_global_t, nearest_sign, total_w, number_of_valid_neighbors);
 }
 
 // Forward arc-length map: g → cumulative arc length along the path.
@@ -496,27 +503,29 @@ struct Refined {
 };
 
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
-  let sdf = getSample(vsOut.uv);
+  let uv = vsOut.uv;
+  let sdf        = getSample(uv);
+
 
   // Refine the bilinear t estimate to the true nearest point on the curve.
-  let refined = refine_curve_pos(vsOut.uv, sdf.t);
+  let refined = refine_curve_pos(uv, sdf.t);
   let curve_pos = refined.pos;
   let g = refined.t;
 
   // Negative inside, positive outside, in pixel-space units (see header).
-  let distance = length(curve_pos - vsOut.uv) * -sdf.distance;
-  let angle = atan2(curve_pos.y - vsOut.uv.y, curve_pos.x - vsOut.uv.x);
+  let distance = length(curve_pos - uv) * -sdf.distance;
+  let angle = atan2(curve_pos.y - uv.y, curve_pos.x - uv.x);
 
   // Grid: fract(uv) is how far into the current texel we are (0..1).
   // Dividing by fwidth gives distance in screen pixels from the nearest edge.
-  let fw = fwidth(vsOut.uv);
-  let grid = min(fract(vsOut.uv) / fw, (1.0 - fract(vsOut.uv)) / fw);
-  let on_grid = min(grid.x, grid.y) < 0.5;
+  let fw = fwidth(uv);
+  let texel_grid = min(fract(uv) / fw, (1.0 - fract(uv)) / fw);
+  let on_texel_grid = min(texel_grid.x, texel_grid.y) < 0.5;
 
 
   ${TEST}
 
-  let dist_derivative = length(fwidth(vsOut.uv));
+  let dist_derivative = length(fwidth(uv));
   // Background derivatives are huge (≈ 3.4e38) — clamp those to 0 so we don't
   // smear the AA band into "this whole pixel is on a boundary".
   let safe_dist_derivative = select(0.0, dist_derivative, dist_derivative <= FWIDTH_VALID_LIMIT);
@@ -525,15 +534,15 @@ struct Refined {
   let inner_alpha = smoothstep(u.dist_start - alpha_smooth_factor, u.dist_start + alpha_smooth_factor, distance);
   let outer_alpha = smoothstep(u.dist_end   - alpha_smooth_factor, u.dist_end   + alpha_smooth_factor, distance);
   let alpha = outer_alpha - inner_alpha;
-  var color = getColor(distance, g, angle, vsOut.uv, vsOut.norm_uv);
+  var color = getColor(distance, g, angle, uv, vsOut.norm_uv);
   
   // color = vec4f(distance, sdf.t % 100, 0, 1.0);
   // color = vec4f(distance / 10.0, sdf.t % 1, angle / (2 * PI), 1.0);
 
 
-  if (on_grid) {
-    return vec4f(0, 1, 0, 1);
-  }
+  // if (on_grid) {
+  //   return vec4f(0, 1, 0, 1);
+  // }
 
   // let norm_angle = ((angle + TAU) % TAU) / TAU;
 
@@ -541,6 +550,238 @@ struct Refined {
   //   return vec4f(norm_angle, 0, 0, 1);
   // }
   // discard;
-  
-  return vec4f(color.rgb, color.a * alpha);
+
+  let final_result = vec4f(color.rgb, color.a * alpha);
+
+    // === DEBUG: per-screen-pixel-cell digit overlay ===========================
+    // Cells are 32×32 SCREEN pixels. The screen-cell centre and the matching
+    // uv-at-centre are computed together; sdf.t sampled at uv-at-centre is
+    // therefore uniform across all fragments inside the same screen cell, so
+    // every fragment in the cell renders the same digit pair.
+    let cell       = vec2f(32.0, 32.0);
+    let cell_data  = debug_screen_cell(vsOut.position.xy, vsOut.uv, cell);
+    let debug_sdf        = getSample(cell_data.uv);
+    let digits     = debug_render_digits(vsOut.position.xy, cell.x, debug_sdf.total_weight, 2);
+    let grid       = debug_grid_line(vsOut.position.xy, cell, 1.0);
+
+    // Background → grid lines → digits, painted in that order.
+    var dbg = final_result; // vec4f(0.0, 0.0, 0.5, 1.0);   
+    let debug_color = vec4f(0, 1, 0, 1);
+    dbg     = mix(dbg, debug_color, grid);  // grey grid lines
+    dbg     = mix(dbg, debug_color, digits.a); // yellow digits on top
+    // === /DEBUG ==============================================================
+    return dbg;
+}
+
+// =============================================================================
+// DEBUG: TINY BITMAP DIGIT RENDERER  (self-contained, copy-pasteable)
+//
+// Renders an integer `value` as 2 digits inside each grid cell. The function
+// has no dependencies on this shader's globals — copy this whole section
+// (constants + 2 functions) into any fragment shader to use it.
+//
+// Caller responsibilities:
+//   • Pass the absolute pixel position you want digits to be relative to
+//     (e.g. `vsOut.uv` if your uv is in texel space, or fragCoord, etc).
+//   • Compute `value` as a single number that is CONSTANT across all pixels
+//     within one grid cell, and only varies BETWEEN cells. Typically:
+//       let cell_idx = vec2i(floor(px / cell_size));
+//       let value    = compute_per_cell(cell_idx);
+//   • Choose a `cell_size` large enough for the digits to be readable
+//     (≥ ~16 in the same units as `px` is a good starting point).
+//
+// Returns:
+//   vec4f with rgb = (1, 1, 1) and a = 1.0 on pixels that are part of a
+//   digit glyph, vec4f(0) elsewhere. Mix with the underlying colour:
+//       let d = debug_render_digits(vsOut.uv, 32.0, value, 0);     // integer
+//       let d = debug_render_digits(vsOut.uv, 32.0, value, 2);     // X.YY
+//       return mix(base_color, vec4f(1, 1, 0, 1), d.a);            // yellow digits
+//
+// `decimal_places` controls how many fraction digits to render after a
+// decimal point. 0 = integer-only (no decimal point shown). When > 0 the
+// total slot count grows accordingly, so you may need a wider `cell_size`.
+//
+// Renders the value with a sign prefix for negatives, no leading zeros for
+// values with non-zero integer part (so 5.5 prints as "5.5", not "05.5"; 0.5
+// keeps its single leading zero). Width adapts per value, so cells with very
+// different magnitudes will have different-sized digit blocks centred in
+// their cells. If a block overflows its cell, increase `cell_size`.
+// =============================================================================
+
+// Snap a pixel position to the CENTRE of the grid cell it falls in. All
+// fragments inside the same cell receive the same return value, so any
+// downstream computation derived from it (texture sample, distance search,
+// arithmetic on the position, etc.) is automatically uniform per cell.
+// Pair this with `debug_render_digits` to visualise per-cell quantities:
+//
+//   let cell    = vec2f(32.0, 32.0);                   // 32×32 cells
+//   let centre  = debug_cell_centre(vsOut.uv, cell);    // same for whole cell
+//   let value   = some_function(centre);                // ⇒ same for whole cell
+//   let digits  = debug_render_digits(vsOut.uv, cell.x, value, 0);
+//   return mix(base_color, vec4f(1, 1, 0, 1), digits.a);
+fn debug_cell_centre(px: vec2f, cell_size: vec2f) -> vec2f {
+  return (floor(px / cell_size) + vec2f(0.5)) * cell_size;
+}
+
+// All-in-one helper for the common case "I want screen-pixel cells, but I
+// need to sample data living in a different coordinate space (e.g. texel uv)".
+// Given the fragment's screen position and uv, returns the centre of the
+// screen-pixel cell *and* the matching uv at that screen centre. Both values
+// are uniform across all fragments in the same screen cell, so any data you
+// derive from `result.uv` is automatically cell-uniform.
+//
+// Mechanics: we know how uv changes per screen pixel via dpdx/dpdy (these
+// are constant within a single triangle's projection), so walking from the
+// fragment to the cell centre in screen space corresponds to a known uv
+// offset. Must be called from a fragment shader (dpdx/dpdy are fragment-only).
+//
+// Usage:
+//   let cell      = vec2f(32.0, 32.0);   // 32 screen pixels per cell
+//   let result    = debug_screen_cell(vsOut.position.xy, vsOut.uv, cell);
+//   let sdf       = getSample(result.uv);
+//   let digits    = debug_render_digits(vsOut.position.xy, cell.x, sdf.t, 0);
+//   return mix(base_color, vec4f(1, 1, 0, 1), digits.a);
+struct DebugScreenCell {
+  screen_centre: vec2f,  // cell centre in screen pixels (same units as `screen_pos`)
+  uv: vec2f,             // uv at the screen-cell centre (same units as input `uv`)
+};
+fn debug_screen_cell(screen_pos: vec2f, uv: vec2f, screen_cell_size: vec2f) -> DebugScreenCell {
+  let screen_centre = (floor(screen_pos / screen_cell_size) + vec2f(0.5)) * screen_cell_size;
+  let screen_offset = screen_centre - screen_pos;
+  let uv_at_centre  = uv + dpdx(uv) * screen_offset.x + dpdy(uv) * screen_offset.y;
+  return DebugScreenCell(screen_centre, uv_at_centre);
+}
+
+// Returns 1.0 on grid-cell borders and 0.0 in cell interiors. Caller mixes
+// with their preferred grid colour:
+//   let g = debug_grid_line(vsOut.position.xy, vec2f(32.0), 1.0);
+//   color = mix(color, vec4f(0, 0, 0, 1), g);    // black grid lines
+//
+// `line_width` is the line width in screen pixels (use 1.0 for the thinnest
+// crisp line). The line is placed at the LEFT and TOP edge of each cell —
+// because cells abut, that's also the right edge of the previous cell, so
+// adjacent cells share a single `line_width`-wide border.
+//
+// Pixel-aligned (no AA): assumes `px` is in screen pixels with fragCoord at
+// integer+0.5, which is the default for non-MSAA-per-sample shading. With
+// `line_width = 1.0` exactly one pixel column / row is lit per cell boundary.
+fn debug_grid_line(px: vec2f, cell_size: vec2f, line_width: f32) -> f32 {
+  let in_cell = px - floor(px / cell_size) * cell_size;
+  let on_grid = in_cell.x < line_width || in_cell.y < line_width;
+  return select(0.0, 1.0, on_grid);
+}
+
+const DEBUG_DIGIT_W:    i32 = 3;  // glyph width in font pixels
+const DEBUG_DIGIT_H:    i32 = 5;  // glyph height in font pixels
+const DEBUG_DIGIT_GAP:  i32 = 1;  // pixels of gap between digits
+// One font pixel = this many screen pixels. 1.0 = thinnest (1px strokes), bump
+// up for bolder/larger digits at the cost of more cell space.
+const DEBUG_PIXEL_SCALE: f32 = 1.5;
+
+// 3x5 bitmap glyphs for digits 0..9. Bit (x + 3*y) is the pixel at column x
+// (0..2, left→right) and row y (0..4, top→bottom). Set = on, clear = off.
+fn debug_glyph(d: i32) -> u32 {
+  switch d {
+    case 0:       { return 0x7B6Fu; }
+    case 1:       { return 0x4924u; }
+    case 2:       { return 0x73E7u; }
+    case 3:       { return 0x79E7u; }
+    case 4:       { return 0x49EDu; }
+    case 5:       { return 0x79CFu; }
+    case 6:       { return 0x7BCFu; }
+    case 7:       { return 0x4927u; }
+    case 8:       { return 0x7BEFu; }
+    case 9:       { return 0x79EFu; }
+    default:      { return 0u; }
+  }
+}
+
+fn debug_render_digits(px: vec2f, cell_size: f32, value: f32, decimal_places: i32) -> vec4f {
+  // 1. Sign + magnitude.
+  let is_negative = value < 0.0;
+  let abs_value   = abs(value);
+  let int_part    = i32(abs_value);
+
+  // 2. Count integer-digit slots needed (≥ 1, no leading zeros). Capped at
+  //    10 iterations as a safety net; handles values up to 10^10.
+  var int_slots = 1;
+  var n = int_part;
+  for (var i = 0; i < 10; i = i + 1) {
+    n = n / 10;
+    if (n == 0) { break; }
+    int_slots = int_slots + 1;
+  }
+
+  // 3. Slot layout, left to right:
+  //      [ "-"? ] [ int_0 ... int_{int_slots-1} ] [ "."? ] [ frac_0 ... frac_{decimal_places-1}? ]
+  let has_decimal      = decimal_places > 0;
+  let sign_slot_count  = select(0, 1, is_negative);
+  let int_start        = sign_slot_count;
+  let int_end          = int_start + int_slots;
+  let decimal_slot_idx = int_end;
+  let frac_start       = int_end + 1;
+  let total_slots      = int_end + select(0, 1 + decimal_places, has_decimal);
+
+  let stride         = DEBUG_DIGIT_W + DEBUG_DIGIT_GAP;
+  let total_w_pixels = total_slots * stride - DEBUG_DIGIT_GAP;
+
+  // 4. Centre the digit block in the cell at fixed pixel scale.
+  let cell_origin = floor(px / cell_size) * cell_size;
+  let in_cell     = px - cell_origin;
+  let scale       = DEBUG_PIXEL_SCALE;
+  let block       = vec2f(scale * f32(total_w_pixels), scale * f32(DEBUG_DIGIT_H));
+  let origin      = (vec2f(cell_size) - block) * 0.5;
+  let local       = in_cell - origin;
+
+  // 5. Reject pixels outside the digit block.
+  if (local.x < 0.0 || local.y < 0.0 || local.x >= block.x || local.y >= block.y) {
+    return vec4f(0.0);
+  }
+
+  // 6. Convert to integer font-pixel coordinates inside the block; identify
+  //    which slot, and where within that slot's 3-pixel-wide column.
+  let fx        = i32(floor(local.x / scale));
+  let fy        = i32(floor(local.y / scale));
+  let slot_idx  = fx / stride;
+  let in_slot_x = fx - slot_idx * stride;
+  if (in_slot_x >= DEBUG_DIGIT_W) {
+    return vec4f(0.0);  // fragment falls in the inter-slot gap
+  }
+  let bit_index = u32(in_slot_x) + u32(fy) * 3u;
+
+  // 7. Pick the glyph for this slot.
+  var glyph: u32 = 0u;
+
+  if (is_negative && slot_idx == 0) {
+    // Minus sign: horizontal bar across the middle row (bits 6,7,8 = 0x01C0).
+    glyph = 0x01C0u;
+  } else if (has_decimal && slot_idx == decimal_slot_idx) {
+    // Decimal point: single dot in the centre of the bottom row (bit 13).
+    glyph = 0x2000u;
+  } else if (slot_idx >= int_start && slot_idx < int_end) {
+    // Integer digit. slot 0 of the int section is the MSD.
+    let pos_from_msd = slot_idx - int_start;
+    let pos_from_lsd = (int_slots - 1) - pos_from_msd;
+    var divisor = 1;
+    for (var i = 0; i < pos_from_lsd; i = i + 1) {
+      divisor = divisor * 10;
+    }
+    let d = (int_part / divisor) % 10;
+    glyph = debug_glyph(d);
+  } else if (has_decimal && slot_idx >= frac_start) {
+    // Fraction digit. frac_pos = 1 is tenths, 2 is hundredths, ...
+    let frac_pos = slot_idx - decimal_slot_idx;
+    var multiplier = 1;
+    for (var i = 0; i < frac_pos; i = i + 1) {
+      multiplier = multiplier * 10;
+    }
+    let d = i32(floor(abs_value * f32(multiplier))) % 10;
+    glyph = debug_glyph(d);
+  }
+
+  let on = ((glyph >> bit_index) & 1u) != 0u;
+  if (on) {
+    return vec4f(1.0, 1.0, 1.0, 1.0);
+  }
+  return vec4f(0.0);
 }
