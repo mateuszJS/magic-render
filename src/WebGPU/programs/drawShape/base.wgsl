@@ -39,6 +39,7 @@
 const STRAIGHT_LINE_THRESHOLD = 1e10;
 const EPSILON = 1e-10;
 const PI = 3.141592653589793;
+const TAU = 2 * PI;
 
 // Background texels store ≈ −3.4e38; their fwidth is enormous. Anything larger
 // than this is treated as "background derivative" and zeroed.
@@ -51,7 +52,8 @@ const FWIDTH_VALID_LIMIT = 3.402823466e+10;
 //                        expressed as cos(0.7π) ≈ −0.809 on UNIT tangents — a
 //                        single dot product, no atan2 / no wraparound bookkeeping.
 const BILINEAR_ARC_THRESHOLD = 1.5;
-const BILINEAR_ANGLE_DOT_THRESHOLD = -0.809016994; // cos(0.7 * PI)
+const BILINEAR_ANGLE_DOT_THRESHOLD = -0.059016994; // cos(0.5 * PI)
+// Maybe it should not be constant? Maybe it should depend on distance to the closest point?
 
 // Number of stored arc-length samples per curve (at t = 0, 1/4, 2/4, 3/4).
 const ARC_SAMPLES_PER_CURVE = 4.0;
@@ -180,20 +182,20 @@ struct Sample {
 // downstream nearest-pick / corner / blend stages never reload `curves[]`.
 struct Neighbour {
   // TODO: do we still need that (t+1) * negative or positive. Do we depend on sign of that? Or we only calcualte side base of tangent?
-  g: f32,        // texel's stored g (fract = local t, floor = curve index)
+  global_t: f32,        // texel's stored g (fract = local t, floor = curve index)
   pos: vec2f,    // bezier position at g
   tan: vec2f,    // UNIT tangent at g  (g_to_bezier_tangent always normalises)
   arc: f32,      // raw cumulative arc length at g (pre-seam-wrap)
 };
 
 fn loadNeighbour(coord: vec2u) -> Neighbour {
-  let raw = textureLoad(texture, coord, 0).r;
-  let g = abs(raw) - 1.0;
+  let global_t = textureLoad(texture, coord, 0).r;
+
   return Neighbour(
-    g,
-    g_to_bezier_pos(g + 1.0),
-    g_to_bezier_tangent(g + 1.0),
-    g_to_arc(g),
+    global_t,
+    global_t_to_position(global_t),
+    global_t_to_tangent(global_t),
+    global_t_to_arc(global_t),
   );
 }
 
@@ -251,7 +253,7 @@ fn getSample(pos: vec2f) -> Sample {
   let prefer_top  = min(d01, d11) < min(d00, d10);
   let prefer_x_lo = d10 < d00;
   let prefer_x_hi = d11 < d01;
-  let nearest_g   = select(select(n00.g,   n10.g,   prefer_x_lo), select(n01.g,   n11.g,   prefer_x_hi), prefer_top);
+  let nearest_g   = select(select(n00.global_t,   n10.global_t,   prefer_x_lo), select(n01.global_t,   n11.global_t,   prefer_x_hi), prefer_top);
   let nearest_pos = select(select(n00.pos, n10.pos, prefer_x_lo), select(n01.pos, n11.pos, prefer_x_hi), prefer_top);
   let nearest_tan = select(select(n00.tan, n10.tan, prefer_x_lo), select(n01.tan, n11.tan, prefer_x_hi), prefer_top);
   let nearest_arc = select(select(n00.arc, n10.arc, prefer_x_lo), select(n01.arc, n11.arc, prefer_x_hi), prefer_top);
@@ -331,10 +333,32 @@ fn getSample(pos: vec2f) -> Sample {
   let cos01 = dot(n01.tan, nearest_tan);
   let cos11 = dot(n11.tan, nearest_tan);
 
+  let angle_nearest = atan2(nearest_pos.y - pos.y,nearest_pos.x - pos.x);
+  let angle_00 = atan2(n00.pos.y - pos.y,n00.pos.x - pos.x);
+  let angle_01 = atan2(n01.pos.y - pos.y,n01.pos.x - pos.x);
+  let angle_10 = atan2(n10.pos.y - pos.y,n10.pos.x - pos.x);
+  let angle_11 = atan2(n11.pos.y - pos.y,n11.pos.x - pos.x);
+
+  // multiplied by nearest_sign because is_angle_near has only good effects when inside the shape
   let keep00 = arc_diff_00 < BILINEAR_ARC_THRESHOLD && cos00 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  let keep10 = arc_diff_10 < BILINEAR_ARC_THRESHOLD && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD;
   let keep01 = arc_diff_01 < BILINEAR_ARC_THRESHOLD && cos01 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  let keep10 = arc_diff_10 < BILINEAR_ARC_THRESHOLD && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD;
   let keep11 = arc_diff_11 < BILINEAR_ARC_THRESHOLD && cos11 > BILINEAR_ANGLE_DOT_THRESHOLD;
+
+  // let keep00 = select(arc_diff_00 < BILINEAR_ARC_THRESHOLD && cos00 > BILINEAR_ANGLE_DOT_THRESHOLD, is_angle_near(angle_00, angle_nearest), -nearest_sign * d00 > 20000);
+  // let keep01 = select(arc_diff_01 < BILINEAR_ARC_THRESHOLD && cos01 > BILINEAR_ANGLE_DOT_THRESHOLD, is_angle_near(angle_01, angle_nearest), -nearest_sign * d01 > 20000);
+  // let keep10 = select(arc_diff_10 < BILINEAR_ARC_THRESHOLD && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD, is_angle_near(angle_10, angle_nearest), -nearest_sign * d10 > 20000);
+  // let keep11 = select(arc_diff_11 < BILINEAR_ARC_THRESHOLD && cos11 > BILINEAR_ANGLE_DOT_THRESHOLD, is_angle_near(angle_11, angle_nearest), -nearest_sign * d11 > 20000);
+
+  // let keep00 =  && cos00 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  // let keep10 = is_angle_near(angle_10, angle_nearest) && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  // let keep01 = is_angle_near(angle_01, angle_nearest) && cos01 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  // let keep11 = is_angle_near(angle_11, angle_nearest) && cos11 > BILINEAR_ANGLE_DOT_THRESHOLD;
+
+  // let keep00 = arc_diff_00 < BILINEAR_ARC_THRESHOLD && cos00 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  // let keep10 = arc_diff_10 < BILINEAR_ARC_THRESHOLD && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  // let keep01 = arc_diff_01 < BILINEAR_ARC_THRESHOLD && cos01 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  // let keep11 = arc_diff_11 < BILINEAR_ARC_THRESHOLD && cos11 > BILINEAR_ANGLE_DOT_THRESHOLD;
 
   let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), keep00);
   let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), keep10);
@@ -347,22 +371,22 @@ fn getSample(pos: vec2f) -> Sample {
                                (arc00 * w00 + arc10 * w10 + arc01 * w01 + arc11 * w11) / total_w,
                                total_w > 1e-6);
   let arc_blended = clamp(arc_blended_raw, 0.0, total_arc_len);
-  let blended = arc_to_g(arc_blended);
+  let blended_global_t = arc_to_g(arc_blended);
 
-  return Sample(blended, nearest_sign);
+  return Sample(blended_global_t, nearest_sign);
 }
 
 // Forward arc-length map: g → cumulative arc length along the path.
-fn g_to_arc(g: f32) -> f32 {
-  let ci = u32(floor(g));
-  let local_t = fract(g);
+fn global_t_to_arc(global_t: f32) -> f32 {
+  let curve_index = u32(global_t);
+  let local_t = fract(global_t);
 
   // Which quarter of the curve are we in? [0..3]
   let quarter_f = local_t * ARC_SAMPLES_PER_CURVE;
   let quarter = u32(floor(quarter_f));
   let frac = fract(quarter_f);
 
-  let lower_idx = ci * u32(ARC_SAMPLES_PER_CURVE) + quarter;
+  let lower_idx = curve_index * u32(ARC_SAMPLES_PER_CURVE) + quarter;
   let upper_idx = lower_idx + 1u;
 
   // Buffer is sized 4*N+1 and callers pass g < N, so upper_idx ≤ 4N is in
@@ -376,10 +400,9 @@ fn g_to_arc(g: f32) -> f32 {
 
 // UNIT tangent at local t encoded in g. Always returns a unit-length vector
 // (or (1, 0) for fully degenerate curves where even the chord is zero).
-fn g_to_bezier_tangent(g: f32) -> vec2f {
-  let abs_g = abs(g);
-  let idx = u32(abs_g) - 1u;
-  let t = fract(abs_g);
+fn global_t_to_tangent(global_t: f32) -> vec2f {
+  let idx = u32(global_t);
+  let t = fract(global_t);
   let p0 = curves[idx * 4 + 0];
   let p1 = curves[idx * 4 + 1];
   let p2 = curves[idx * 4 + 2];
@@ -406,10 +429,9 @@ fn g_to_bezier_tangent(g: f32) -> vec2f {
   return deriv * inverseSqrt(deriv_len_sq);
 }
 
-fn g_to_bezier_pos(g: f32) -> vec2f {
-  let abs_g = abs(g);
-  let idx = u32(abs_g) - 1u;
-  let t   = fract(abs_g);
+fn global_t_to_position(global_t: f32) -> vec2f {
+  let idx = u32(global_t);
+  let t   = fract(global_t);
   let curve = CubicBezier(
     curves[idx * 4 + 0],
     curves[idx * 4 + 1],
@@ -426,10 +448,10 @@ fn g_to_bezier_pos(g: f32) -> vec2f {
 // Refines the nearest-curve-point estimate from bilinear t interpolation by
 // doing one Newton-Raphson step minimising |bezier(t) - pos|². For straight
 // lines, computes the exact projection.
-fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
-  let abs_g = abs(g);
-  let idx = u32(abs_g) - 1u;
-  let t = fract(abs_g);
+fn refine_curve_pos(pos: vec2f, global_t: f32) -> Refined {
+  
+  let idx = u32(global_t);
+  let t = fract(global_t);
   let p0 = curves[idx * 4 + 0];
   let p1 = curves[idx * 4 + 1];
   let p2 = curves[idx * 4 + 2];
@@ -442,7 +464,10 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
     let refined_t = select(0.0,
                            clamp(dot(pos - p0, line_vec) / len_sq, 0.0, 1.0),
                            len_sq > 1e-12);
-    return mix(p0, p3, refined_t);
+    return Refined(
+      mix(p0, p3, refined_t),
+      refined_t
+    );
   }
 
   let curve = CubicBezier(p0, p1, p2, p3);
@@ -458,18 +483,25 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
   let refined_pos = bezier_point(curve, refined_t);
 
   // Only accept the refined position if it's strictly closer.
-  return select(orig_pos,
-                refined_pos,
-                dot(refined_pos - pos, refined_pos - pos) < dot(orig_pos - pos, orig_pos - pos));
+  let condition = dot(refined_pos - pos, refined_pos - pos) < dot(orig_pos - pos, orig_pos - pos);
+  let best_pos = select(orig_pos, refined_pos, condition);
+  let best_t = select(global_t, refined_t, condition);
+
+  return Refined(best_pos, best_t);
 }
+
+struct Refined {
+  pos: vec2f,
+  t: f32
+};
 
 @fragment fn fs(vsOut: VSOutput) -> @location(0) vec4f {
   let sdf = getSample(vsOut.uv);
-  let g = abs(sdf.t) + 1;
 
   // Refine the bilinear t estimate to the true nearest point on the curve.
-  let curve_pos = refine_curve_pos(vsOut.uv, g);
-  // TODO: shouldn't we also return refined "g"?
+  let refined = refine_curve_pos(vsOut.uv, sdf.t);
+  let curve_pos = refined.pos;
+  let g = refined.t;
 
   // Negative inside, positive outside, in pixel-space units (see header).
   let distance = length(curve_pos - vsOut.uv) * -sdf.distance;
@@ -480,6 +512,7 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
   let fw = fwidth(vsOut.uv);
   let grid = min(fract(vsOut.uv) / fw, (1.0 - fract(vsOut.uv)) / fw);
   let on_grid = min(grid.x, grid.y) < 0.5;
+
 
   ${TEST}
 
@@ -492,10 +525,22 @@ fn refine_curve_pos(pos: vec2f, g: f32) -> vec2f {
   let inner_alpha = smoothstep(u.dist_start - alpha_smooth_factor, u.dist_start + alpha_smooth_factor, distance);
   let outer_alpha = smoothstep(u.dist_end   - alpha_smooth_factor, u.dist_end   + alpha_smooth_factor, distance);
   let alpha = outer_alpha - inner_alpha;
-  var color = getColor(distance, sdf.t, angle, vsOut.uv, vsOut.norm_uv);
+  var color = getColor(distance, g, angle, vsOut.uv, vsOut.norm_uv);
   
   // color = vec4f(distance, sdf.t % 100, 0, 1.0);
   // color = vec4f(distance / 10.0, sdf.t % 1, angle / (2 * PI), 1.0);
+
+
+  if (on_grid) {
+    return vec4f(0, 1, 0, 1);
+  }
+
+  // let norm_angle = ((angle + TAU) % TAU) / TAU;
+
+  // if (distance >= 0) {
+  //   return vec4f(norm_angle, 0, 0, 1);
+  // }
+  // discard;
   
   return vec4f(color.rgb, color.a * alpha);
 }

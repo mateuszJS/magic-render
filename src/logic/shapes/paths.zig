@@ -199,6 +199,13 @@ pub const Path = struct {
         }
     }
 
+    // pub fn clone(self: Path) !Path {
+    //     return Path{
+    //         .points = try self.points.clone(),
+    //         .closed = self.closed,
+    //     };
+    // }
+
     pub fn serialize(self: Path) []const Point {
         return self.points.items;
     }

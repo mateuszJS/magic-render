@@ -257,3 +257,17 @@ pub fn resetTo(snapshot_assets: []const types.AssetSerialized) !void {
         }
     }
 }
+
+pub fn clone(source_asset: types.Asset) !*types.Asset {
+    switch (source_asset) {
+        .shape => |shape| {
+            const cloned_shape = try shape.clone();
+            try assets.put(cloned_shape.id, .{ .shape = cloned_shape });
+            selected_asset_id = AssetId{ ._prim = cloned_shape.id };
+            return assets.getPtr(cloned_shape.id) orelse @panic("Just inserted shape alreayd does not exists??");
+        },
+        else => {
+            @panic("Only shaoes can be cloned for now");
+        },
+    }
+}

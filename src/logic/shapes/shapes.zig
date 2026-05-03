@@ -17,6 +17,7 @@ const sdf_drawing = @import("../sdf/drawing.zig");
 const AssetId = @import("../asset_id.zig").AssetId;
 const asset_props = @import("../asset_props.zig");
 const sdf_effect = @import("../sdf/effect.zig");
+const js_glue = @import("../js_glue.zig");
 
 const CREATE_HANDLE_THRESHOLD = 10.0;
 // above this distance two handles are created around control point
@@ -444,6 +445,43 @@ pub const Shape = struct {
         }
         self.paths.deinit();
         sdf_effect.deinit(self.effects);
+    }
+
+    pub fn clone(self: Shape) !Shape {
+
+        // var paths_list_clone = std.ArrayList(Path).init(std.heap.page_allocator);
+
+        // for (input_paths) |input_path| {
+        //     const path = try Path.newFromPoints(
+        //         input_path,
+        //         allocator,
+        //     );
+        //     try paths_list.append(path);
+        // }
+
+        // var shape = Shape{
+        //     .id = id,
+        //     .paths = self.paths.clone(),
+        //     .props = props,
+        //     .effects = try sdf_effect.deserialize(input_effects, allocator),
+        //     .sdf_tex = sdf_drawing.SdfTex{ .id = sdf_texture_id },
+        //     .should_update_sdf = false,
+        //     .bounds = input_bounds,
+        //     .cache_texture_id = cache_texture_id,
+        //     .outdated_cache = true,
+        // };
+
+        return Shape{
+            .id = utils.generateId(),
+            .paths = try self.paths.clone(),
+            .props = self.props,
+            .effects = try self.effects.clone(),
+            .sdf_tex = sdf_drawing.SdfTex{ .id = js_glue.createSdfTexture() },
+            .should_update_sdf = self.should_update_sdf,
+            .bounds = self.bounds,
+            .cache_texture_id = if (self.props.blur != null) js_glue.createCacheTexture() else null,
+            .outdated_cache = true,
+        };
     }
 };
 

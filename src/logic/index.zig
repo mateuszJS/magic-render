@@ -116,8 +116,11 @@ var state = types.State{
     .hovered_asset_id = AssetId{},
     .action = ActionType.None,
     .tool = Tool.None,
+    .selection = .{ null, null },
+    .selected_assets = .empty,
+    .selected_asset_copied = false, // used when move starts with alt, so we mark that copy was already done
     .action_pointer_offset = types.Point{ .x = 0.0, .y = 0.0 }, // indicates pointer position when action has started, useful for transformatiosn with ctrl/shift
-    .init_action_bounds = undefined,
+    .init_action_bounds = undefined, // useful to perform constrained operations (like moving pointer with shortcut to maintin aspect ratio)
     .redraw_needed = true,
 };
 
@@ -291,6 +294,15 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             @panic("Selected shape asset should be present at this point");
         }
     } else {
+        if (!state.hovered_asset_id.isPrim()) {
+            state.selection = .{
+                types.Point{ .x = x, .y = y },
+                types.Point{ .x = x, .y = y },
+            };
+            // let's start selection
+            return;
+        }
+
         if (state.tool == Tool.EditShape) {
             // should not be accessible on mobile, that's why selection happens with pointer down
             if (state.hovered_asset_id.isPrim()) {
@@ -315,6 +327,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             } else if (assets.selected_asset_id.getPrim() >= consts.ASSET_ID_MIN and
                 assets.selected_asset_id.getPrim() == state.hovered_asset_id.getPrim())
             {
+                state.selected_asset_copied = false;
                 state.action = .Move;
                 state.action_pointer_offset = types.Point{
                     .x = x - bounds[0].x,
@@ -327,6 +340,7 @@ pub fn onPointerDown(x: f32, y: f32) !void {
 
 pub fn onPointerUp() !void {
     state.redraw_needed = true;
+    state.selection = .{ null, null };
 
     if (state.tool == .None) {
         if (state.action == .None) {
@@ -354,7 +368,7 @@ pub fn onPointerUp() !void {
     }
 }
 
-pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !void {
+pub fn onPointerMove(x: f32, y: f32, constrained: bool, alt_key: bool) !void {
     if (state.tool == Tool.DrawShape) {
         if (assets.getSelectedShape()) |shape| {
             state.redraw_needed = true;
@@ -379,6 +393,40 @@ pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !
                 }
             }
         }
+        return;
+    }
+
+    if (state.selection[0]) |selection_start| {
+        const pointer = types.Point{ .x = x, .y = y };
+        const distance = selection_start.distance(pointer);
+
+        // 1.0 should depend on zoom probably, it shoudl be value relative to the user, not absolute
+        if (distance > 1.0) {
+            state.selection[1] = pointer;
+            state.redraw_needed = true;
+
+            var selected_assets: std.AutoHashMapUnmanaged(u32, void) = .empty;
+
+            const min_x = @min(selection_start.x, pointer.x);
+            const max_x = @max(selection_start.x, pointer.x);
+            const min_y = @min(selection_start.y, pointer.y);
+            const max_y = @max(selection_start.y, pointer.y);
+
+            var iter = assets.getIter();
+            while (iter.next()) |entry| {
+                const bounds = entry.value_ptr.*.getBounds();
+                for (bounds) |b| {
+                    if (b.x > min_x and b.x < max_x and b.y > min_y and b.y < max_y) {
+                        try selected_assets.put(std.heap.page_allocator, entry.key_ptr.*, {});
+                        break;
+                    }
+                }
+            }
+
+            state.selected_assets.deinit(std.heap.page_allocator);
+            state.selected_assets = selected_assets;
+        }
+
         return;
     }
 
@@ -446,7 +494,14 @@ pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !
         return;
     }
 
-    const asset = assets.getSelectedAsset() orelse return;
+    const selected_asset = assets.getSelectedAsset() orelse return;
+
+    const asset = if (!state.selected_asset_copied and alt_key) b: {
+        state.selected_asset_copied = true;
+        const cloned_asset = try assets.clone(selected_asset.*);
+        break :b cloned_asset;
+    } else selected_asset;
+
     const bounds = asset.getBoundsPtr();
 
     switch (state.action) {
@@ -480,7 +535,7 @@ pub fn onPointerMove(x: f32, y: f32, constrained: bool, maintain_center: bool) !
                 &safe_copy,
                 types.Point{ .x = x, .y = y },
                 constrained,
-                maintain_center,
+                alt_key,
             );
             bounds.* = safe_copy;
             switch (asset.*) {
@@ -546,6 +601,55 @@ pub fn commitChanges() !void {
 fn drawBorder(allocator: std.mem.Allocator) !void {
     var triangle_vertex_data = std.ArrayList(triangles.DrawInstance).init(allocator);
     var ui_vertex_data = std.ArrayList(UI.DrawVertex).init(allocator);
+
+    if (state.selection[0]) |selection_start| {
+        if (state.selection[1]) |selection_end| {
+            var buffer: [2 * 4]triangles.DrawInstance = undefined;
+
+            const min_x = @min(selection_start.x, selection_end.x);
+            const max_x = @max(selection_start.x, selection_end.x);
+            const min_y = @min(selection_start.y, selection_end.y);
+            const max_y = @max(selection_start.y, selection_end.y);
+
+            const points = [_]types.Point{
+                .{ .x = min_x, .y = min_y },
+                .{ .x = max_x, .y = min_y },
+                .{ .x = max_x, .y = max_y },
+                .{ .x = min_x, .y = max_y },
+            };
+
+            const color = [_]u8{ 50, 200, 50, 255 }; // gray color
+
+            for (points, 0..) |point, i| {
+                const next_point = if (i == 3) points[0] else points[i + 1];
+
+                lines.getDrawVertexData(
+                    buffer[i * 2 ..][0..2],
+                    point,
+                    next_point,
+                    2.0 * shared.ui_scale,
+                    color,
+                    0.0,
+                );
+            }
+
+            webgpu_glue.draw_triangle(&buffer);
+
+            var iter = assets.getIter();
+            while (iter.next()) |entry| {
+                if (state.selected_assets.contains(entry.key_ptr.*)) {
+                    try triangle_vertex_data.appendSlice(
+                        &transform_ui.getBorderDrawVertex(entry.value_ptr.*, true),
+                    );
+                }
+            }
+
+            if (triangle_vertex_data.items.len > 0) {
+                webgpu_glue.draw_triangle(triangle_vertex_data.items);
+            }
+            return;
+        }
+    }
 
     if (state.hovered_asset_id.getPrim() != assets.selected_asset_id.getPrim()) {
         if (assets.getAsset(state.hovered_asset_id)) |asset| {
@@ -1184,7 +1288,10 @@ pub fn deinitState() !void {
         .hovered_asset_id = AssetId{},
         .action = ActionType.None,
         .tool = Tool.None,
-        .action_pointer_offset = types.Point{ .x = 0.0, .y = 0.0 }, // indicates pointer position when action has started, useful for transformatiosn with ctrl/shift
+        .selection = .{ null, null },
+        .selected_assets = .empty,
+        .selected_asset_copied = false,
+        .action_pointer_offset = types.Point{ .x = 0.0, .y = 0.0 },
         .init_action_bounds = undefined,
         .redraw_needed = true,
     };
