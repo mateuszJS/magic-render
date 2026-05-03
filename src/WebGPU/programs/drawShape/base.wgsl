@@ -145,15 +145,22 @@ struct Vertex {
 //   texture_size   — texture dimensions in texels (= vec2f(textureDimensions(texture))).
 //   total_arc_len  — arc_lengths[length-1]. Saves one storage-buffer load.
 //   num_curves     — arrayLength(&curves) / 4. Avoids the runtime length query.
+//   debug_scale    — multiplier applied to the debug-overlay grid cell and
+//                    digit pixel scale. Typically `window.devicePixelRatio` so
+//                    cells / digits stay the same physical size on retina
+//                    displays as on 1x screens. 1.0 = no scaling.
 //
-// Layout (uniform address space, total 16 bytes, struct alignment 16):
+// Layout (uniform address space, total 32 bytes, struct alignment 16):
 //   off  0 : texture_size    (vec2f, align 8)
 //   off  8 : total_arc_len   (f32,   align 4)
 //   off 12 : num_curves      (u32,   align 4)
+//   off 16 : debug_scale     (f32,   align 4)
+//   off 20 : 12 bytes padding to round struct size up to 32
 struct PathMetrics {
   texture_size: vec2f,
   total_arc_len: f32,
   num_curves: u32,
+  debug_scale: f32,
 };
 @group(0) @binding(5) var<uniform> path_metrics: PathMetrics;
 
@@ -175,8 +182,16 @@ struct VSOutput {
 struct Sample {
   t: f32,
   distance: f32,  // +1 inside, -1 outside
+  blend_angle: f32,
   total_weight: f32,
   number_of_valid_neighbors: f32,
+  // Index 0..3 of the neighbour with the largest bilinear weight (which one
+  // "wins" the blend when most others are filtered). -1.0 means "none".
+  // Used by debug visualisations to expose the Voronoi-stairstep pattern.
+  dominant: f32,
+  // floor(global_t) of the dominant neighbour — i.e. the curve index it
+  // points to. Same caveat: debug only.
+  dominant_curve_idx: f32,
 };
 
 // One cached neighbour (a single texel near the fragment) plus all the
@@ -375,12 +390,77 @@ fn getSample(pos: vec2f) -> Sample {
   let arc_blended = clamp(arc_blended_raw, 0.0, total_arc_len);
   let blended_global_t = arc_to_g(arc_blended);
 
+  // ---------------------------------------------------------------------------
+  // blend_angle: angle from `pos` toward the closest curve point.
+  //
+  //  - High-confidence regime (total_w >= 0.5). The keep-filtered blend
+  //    has enough weight that refining `blended_global_t` to the true
+  //    closest point on its curve gives a smooth, geometry-correct
+  //    answer. We mirror the fragment shader's primary `angle`
+  //    computation exactly: refine, then atan2(curve_pos - pos).
+  //
+  //  - Fallback regime (total_w < 0.5). The keep filter has dropped
+  //    most neighbours and the refined position staircases at the
+  //    texel-grid Voronoi boundaries. Bilinear-blend the four
+  //    neighbours' UNIT tangents — using RAW bilinear weights, NOT
+  //    gated by keepXX, so all four contribute regardless of arc /
+  //    angle / pos rejection — atan2 the sum once, and rotate by ±π/2
+  //    to get the perpendicular (the angle from the curve point back
+  //    to `pos`). The rotation sign comes from `nearest_sign`:
+  //      inward_normal = (-tan.y, tan.x)
+  //      curve_pos - pos = -nearest_sign * inward_normal
+  //    so angle = tangent_angle - nearest_sign * π/2. Tangents are
+  //    unit-length so the bilinear sum is generally NOT unit-length,
+  //    but atan2 only cares about direction, so no normalisation
+  //    needed. Cost: 1 atan2 instead of 4, no Newton, no per-neighbour
+  //    side test.
+  // ---------------------------------------------------------------------------
+  let refined_primary = refine_curve_pos(pos, blended_global_t);
+  let primary_angle = atan2(refined_primary.pos.y - pos.y, refined_primary.pos.x - pos.x);
+
+  let bw00 = (1.0 - fract_pos.x) * (1.0 - fract_pos.y);
+  let bw10 = fract_pos.x         * (1.0 - fract_pos.y);
+  let bw01 = (1.0 - fract_pos.x) * fract_pos.y;
+  let bw11 = fract_pos.x         * fract_pos.y;
+  let blend_tan_sum = n00.tan * bw00 + n10.tan * bw10 + n01.tan * bw01 + n11.tan * bw11;
+  let blend_tan_angle = atan2(blend_tan_sum.y, blend_tan_sum.x);
+  let fallback_angle = blend_tan_angle - nearest_sign * (PI * 0.5);
+
+  let blend_angle = select(fallback_angle, primary_angle, total_w >= 0.5);
+
   let number_of_valid_neighbors = 0.0 +
     select(0.0, 1.0, keep00) +
     select(0.0, 1.0, keep01) +
     select(0.0, 1.0, keep10) +
     select(0.0, 1.0, keep11);
-  return Sample(blended_global_t, nearest_sign, total_w, number_of_valid_neighbors);
+
+  // Dominant neighbour: the one with the largest bilinear weight. When the
+  // filter has dropped most candidates, this single neighbour effectively
+  // determines the blend, and which neighbour wins flips at texel-grid
+  // boundaries (= the Voronoi stairstep we want to visualise).
+  var dominant: f32 = -1.0;
+  var dom_w:    f32 = 0.0;
+  if (w00 > dom_w) { dominant = 0.0; dom_w = w00; }
+  if (w10 > dom_w) { dominant = 1.0; dom_w = w10; }
+  if (w01 > dom_w) { dominant = 2.0; dom_w = w01; }
+  if (w11 > dom_w) { dominant = 3.0; dom_w = w11; }
+
+  let dom_g = select(
+    select(n00.global_t, n10.global_t, dominant > 0.5),
+    select(n01.global_t, n11.global_t, dominant > 2.5),
+    dominant > 1.5,
+  );
+  let dominant_curve_idx = floor(dom_g);
+
+  return Sample(
+    blended_global_t,
+    nearest_sign,
+    blend_angle,
+    total_w,
+    number_of_valid_neighbors,
+    dominant,
+    dominant_curve_idx,
+  );
 }
 
 // Forward arc-length map: g → cumulative arc length along the path.
@@ -534,7 +614,7 @@ struct Refined {
   let inner_alpha = smoothstep(u.dist_start - alpha_smooth_factor, u.dist_start + alpha_smooth_factor, distance);
   let outer_alpha = smoothstep(u.dist_end   - alpha_smooth_factor, u.dist_end   + alpha_smooth_factor, distance);
   let alpha = outer_alpha - inner_alpha;
-  var color = getColor(distance, g, angle, uv, vsOut.norm_uv);
+  var color = getColor(distance, g, sdf.blend_angle, uv, vsOut.norm_uv);
   
   // color = vec4f(distance, sdf.t % 100, 0, 1.0);
   // color = vec4f(distance / 10.0, sdf.t % 1, angle / (2 * PI), 1.0);
@@ -554,21 +634,36 @@ struct Refined {
   let final_result = vec4f(color.rgb, color.a * alpha);
 
     // === DEBUG: per-screen-pixel-cell digit overlay ===========================
-    // Cells are 32×32 SCREEN pixels. The screen-cell centre and the matching
-    // uv-at-centre are computed together; sdf.t sampled at uv-at-centre is
-    // therefore uniform across all fragments inside the same screen cell, so
-    // every fragment in the cell renders the same digit pair.
-    let cell       = vec2f(32.0, 32.0);
+    // Cells are nominally 32×32 SCREEN pixels at 1x DPR; we multiply by
+    // `path_metrics.debug_scale` (typically devicePixelRatio) so cells stay
+    // the same physical size on retina displays. The digit pixel scale and
+    // grid line width receive the same multiplier so their visual weight
+    // matches across DPRs. The screen-cell centre and the matching uv-at-
+    // centre are computed together; sdf.t sampled at uv-at-centre is
+    // therefore uniform across all fragments inside the same screen cell,
+    // so every fragment in the cell renders the same digit pair.
+    let dbg_scale  = path_metrics.debug_scale;
+    let cell       = vec2f(32.0, 32.0) * dbg_scale;
     let cell_data  = debug_screen_cell(vsOut.position.xy, vsOut.uv, cell);
-    let debug_sdf        = getSample(cell_data.uv);
-    let digits     = debug_render_digits(vsOut.position.xy, cell.x, debug_sdf.total_weight, 2);
-    let grid       = debug_grid_line(vsOut.position.xy, cell, 1.0);
+    let debug_sdf  = getSample(cell_data.uv);
+
+    // Per-cell flat-shaded background = colour of the dominant neighbour
+    // (0..3). Adjacent cells with different dominants change colour at the
+    // texel-grid Voronoi boundary — that's the stairstep we're hunting.
+
+    // let cell_bg    = debug_idx_to_color(debug_sdf.dominant);
+
+    // Digits show the dominant neighbour's curve index (floor of its global_t).
+    // If two adjacent cells have different curve indices that lines up with
+    // the cell_bg colour change, we've confirmed the artifact == "neighbour-
+    // pointing-at-different-curve" Voronoi pattern.
+    let digits     = debug_render_digits(vsOut.position.xy, cell.x, debug_sdf.blend_angle, 2, DEBUG_PIXEL_SCALE * dbg_scale);
+    let grid       = debug_grid_line(vsOut.position.xy, cell, 1.0 * dbg_scale);
 
     // Background → grid lines → digits, painted in that order.
-    var dbg = final_result; // vec4f(0.0, 0.0, 0.5, 1.0);   
-    let debug_color = vec4f(0, 1, 0, 1);
-    dbg     = mix(dbg, debug_color, grid);  // grey grid lines
-    dbg     = mix(dbg, debug_color, digits.a); // yellow digits on top
+    // var dbg = mix(final_result, cell_bg, 0.6);              // tint by dominant
+    var dbg     = mix(final_result, vec4f(0.1, 0.1, 0.1, 1.0), grid);     // dark grid lines
+    dbg     = mix(dbg, vec4f(1.0, 1.0, 1.0, 1.0), digits.a); // white digits on top
     // === /DEBUG ==============================================================
     return dbg;
 }
@@ -593,13 +688,17 @@ struct Refined {
 // Returns:
 //   vec4f with rgb = (1, 1, 1) and a = 1.0 on pixels that are part of a
 //   digit glyph, vec4f(0) elsewhere. Mix with the underlying colour:
-//       let d = debug_render_digits(vsOut.uv, 32.0, value, 0);     // integer
-//       let d = debug_render_digits(vsOut.uv, 32.0, value, 2);     // X.YY
-//       return mix(base_color, vec4f(1, 1, 0, 1), d.a);            // yellow digits
+//       let d = debug_render_digits(vsOut.uv, 32.0, value, 0, 1.5);     // integer
+//       let d = debug_render_digits(vsOut.uv, 32.0, value, 2, 1.5);     // X.YY
+//       return mix(base_color, vec4f(1, 1, 0, 1), d.a);                 // yellow digits
 //
 // `decimal_places` controls how many fraction digits to render after a
 // decimal point. 0 = integer-only (no decimal point shown). When > 0 the
 // total slot count grows accordingly, so you may need a wider `cell_size`.
+//
+// `pixel_scale` is the screen pixels per font pixel (1.0 = thinnest 1px
+// strokes, bump up for bolder glyphs). Pass `DEBUG_PIXEL_SCALE * dpr` if
+// you need physical-size consistency across retina screens.
 //
 // Renders the value with a sign prefix for negatives, no leading zeros for
 // values with non-zero integer part (so 5.5 prints as "5.5", not "05.5"; 0.5
@@ -617,7 +716,7 @@ struct Refined {
 //   let cell    = vec2f(32.0, 32.0);                   // 32×32 cells
 //   let centre  = debug_cell_centre(vsOut.uv, cell);    // same for whole cell
 //   let value   = some_function(centre);                // ⇒ same for whole cell
-//   let digits  = debug_render_digits(vsOut.uv, cell.x, value, 0);
+//   let digits  = debug_render_digits(vsOut.uv, cell.x, value, 0, DEBUG_PIXEL_SCALE);
 //   return mix(base_color, vec4f(1, 1, 0, 1), digits.a);
 fn debug_cell_centre(px: vec2f, cell_size: vec2f) -> vec2f {
   return (floor(px / cell_size) + vec2f(0.5)) * cell_size;
@@ -639,7 +738,7 @@ fn debug_cell_centre(px: vec2f, cell_size: vec2f) -> vec2f {
 //   let cell      = vec2f(32.0, 32.0);   // 32 screen pixels per cell
 //   let result    = debug_screen_cell(vsOut.position.xy, vsOut.uv, cell);
 //   let sdf       = getSample(result.uv);
-//   let digits    = debug_render_digits(vsOut.position.xy, cell.x, sdf.t, 0);
+//   let digits    = debug_render_digits(vsOut.position.xy, cell.x, sdf.t, 0, DEBUG_PIXEL_SCALE);
 //   return mix(base_color, vec4f(1, 1, 0, 1), digits.a);
 struct DebugScreenCell {
   screen_centre: vec2f,  // cell centre in screen pixels (same units as `screen_pos`)
@@ -671,6 +770,24 @@ fn debug_grid_line(px: vec2f, cell_size: vec2f, line_width: f32) -> f32 {
   return select(0.0, 1.0, on_grid);
 }
 
+// Map an integer-ish value to one of 8 distinguishable RGB colours. Useful
+// for visualising "which one of N things won" — Voronoi cells, dominant
+// neighbour, curve-index buckets, etc. Cycles every 8 values.
+fn debug_idx_to_color(idx: f32) -> vec4f {
+  let i = i32(idx) & 7;
+  switch i {
+    case 0:       { return vec4f(0.85, 0.20, 0.20, 1.0); }   // red
+    case 1:       { return vec4f(0.20, 0.85, 0.20, 1.0); }   // green
+    case 2:       { return vec4f(0.20, 0.45, 0.95, 1.0); }   // blue
+    case 3:       { return vec4f(0.95, 0.85, 0.20, 1.0); }   // yellow
+    case 4:       { return vec4f(0.85, 0.30, 0.85, 1.0); }   // magenta
+    case 5:       { return vec4f(0.20, 0.85, 0.85, 1.0); }   // cyan
+    case 6:       { return vec4f(0.95, 0.55, 0.20, 1.0); }   // orange
+    case 7:       { return vec4f(0.55, 0.30, 0.85, 1.0); }   // purple
+    default:      { return vec4f(0.5,  0.5,  0.5,  1.0); }
+  }
+}
+
 const DEBUG_DIGIT_W:    i32 = 3;  // glyph width in font pixels
 const DEBUG_DIGIT_H:    i32 = 5;  // glyph height in font pixels
 const DEBUG_DIGIT_GAP:  i32 = 1;  // pixels of gap between digits
@@ -696,7 +813,7 @@ fn debug_glyph(d: i32) -> u32 {
   }
 }
 
-fn debug_render_digits(px: vec2f, cell_size: f32, value: f32, decimal_places: i32) -> vec4f {
+fn debug_render_digits(px: vec2f, cell_size: f32, value: f32, decimal_places: i32, pixel_scale: f32) -> vec4f {
   // 1. Sign + magnitude.
   let is_negative = value < 0.0;
   let abs_value   = abs(value);
@@ -725,12 +842,21 @@ fn debug_render_digits(px: vec2f, cell_size: f32, value: f32, decimal_places: i3
   let stride         = DEBUG_DIGIT_W + DEBUG_DIGIT_GAP;
   let total_w_pixels = total_slots * stride - DEBUG_DIGIT_GAP;
 
-  // 4. Centre the digit block in the cell at fixed pixel scale.
+  // 4. Centre the digit block in the cell at the requested pixel scale.
+  // Caller supplies the scale (typically `DEBUG_PIXEL_SCALE * dpr`) so the
+  // function stays self-contained — it does not read DEBUG_PIXEL_SCALE.
+  //
+  // The scale is snapped to an integer ≥ 1 so every font pixel maps to a
+  // whole number of screen pixels. A fractional scale (e.g. 1.5) causes
+  // some font columns to span 2 screen pixels and others 1 depending on
+  // sub-pixel alignment, producing jagged "weird pixel" rendering. The
+  // origin is also snapped to integer pixels so the block doesn't straddle
+  // screen-pixel boundaries when (cell_size − block_w) is odd.
   let cell_origin = floor(px / cell_size) * cell_size;
   let in_cell     = px - cell_origin;
-  let scale       = DEBUG_PIXEL_SCALE;
+  let scale       = max(1.0, round(pixel_scale));
   let block       = vec2f(scale * f32(total_w_pixels), scale * f32(DEBUG_DIGIT_H));
-  let origin      = (vec2f(cell_size) - block) * 0.5;
+  let origin      = floor((vec2f(cell_size) - block) * 0.5);
   let local       = in_cell - origin;
 
   // 5. Reject pixels outside the digit block.

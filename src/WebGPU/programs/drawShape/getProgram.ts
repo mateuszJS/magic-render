@@ -68,8 +68,9 @@ export default function getDrawShape(
   //   off  0 : texture_size    vec2f  (dimensions in texels)
   //   off  8 : total_arc_len   f32
   //   off 12 : num_curves      u32
-  // Total: 16 bytes (matches WGSL uniform alignment for the struct).
-  const PATH_METRICS_BYTES = 16
+  //   off 16 : debug_scale     f32    (devicePixelRatio for debug overlay)
+  //   off 20 : 12 bytes padding (struct rounded up to 32 for uniform align)
+  const PATH_METRICS_BYTES = 32
   // Size of one cubic curve in `curves` storage buffer: 4 vec2f × 8 bytes.
   const CURVE_STRIDE_BYTES = 4 * 2 * 4
 
@@ -129,6 +130,9 @@ export default function getDrawShape(
     metricsF32[1] = sdfTexture.height // texture_size.y
     metricsF32[2] = totalArcLen // total_arc_len
     metricsU32[3] = numCurves // num_curves
+    // debug_scale: physical-pixels-per-CSS-pixel so the debug overlay's grid
+    // cells and digit glyphs stay visually the same size on retina displays.
+    metricsF32[4] = window.devicePixelRatio || 1
 
     const pathMetricsBuffer = device.createBuffer({
       label: 'drawShape path metrics',
