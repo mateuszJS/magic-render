@@ -27,7 +27,7 @@ export async function captureCanvas(
 
   // setup viewport for the preview
   const cameraCopy = { ...camera }
-  setCamera(projectWidth, projectHeight, 'fill', previewCanvas)
+  setCamera(projectWidth * 0.1, projectHeight * 0.1, 'fill', previewCanvas)
   Logic.updateRenderScale(1, pixelDensity)
 
   const collectAndCleanup = () => {

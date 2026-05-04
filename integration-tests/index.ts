@@ -98,11 +98,20 @@ async function test() {
   let currentHistoryIndex = 0
   let newTextures = 0
   let selectedAssetId = 0
-  const projectWidth = 1000
-  const projectHeight = 1650
+
+  type SerializedOutputAssetMerged = Image & Shape & Text
+  const lastSnapshot = getLastSnapshot()
+  const sanitizedLastSnapshot = {
+    ...lastSnapshot,
+    assets: (lastSnapshot.assets as SerializedOutputAssetMerged[]).map(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      ({ id, texture_id, cache_texture_id, sdf_texture_id, ...rest }) => rest
+    ),
+  }
+
   const creator = await initCreator({
-    initialProjectWidth: projectWidth,
-    initialProjectHeight: projectHeight,
+    initialProjectWidth: lastSnapshot.width,
+    initialProjectHeight: lastSnapshot.height,
     canvas,
     onExternalTextureCreation: (url, setNewUrl) => {
       setNewUrl(`${newTextures}-${url}`)
@@ -147,17 +156,7 @@ async function test() {
     disableMinaitures: false,
   })
 
-  type SerializedOutputAssetMerged = Image & Shape & Text
-  const lastSnapshot = getLastSnapshot()
-  const snaitizedLastSnapshot = {
-    ...lastSnapshot,
-    assets: (lastSnapshot.assets as SerializedOutputAssetMerged[]).map(
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      ({ id, texture_id, cache_texture_id, sdf_texture_id, ...rest }) => rest
-    ),
-  }
-
-  creator.setSnapshot(snaitizedLastSnapshot, { produceSnapshot: false, addHistoryEntry: true })
+  creator.setSnapshot(sanitizedLastSnapshot, { produceSnapshot: false, addHistoryEntry: true })
 
   const resetProjectBtn = document.querySelector<HTMLInputElement>('#reset-project')!
   resetProjectBtn.addEventListener('click', () => {

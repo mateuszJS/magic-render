@@ -203,16 +203,45 @@ struct Neighbour {
   pos: vec2f,    // bezier position at g
   tan: vec2f,    // UNIT tangent at g  (g_to_bezier_tangent always normalises)
   arc: f32,      // raw cumulative arc length at g (pre-seam-wrap)
+  norm_raw_dir: vec2f,
 };
 
-fn loadNeighbour(coord: vec2u) -> Neighbour {
+// Per-neighbour Newton refinement. The baker stored `global_t` as the
+// closest-point t on the path to THIS texel's centre. For a fragment at
+// `pos`, the closest point on the SAME curve segment is found by walking
+// `global_t` toward `pos` with one Newton step. Each neighbour therefore
+// reports a `pos` / `tan` / `arc` aligned to the fragment, not to the
+// stale texel-centre value the baker chose.
+fn loadNeighbour(coord: vec2u, pos: vec2f) -> Neighbour {
   let global_t = textureLoad(texture, coord, 0).r;
 
+  // combiendSdf have all texels filled with -3.4e38 on the start, so we filter those out
+  // and let other guards handle this case
+  let is_valid = global_t >= 0.0 && global_t < f32(path_metrics.num_curves);
+
+  var t = global_t;
+  // maybe we should do it only if distance is smaller than 1-2 texels?
+  if (is_valid) {
+    // Redefind on neighbour level fixes harsh edges(see ./artifacts/harsh edges.png)
+    // BUT messes up all the distance related things! And also is not needed for angle!
+    // let refined = refine_curve_pos(pos, global_t);
+    // t = refined.t;
+  }
+
+  // blended angle better performs with uniformy spreaded gradient
+  // like raw values, more then refined precise value whcih tends to branch towards particular angles
+  // closer to the medial axis
+  let raw_pos = global_t_to_position(global_t);
+  let norm_raw_dir = normalize(raw_pos - pos);
+
+  
+
   return Neighbour(
-    global_t,
-    global_t_to_position(global_t),
-    global_t_to_tangent(global_t),
-    global_t_to_arc(global_t),
+    t,
+    global_t_to_position(t),
+    global_t_to_tangent(t),
+    global_t_to_arc(t),
+    norm_raw_dir,
   );
 }
 
@@ -254,10 +283,10 @@ fn getSample(pos: vec2f) -> Sample {
   // 4 g_to_bezier_tangent + 4 g_to_arc scattered through the function,
   // each reloading the same `curves[]` entries.
   // ---------------------------------------------------------------------------
-  let n00 = loadNeighbour(p00);
-  let n10 = loadNeighbour(p10);
-  let n01 = loadNeighbour(p01);
-  let n11 = loadNeighbour(p11);
+  let n00 = loadNeighbour(p00, pos);
+  let n10 = loadNeighbour(p10, pos);
+  let n01 = loadNeighbour(p01, pos);
+  let n11 = loadNeighbour(p11, pos);
 
   let d00 = max(1e-6, length(n00.pos - pos));
   let d10 = max(1e-6, length(n10.pos - pos));
@@ -284,6 +313,7 @@ fn getSample(pos: vec2f) -> Sample {
   // tangent result with no threshold-driven discontinuity.
   // ---------------------------------------------------------------------------
   let inward_normal = vec2f(-nearest_tan.y, nearest_tan.x);
+  // let refined_nearest = refine_curve_pos()
   var nearest_sign = sign(dot(pos - nearest_pos, inward_normal));
 
   if (fract(nearest_g) < T_JUNCTION_EPS) {
@@ -350,32 +380,11 @@ fn getSample(pos: vec2f) -> Sample {
   let cos01 = dot(n01.tan, nearest_tan);
   let cos11 = dot(n11.tan, nearest_tan);
 
-  let angle_nearest = atan2(nearest_pos.y - pos.y,nearest_pos.x - pos.x);
-  let angle_00 = atan2(n00.pos.y - pos.y,n00.pos.x - pos.x);
-  let angle_01 = atan2(n01.pos.y - pos.y,n01.pos.x - pos.x);
-  let angle_10 = atan2(n10.pos.y - pos.y,n10.pos.x - pos.x);
-  let angle_11 = atan2(n11.pos.y - pos.y,n11.pos.x - pos.x);
-
   // multiplied by nearest_sign because is_angle_near has only good effects when inside the shape
   let keep00 = arc_diff_00 < BILINEAR_ARC_THRESHOLD && cos00 > BILINEAR_ANGLE_DOT_THRESHOLD;
   let keep01 = arc_diff_01 < BILINEAR_ARC_THRESHOLD && cos01 > BILINEAR_ANGLE_DOT_THRESHOLD;
   let keep10 = arc_diff_10 < BILINEAR_ARC_THRESHOLD && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD;
   let keep11 = arc_diff_11 < BILINEAR_ARC_THRESHOLD && cos11 > BILINEAR_ANGLE_DOT_THRESHOLD;
-
-  // let keep00 = select(arc_diff_00 < BILINEAR_ARC_THRESHOLD && cos00 > BILINEAR_ANGLE_DOT_THRESHOLD, is_angle_near(angle_00, angle_nearest), -nearest_sign * d00 > 20000);
-  // let keep01 = select(arc_diff_01 < BILINEAR_ARC_THRESHOLD && cos01 > BILINEAR_ANGLE_DOT_THRESHOLD, is_angle_near(angle_01, angle_nearest), -nearest_sign * d01 > 20000);
-  // let keep10 = select(arc_diff_10 < BILINEAR_ARC_THRESHOLD && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD, is_angle_near(angle_10, angle_nearest), -nearest_sign * d10 > 20000);
-  // let keep11 = select(arc_diff_11 < BILINEAR_ARC_THRESHOLD && cos11 > BILINEAR_ANGLE_DOT_THRESHOLD, is_angle_near(angle_11, angle_nearest), -nearest_sign * d11 > 20000);
-
-  // let keep00 =  && cos00 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  // let keep10 = is_angle_near(angle_10, angle_nearest) && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  // let keep01 = is_angle_near(angle_01, angle_nearest) && cos01 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  // let keep11 = is_angle_near(angle_11, angle_nearest) && cos11 > BILINEAR_ANGLE_DOT_THRESHOLD;
-
-  // let keep00 = arc_diff_00 < BILINEAR_ARC_THRESHOLD && cos00 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  // let keep10 = arc_diff_10 < BILINEAR_ARC_THRESHOLD && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  // let keep01 = arc_diff_01 < BILINEAR_ARC_THRESHOLD && cos01 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  // let keep11 = arc_diff_11 < BILINEAR_ARC_THRESHOLD && cos11 > BILINEAR_ANGLE_DOT_THRESHOLD;
 
   let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), keep00);
   let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), keep10);
@@ -388,7 +397,7 @@ fn getSample(pos: vec2f) -> Sample {
                                (arc00 * w00 + arc10 * w10 + arc01 * w01 + arc11 * w11) / total_w,
                                total_w > 1e-6);
   let arc_blended = clamp(arc_blended_raw, 0.0, total_arc_len);
-  let blended_global_t = arc_to_g(arc_blended);
+  let _blended_global_t = arc_to_g(arc_blended);
 
   // ---------------------------------------------------------------------------
   // blend_angle: angle from `pos` toward the closest curve point.
@@ -415,7 +424,14 @@ fn getSample(pos: vec2f) -> Sample {
   //    needed. Cost: 1 atan2 instead of 4, no Newton, no per-neighbour
   //    side test.
   // ---------------------------------------------------------------------------
-  let refined_primary = refine_curve_pos(pos, blended_global_t);
+
+  // Doing more than Newton-Raphson does not provide any better results for "T" or random wavy/fluid shapes
+  // let blended_global_t = _blended_global_t;
+  // let refined_primary = Refined(global_t_to_position(blended_global_t), _blended_global_t);
+
+  let refined_primary = refine_curve_pos(pos, _blended_global_t);
+  let blended_global_t = refined_primary.t;
+
   let primary_angle = atan2(refined_primary.pos.y - pos.y, refined_primary.pos.x - pos.x);
 
   let bw00 = (1.0 - fract_pos.x) * (1.0 - fract_pos.y);
@@ -423,43 +439,25 @@ fn getSample(pos: vec2f) -> Sample {
   let bw01 = (1.0 - fract_pos.x) * fract_pos.y;
   let bw11 = fract_pos.x         * fract_pos.y;
 
-  // Tangents are direction vectors but +tangent and −tangent describe the
-  // same line at a curve point. Neighbours on opposite-handed sides of
-  // the path can have tangents pointing in opposite directions; their raw
-  // bilinear sum then cancels to ~0 even though they describe the SAME
-  // perpendicular orientation. Flip each tangent into the same hemisphere
-  // as `nearest_tan` (sign of dot product) so opposite-but-same-line
-  // tangents reinforce instead of cancelling, then sum. The resulting
-  // direction is what we want for atan2 — magnitude doesn't matter, atan2
-  // only reads orientation.
-
-  // let s00 = select(-1.0, 1.0, dot(n00.tan, nearest_tan) >= 0.0);
-  // let s10 = select(-1.0, 1.0, dot(n10.tan, nearest_tan) >= 0.0);
-  // let s01 = select(-1.0, 1.0, dot(n01.tan, nearest_tan) >= 0.0);
-  // let s11 = select(-1.0, 1.0, dot(n11.tan, nearest_tan) >= 0.0);
-  // let blend_tan_sum = n00.tan * (s00 * bw00)
-  //                   + n10.tan * (s10 * bw10)
-  //                   + n01.tan * (s01 * bw01)
-  //                   + n11.tan * (s11 * bw11);
-  // let blend_tan_angle = atan2(blend_tan_sum.y, blend_tan_sum.x);
-  // let fallback_angle = blend_tan_angle - nearest_sign * (PI * 0.5);
 
 
-  let raw_angle00 = atan2(n00.pos.y - pos.y, n00.pos.x - pos.x);
-  let raw_angle01 = atan2(n01.pos.y - pos.y, n01.pos.x - pos.x);
-  let raw_angle10 = atan2(n10.pos.y - pos.y, n10.pos.x - pos.x);
-  let raw_angle11 = atan2(n11.pos.y - pos.y, n11.pos.x - pos.x);
-
-
-  let dir00 = normalize(n00.pos.xy - pos.xy) * bw00;
-  let dir10 = normalize(n10.pos.xy - pos.xy) * bw10;
-  let dir01 = normalize(n01.pos.xy - pos.xy) * bw01;
-  let dir11 = normalize(n11.pos.xy - pos.xy) * bw11;
+  let dir00 = normalize(n00.norm_raw_dir) * bw00;
+  let dir10 = normalize(n10.norm_raw_dir) * bw10;
+  let dir01 = normalize(n01.norm_raw_dir) * bw01;
+  let dir11 = normalize(n11.norm_raw_dir) * bw11;
+  // let dir00 = normalize(n00.pos.xy - pos.xy) * bw00;
+  // let dir10 = normalize(n10.pos.xy - pos.xy) * bw10;
+  // let dir01 = normalize(n01.pos.xy - pos.xy) * bw01;
+  // let dir11 = normalize(n11.pos.xy - pos.xy) * bw11;
 
   let blended_dir = dir00 + dir10 + dir01 + dir11;
   let fallback_angle = atan2(blended_dir.y, blended_dir.x);
 
-  let blend_angle = select(fallback_angle, primary_angle, total_w >= 0.99);
+  // the aim of blend_angle is to reduce effect of medial axis(skeleton of the shape)
+  // because user wants pretty angle with nice gradients more than angle to actual closest point on curve
+
+  // primary_angle looks UGLY
+  let blend_angle = select(fallback_angle, primary_angle, total_w >= 0.85);
 
   let number_of_valid_neighbors = 0.0 +
     select(0.0, 1.0, keep00) +
@@ -593,7 +591,7 @@ fn refine_curve_pos(pos: vec2f, global_t: f32) -> Refined {
                            len_sq > 1e-12);
     return Refined(
       mix(p0, p3, refined_t),
-      refined_t
+      f32(idx) + refined_t
     );
   }
 
@@ -612,7 +610,7 @@ fn refine_curve_pos(pos: vec2f, global_t: f32) -> Refined {
   // Only accept the refined position if it's strictly closer.
   let condition = dot(refined_pos - pos, refined_pos - pos) < dot(orig_pos - pos, orig_pos - pos);
   let best_pos = select(orig_pos, refined_pos, condition);
-  let best_t = select(global_t, refined_t, condition);
+  let best_t = select(global_t, f32(idx) + refined_t, condition);
 
   return Refined(best_pos, best_t);
 }
@@ -628,9 +626,14 @@ struct Refined {
 
 
   // Refine the bilinear t estimate to the true nearest point on the curve.
-  let refined = refine_curve_pos(uv, sdf.t);
-  let curve_pos = refined.pos;
-  let g = refined.t;
+  // let refined = refine_curve_pos(uv, sdf.t);
+  // let curve_pos = refined.pos;
+  // let g = refined.t;
+  let curve_pos = global_t_to_position(sdf.t);
+  let g = sdf.t;
+
+  // let curve_pos = global_t_to_position(sdf.t);
+  // let g = sdf.t;
 
   // Negative inside, positive outside, in pixel-space units (see header).
   let distance = length(curve_pos - uv) * -sdf.distance;
@@ -654,7 +657,19 @@ struct Refined {
   let inner_alpha = smoothstep(u.dist_start - alpha_smooth_factor, u.dist_start + alpha_smooth_factor, distance);
   let outer_alpha = smoothstep(u.dist_end   - alpha_smooth_factor, u.dist_end   + alpha_smooth_factor, distance);
   let alpha = outer_alpha - inner_alpha;
+
   var color = getColor(distance, g, sdf.blend_angle, uv, vsOut.norm_uv);
+
+  // let idx = u32(g);
+  // let t = fract(g);
+  // let p0 = curves[idx * 4 + 0];
+  // let p3 = curves[idx * 4 + 3];
+
+  // if (length(uv - p0) < 0.1 || length(uv - p3) < 0.1) {
+  //   color = vec4f(0, 1, 0, 1);
+  // } else if (abs(distance) < 0.05) {
+  //   color = vec4f(0, 0, 1, 1);
+  // }
   
   // color = vec4f(distance, sdf.t % 100, 0, 1.0);
   // color = vec4f(distance / 10.0, sdf.t % 1, angle / (2 * PI), 1.0);
@@ -697,12 +712,12 @@ struct Refined {
     // If two adjacent cells have different curve indices that lines up with
     // the cell_bg colour change, we've confirmed the artifact == "neighbour-
     // pointing-at-different-curve" Voronoi pattern.
-    let digits     = debug_render_digits(vsOut.position.xy, cell.x, debug_sdf.blend_angle, 2, DEBUG_PIXEL_SCALE * dbg_scale);
+    let digits     = debug_render_digits(vsOut.position.xy, cell.x, debug_sdf.total_weight, 2, DEBUG_PIXEL_SCALE * dbg_scale);
     let grid       = debug_grid_line(vsOut.position.xy, cell, 1.0 * dbg_scale);
 
     // Background → grid lines → digits, painted in that order.
     // var dbg = mix(final_result, cell_bg, 0.6);              // tint by dominant
-    var dbg     = mix(final_result, vec4f(0.1, 0.1, 0.1, 1.0), grid);     // dark grid lines
+    var dbg     = mix(final_result, vec4f(0.8), grid);     // dark grid lines
     dbg     = mix(dbg, vec4f(1.0, 1.0, 1.0, 1.0), digits.a); // white digits on top
     // === /DEBUG ==============================================================
     return dbg;
@@ -833,7 +848,7 @@ const DEBUG_DIGIT_H:    i32 = 5;  // glyph height in font pixels
 const DEBUG_DIGIT_GAP:  i32 = 1;  // pixels of gap between digits
 // One font pixel = this many screen pixels. 1.0 = thinnest (1px strokes), bump
 // up for bolder/larger digits at the cost of more cell space.
-const DEBUG_PIXEL_SCALE: f32 = 1.5;
+const DEBUG_PIXEL_SCALE: f32 = 1;
 
 // 3x5 bitmap glyphs for digits 0..9. Bit (x + 3*y) is the pixel at column x
 // (0..2, left→right) and row y (0..4, top→bottom). Set = on, clear = off.
