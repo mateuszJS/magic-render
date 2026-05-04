@@ -422,11 +422,44 @@ fn getSample(pos: vec2f) -> Sample {
   let bw10 = fract_pos.x         * (1.0 - fract_pos.y);
   let bw01 = (1.0 - fract_pos.x) * fract_pos.y;
   let bw11 = fract_pos.x         * fract_pos.y;
-  let blend_tan_sum = n00.tan * bw00 + n10.tan * bw10 + n01.tan * bw01 + n11.tan * bw11;
-  let blend_tan_angle = atan2(blend_tan_sum.y, blend_tan_sum.x);
-  let fallback_angle = blend_tan_angle - nearest_sign * (PI * 0.5);
 
-  let blend_angle = select(fallback_angle, primary_angle, total_w >= 0.5);
+  // Tangents are direction vectors but +tangent and −tangent describe the
+  // same line at a curve point. Neighbours on opposite-handed sides of
+  // the path can have tangents pointing in opposite directions; their raw
+  // bilinear sum then cancels to ~0 even though they describe the SAME
+  // perpendicular orientation. Flip each tangent into the same hemisphere
+  // as `nearest_tan` (sign of dot product) so opposite-but-same-line
+  // tangents reinforce instead of cancelling, then sum. The resulting
+  // direction is what we want for atan2 — magnitude doesn't matter, atan2
+  // only reads orientation.
+
+  // let s00 = select(-1.0, 1.0, dot(n00.tan, nearest_tan) >= 0.0);
+  // let s10 = select(-1.0, 1.0, dot(n10.tan, nearest_tan) >= 0.0);
+  // let s01 = select(-1.0, 1.0, dot(n01.tan, nearest_tan) >= 0.0);
+  // let s11 = select(-1.0, 1.0, dot(n11.tan, nearest_tan) >= 0.0);
+  // let blend_tan_sum = n00.tan * (s00 * bw00)
+  //                   + n10.tan * (s10 * bw10)
+  //                   + n01.tan * (s01 * bw01)
+  //                   + n11.tan * (s11 * bw11);
+  // let blend_tan_angle = atan2(blend_tan_sum.y, blend_tan_sum.x);
+  // let fallback_angle = blend_tan_angle - nearest_sign * (PI * 0.5);
+
+
+  let raw_angle00 = atan2(n00.pos.y - pos.y, n00.pos.x - pos.x);
+  let raw_angle01 = atan2(n01.pos.y - pos.y, n01.pos.x - pos.x);
+  let raw_angle10 = atan2(n10.pos.y - pos.y, n10.pos.x - pos.x);
+  let raw_angle11 = atan2(n11.pos.y - pos.y, n11.pos.x - pos.x);
+
+
+  let dir00 = normalize(n00.pos.xy - pos.xy) * bw00;
+  let dir10 = normalize(n10.pos.xy - pos.xy) * bw10;
+  let dir01 = normalize(n01.pos.xy - pos.xy) * bw01;
+  let dir11 = normalize(n11.pos.xy - pos.xy) * bw11;
+
+  let blended_dir = dir00 + dir10 + dir01 + dir11;
+  let fallback_angle = atan2(blended_dir.y, blended_dir.x);
+
+  let blend_angle = select(fallback_angle, primary_angle, total_w >= 0.99);
 
   let number_of_valid_neighbors = 0.0 +
     select(0.0, 1.0, keep00) +
@@ -461,6 +494,13 @@ fn getSample(pos: vec2f) -> Sample {
     dominant,
     dominant_curve_idx,
   );
+}
+
+fn average_angles(angle1: f32, angle2: f32) -> f32 {
+    let x = (cos(angle1) + cos(angle2)) / 2.0;
+    let y = (sin(angle1) + sin(angle2)) / 2.0;
+    
+    return atan2(y, x);
 }
 
 // Forward arc-length map: g → cumulative arc length along the path.
