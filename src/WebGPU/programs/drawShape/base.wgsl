@@ -10,20 +10,6 @@
 //   p2 == p3 (no out-handle on end). The cubic derivative vanishes at that
 //   endpoint, so we fall back to the chord direction in tangent computations.
 //
-// "G" ENCODING
-//   Each texel stores a single float `raw`; runtime decode is g = abs(raw) - 1.
-//     • floor(g) = curve index
-//     • fract(g) = local bezier t in [0, 1)
-//   The renderShapeSdf baker snaps t ≥ 1 to t = 0 of the NEXT curve, so every
-//   junction texel has fract(g) == 0.0 EXACTLY. The corner branch in getSample
-//   relies on this — `cur_idx = u32(g) % N`, `prev_idx = (cur_idx + N - 1) % N`.
-//
-// SDF SIGN CONVENTION
-//   Sample.distance: +1 inside, −1 outside (inward-normal dot convention).
-//   Final fragment-shader `distance`: NEGATIVE inside, POSITIVE outside, in
-//   pixel units. (length × −Sample.distance.) Chosen so smoothstep(start, end)
-//   reads strokes naturally.
-//
 // ARC LENGTH STORAGE
 //   `arc_lengths` is a flat storage buffer of cumulative arc lengths sampled
 //   at t = 0, 1/4, 2/4, 3/4 of every curve, plus one trailing total-length
@@ -192,6 +178,7 @@ struct Sample {
   // floor(global_t) of the dominant neighbour — i.e. the curve index it
   // points to. Same caveat: debug only.
   dominant_curve_idx: f32,
+  abs_distance: f32,
 };
 
 // One cached neighbour (a single texel near the fragment) plus all the
@@ -222,10 +209,10 @@ fn loadNeighbour(coord: vec2u, pos: vec2f) -> Neighbour {
   var t = global_t;
   // maybe we should do it only if distance is smaller than 1-2 texels?
   if (is_valid) {
-    // Redefind on neighbour level fixes harsh edges(see ./artifacts/harsh edges.png)
+    // Redefind on neighbour level fixes harsh edges(see ./artifacts/harsh edges.png) + a bit distance improvement
     // BUT messes up all the distance related things! And also is not needed for angle!
-    // let refined = refine_curve_pos(pos, global_t);
-    // t = refined.t;
+    let refined = refine_curve_pos(pos, global_t);
+    t = refined.t;
   }
 
   // blended angle better performs with uniformy spreaded gradient
@@ -312,13 +299,19 @@ fn getSample(pos: vec2f) -> Sample {
   // the two half-planes give the same answer, so this reduces to the single-
   // tangent result with no threshold-driven discontinuity.
   // ---------------------------------------------------------------------------
-  let inward_normal = vec2f(-nearest_tan.y, nearest_tan.x);
+  
+  // We do refine with Newton to eliminate harsh edges (see ./artifacts/hrash edges.png)
+  let refined_nearest = Refined(nearest_pos, nearest_g);
+  let refine_nearest_tan = global_t_to_tangent(refined_nearest.t);
+  // let refined_nearest = refine_curve_pos(pos, nearest_g);
+  // let refine_nearest_tan = global_t_to_tangent(refined_nearest.t);
+  let inward_normal = vec2f(-refine_nearest_tan.y, refine_nearest_tan.x);
   // let refined_nearest = refine_curve_pos()
-  var nearest_sign = sign(dot(pos - nearest_pos, inward_normal));
+  var nearest_sign = sign(dot(pos - refined_nearest.pos, inward_normal));
 
-  if (fract(nearest_g) < T_JUNCTION_EPS) {
+  if (fract(refined_nearest.t) < T_JUNCTION_EPS) {
     let num_curves_u = path_metrics.num_curves;
-    let cur_idx = u32(nearest_g) % num_curves_u;
+    let cur_idx = u32(refined_nearest.t) % num_curves_u;
     let prev_idx = prev_curve_in_path(cur_idx, num_curves_u);
     let pp0 = curves[prev_idx * 4u + 0u];
     let pp1 = curves[prev_idx * 4u + 1u];
@@ -337,16 +330,16 @@ fn getSample(pos: vec2f) -> Sample {
     // If even the chord is zero (fully degenerate prev curve), reuse the
     // current tangent — the corner is treated as smooth, which is the safest
     // visual outcome and avoids inventing a bogus +x axis.
-    let prev_tan_n     = select(nearest_tan, prev_tan_raw / prev_tan_len, prev_tan_len > 1e-8);
+    let prev_tan_n     = select(refine_nearest_tan, prev_tan_raw / prev_tan_len, prev_tan_len > 1e-8);
 
     // cross2d = cur × prev. CW winding in Y-down:
     //   > 0 → concave (inner notch) → inside if EITHER half-plane says inside (max).
     //   < 0 → convex  (outer corner) → inside only if BOTH half-planes say inside (min).
     //   ≈ 0 → near-collinear → both branches give the same answer.
-    let cross_2d = nearest_tan.x * prev_tan_n.y - nearest_tan.y * prev_tan_n.x;
+    let cross_2d = refine_nearest_tan.x * prev_tan_n.y - refine_nearest_tan.y * prev_tan_n.x;
     let prev_normal = vec2f(-prev_tan_n.y, prev_tan_n.x);
-    let sign_cur  = sign(dot(pos - nearest_pos, inward_normal));
-    let sign_prev = sign(dot(pos - nearest_pos, prev_normal));
+    let sign_cur  = sign(dot(pos - refined_nearest.pos, inward_normal));
+    let sign_prev = sign(dot(pos - refined_nearest.pos, prev_normal));
     nearest_sign = select(min(sign_cur, sign_prev),
                           max(sign_cur, sign_prev),
                           cross_2d > 0.0);
@@ -439,16 +432,10 @@ fn getSample(pos: vec2f) -> Sample {
   let bw01 = (1.0 - fract_pos.x) * fract_pos.y;
   let bw11 = fract_pos.x         * fract_pos.y;
 
-
-
   let dir00 = normalize(n00.norm_raw_dir) * bw00;
   let dir10 = normalize(n10.norm_raw_dir) * bw10;
   let dir01 = normalize(n01.norm_raw_dir) * bw01;
   let dir11 = normalize(n11.norm_raw_dir) * bw11;
-  // let dir00 = normalize(n00.pos.xy - pos.xy) * bw00;
-  // let dir10 = normalize(n10.pos.xy - pos.xy) * bw10;
-  // let dir01 = normalize(n01.pos.xy - pos.xy) * bw01;
-  // let dir11 = normalize(n11.pos.xy - pos.xy) * bw11;
 
   let blended_dir = dir00 + dir10 + dir01 + dir11;
   let fallback_angle = atan2(blended_dir.y, blended_dir.x);
@@ -456,8 +443,18 @@ fn getSample(pos: vec2f) -> Sample {
   // the aim of blend_angle is to reduce effect of medial axis(skeleton of the shape)
   // because user wants pretty angle with nice gradients more than angle to actual closest point on curve
 
-  // primary_angle looks UGLY
-  let blend_angle = select(fallback_angle, primary_angle, total_w >= 0.85);
+
+
+  // If we refine neighbours then we HAVE TO do this additiona refinement here, otherwise
+  // we got noise (see ./artifacts/neighbour refinement only noise.png)
+  let refined_blended_global_t = refine_curve_pos(pos, blended_global_t).t; // looks good for distance
+  let abs_distance = length(pos - global_t_to_position(refined_blended_global_t));
+
+
+  // Blending angles on curve looks ugly because they mix texels inside with texels outside, 
+  // those two groups point to the opposite angles (see ./artifacts/blend angles on curve.png)
+  // so we add condition with distance
+  let blend_angle = select(fallback_angle, primary_angle, abs_distance < 1);
 
   let number_of_valid_neighbors = 0.0 +
     select(0.0, 1.0, keep00) +
@@ -483,22 +480,18 @@ fn getSample(pos: vec2f) -> Sample {
   );
   let dominant_curve_idx = floor(dom_g);
 
+  
+
   return Sample(
-    blended_global_t,
+    refined_blended_global_t,
     nearest_sign,
     blend_angle,
     total_w,
     number_of_valid_neighbors,
     dominant,
     dominant_curve_idx,
+    abs_distance,
   );
-}
-
-fn average_angles(angle1: f32, angle2: f32) -> f32 {
-    let x = (cos(angle1) + cos(angle2)) / 2.0;
-    let y = (sin(angle1) + sin(angle2)) / 2.0;
-    
-    return atan2(y, x);
 }
 
 // Forward arc-length map: g → cumulative arc length along the path.
@@ -712,7 +705,7 @@ struct Refined {
     // If two adjacent cells have different curve indices that lines up with
     // the cell_bg colour change, we've confirmed the artifact == "neighbour-
     // pointing-at-different-curve" Voronoi pattern.
-    let digits     = debug_render_digits(vsOut.position.xy, cell.x, debug_sdf.total_weight, 2, DEBUG_PIXEL_SCALE * dbg_scale);
+    let digits     = debug_render_digits(vsOut.position.xy, cell.x, debug_sdf.abs_distance, 2, DEBUG_PIXEL_SCALE * dbg_scale);
     let grid       = debug_grid_line(vsOut.position.xy, cell, 1.0 * dbg_scale);
 
     // Background → grid lines → digits, painted in that order.
