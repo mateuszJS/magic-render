@@ -20,6 +20,9 @@
 //   sees on the path.
 //   g_to_arc()    is the forward map (g → arc length).
 //   arc_to_g()    is the inverse (binary search).
+// 
+// 
+//   Every T is global, if we deal with local t then the name is "local_t"
 // =============================================================================
 
 const STRAIGHT_LINE_THRESHOLD = 1e10;
@@ -175,7 +178,7 @@ struct Sample {
   // "wins" the blend when most others are filtered). -1.0 means "none".
   // Used by debug visualisations to expose the Voronoi-stairstep pattern.
   dominant: f32,
-  // floor(global_t) of the dominant neighbour — i.e. the curve index it
+  // floor(t) of the dominant neighbour — i.e. the curve index it
   // points to. Same caveat: debug only.
   dominant_curve_idx: f32,
   abs_distance: f32,
@@ -186,48 +189,48 @@ struct Sample {
 // downstream nearest-pick / corner / blend stages never reload `curves[]`.
 struct Neighbour {
   // TODO: do we still need that (t+1) * negative or positive. Do we depend on sign of that? Or we only calcualte side base of tangent?
-  global_t: f32,        // texel's stored g (fract = local t, floor = curve index)
+  t: f32,        // texel's stored g (fract = local t, floor = curve index)
   pos: vec2f,    // bezier position at g
   tan: vec2f,    // UNIT tangent at g  (g_to_bezier_tangent always normalises)
   arc: f32,      // raw cumulative arc length at g (pre-seam-wrap)
   norm_raw_dir: vec2f,
 };
 
-// Per-neighbour Newton refinement. The baker stored `global_t` as the
+// Per-neighbour Newton refinement. The baker stored `t` as the
 // closest-point t on the path to THIS texel's centre. For a fragment at
 // `pos`, the closest point on the SAME curve segment is found by walking
-// `global_t` toward `pos` with one Newton step. Each neighbour therefore
+// `t` toward `pos` with one Newton step. Each neighbour therefore
 // reports a `pos` / `tan` / `arc` aligned to the fragment, not to the
 // stale texel-centre value the baker chose.
 fn loadNeighbour(coord: vec2u, pos: vec2f) -> Neighbour {
-  let global_t = textureLoad(texture, coord, 0).r;
+  let raw_t = textureLoad(texture, coord, 0).r;
 
   // combiendSdf have all texels filled with -3.4e38 on the start, so we filter those out
   // and let other guards handle this case
-  let is_valid = global_t >= 0.0 && global_t < f32(path_metrics.num_curves);
+  let is_valid = raw_t >= 0.0 && raw_t < f32(path_metrics.num_curves);
 
-  var t = global_t;
+  var redefined_t = raw_t;
   // maybe we should do it only if distance is smaller than 1-2 texels?
   if (is_valid) {
     // Redefind on neighbour level fixes harsh edges(see ./artifacts/harsh edges.png) + a bit distance improvement
     // BUT messes up all the distance related things! And also is not needed for angle!
-    let refined = refine_curve_pos(pos, global_t);
-    t = refined.t;
+    let refined = refine_curve_pos(pos, raw_t);
+    redefined_t = refined.t;
   }
 
   // blended angle better performs with uniformy spreaded gradient
   // like raw values, more then refined precise value whcih tends to branch towards particular angles
   // closer to the medial axis
-  let raw_pos = global_t_to_position(global_t);
+  let raw_pos = t_to_pos(raw_t);
   let norm_raw_dir = normalize(raw_pos - pos);
 
   
 
   return Neighbour(
-    t,
-    global_t_to_position(t),
-    global_t_to_tangent(t),
-    global_t_to_arc(t),
+    redefined_t,
+    t_to_pos(redefined_t),
+    t_to_tan(redefined_t),
+    t_to_arc(redefined_t),
     norm_raw_dir,
   );
 }
@@ -253,28 +256,7 @@ fn arc_to_g(arc: f32) -> f32 {
   return f32(ci) + local_t;
 }
 
-fn getSample(pos: vec2f) -> Sample {
-  let floor_pos = floor(pos - 0.5);
-  let fract_pos = pos - 0.5 - floor_pos;
-
-  let max_coord = vec2i(path_metrics.texture_size) - vec2i(1, 1);
-
-  let p00 = vec2u(clamp(vec2i(floor_pos),                   vec2i(0, 0), max_coord));
-  let p10 = vec2u(clamp(vec2i(floor_pos + vec2f(1.0, 0.0)), vec2i(0, 0), max_coord));
-  let p01 = vec2u(clamp(vec2i(floor_pos + vec2f(0.0, 1.0)), vec2i(0, 0), max_coord));
-  let p11 = vec2u(clamp(vec2i(floor_pos + vec2f(1.0, 1.0)), vec2i(0, 0), max_coord));
-
-  // ---------------------------------------------------------------------------
-  // Fetch the four corner texels once and cache everything we need from each.
-  // Replaces what used to be 4 separate textureLoads + 4 g_to_bezier_pos +
-  // 4 g_to_bezier_tangent + 4 g_to_arc scattered through the function,
-  // each reloading the same `curves[]` entries.
-  // ---------------------------------------------------------------------------
-  let n00 = loadNeighbour(p00, pos);
-  let n10 = loadNeighbour(p10, pos);
-  let n01 = loadNeighbour(p01, pos);
-  let n11 = loadNeighbour(p11, pos);
-
+fn getNearestNeighbour(pos: vec2f, n00: Neighbour, n01: Neighbour, n10: Neighbour, n11: Neighbour) -> Neighbour {
   let d00 = max(1e-6, length(n00.pos - pos));
   let d10 = max(1e-6, length(n10.pos - pos));
   let d01 = max(1e-6, length(n01.pos - pos));
@@ -286,10 +268,38 @@ fn getSample(pos: vec2f) -> Sample {
   let prefer_top  = min(d01, d11) < min(d00, d10);
   let prefer_x_lo = d10 < d00;
   let prefer_x_hi = d11 < d01;
-  let nearest_g   = select(select(n00.global_t,   n10.global_t,   prefer_x_lo), select(n01.global_t,   n11.global_t,   prefer_x_hi), prefer_top);
+  let nearest_g   = select(select(n00.t,   n10.t,   prefer_x_lo), select(n01.t,   n11.t,   prefer_x_hi), prefer_top);
   let nearest_pos = select(select(n00.pos, n10.pos, prefer_x_lo), select(n01.pos, n11.pos, prefer_x_hi), prefer_top);
   let nearest_tan = select(select(n00.tan, n10.tan, prefer_x_lo), select(n01.tan, n11.tan, prefer_x_hi), prefer_top);
   let nearest_arc = select(select(n00.arc, n10.arc, prefer_x_lo), select(n01.arc, n11.arc, prefer_x_hi), prefer_top);
+  let norm_raw_dir = vec2f(99999999); // Seems like not used?
+
+  return Neighbour(
+    nearest_g,
+    nearest_pos,
+    nearest_tan,
+    nearest_arc,
+    norm_raw_dir,
+  );
+}
+
+fn getSample(pos: vec2f) -> Sample {
+  let floor_pos = floor(pos - 0.5);
+  let fract_pos = pos - 0.5 - floor_pos;
+
+  let max_coord = vec2i(path_metrics.texture_size) - vec2i(1, 1);
+
+  let p00 = vec2u(clamp(vec2i(floor_pos),                   vec2i(0, 0), max_coord));
+  let p10 = vec2u(clamp(vec2i(floor_pos + vec2f(1.0, 0.0)), vec2i(0, 0), max_coord));
+  let p01 = vec2u(clamp(vec2i(floor_pos + vec2f(0.0, 1.0)), vec2i(0, 0), max_coord));
+  let p11 = vec2u(clamp(vec2i(floor_pos + vec2f(1.0, 1.0)), vec2i(0, 0), max_coord));
+
+  let n00 = loadNeighbour(p00, pos);
+  let n10 = loadNeighbour(p10, pos);
+  let n01 = loadNeighbour(p01, pos);
+  let n11 = loadNeighbour(p11, pos);
+  let nNearest = getNearestNeighbour(pos, n00, n10, n01, n11);
+
 
   // ---------------------------------------------------------------------------
   // Sign: tangent-based half-plane test.
@@ -300,13 +310,11 @@ fn getSample(pos: vec2f) -> Sample {
   // tangent result with no threshold-driven discontinuity.
   // ---------------------------------------------------------------------------
   
+  // Should we use redefined t alread yhere? We redefine it later right now
   // We do refine with Newton to eliminate harsh edges (see ./artifacts/hrash edges.png)
-  let refined_nearest = Refined(nearest_pos, nearest_g);
-  let refine_nearest_tan = global_t_to_tangent(refined_nearest.t);
-  // let refined_nearest = refine_curve_pos(pos, nearest_g);
-  // let refine_nearest_tan = global_t_to_tangent(refined_nearest.t);
+  let refined_nearest = Refined(nNearest.pos, nNearest.t);
+  let refine_nearest_tan = t_to_tan(refined_nearest.t);
   let inward_normal = vec2f(-refine_nearest_tan.y, refine_nearest_tan.x);
-  // let refined_nearest = refine_curve_pos()
   var nearest_sign = sign(dot(pos - refined_nearest.pos, inward_normal));
 
   if (fract(refined_nearest.t) < T_JUNCTION_EPS) {
@@ -357,21 +365,21 @@ fn getSample(pos: vec2f) -> Sample {
   let total_arc_len = path_metrics.total_arc_len;
   let inv_arc = select(0.0, 1.0 / total_arc_len, total_arc_len > 1e-8);
 
-  let arc00 = n00.arc + total_arc_len * round((nearest_arc - n00.arc) * inv_arc);
-  let arc10 = n10.arc + total_arc_len * round((nearest_arc - n10.arc) * inv_arc);
-  let arc01 = n01.arc + total_arc_len * round((nearest_arc - n01.arc) * inv_arc);
-  let arc11 = n11.arc + total_arc_len * round((nearest_arc - n11.arc) * inv_arc);
+  let arc00 = n00.arc + total_arc_len * round((nNearest.arc - n00.arc) * inv_arc);
+  let arc10 = n10.arc + total_arc_len * round((nNearest.arc - n10.arc) * inv_arc);
+  let arc01 = n01.arc + total_arc_len * round((nNearest.arc - n01.arc) * inv_arc);
+  let arc11 = n11.arc + total_arc_len * round((nNearest.arc - n11.arc) * inv_arc);
 
-  let arc_diff_00 = abs(arc00 - nearest_arc);
-  let arc_diff_10 = abs(arc10 - nearest_arc);
-  let arc_diff_01 = abs(arc01 - nearest_arc);
-  let arc_diff_11 = abs(arc11 - nearest_arc);
+  let arc_diff_00 = abs(arc00 - nNearest.arc);
+  let arc_diff_10 = abs(arc10 - nNearest.arc);
+  let arc_diff_01 = abs(arc01 - nNearest.arc);
+  let arc_diff_11 = abs(arc11 - nNearest.arc);
 
   // Tangents are unit-length, so dot == cos(angle).
-  let cos00 = dot(n00.tan, nearest_tan);
-  let cos10 = dot(n10.tan, nearest_tan);
-  let cos01 = dot(n01.tan, nearest_tan);
-  let cos11 = dot(n11.tan, nearest_tan);
+  let cos00 = dot(n00.tan, nNearest.tan);
+  let cos10 = dot(n10.tan, nNearest.tan);
+  let cos01 = dot(n01.tan, nNearest.tan);
+  let cos11 = dot(n11.tan, nNearest.tan);
 
   // multiplied by nearest_sign because is_angle_near has only good effects when inside the shape
   let keep00 = arc_diff_00 < BILINEAR_ARC_THRESHOLD && cos00 > BILINEAR_ANGLE_DOT_THRESHOLD;
@@ -379,14 +387,19 @@ fn getSample(pos: vec2f) -> Sample {
   let keep10 = arc_diff_10 < BILINEAR_ARC_THRESHOLD && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD;
   let keep11 = arc_diff_11 < BILINEAR_ARC_THRESHOLD && cos11 > BILINEAR_ANGLE_DOT_THRESHOLD;
 
-  let w00 = select(0.0, (1.0 - fract_pos.x) * (1.0 - fract_pos.y), keep00);
-  let w10 = select(0.0, fract_pos.x         * (1.0 - fract_pos.y), keep10);
-  let w01 = select(0.0, (1.0 - fract_pos.x) * fract_pos.y,         keep01);
-  let w11 = select(0.0, fract_pos.x         * fract_pos.y,         keep11);
+  let bili_dist00 = (1.0 - fract_pos.x) * (1.0 - fract_pos.y);
+  let bili_dist01 = (1.0 - fract_pos.x) * fract_pos.y;
+  let bili_dist10 = fract_pos.x         * (1.0 - fract_pos.y);
+  let bili_dist11 = fract_pos.x         * fract_pos.y;
+
+  let w00 = select(0.0, bili_dist00, keep00);
+  let w01 = select(0.0, bili_dist01, keep01);
+  let w10 = select(0.0, bili_dist10, keep10);
+  let w11 = select(0.0, bili_dist11, keep11);
 
   let total_w = w00 + w10 + w01 + w11;
   // Fallback to nearest when all neighbours are filtered (e.g. very sharp corner).
-  let arc_blended_raw = select(nearest_arc,
+  let arc_blended_raw = select(nNearest.arc,
                                (arc00 * w00 + arc10 * w10 + arc01 * w01 + arc11 * w11) / total_w,
                                total_w > 1e-6);
   let arc_blended = clamp(arc_blended_raw, 0.0, total_arc_len);
@@ -427,28 +440,23 @@ fn getSample(pos: vec2f) -> Sample {
 
   let primary_angle = atan2(refined_primary.pos.y - pos.y, refined_primary.pos.x - pos.x);
 
-  let bw00 = (1.0 - fract_pos.x) * (1.0 - fract_pos.y);
-  let bw10 = fract_pos.x         * (1.0 - fract_pos.y);
-  let bw01 = (1.0 - fract_pos.x) * fract_pos.y;
-  let bw11 = fract_pos.x         * fract_pos.y;
-
-  let dir00 = normalize(n00.norm_raw_dir) * bw00;
-  let dir10 = normalize(n10.norm_raw_dir) * bw10;
-  let dir01 = normalize(n01.norm_raw_dir) * bw01;
-  let dir11 = normalize(n11.norm_raw_dir) * bw11;
+  let dir00 = normalize(n00.norm_raw_dir) * bili_dist00;
+  let dir10 = normalize(n10.norm_raw_dir) * bili_dist10;
+  let dir01 = normalize(n01.norm_raw_dir) * bili_dist01;
+  let dir11 = normalize(n11.norm_raw_dir) * bili_dist11;
 
   let blended_dir = dir00 + dir10 + dir01 + dir11;
-  let fallback_angle = atan2(blended_dir.y, blended_dir.x);
 
-  // the aim of blend_angle is to reduce effect of medial axis(skeleton of the shape)
+  // the aim of blend_angle is to reduce harsh effect of medial axis(skeleton of the shape)
   // because user wants pretty angle with nice gradients more than angle to actual closest point on curve
+  let fallback_angle = atan2(blended_dir.y, blended_dir.x);
 
 
 
   // If we refine neighbours then we HAVE TO do this additiona refinement here, otherwise
   // we got noise (see ./artifacts/neighbour refinement only noise.png)
   let refined_blended_global_t = refine_curve_pos(pos, blended_global_t).t; // looks good for distance
-  let abs_distance = length(pos - global_t_to_position(refined_blended_global_t));
+  let abs_distance = length(pos - t_to_pos(refined_blended_global_t));
 
 
   // Blending angles on curve looks ugly because they mix texels inside with texels outside, 
@@ -474,8 +482,8 @@ fn getSample(pos: vec2f) -> Sample {
   if (w11 > dom_w) { dominant = 3.0; dom_w = w11; }
 
   let dom_g = select(
-    select(n00.global_t, n10.global_t, dominant > 0.5),
-    select(n01.global_t, n11.global_t, dominant > 2.5),
+    select(n00.t, n10.t, dominant > 0.5),
+    select(n01.t, n11.t, dominant > 2.5),
     dominant > 1.5,
   );
   let dominant_curve_idx = floor(dom_g);
@@ -495,7 +503,7 @@ fn getSample(pos: vec2f) -> Sample {
 }
 
 // Forward arc-length map: g → cumulative arc length along the path.
-fn global_t_to_arc(global_t: f32) -> f32 {
+fn t_to_arc(global_t: f32) -> f32 {
   let curve_index = u32(global_t);
   let local_t = fract(global_t);
 
@@ -518,7 +526,7 @@ fn global_t_to_arc(global_t: f32) -> f32 {
 
 // UNIT tangent at local t encoded in g. Always returns a unit-length vector
 // (or (1, 0) for fully degenerate curves where even the chord is zero).
-fn global_t_to_tangent(global_t: f32) -> vec2f {
+fn t_to_tan(global_t: f32) -> vec2f {
   let idx = u32(global_t);
   let t = fract(global_t);
   let p0 = curves[idx * 4 + 0];
@@ -547,7 +555,7 @@ fn global_t_to_tangent(global_t: f32) -> vec2f {
   return deriv * inverseSqrt(deriv_len_sq);
 }
 
-fn global_t_to_position(global_t: f32) -> vec2f {
+fn t_to_pos(global_t: f32) -> vec2f {
   let idx = u32(global_t);
   let t   = fract(global_t);
   let curve = CubicBezier(
@@ -567,7 +575,6 @@ fn global_t_to_position(global_t: f32) -> vec2f {
 // doing one Newton-Raphson step minimising |bezier(t) - pos|². For straight
 // lines, computes the exact projection.
 fn refine_curve_pos(pos: vec2f, global_t: f32) -> Refined {
-  
   let idx = u32(global_t);
   let t = fract(global_t);
   let p0 = curves[idx * 4 + 0];
@@ -622,7 +629,7 @@ struct Refined {
   // let refined = refine_curve_pos(uv, sdf.t);
   // let curve_pos = refined.pos;
   // let g = refined.t;
-  let curve_pos = global_t_to_position(sdf.t);
+  let curve_pos = t_to_pos(sdf.t);
   let g = sdf.t;
 
   // let curve_pos = global_t_to_position(sdf.t);
