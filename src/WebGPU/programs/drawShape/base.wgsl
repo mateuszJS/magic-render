@@ -312,14 +312,14 @@ fn getSample(pos: vec2f) -> Sample {
   
   // Should we use redefined t alread yhere? We redefine it later right now
   // We do refine with Newton to eliminate harsh edges (see ./artifacts/hrash edges.png)
-  let refined_nearest = Refined(nNearest.pos, nNearest.t);
-  let refine_nearest_tan = t_to_tan(refined_nearest.t);
-  let inward_normal = vec2f(-refine_nearest_tan.y, refine_nearest_tan.x);
-  var nearest_sign = sign(dot(pos - refined_nearest.pos, inward_normal));
+  // let refined_nearest = Refined(nNearest.pos, nNearest.t);
+  // let refine_nearest_tan = t_to_tan(refined_nearest.t);
+  let inward_normal = vec2f(-nNearest.tan.y, nNearest.tan.x);
+  var nearest_sign = sign(dot(pos - nNearest.pos, inward_normal));
 
-  if (fract(refined_nearest.t) < T_JUNCTION_EPS) {
+  if (fract(nNearest.t) < T_JUNCTION_EPS) {
     let num_curves_u = path_metrics.num_curves;
-    let cur_idx = u32(refined_nearest.t) % num_curves_u;
+    let cur_idx = u32(nNearest.t) % num_curves_u;
     let prev_idx = prev_curve_in_path(cur_idx, num_curves_u);
     let pp0 = curves[prev_idx * 4u + 0u];
     let pp1 = curves[prev_idx * 4u + 1u];
@@ -338,16 +338,16 @@ fn getSample(pos: vec2f) -> Sample {
     // If even the chord is zero (fully degenerate prev curve), reuse the
     // current tangent — the corner is treated as smooth, which is the safest
     // visual outcome and avoids inventing a bogus +x axis.
-    let prev_tan_n     = select(refine_nearest_tan, prev_tan_raw / prev_tan_len, prev_tan_len > 1e-8);
+    let prev_tan_n     = select(nNearest.tan, prev_tan_raw / prev_tan_len, prev_tan_len > 1e-8);
 
     // cross2d = cur × prev. CW winding in Y-down:
     //   > 0 → concave (inner notch) → inside if EITHER half-plane says inside (max).
     //   < 0 → convex  (outer corner) → inside only if BOTH half-planes say inside (min).
     //   ≈ 0 → near-collinear → both branches give the same answer.
-    let cross_2d = refine_nearest_tan.x * prev_tan_n.y - refine_nearest_tan.y * prev_tan_n.x;
+    let cross_2d = nNearest.tan.x * prev_tan_n.y - nNearest.tan.y * prev_tan_n.x;
     let prev_normal = vec2f(-prev_tan_n.y, prev_tan_n.x);
-    let sign_cur  = sign(dot(pos - refined_nearest.pos, inward_normal));
-    let sign_prev = sign(dot(pos - refined_nearest.pos, prev_normal));
+    let sign_cur  = sign(dot(pos - nNearest.pos, inward_normal));
+    let sign_prev = sign(dot(pos - nNearest.pos, prev_normal));
     nearest_sign = select(min(sign_cur, sign_prev),
                           max(sign_cur, sign_prev),
                           cross_2d > 0.0);
@@ -574,6 +574,16 @@ fn t_to_pos(global_t: f32) -> vec2f {
 // Refines the nearest-curve-point estimate from bilinear t interpolation by
 // doing one Newton-Raphson step minimising |bezier(t) - pos|². For straight
 // lines, computes the exact projection.
+//
+// Local-t upper bound is 1 − ε rather than 1 because returning exactly
+// `f32(idx) + 1.0` flips the segment encoding: `floor(idx + 1.0) = idx + 1`
+// and `fract(idx + 1.0) = 0`, so downstream lookups (global_t_to_position /
+// _tangent / _arc) read curve idx+1, t=0. For curves in the middle of a
+// path that's the next segment along the same path and the tangent
+// happens to be continuous; for the last curve of any path it's the
+// first curve of a *different* path, and the wrong tangent gives a wrong
+// half-plane sign — visible as stray inside/outside pixels in the inner
+// counters of letters like "e", "q", "o".
 fn refine_curve_pos(pos: vec2f, global_t: f32) -> Refined {
   let idx = u32(global_t);
   let t = fract(global_t);
@@ -582,12 +592,15 @@ fn refine_curve_pos(pos: vec2f, global_t: f32) -> Refined {
   let p2 = curves[idx * 4 + 2];
   let p3 = curves[idx * 4 + 3];
 
+  // Just-under-1 upper clamp, see header note above.
+  let MAX_LOCAL_T = 1.0 - 1e-5;
+
   if (is_straight_line_marker(p1)) {
     let line_vec = p3 - p0;
     let len_sq = dot(line_vec, line_vec);
     // Defensive: zero-length line ⇒ refined_t = 0, return endpoint.
     let refined_t = select(0.0,
-                           clamp(dot(pos - p0, line_vec) / len_sq, 0.0, 1.0),
+                           clamp(dot(pos - p0, line_vec) / len_sq, 0.0, MAX_LOCAL_T),
                            len_sq > 1e-12);
     return Refined(
       mix(p0, p3, refined_t),
@@ -604,7 +617,7 @@ fn refine_curve_pos(pos: vec2f, global_t: f32) -> Refined {
   // Full Newton denominator (includes curvature term) prevents overshooting on
   // the concave side of high-curvature curves.
   let df = dot(dp, dp) + dot(diff, ddp);
-  let refined_t = clamp(t - select(0.0, dot(diff, dp) / df, abs(df) > 1e-8), 0.0, 1.0);
+  let refined_t = clamp(t - select(0.0, dot(diff, dp) / df, abs(df) > 1e-8), 0.0, MAX_LOCAL_T);
   let refined_pos = bezier_point(curve, refined_t);
 
   // Only accept the refined position if it's strictly closer.
@@ -641,9 +654,6 @@ struct Refined {
 
   // Grid: fract(uv) is how far into the current texel we are (0..1).
   // Dividing by fwidth gives distance in screen pixels from the nearest edge.
-  let fw = fwidth(uv);
-  let texel_grid = min(fract(uv) / fw, (1.0 - fract(uv)) / fw);
-  let on_texel_grid = min(texel_grid.x, texel_grid.y) < 0.5;
 
 
   ${TEST}
@@ -686,7 +696,15 @@ struct Refined {
   // }
   // discard;
 
+  let fw = fwidth(uv);
+  let sdf_texture_grid = min(fract(uv) / fw, (1.0 - fract(uv)) / fw);
+  let on_sdf_texture_grid = min(sdf_texture_grid.x, sdf_texture_grid.y) < 0.5;
+  if (on_sdf_texture_grid) {
+    return vec4f(0.0, 1.0, 0.0, 1.0);
+  }
+
   let final_result = vec4f(color.rgb, color.a * alpha);
+  return final_result;
 
     // === DEBUG: per-screen-pixel-cell digit overlay ===========================
     // Cells are nominally 32×32 SCREEN pixels at 1x DPR; we multiply by
