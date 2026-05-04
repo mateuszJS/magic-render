@@ -699,9 +699,10 @@ struct Refined {
   let fw = fwidth(uv);
   let sdf_texture_grid = min(fract(uv) / fw, (1.0 - fract(uv)) / fw);
   let on_sdf_texture_grid = min(sdf_texture_grid.x, sdf_texture_grid.y) < 0.5;
-  if (on_sdf_texture_grid) {
-    return vec4f(0.0, 1.0, 0.0, 1.0);
-  }
+
+  // if (on_sdf_texture_grid) {
+  //   return vec4f(0.0, 1.0, 0.0, 1.0);
+  // }
 
   let final_result = vec4f(color.rgb, color.a * alpha);
   return final_result;
@@ -724,19 +725,32 @@ struct Refined {
     // (0..3). Adjacent cells with different dominants change colour at the
     // texel-grid Voronoi boundary — that's the stairstep we're hunting.
 
-    // let cell_bg    = debug_idx_to_color(debug_sdf.dominant);
+    let cell_bg = debug_idx_to_color(floor(debug_sdf.t));
+    // let cell_bg = debug_idx_to_color(floor(debug_sdf.t));
 
     // Digits show the dominant neighbour's curve index (floor of its global_t).
     // If two adjacent cells have different curve indices that lines up with
     // the cell_bg colour change, we've confirmed the artifact == "neighbour-
     // pointing-at-different-curve" Voronoi pattern.
-    let digits     = debug_render_digits(vsOut.position.xy, cell.x, debug_sdf.abs_distance, 2, DEBUG_PIXEL_SCALE * dbg_scale);
+    let cell_uv = cell_data.uv;
+    let digits     = debug_render_digits(
+      vsOut.position.xy,
+      cell.x,
+      floor(debug_sdf.t),
+      0,
+      DEBUG_PIXEL_SCALE * dbg_scale
+    );
     let grid       = debug_grid_line(vsOut.position.xy, cell, 1.0 * dbg_scale);
 
+    let sign_color = select(vec4f(0.7, 0.2, 0.7, 1.0),   // outside
+                        vec4f(0.2, 0.7, 0.2, 1.0),   // inside
+                        debug_sdf.distance > 0.0);
+
     // Background → grid lines → digits, painted in that order.
-    // var dbg = mix(final_result, cell_bg, 0.6);              // tint by dominant
-    var dbg     = mix(final_result, vec4f(0.8), grid);     // dark grid lines
-    dbg     = mix(dbg, vec4f(1.0, 1.0, 1.0, 1.0), digits.a); // white digits on top
+    // var dbg = final_result;              // 
+    var dbg = mix(final_result, cell_bg, 0.4);              // 
+    // var dbg     = mix(final_result, vec4f(0.8), grid);     // dark grid lines
+    dbg     = mix(dbg, vec4f(0.0, 0.0, 0.0, 1.0), digits.a); // white digits on top
     // === /DEBUG ==============================================================
     return dbg;
 }
