@@ -23,14 +23,21 @@ pub fn computeShape(
         resize,
     );
 
-    // Resolve self-intersections (and curves that cross between paths) by
-    // splitting at the crossing and re-routing the topology so each output
-    // sub-path is simple. Cheap when nothing crosses (just AABB checks per
-    // pair); only does real subdivision work when AABBs actually overlap.
-    // Tolerance is half a texel of the final scale, so any approximation
-    // error is invisible without zooming way in.
-    const tolerance = 0.5 / sdf_tex.scale;
-    const resolved_paths = try resolveSelfIntersections(paths, std.heap.page_allocator, tolerance);
+    // Split any self-crossing path into its Seifert-smoothed sub-paths BEFORE
+    // we touch winding. A figure-8 entered as one path would otherwise have
+    // the shader's tangent test flip polarity at every crossing — the magenta
+    // "inside" of the reference shape ends up split into bands. After the
+    // split each sub-path is non-self-crossing, so the CW/hole-flip steps
+    // below can do their normal job.
+    const working_paths: [][]types.Point = blk: {
+        var split = std.ArrayList([]types.Point).init(std.heap.page_allocator);
+        for (paths) |p| {
+            const subs = try splitAtSelfIntersections(p, std.heap.page_allocator);
+            try split.appendSlice(subs);
+            std.heap.page_allocator.free(subs);
+        }
+        break :blk try split.toOwnedSlice();
+    };
 
     // Force every path to wind clockwise BEFORE we scale into texel space. The
     // SDF fragment shader picks the fill side from the tangent's half-plane
@@ -38,24 +45,24 @@ pub fn computeShape(
     // some paths render as inverted holes. Doing it here — while paths are
     // still separate — means we never have to detect path boundaries inside a
     // flat buffer.
-    ensureClockwiseOrientation(resolved_paths);
+    ensureClockwiseOrientation(working_paths);
 
     // Now that every path is CW, walk the containment hierarchy and flip any
     // path whose nesting depth is odd back to CCW. That gives us "e", "o", "q"
-    // style holes for free, and also makes self-intersection resolution
-    // produce holes when one of the resulting sub-paths is contained in the
-    // other (e.g. a curve that loops back inside itself).
-    fixHoleWinding(resolved_paths);
+    // style holes for free: outer contour stays a fill, the inner contour
+    // becomes the opposite winding, and the shader's tangent test reports the
+    // hole region as outside.
+    fixHoleWinding(working_paths);
 
     // Flatten the paths into one contiguous buffer so the rest of the function
     // (scaling, arc-length sampling, the webgpu dispatch) can stay exactly the
     // way it was before paths became explicit.
     var total_len: usize = 0;
-    for (resolved_paths) |path| total_len += path.len;
+    for (working_paths) |path| total_len += path.len;
     const points = try std.heap.page_allocator.alloc(types.Point, total_len);
     {
         var offset: usize = 0;
-        for (resolved_paths) |path| {
+        for (working_paths) |path| {
             @memcpy(points[offset .. offset + path.len], path);
             offset += path.len;
         }
@@ -256,349 +263,592 @@ fn isPointInsidePath(point: types.Point, path: []const types.Point) bool {
 }
 
 // =============================================================================
-// Self-intersection resolution
-//
-// When a path crosses itself (or two paths cross each other), the SDF tangent
-// fill test smears across the crossing because the fragment can't tell which
-// curve to side-test against. We fix it before SDF baking: find every place
-// curves cross, split each curve at the crossing, and rewire the path so that
-// at each crossing the two "out" branches swap which "in" branch they connect
-// to. That single swap turns one self-intersecting loop into two clean,
-// simple-closed loops, which the existing fill code handles fine.
-//
-// PRECISION
-//   Bezier subdivision intersection with termination at `tolerance` (half a
-//   texel of the final scale, computed by the caller). Any error in the
-//   crossing point is sub-pixel — visible only with significant zoom.
-//
-// PERFORMANCE
-//   For paths that don't cross anything (the overwhelming common case), the
-//   work is one AABB-overlap test per curve pair within a path — O(N²) min/
-//   max comparisons, no allocation, no recursion. Subdivision is only entered
-//   when AABBs actually overlap, and even then each level halves both curves
-//   and only recurses into the four sub-pairs whose AABBs still overlap.
-//
-// SCOPE
-//   Handles self-intersections within a path AND crossings between paths
-//   (because we feed every pair into the same finder). Doesn't handle
-//   tangent-but-not-crossing kisses cleanly — those produce a near-zero
-//   t-value split which we filter as a degenerate. Acceptable for our "good
-//   enough at normal zoom" target.
+// SELF-INTERSECTION SPLITTING
 // =============================================================================
+// `fixHoleWinding` (above) handles the easy case where paths nest but never
+// cross. When a SINGLE path crosses itself, the tangent-based fill in the
+// shader gets confused — at every crossing the inside/outside labelling
+// flips polarity (see ADRs/SDF rendering). The reference shape that
+// motivated this routine is a double figure-8: one path with two transverse
+// self-crossings, where the magenta "inside" should be the union of three
+// disjoint loops, not a single crossing path.
+//
+// `splitAtSelfIntersections` rewrites that one crossing path into K+1 closed
+// sub-paths (K = number of transverse self-crossings) by Seifert-smoothing
+// every crossing. Each smoothed loop is non-self-crossing on its own, so
+// the existing CW-orientation + hole-flip pipeline can take it from there.
+//
+// PUBLIC ENTRY POINT
+//   splitAtSelfIntersections(path, allocator) -> [][]Point
+//
+// Caller owns the result and every inner slice (free with the same allocator
+// that was passed in). Paths with no self-crossings come back as a one-element
+// array so callers can treat the output uniformly.
 
-const Cubic = struct {
+/// pixels of bbox edge at which we accept a crossing — small enough that the
+/// snap-together step at the end stays sub-pixel, large enough that we never
+/// chase floating-point noise.
+const SUBDIVISION_TOLERANCE: f32 = 0.05;
+const MAX_SUBDIVISION_DEPTH: u32 = 32;
+/// distance below which two crossing candidates are treated as the same one;
+/// recursion can bracket a single crossing from both sides.
+const SAME_INTERSECTION_DIST: f32 = 0.5;
+const ENDPOINT_T_EPS: f32 = 1e-3;
+
+const Intersection = struct {
+    curve_a: u32,
+    curve_b: u32,
+    t_a: f32,
+    t_b: f32,
+    point: types.Point,
+};
+
+/// What sits on one side of a stub. Either it abuts the previous/next stub
+/// in the original path order (`.continuation`), or it ends at intersection
+/// `id`, where the Seifert swap will route it across to the other curve.
+const StubBoundary = union(enum) {
+    continuation,
+    intersection: u32,
+};
+
+const Stub = struct {
+    points: [4]types.Point,
+    is_straight: bool,
+    prev_kind: StubBoundary,
+    next_kind: StubBoundary,
+    curve_idx: u32,
+};
+
+/// Bookkeeping for a single crossing: which stubs arrive at it (one per
+/// crossing curve) and which stubs leave it. Filled while we cut the curves;
+/// read while we walk the resulting graph.
+const IntersectionEnds = struct {
+    incoming_a: u32 = 0,
+    outgoing_a: u32 = 0,
+    incoming_b: u32 = 0,
+    outgoing_b: u32 = 0,
+};
+
+/// A sub-arc of an original cubic bezier, parameterised by [t_min, t_max] in
+/// the original curve's t-space. Used during the recursive-bisection
+/// intersection search.
+const SubBox = struct {
     p0: types.Point,
     p1: types.Point,
     p2: types.Point,
     p3: types.Point,
+    is_straight: bool,
+    t_min: f32,
+    t_max: f32,
 };
 
-const SelfHit = struct {
-    curve_i: usize,
-    curve_j: usize,
-    t_i: f32,
-    t_j: f32,
+const TStop = struct {
+    t: f32,
+    intersection_id: u32,
 };
 
-// Returns a freshly-allocated paths slice in which every path is simple
-// (non-self-intersecting). Paths that already are simple are duplicated
-// unchanged. The caller takes ownership of both the outer slice and every
-// inner path slice.
-fn resolveSelfIntersections(
-    paths: [][]types.Point,
-    allocator: std.mem.Allocator,
-    tolerance: f32,
-) ![][]types.Point {
-    var output = std.ArrayList([]types.Point).init(allocator);
-    for (paths) |path| {
-        try resolvePath(path, &output, allocator, tolerance, 0);
-    }
-    return output.toOwnedSlice();
+fn pointLerp(a: types.Point, b: types.Point, t: f32) types.Point {
+    return .{ .x = a.x + (b.x - a.x) * t, .y = a.y + (b.y - a.y) * t };
 }
 
-// Recursive worker: find one self-intersection, split the path in two, and
-// recurse on each half. Each split strictly reduces self-crossings, so we
-// converge — but we cap depth as a safety net in case floating-point noise
-// somehow re-introduces an intersection.
-fn resolvePath(
-    path: []const types.Point,
-    output: *std.ArrayList([]types.Point),
-    allocator: std.mem.Allocator,
-    tolerance: f32,
+/// De Casteljau split of a cubic at parameter t. `left` covers [0, t],
+/// `right` covers [t, 1]; `left[3] == right[0]` by construction so the
+/// halves stitch back together exactly.
+fn splitCubic(
+    p0: types.Point,
+    p1: types.Point,
+    p2: types.Point,
+    p3: types.Point,
+    t: f32,
+    left: *[4]types.Point,
+    right: *[4]types.Point,
+) void {
+    const a = pointLerp(p0, p1, t);
+    const b = pointLerp(p1, p2, t);
+    const c = pointLerp(p2, p3, t);
+    const d = pointLerp(a, b, t);
+    const e = pointLerp(b, c, t);
+    const f = pointLerp(d, e, t);
+    left.* = .{ p0, a, d, f };
+    right.* = .{ f, e, c, p3 };
+}
+
+fn boundingBox(b: SubBox) [4]f32 {
+    if (b.is_straight) {
+        return .{
+            @min(b.p0.x, b.p3.x), @min(b.p0.y, b.p3.y),
+            @max(b.p0.x, b.p3.x), @max(b.p0.y, b.p3.y),
+        };
+    }
+    return .{
+        @min(@min(b.p0.x, b.p1.x), @min(b.p2.x, b.p3.x)),
+        @min(@min(b.p0.y, b.p1.y), @min(b.p2.y, b.p3.y)),
+        @max(@max(b.p0.x, b.p1.x), @max(b.p2.x, b.p3.x)),
+        @max(@max(b.p0.y, b.p1.y), @max(b.p2.y, b.p3.y)),
+    };
+}
+
+fn boxesOverlap(a: [4]f32, b: [4]f32) bool {
+    return a[0] <= b[2] and a[2] >= b[0] and a[1] <= b[3] and a[3] >= b[1];
+}
+
+fn boxLargestSide(b: [4]f32) f32 {
+    return @max(b[2] - b[0], b[3] - b[1]);
+}
+
+fn subdivideBox(b: SubBox) [2]SubBox {
+    const t_mid = (b.t_min + b.t_max) * 0.5;
+    if (b.is_straight) {
+        const m = pointLerp(b.p0, b.p3, 0.5);
+        return .{
+            .{
+                .p0 = b.p0,
+                .p1 = path_utils.STRAIGHT_LINE_HANDLE,
+                .p2 = path_utils.STRAIGHT_LINE_HANDLE,
+                .p3 = m,
+                .is_straight = true,
+                .t_min = b.t_min,
+                .t_max = t_mid,
+            },
+            .{
+                .p0 = m,
+                .p1 = path_utils.STRAIGHT_LINE_HANDLE,
+                .p2 = path_utils.STRAIGHT_LINE_HANDLE,
+                .p3 = b.p3,
+                .is_straight = true,
+                .t_min = t_mid,
+                .t_max = b.t_max,
+            },
+        };
+    }
+    var left: [4]types.Point = undefined;
+    var right: [4]types.Point = undefined;
+    splitCubic(b.p0, b.p1, b.p2, b.p3, 0.5, &left, &right);
+    return .{
+        .{
+            .p0 = left[0],
+            .p1 = left[1],
+            .p2 = left[2],
+            .p3 = left[3],
+            .is_straight = false,
+            .t_min = b.t_min,
+            .t_max = t_mid,
+        },
+        .{
+            .p0 = right[0],
+            .p1 = right[1],
+            .p2 = right[2],
+            .p3 = right[3],
+            .is_straight = false,
+            .t_min = t_mid,
+            .t_max = b.t_max,
+        },
+    };
+}
+
+/// Recursively bisect two curves, halving whichever still has the larger
+/// bounding box, and report a crossing whenever both bboxes have shrunk
+/// below SUBDIVISION_TOLERANCE while still overlapping. The endpoint joints
+/// between consecutive curves (and the wrap joint at the seam) are not real
+/// crossings — they're just the shared p0/p3 of the path — and are filtered
+/// out before we record anything.
+fn findCurvePairIntersections(
+    a: SubBox,
+    b: SubBox,
+    ci: u32,
+    cj: u32,
+    adjacent_forward: bool,
+    adjacent_wrap: bool,
     depth: u32,
+    out: *std.ArrayList(Intersection),
 ) !void {
-    const MAX_DEPTH: u32 = 16; // 2^16 sub-paths from one input — pathological is a strong word for that
+    const a_bb = boundingBox(a);
+    const b_bb = boundingBox(b);
+    if (!boxesOverlap(a_bb, b_bb)) return;
 
-    if (depth < MAX_DEPTH) {
-        if (findSelfIntersection(path, tolerance)) |hit| {
-            const split = try splitAtSelfHit(path, hit, allocator);
-            defer allocator.free(split.path_a);
-            defer allocator.free(split.path_b);
-            try resolvePath(split.path_a, output, allocator, tolerance, depth + 1);
-            try resolvePath(split.path_b, output, allocator, tolerance, depth + 1);
-            return;
+    const a_size = boxLargestSide(a_bb);
+    const b_size = boxLargestSide(b_bb);
+
+    if ((a_size < SUBDIVISION_TOLERANCE and b_size < SUBDIVISION_TOLERANCE) or depth >= MAX_SUBDIVISION_DEPTH) {
+        const t_a = (a.t_min + a.t_max) * 0.5;
+        const t_b = (b.t_min + b.t_max) * 0.5;
+
+        // Drop the trivial endpoint joins between consecutive curves.
+        if (adjacent_forward and t_a > 1.0 - ENDPOINT_T_EPS and t_b < ENDPOINT_T_EPS) return;
+        if (adjacent_wrap and t_b > 1.0 - ENDPOINT_T_EPS and t_a < ENDPOINT_T_EPS) return;
+
+        const point: types.Point = .{
+            .x = (a_bb[0] + a_bb[2]) * 0.5,
+            .y = (a_bb[1] + a_bb[3]) * 0.5,
+        };
+
+        // Recursion can bracket the same crossing from both halves of a
+        // subdivided box; collapse near-duplicates here.
+        for (out.items) |existing| {
+            if (existing.curve_a == ci and existing.curve_b == cj and
+                existing.point.distance(point) < SAME_INTERSECTION_DIST)
+            {
+                return;
+            }
         }
+
+        try out.append(.{
+            .curve_a = ci,
+            .curve_b = cj,
+            .t_a = t_a,
+            .t_b = t_b,
+            .point = point,
+        });
+        return;
     }
 
-    // No (more) intersections, or depth-cap reached. Emit the path as-is.
-    const path_copy = try allocator.dupe(types.Point, path);
-    try output.append(path_copy);
+    if (a_size >= b_size) {
+        const halves = subdivideBox(a);
+        try findCurvePairIntersections(halves[0], b, ci, cj, adjacent_forward, adjacent_wrap, depth + 1, out);
+        try findCurvePairIntersections(halves[1], b, ci, cj, adjacent_forward, adjacent_wrap, depth + 1, out);
+    } else {
+        const halves = subdivideBox(b);
+        try findCurvePairIntersections(a, halves[0], ci, cj, adjacent_forward, adjacent_wrap, depth + 1, out);
+        try findCurvePairIntersections(a, halves[1], ci, cj, adjacent_forward, adjacent_wrap, depth + 1, out);
+    }
 }
 
-// Scans every non-adjacent pair of curves in `path` and returns the first
-// crossing it finds. Adjacent pairs share a curve joint, which would look
-// like an "intersection" at t≈0 or t≈1 of the joining curve — those are
-// filtered both by the adjacency check and by the t-endpoint guard.
-fn findSelfIntersection(path: []const types.Point, tolerance: f32) ?SelfHit {
-    const num_curves = path.len / 4;
-    if (num_curves < 2) return null;
+fn lessTStop(_: void, a: TStop, b: TStop) bool {
+    return a.t < b.t;
+}
 
-    const T_ENDPOINT_EPS: f32 = 1e-3;
+fn cloneAsSinglePath(path: []const types.Point, allocator: std.mem.Allocator) ![][]types.Point {
+    const result = try allocator.alloc([]types.Point, 1);
+    result[0] = try allocator.alloc(types.Point, path.len);
+    @memcpy(result[0], path);
+    return result;
+}
 
-    var i: usize = 0;
-    while (i < num_curves) : (i += 1) {
-        var j: usize = i + 1;
-        while (j < num_curves) : (j += 1) {
-            if (areAdjacent(i, j, num_curves)) continue;
+/// Splits a closed cubic-bezier path at every transverse self-crossing into
+/// multiple closed sub-paths. K crossings produce K+1 sub-paths: a figure-8
+/// (1 crossing) becomes 2 loops, the double figure-8 from the reference
+/// image (2 crossings) becomes 3 loops, and so on. If the input has no
+/// crossings the function returns a single-element array containing a copy
+/// of the input.
+///
+/// INPUT
+///   `path` is a flat slice of cubic-bezier control points
+///   [p0, p1, p2, p3, p0, p1, p2, p3, ...] where consecutive curves share an
+///   endpoint by value (curve K's p3 == curve K+1's p0) and the last p3
+///   equals the first p0 — i.e. the path is already closed. Straight-line
+///   segments must carry STRAIGHT_LINE_HANDLE on BOTH p1 and p2; run
+///   `prepareHalfStraightLines` first to normalise half-straight inputs.
+///
+/// METHOD
+///   1. For every (i, j) curve pair we recursively bisect both curves and
+///      drop branches whose bounding boxes don't overlap. Once both boxes
+///      shrink below SUBDIVISION_TOLERANCE we record one crossing. The
+///      endpoint joints between adjacent curves and at the wrap-around seam
+///      are filtered out — they're shared p0/p3, not real crossings. A
+///      small dedupe table catches the same crossing arrived at from two
+///      sides of an earlier split.
+///   2. For each curve, gather the t-parameters of crossings that land on
+///      it, sort them ascending, and slice the curve via De Casteljau into
+///      one stub per gap. Cut parameters are remapped into the remaining
+///      curve's local [0, 1] each iteration so geometry stays correct
+///      after multiple cuts on the same curve.
+///   3. At every crossing four stub ends meet: in/out on curve a, in/out on
+///      curve b. We Seifert-smooth the joint — incoming-a links to
+///      outgoing-b and incoming-b links to outgoing-a — which is the
+///      resolution that turns a figure-8 into two non-crossing loops. The
+///      four endpoint coordinates are also snapped to their average so the
+///      output sub-paths stitch closed exactly (sub-pixel error from the
+///      bisection would otherwise leave tiny gaps).
+///   4. Walk the stubs. Each unvisited stub seeds one sub-path; from any
+///      stub we follow either the natural path order (next_kind ==
+///      .continuation, jump to the first stub of the next curve) or the
+///      smoothed partner (next_kind == .intersection, jump across via the
+///      `ends` table). Every stub ends up in exactly one sub-path, and
+///      every sub-path is closed.
+///
+/// LIMITATIONS
+///   - Tangent (non-transverse) crossings, triple points, and pairs of
+///     curves that overlap along a segment are not handled cleanly. Some
+///     get collapsed by the dedupe; others will produce degenerate stubs.
+///     The right fix for those is a real boolean-ops engine. This routine
+///     keeps the common transverse cases — figure-8, double figure-8,
+///     star-style self-crossings — working.
+///   - The function allocates the result through `allocator`. Every inner
+///     slice is its own allocation; free them individually before freeing
+///     the outer slice.
+pub fn splitAtSelfIntersections(
+    path: []const types.Point,
+    allocator: std.mem.Allocator,
+) ![][]types.Point {
+    if (path.len == 0 or path.len % 4 != 0) {
+        return cloneAsSinglePath(path, allocator);
+    }
+    const num_curves: u32 = @intCast(path.len / 4);
+    if (num_curves < 2) {
+        return cloneAsSinglePath(path, allocator);
+    }
 
-            const a = realCurve(path, i);
-            const b = realCurve(path, j);
+    // ---- step 1: find every self-crossing -------------------------------
+    var intersections = std.ArrayList(Intersection).init(allocator);
+    defer intersections.deinit();
 
-            if (intersectCubics(a, b, 0, 1, 0, 1, tolerance, 0)) |hit| {
-                // Filter near-endpoint hits: those are tangent kisses at
-                // curve junctions, not real crossings, and splitting there
-                // produces a degenerate near-zero-length sub-curve.
-                if (hit.t_i < T_ENDPOINT_EPS or hit.t_i > 1.0 - T_ENDPOINT_EPS) continue;
-                if (hit.t_j < T_ENDPOINT_EPS or hit.t_j > 1.0 - T_ENDPOINT_EPS) continue;
+    {
+        var i: u32 = 0;
+        while (i < num_curves) : (i += 1) {
+            const a0 = path[i * 4 + 0];
+            const a1 = path[i * 4 + 1];
+            const a2 = path[i * 4 + 2];
+            const a3 = path[i * 4 + 3];
+            const a_straight = path_utils.isStraightLineHandle(a1) or path_utils.isStraightLineHandle(a2);
+            const a_box: SubBox = .{
+                .p0 = a0,
+                .p1 = a1,
+                .p2 = a2,
+                .p3 = a3,
+                .is_straight = a_straight,
+                .t_min = 0,
+                .t_max = 1,
+            };
 
-                return SelfHit{
-                    .curve_i = i,
-                    .curve_j = j,
-                    .t_i = hit.t_i,
-                    .t_j = hit.t_j,
+            var j: u32 = i + 1;
+            while (j < num_curves) : (j += 1) {
+                const b0 = path[j * 4 + 0];
+                const b1 = path[j * 4 + 1];
+                const b2 = path[j * 4 + 2];
+                const b3 = path[j * 4 + 3];
+                const b_straight = path_utils.isStraightLineHandle(b1) or path_utils.isStraightLineHandle(b2);
+                const b_box: SubBox = .{
+                    .p0 = b0,
+                    .p1 = b1,
+                    .p2 = b2,
+                    .p3 = b3,
+                    .is_straight = b_straight,
+                    .t_min = 0,
+                    .t_max = 1,
                 };
+
+                const adjacent_forward = (j == i + 1);
+                const adjacent_wrap = (i == 0 and j == num_curves - 1);
+                try findCurvePairIntersections(
+                    a_box,
+                    b_box,
+                    i,
+                    j,
+                    adjacent_forward,
+                    adjacent_wrap,
+                    0,
+                    &intersections,
+                );
             }
         }
     }
-    return null;
-}
 
-inline fn areAdjacent(i: usize, j: usize, num_curves: usize) bool {
-    // The path is closed, so curve N-1 is adjacent to curve 0 too.
-    return j == i + 1 or (i == 0 and j + 1 == num_curves);
-}
-
-// Pulls a curve out of the flat path buffer, substituting collinear handles
-// for the STRAIGHT_LINE_HANDLE marker. The "cubic" we hand to the math below
-// is geometrically identical to the line p0→p3 in the straight case, so the
-// intersection / split code doesn't need a straight-line special case.
-fn realCurve(path: []const types.Point, idx: usize) Cubic {
-    const p0 = path[idx * 4 + 0];
-    const p1_raw = path[idx * 4 + 1];
-    const p2_raw = path[idx * 4 + 2];
-    const p3 = path[idx * 4 + 3];
-
-    if (path_utils.isStraightLineHandle(p1_raw)) {
-        return Cubic{
-            .p0 = p0,
-            .p1 = lerp(p0, p3, 1.0 / 3.0),
-            .p2 = lerp(p0, p3, 2.0 / 3.0),
-            .p3 = p3,
-        };
-    }
-    return Cubic{ .p0 = p0, .p1 = p1_raw, .p2 = p2_raw, .p3 = p3 };
-}
-
-inline fn lerp(a: types.Point, b: types.Point, t: f32) types.Point {
-    return types.Point{
-        .x = a.x + (b.x - a.x) * t,
-        .y = a.y + (b.y - a.y) * t,
-    };
-}
-
-const Hit = struct { t_i: f32, t_j: f32 };
-
-// Recursive AABB-subdivision intersection finder. Each call halves both
-// curves with de Casteljau, then recurses into the four sub-pairs whose
-// AABBs overlap. Termination: AABBs separated (no hit) or both AABBs smaller
-// than `tolerance` (hit at the centre). Returns at most one hit, the first
-// one the recursion finds — multiple hits between the same curve pair get
-// discovered on subsequent passes after we split.
-fn intersectCubics(
-    a: Cubic,
-    b: Cubic,
-    a_t_lo: f32,
-    a_t_hi: f32,
-    b_t_lo: f32,
-    b_t_hi: f32,
-    tolerance: f32,
-    depth: u32,
-) ?Hit {
-    if (!aabbOverlap(a, b)) return null;
-
-    const a_size = aabbMaxDim(a);
-    const b_size = aabbMaxDim(b);
-
-    if (a_size < tolerance and b_size < tolerance) {
-        return Hit{
-            .t_i = (a_t_lo + a_t_hi) * 0.5,
-            .t_j = (b_t_lo + b_t_hi) * 0.5,
-        };
+    if (intersections.items.len == 0) {
+        return cloneAsSinglePath(path, allocator);
     }
 
-    const MAX_DEPTH: u32 = 24;
-    if (depth >= MAX_DEPTH) {
-        return Hit{
-            .t_i = (a_t_lo + a_t_hi) * 0.5,
-            .t_j = (b_t_lo + b_t_hi) * 0.5,
-        };
+    // ---- step 2: per-curve sorted t-stops, then cut into stubs ----------
+    const per_curve_ts = try allocator.alloc(std.ArrayList(TStop), num_curves);
+    defer {
+        for (per_curve_ts) |*ts| ts.deinit();
+        allocator.free(per_curve_ts);
+    }
+    for (per_curve_ts) |*ts| ts.* = std.ArrayList(TStop).init(allocator);
+
+    for (intersections.items, 0..) |x, idx| {
+        try per_curve_ts[x.curve_a].append(.{ .t = x.t_a, .intersection_id = @intCast(idx) });
+        try per_curve_ts[x.curve_b].append(.{ .t = x.t_b, .intersection_id = @intCast(idx) });
     }
 
-    const a_split = splitAt(a, 0.5);
-    const b_split = splitAt(b, 0.5);
-    const a_t_mid = (a_t_lo + a_t_hi) * 0.5;
-    const b_t_mid = (b_t_lo + b_t_hi) * 0.5;
+    var stubs = std.ArrayList(Stub).init(allocator);
+    defer stubs.deinit();
 
-    if (intersectCubics(a_split.first, b_split.first, a_t_lo, a_t_mid, b_t_lo, b_t_mid, tolerance, depth + 1)) |h| return h;
-    if (intersectCubics(a_split.first, b_split.second, a_t_lo, a_t_mid, b_t_mid, b_t_hi, tolerance, depth + 1)) |h| return h;
-    if (intersectCubics(a_split.second, b_split.first, a_t_mid, a_t_hi, b_t_lo, b_t_mid, tolerance, depth + 1)) |h| return h;
-    if (intersectCubics(a_split.second, b_split.second, a_t_mid, a_t_hi, b_t_mid, b_t_hi, tolerance, depth + 1)) |h| return h;
+    var first_stub_of_curve = try allocator.alloc(u32, num_curves);
+    defer allocator.free(first_stub_of_curve);
 
-    return null;
-}
+    var ends = try allocator.alloc(IntersectionEnds, intersections.items.len);
+    defer allocator.free(ends);
+    for (ends) |*e| e.* = .{};
 
-fn aabbOverlap(a: Cubic, b: Cubic) bool {
-    const a_min_x = @min(@min(a.p0.x, a.p1.x), @min(a.p2.x, a.p3.x));
-    const a_max_x = @max(@max(a.p0.x, a.p1.x), @max(a.p2.x, a.p3.x));
-    const a_min_y = @min(@min(a.p0.y, a.p1.y), @min(a.p2.y, a.p3.y));
-    const a_max_y = @max(@max(a.p0.y, a.p1.y), @max(a.p2.y, a.p3.y));
-    const b_min_x = @min(@min(b.p0.x, b.p1.x), @min(b.p2.x, b.p3.x));
-    const b_max_x = @max(@max(b.p0.x, b.p1.x), @max(b.p2.x, b.p3.x));
-    const b_min_y = @min(@min(b.p0.y, b.p1.y), @min(b.p2.y, b.p3.y));
-    const b_max_y = @max(@max(b.p0.y, b.p1.y), @max(b.p2.y, b.p3.y));
+    {
+        var c: u32 = 0;
+        while (c < num_curves) : (c += 1) {
+            const p0 = path[c * 4 + 0];
+            const p1 = path[c * 4 + 1];
+            const p2 = path[c * 4 + 2];
+            const p3 = path[c * 4 + 3];
+            const is_straight = path_utils.isStraightLineHandle(p1) or path_utils.isStraightLineHandle(p2);
 
-    return a_min_x <= b_max_x and a_max_x >= b_min_x and
-        a_min_y <= b_max_y and a_max_y >= b_min_y;
-}
+            std.sort.pdq(TStop, per_curve_ts[c].items, {}, lessTStop);
+            const ts = per_curve_ts[c].items;
+            first_stub_of_curve[c] = @intCast(stubs.items.len);
 
-fn aabbMaxDim(c: Cubic) f32 {
-    const min_x = @min(@min(c.p0.x, c.p1.x), @min(c.p2.x, c.p3.x));
-    const max_x = @max(@max(c.p0.x, c.p1.x), @max(c.p2.x, c.p3.x));
-    const min_y = @min(@min(c.p0.y, c.p1.y), @min(c.p2.y, c.p3.y));
-    const max_y = @max(@max(c.p0.y, c.p1.y), @max(c.p2.y, c.p3.y));
-    return @max(max_x - min_x, max_y - min_y);
-}
+            // Peel left halves off a shrinking remainder, remapping each
+            // global t into the remainder's local [0, 1].
+            var rem_p0 = p0;
+            var rem_p1 = p1;
+            var rem_p2 = p2;
+            var rem_p3 = p3;
+            var prev_t: f32 = 0;
 
-const SplitPair = struct { first: Cubic, second: Cubic };
+            for (ts, 0..) |stop, idx_in_curve| {
+                const denom = 1.0 - prev_t;
+                const local_t: f32 = if (denom > 1e-6) (stop.t - prev_t) / denom else 0.5;
 
-// de Casteljau split at parameter t. The two output cubics meet exactly at
-// the curve point P(t) — that shared endpoint is what lets us snap the two
-// resulting paths to the same crossing point.
-fn splitAt(c: Cubic, t: f32) SplitPair {
-    const q0 = lerp(c.p0, c.p1, t);
-    const q1 = lerp(c.p1, c.p2, t);
-    const q2 = lerp(c.p2, c.p3, t);
-    const r0 = lerp(q0, q1, t);
-    const r1 = lerp(q1, q2, t);
-    const s = lerp(r0, r1, t);
-    return SplitPair{
-        .first = Cubic{ .p0 = c.p0, .p1 = q0, .p2 = r0, .p3 = s },
-        .second = Cubic{ .p0 = s, .p1 = r1, .p2 = q2, .p3 = c.p3 },
-    };
-}
+                var left: [4]types.Point = undefined;
+                var right: [4]types.Point = undefined;
+                if (is_straight) {
+                    const split_pt = pointLerp(rem_p0, rem_p3, local_t);
+                    left = .{ rem_p0, path_utils.STRAIGHT_LINE_HANDLE, path_utils.STRAIGHT_LINE_HANDLE, split_pt };
+                    right = .{ split_pt, path_utils.STRAIGHT_LINE_HANDLE, path_utils.STRAIGHT_LINE_HANDLE, rem_p3 };
+                } else {
+                    splitCubic(rem_p0, rem_p1, rem_p2, rem_p3, local_t, &left, &right);
+                }
 
-const PathSplit = struct {
-    path_a: []types.Point,
-    path_b: []types.Point,
-};
+                const prev_kind: StubBoundary = if (idx_in_curve == 0)
+                    .continuation
+                else
+                    .{ .intersection = ts[idx_in_curve - 1].intersection_id };
 
-// Splits a self-intersecting path into two simple sub-paths at the given
-// crossing. Topology re-route: if the original path runs
-//     ... → C[i-1] → C_i → C[i+1] → ... → C[j-1] → C_j → C[j+1] → ...
-// (closed back to C[0]) and C_i × C_j cross at point P at t_i, t_j, then:
-//
-//     path_a = C_i_pre, C_j_post, C[j+1..N), C[0..i)
-//     path_b = C_i_post, C[i+1..j), C_j_pre
-//
-// Both close cleanly because both C_i_pre.p3 and C_j_pre.p3 are snapped to
-// the same midpoint of the two split endpoints (subdivision gives them as
-// nearly-equal points; we average them so each output path is exactly closed).
-fn splitAtSelfHit(
-    path: []const types.Point,
-    hit: SelfHit,
-    allocator: std.mem.Allocator,
-) !PathSplit {
-    const num_curves = path.len / 4;
+                const stub_idx: u32 = @intCast(stubs.items.len);
+                try stubs.append(.{
+                    .points = left,
+                    .is_straight = is_straight,
+                    .prev_kind = prev_kind,
+                    .next_kind = .{ .intersection = stop.intersection_id },
+                    .curve_idx = c,
+                });
 
-    const c_i = realCurve(path, hit.curve_i);
-    const c_j = realCurve(path, hit.curve_j);
+                // Wire this stub as the INCOMING end of the joint at
+                // stop.intersection_id. We're processing curve c, and the
+                // intersection record's curve_a/curve_b tells us which side
+                // of the joint this stub feeds into.
+                const incoming_ends: *IntersectionEnds = &ends[stop.intersection_id];
+                if (c == intersections.items[stop.intersection_id].curve_a) {
+                    incoming_ends.incoming_a = stub_idx;
+                } else {
+                    incoming_ends.incoming_b = stub_idx;
+                }
 
-    const split_i = splitAt(c_i, hit.t_i);
-    const split_j = splitAt(c_j, hit.t_j);
+                rem_p0 = right[0];
+                rem_p1 = right[1];
+                rem_p2 = right[2];
+                rem_p3 = right[3];
+                prev_t = stop.t;
+            }
 
-    // The two split endpoints should be (approximately) the crossing point;
-    // average them to get a single P that both output paths will share.
-    const P = types.Point{
-        .x = (split_i.first.p3.x + split_j.first.p3.x) * 0.5,
-        .y = (split_i.first.p3.y + split_j.first.p3.y) * 0.5,
-    };
+            // Tail stub: from the last cut (or curve start) to t = 1.
+            const tail_prev: StubBoundary = if (ts.len == 0)
+                .continuation
+            else
+                .{ .intersection = ts[ts.len - 1].intersection_id };
 
-    var c_i_pre = split_i.first;
-    var c_i_post = split_i.second;
-    var c_j_pre = split_j.first;
-    var c_j_post = split_j.second;
-    c_i_pre.p3 = P;
-    c_i_post.p0 = P;
-    c_j_pre.p3 = P;
-    c_j_post.p0 = P;
-
-    // path_a curve count: c_i_pre + c_j_post + curves[j+1..N) + curves[0..i)
-    // path_b curve count: c_i_post + curves[i+1..j) + c_j_pre
-    const path_a_curves = 2 + (num_curves - 1 - hit.curve_j) + hit.curve_i;
-    const path_b_curves = 2 + (hit.curve_j - hit.curve_i - 1);
-
-    const path_a = try allocator.alloc(types.Point, path_a_curves * 4);
-    const path_b = try allocator.alloc(types.Point, path_b_curves * 4);
-
-    // Fill path_a
-    var w: usize = 0;
-    writeCurve(path_a, &w, c_i_pre);
-    writeCurve(path_a, &w, c_j_post);
-    var k: usize = hit.curve_j + 1;
-    while (k < num_curves) : (k += 1) {
-        copyCurve(path_a, &w, path, k);
-    }
-    k = 0;
-    while (k < hit.curve_i) : (k += 1) {
-        copyCurve(path_a, &w, path, k);
+            try stubs.append(.{
+                .points = .{ rem_p0, rem_p1, rem_p2, rem_p3 },
+                .is_straight = is_straight,
+                .prev_kind = tail_prev,
+                .next_kind = .continuation,
+                .curve_idx = c,
+            });
+        }
     }
 
-    // Fill path_b
-    w = 0;
-    writeCurve(path_b, &w, c_i_post);
-    k = hit.curve_i + 1;
-    while (k < hit.curve_j) : (k += 1) {
-        copyCurve(path_b, &w, path, k);
+    // Second pass: every t-stop on curve c is also the START of the stub
+    // immediately following it on the same curve — that's the "outgoing"
+    // end at the joint.
+    {
+        var c: u32 = 0;
+        while (c < num_curves) : (c += 1) {
+            const ts = per_curve_ts[c].items;
+            for (ts, 0..) |stop, idx_in_curve| {
+                const out_stub: u32 = first_stub_of_curve[c] + @as(u32, @intCast(idx_in_curve)) + 1;
+                const outgoing_ends: *IntersectionEnds = &ends[stop.intersection_id];
+                if (c == intersections.items[stop.intersection_id].curve_a) {
+                    outgoing_ends.outgoing_a = out_stub;
+                } else {
+                    outgoing_ends.outgoing_b = out_stub;
+                }
+            }
+        }
     }
-    writeCurve(path_b, &w, c_j_pre);
 
-    return PathSplit{ .path_a = path_a, .path_b = path_b };
-}
+    // Snap the four endpoints meeting at each joint to their average so the
+    // emitted sub-paths really do close up. Without this, the bisection's
+    // sub-pixel error leaves a tiny gap at the crossing — fine visually but
+    // breaks the "consecutive curves share an endpoint" invariant the rest
+    // of the pipeline relies on.
+    for (intersections.items, 0..) |_, idx| {
+        const e = ends[idx];
+        const sum_x = stubs.items[e.incoming_a].points[3].x +
+            stubs.items[e.outgoing_a].points[0].x +
+            stubs.items[e.incoming_b].points[3].x +
+            stubs.items[e.outgoing_b].points[0].x;
+        const sum_y = stubs.items[e.incoming_a].points[3].y +
+            stubs.items[e.outgoing_a].points[0].y +
+            stubs.items[e.incoming_b].points[3].y +
+            stubs.items[e.outgoing_b].points[0].y;
+        const snapped: types.Point = .{ .x = sum_x * 0.25, .y = sum_y * 0.25 };
+        stubs.items[e.incoming_a].points[3] = snapped;
+        stubs.items[e.outgoing_a].points[0] = snapped;
+        stubs.items[e.incoming_b].points[3] = snapped;
+        stubs.items[e.outgoing_b].points[0] = snapped;
+    }
 
-fn writeCurve(out: []types.Point, w: *usize, c: Cubic) void {
-    out[w.*] = c.p0;
-    out[w.* + 1] = c.p1;
-    out[w.* + 2] = c.p2;
-    out[w.* + 3] = c.p3;
-    w.* += 4;
-}
+    // ---- step 3 + 4: walk stubs into closed sub-paths -------------------
+    var first_stub_of_next_curve = try allocator.alloc(u32, num_curves);
+    defer allocator.free(first_stub_of_next_curve);
+    for (0..num_curves) |c| {
+        const next_c = (c + 1) % num_curves;
+        first_stub_of_next_curve[c] = first_stub_of_curve[next_c];
+    }
 
-fn copyCurve(out: []types.Point, w: *usize, src: []const types.Point, idx: usize) void {
-    out[w.*] = src[idx * 4 + 0];
-    out[w.* + 1] = src[idx * 4 + 1];
-    out[w.* + 2] = src[idx * 4 + 2];
-    out[w.* + 3] = src[idx * 4 + 3];
-    w.* += 4;
+    var visited = try allocator.alloc(bool, stubs.items.len);
+    defer allocator.free(visited);
+    @memset(visited, false);
+
+    var result = std.ArrayList([]types.Point).init(allocator);
+    errdefer {
+        for (result.items) |p| allocator.free(p);
+        result.deinit();
+    }
+
+    for (0..stubs.items.len) |start_idx| {
+        if (visited[start_idx]) continue;
+
+        var sub_path = std.ArrayList(types.Point).init(allocator);
+        errdefer sub_path.deinit();
+
+        var cur: u32 = @intCast(start_idx);
+        while (!visited[cur]) {
+            visited[cur] = true;
+            const stub = stubs.items[cur];
+            try sub_path.appendSlice(&stub.points);
+
+            cur = switch (stub.next_kind) {
+                .continuation => first_stub_of_next_curve[stub.curve_idx],
+                .intersection => |id| blk: {
+                    const e = ends[id];
+                    // Seifert smoothing: leave the joint by switching to
+                    // the OTHER curve's outgoing stub.
+                    if (cur == e.incoming_a) break :blk e.outgoing_b;
+                    if (cur == e.incoming_b) break :blk e.outgoing_a;
+                    unreachable;
+                },
+            };
+        }
+
+        // Two-step transfer: once toOwnedSlice succeeds the buffer no longer
+        // belongs to sub_path (so the errdefer above is a no-op), and if the
+        // following result.append fails it would leak. Catching it with a
+        // local errdefer keeps the OOM path tidy; on success the slice is
+        // taken over by `result` and the outer errdefer cleans it up if a
+        // later iteration fails.
+        const owned = try sub_path.toOwnedSlice();
+        errdefer allocator.free(owned);
+        try result.append(owned);
+    }
+
+    return result.toOwnedSlice();
 }
 
 // Reverses a path's curves in place while preserving the geometry: the curve
