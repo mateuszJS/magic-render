@@ -31,6 +31,13 @@ pub fn computeShape(
     // flat buffer.
     ensureClockwiseOrientation(paths);
 
+    // Now that every path is CW, walk the containment hierarchy and flip any
+    // path whose nesting depth is odd back to CCW. That gives us "e", "o", "q"
+    // style holes for free: outer contour stays a fill, the inner contour
+    // becomes the opposite winding, and the shader's tangent test reports the
+    // hole region as outside.
+    fixHoleWinding(paths);
+
     // Flatten the paths into one contiguous buffer so the rest of the function
     // (scaling, arc-length sampling, the webgpu dispatch) can stay exactly the
     // way it was before paths became explicit.
@@ -158,6 +165,85 @@ fn signedArea(path: []const types.Point) f32 {
         doubled_area += a.x * b.y - b.x * a.y;
     }
     return doubled_area * 0.5;
+}
+
+// Flips any path whose nesting depth is odd. Run AFTER
+// ensureClockwiseOrientation, so on entry every path is CW; on exit, depth-0
+// paths are CW (fill), depth-1 are CCW (hole), depth-2 are CW (fill within
+// hole), and so on. The shader's tangent half-plane test then renders nested
+// regions as alternating fill/hole, which is what we want for letters like
+// "e", "o", "q" drawn as outer-plus-inner contours.
+//
+// SCOPE
+//   This handles the common case where paths are nested but DO NOT cross each
+//   other. Self-intersection or curves crossing other curves is a separate
+//   problem (full boolean ops) and is intentionally not addressed here — that
+//   would require splitting curves at intersection points and re-routing the
+//   topology, which is a much larger piece of work.
+//
+// COST
+//   O(N²) over the number of paths, with N typically ≤ a handful per shape.
+//   The constant is tiny (one ray-cross test per pair). Not worth a spatial
+//   index until profiling says so.
+fn fixHoleWinding(paths: [][]types.Point) void {
+    for (paths, 0..) |path, i| {
+        if (path.len < 4) continue;
+        if (nestingDepth(paths, i) % 2 == 1) {
+            reversePath(path);
+        }
+    }
+}
+
+// Counts how many OTHER paths contain `paths[self_idx]`. Picks the test point
+// as the first curve's p0 — that point lies exactly on the path, but since we
+// assume paths don't cross, it's either fully inside or fully outside every
+// other path, so a single sample is enough.
+fn nestingDepth(paths: [][]types.Point, self_idx: usize) usize {
+    if (paths[self_idx].len < 4) return 0;
+    const test_point = paths[self_idx][0];
+
+    var depth: usize = 0;
+    for (paths, 0..) |other, j| {
+        if (j == self_idx) continue;
+        if (isPointInsidePath(test_point, other)) depth += 1;
+    }
+    return depth;
+}
+
+// Standard horizontal-ray-crossing point-in-polygon test, run on the polygon
+// formed by the p0 of every curve. Each pair of consecutive curve starts
+// (with wraparound) defines one polygon edge; we count edges that cross the
+// ray going from `point` toward +x and return true if the count is odd.
+//
+// The polygon is an approximation of the bezier path — the curves' off-line
+// bulges are ignored. That's fine for typical user input (the inner contour
+// of an "o" sits well inside the outer's polygon), and matches the same
+// approximation we use in signedArea. If a future shape pathologically lands
+// a test point in the gap between a curve and its chord, this test will
+// misjudge it; the upgrade path is to replace each polygon edge with a real
+// cubic-vs-horizontal-line crossing count (closed-form, just more code).
+fn isPointInsidePath(point: types.Point, path: []const types.Point) bool {
+    const num_curves = path.len / 4;
+    if (num_curves < 3) return false; // not enough vertices to enclose anything
+
+    var inside = false;
+    var i: usize = 0;
+    var j: usize = num_curves - 1;
+    while (i < num_curves) : (i += 1) {
+        const a = path[i * 4];
+        const b = path[j * 4];
+        // Edge from a to b (or b to a — orientation doesn't affect crossing
+        // count). Only count it if the edge straddles the horizontal line at
+        // point.y; the strict inequality handles the "ray grazing a vertex"
+        // edge case correctly under the usual point-in-polygon convention.
+        const crosses_y = (a.y > point.y) != (b.y > point.y);
+        if (crosses_y) {
+            const x_at_point_y = a.x + (b.x - a.x) * (point.y - a.y) / (b.y - a.y);
+            if (point.x < x_at_point_y) inside = !inside;
+        }
+        j = i;
+    }
+    return inside;
 }
 
 // Reverses a path's curves in place while preserving the geometry: the curve
