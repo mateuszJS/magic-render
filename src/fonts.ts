@@ -60,6 +60,7 @@ export async function loadFont(fontId: number) {
 }
 
 export function getKerning(fontId: number, charA: number, charB: number): number {
+  // todo, use defualt font if doesntexists
   const font = fonts.get(fontId)
 
   if (!font) {
@@ -76,6 +77,7 @@ export function getKerning(fontId: number, charA: number, charB: number): number
 
 export function getCharData(fontId: number, char_code: number): Logic.SerializedCharDetails {
   const font = fonts.get(fontId)
+  // todo, use defualt font if doesntexists
 
   if (!font) {
     throw Error('getCharData, font not loaded yet, font id: ' + fontId)
@@ -99,18 +101,24 @@ export function getCharData(fontId: number, char_code: number): Logic.Serialized
   unitedItem.remove()
 
   const paths = parsePathData(unitedPathData)
-  const correctedPaths: Point[] = []
+  const correctedPaths: Point[][] = []
 
   const { x1, x2, y1, y2 } = path.getBoundingBox()
 
   paths.forEach((path) => {
+    const correctedPoints: Point[] = []
     for (let i = 0; i < path.length; i += 3) {
       const reflected = path
         .slice(i, i + 4)
+        // TO CHECK AND FIX: Why we do this check???? Those paths are coming from font files, there is no concept of STRAIGHT_LINE_HANDLE like our (x is a huge number)
         .map((p) => (isStraightHandle(p) ? STRAIGHT_LINE_HANDLE : { x: p.x - x1, y: -(p.y - y2) }))
-      correctedPaths.push(...reflected)
+      correctedPoints.push(...reflected)
     }
-    correctedPaths.splice(-1)
+    correctedPoints.splice(-1)
+    if (correctedPoints.length === 0) {
+      throw Error('Font has path with zero points')
+    }
+    correctedPaths.push(correctedPoints)
   })
 
   let width = x2 - x1

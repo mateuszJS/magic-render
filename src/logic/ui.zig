@@ -39,8 +39,8 @@ pub fn generateUiElementsSdf() !void {
     var iterator = elements.iterator();
     while (iterator.next()) |entry| {
         var shape = entry.value_ptr;
-        const option_points = try shape.getRelativePoints(std.heap.page_allocator);
-        if (option_points) |points| {
+        const option_paths = try shape.getRelativePaths(std.heap.page_allocator);
+        if (option_paths) |paths| {
             const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
 
             shape.sdf_tex.deinit();
@@ -48,7 +48,7 @@ pub fn generateUiElementsSdf() !void {
                 shape.sdf_tex.id,
                 shape.bounds,
                 sdf_padding,
-                points,
+                paths,
                 1,
             );
         }

@@ -104,7 +104,7 @@ pub const Shape = struct {
         defer arena.deinit();
         const arena_allocator = arena.allocator();
 
-        try shape.update_bounds(arena_allocator, null);
+        _ = try shape.update_bounds(arena_allocator, null);
 
         return shape;
     }
@@ -188,20 +188,22 @@ pub const Shape = struct {
         }
     }
 
-    pub fn update_bounds(self: *Shape, allocator: std.mem.Allocator, option_preview_point: ?Point) !void {
-        const points = try self.getAllPoints(
+    // return flag indicating if there is a valid boudning box
+    // invlaid bounxing box happens if width or height is nearly 0 or there is no points
+    pub fn update_bounds(self: *Shape, allocator: std.mem.Allocator, option_preview_point: ?Point) !bool {
+        const paths = try self.getSanitizedPaths(
             allocator,
             option_preview_point,
             active_path_index,
         );
 
-        const box = bounding_box.getBoundingBox(points);
+        const box = bounding_box.getBoundingBox(paths);
 
         const new_width = box.max_x - box.min_x;
         const new_height = box.max_y - box.min_y;
 
         if (new_width < 1e-6 or new_height < 1e-6) {
-            return; // No valid bounding box, we gonna get not invertable matrix out of it
+            return false; // No valid bounding box, we gonna get not invertable matrix out of it
         }
 
         // Normalize points to [0,1] range
@@ -220,6 +222,8 @@ pub const Shape = struct {
             matrix.getUV(.{ .x = box.max_x, .y = box.min_y, .u = 1.0, .v = 0.0 }),
             matrix.getUV(.{ .x = box.min_x, .y = box.min_y, .u = 0.0, .v = 0.0 }),
         };
+
+        return true; // valid bounding box
     }
 
     fn updateLastHandle(self: *Shape, absolute_point: Point) void {
@@ -308,13 +312,15 @@ pub const Shape = struct {
         return skeleton_buffer.toOwnedSlice();
     }
 
-    fn getAllPoints(
+    // returns paths whic hare render ready - straight lines are sanitized, preview point is included
+    fn getSanitizedPaths(
         self: Shape,
         allocator: std.mem.Allocator,
         option_preview_point: ?Point,
         option_preview_index: ?usize,
-    ) ![]Point {
-        var points = std.ArrayList(Point).init(allocator);
+    ) ![][]Point {
+        var paths = std.ArrayList([]Point).init(allocator);
+
         for (self.paths.items, 0..) |path, i| {
             var preview_p: ?Point = null;
 
@@ -327,12 +333,12 @@ pub const Shape = struct {
                 }
             }
 
-            try path.getClosedPathPoints(&points, preview_p);
+            const colleted_points = try path.getClosedPathPoints(allocator, preview_p);
+            path_utils.prepareHalfStraightLines(colleted_points);
+            try paths.append(colleted_points);
         }
 
-        path_utils.prepareHalfStraightLines(points.items);
-
-        return points.toOwnedSlice();
+        return paths.toOwnedSlice();
     }
 
     pub fn getPickUniform(self: Shape, effect: sdf_effect.Effect) PickUniform {
@@ -350,44 +356,49 @@ pub const Shape = struct {
         );
     }
 
-    pub fn getRelativePoints(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
+    // returns closed paths, whci halready include preview point also
+    pub fn getRelativePaths(self: *Shape, allocator: std.mem.Allocator) !?[][]Point {
         if (!self.sdf_tex.is_outdated and !self.should_update_sdf) {
-            @panic("getRelativePoints was called but the shape sdf was not marked as outdated!");
+            @panic("getRelativePaths was called but the shape sdf was not marked as outdated!");
         }
-        const check_points = try self.getAllPoints(
+
+        // Before we did this check firstly, but now we just check if bounding box is returned
+        // const check_points = try self.getAllPoints(
+        //     allocator,
+        //     self.preview_point,
+        //     active_path_index,
+        // );
+        // if (check_points.len < 4) {
+        //     return null;
+        // }
+
+        const is_valid_bbox = try self.update_bounds(allocator, self.preview_point);
+
+        if (!is_valid_bbox) {
+            return null;
+        }
+
+        const paths = try self.getSanitizedPaths(
             allocator,
             self.preview_point,
             active_path_index,
         );
-        if (check_points.len < 4) {
-            return null;
-        }
-
-        try self.update_bounds(allocator, self.preview_point);
-
-        const points = try self.getAllPoints(
-            allocator,
-            self.preview_point,
-            active_path_index,
-        );
-
-        if (points.len == 0) {
-            return null;
-        }
 
         const scale = Matrix3x3.scaling(
             self.bounds[0].distance(self.bounds[1]),
             self.bounds[0].distance(self.bounds[3]),
         );
 
-        for (points) |*point| {
-            if (path_utils.isStraightLineHandle(point.*)) continue;
-            const scaled = scale.get(point);
-            point.x = scaled.x;
-            point.y = scaled.y;
+        for (paths) |path| {
+            for (path) |*point| {
+                if (path_utils.isStraightLineHandle(point.*)) continue;
+                const scaled = scale.get(point);
+                point.x = scaled.x;
+                point.y = scaled.y;
+            }
         }
 
-        return points;
+        return paths;
     }
 
     pub fn getDrawBounds(self: Shape, filter_margin: bool) [6]PointUV {
@@ -413,6 +424,16 @@ pub const Shape = struct {
         }
         return buffer;
     }
+
+    // returns copy of paths which can be edited, main purpose is to prepare them for rendering and use as shader inputs
+    // pub fn getClonedPaths(self: Shape, allocator: std.mem.Allocator) ![][]Point {
+    //     var paths = std.ArrayList([]const Point).init(allocator);
+    //     for (self.paths.items) |path| {
+    //         const points_copy = try allocator.dupe(types.Point, path.serialize());
+    //         try paths.append(points_copy);
+    //     }
+    //     return paths.toOwnedSlice();
+    // }
 
     pub fn getFilterMargin(self: Shape) Point {
         return if (self.props.blur) |blur| Point{

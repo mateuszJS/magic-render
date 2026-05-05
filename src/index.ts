@@ -203,7 +203,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     })
   }
 
-  Fonts.loadFont(0)
+  Fonts.loadFont(Logic.DEFAULT_FONT_ID)
 
   const setSnapshot: CreatorAPI['setSnapshot'] = async (
     snapshot,

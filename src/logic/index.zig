@@ -35,6 +35,7 @@ const webgpu_glue = @import("webgpu_glue.zig");
 const computeShape = @import("compute_shape.zig").computeShape;
 
 pub const INFINITE_DISTANCE = consts.INFINITE_DISTANCE;
+pub const DEFAULT_FONT_ID = fonts.DEFAULT_FONT_ID;
 
 pub fn connectWebGpuPrograms(programs: *const webgpu_glue.WebGpuProgramsInput) void {
     // https://github.com/chung-leong/zigar/wiki/JavaScript-to-Zig-function-conversion
@@ -785,14 +786,18 @@ pub fn updateCache() void {
                         .{ .x = p.x, .y = p.y, .u = 0, .v = 0 },
                     };
 
-                    for (shape.effects.items) |effect| {
-                        webgpu_glue.draw_shape(
-                            &vertex_bounds,
-                            shape.getDrawUniform(effect),
-                            shape.sdf_tex.id,
-                            shape.sdf_tex.points,
-                            shape.sdf_tex.uniform_t,
-                        );
+                    if (shape.sdf_tex.valid) {
+                        // addiitonal guard, if shape was just loaded andhas invaldi boudnign box, then has the default sdf_tex, with empty slice as points,
+                        // what will cause empty buffer error for webgpu
+                        for (shape.effects.items) |effect| {
+                            webgpu_glue.draw_shape(
+                                &vertex_bounds,
+                                shape.getDrawUniform(effect),
+                                shape.sdf_tex.id,
+                                shape.sdf_tex.points,
+                                shape.sdf_tex.uniform_t,
+                            );
+                        }
                     }
 
                     js_glue.endCache();
@@ -862,13 +867,19 @@ pub fn computePhase() !void {
                 const bounds = utils.createBounds(ch_w, ch_h);
                 const padding = ch_d.font_size * ch_d.*.max_ratio_padding_to_font_size;
 
-                const points = try std.heap.page_allocator.dupe(types.Point, ch_d.points);
-                for (points) |*point| {
-                    if (path_utils.isStraightLineHandle(point.*)) {
-                        continue;
+                var deep_copy_paths = try allocator.alloc([]types.Point, ch_d.paths.len);
+                for (ch_d.paths, 0..) |slice, i| {
+                    deep_copy_paths[i] = try allocator.dupe(types.Point, slice);
+                }
+
+                for (deep_copy_paths) |path| {
+                    for (path) |*point| {
+                        if (path_utils.isStraightLineHandle(point.*)) {
+                            continue;
+                        }
+                        point.x *= ch_d.font_size;
+                        point.y *= ch_d.font_size;
                     }
-                    point.x *= ch_d.font_size;
-                    point.y *= ch_d.font_size;
                 }
 
                 ch_sdf_tex.deinit();
@@ -877,11 +888,9 @@ pub fn computePhase() !void {
                     ch_sdf_tex.id,
                     bounds,
                     padding,
-                    points,
+                    deep_copy_paths,
                     consts.SDF_RESIZE_STEP,
                 );
-
-                // new_sdf_tex.points = points;
 
                 ch_d.sdf_tex = new_sdf_tex;
 
@@ -901,19 +910,19 @@ pub fn computePhase() !void {
                 const do_update = shape.sdf_tex.is_outdated or (shape.should_update_sdf and is_throttle_event);
                 if (!do_update) continue;
 
-                const option_points = try shape.getRelativePoints(allocator);
-                if (option_points) |points| {
+                const option_paths = try shape.getRelativePaths(allocator);
+                if (option_paths) |paths| {
                     const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
-                    const points_copy = try std.heap.page_allocator.dupe(types.Point, points);
 
                     shape.sdf_tex.deinit();
                     shape.sdf_tex = try computeShape(
                         shape.sdf_tex.id,
                         shape.bounds,
                         sdf_padding,
-                        points_copy,
+                        paths,
                         consts.SDF_RESIZE_STEP,
                     );
+
                     shape.outdated_cache = true;
                 }
 
@@ -923,10 +932,7 @@ pub fn computePhase() !void {
                 if (text.is_sdf_shared) {
                     if (!text.sdf_tex.is_outdated) continue;
 
-                    if (!fonts.fonts.contains(text.typo_props.font_family_id)) {
-                        // not sure if it's needed, it ownt' be drawn anyway because chars ha to textue
-                        continue;
-                    }
+                    if (!fonts.isReady) continue;
 
                     const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
 
@@ -937,8 +943,6 @@ pub fn computePhase() !void {
                         text_padding,
                         consts.SDF_RESIZE_STEP,
                     );
-
-                    // text.sdf_tex.points = .{};
 
                     const compute_depth_texture_id = js_glue.createDisposableComputeDepthTexture(
                         @intFromFloat(text.sdf_tex.size.w),
@@ -1007,6 +1011,7 @@ pub fn computePhase() !void {
 
                     std.heap.page_allocator.free(text.sdf_tex.points);
                     text.sdf_tex.points = try all_points.toOwnedSlice();
+                    text.sdf_tex.valid = text.sdf_tex.points.len > 0;
 
                     webgpu_glue.finish_combine_sdf();
                 }
@@ -1045,6 +1050,10 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                     );
                 } else {
                     const bounds = shape.getDrawBounds(false);
+                    if (shape.sdf_tex.points.len == 0) {
+                        std.debug.print("renderDraw - shape", .{});
+                        continue;
+                    }
                     for (shape.effects.items) |effect| {
                         webgpu_glue.draw_shape(
                             &bounds,
@@ -1057,9 +1066,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 }
             },
             .text => |*text| {
-                if (!fonts.fonts.contains(text.typo_props.font_family_id)) {
-                    continue;
-                }
+                if (!fonts.isReady) continue;
 
                 const is_typing_ui = !is_ui_hidden and state.tool == .Text and assets.selected_asset_id.getPrim() == text.id;
 
@@ -1204,14 +1211,17 @@ pub fn renderPick() !void {
             },
             .shape => |shape| {
                 const bounds = shape.getPickBounds();
-                for (shape.effects.items) |effect| {
-                    webgpu_glue.pick_shape(
-                        &bounds,
-                        shape.getPickUniform(effect),
-                        shape.sdf_tex.id,
-                        shape.sdf_tex.points,
-                        shape.sdf_tex.uniform_t,
-                    );
+
+                if (shape.sdf_tex.valid) {
+                    for (shape.effects.items) |effect| {
+                        webgpu_glue.pick_shape(
+                            &bounds,
+                            shape.getPickUniform(effect),
+                            shape.sdf_tex.id,
+                            shape.sdf_tex.points,
+                            shape.sdf_tex.uniform_t,
+                        );
+                    }
                 }
             },
             .text => |text| {
@@ -1459,7 +1469,8 @@ pub fn addFont(font_id: u32) !void {
             .img => {},
             .shape => {},
             .text => |*text| {
-                if (text.typo_props.font_family_id == font_id) {
+                // defualt font is used as fallback
+                if (font_id == DEFAULT_FONT_ID or text.typo_props.font_family_id == font_id) {
                     state.redraw_needed = true;
 
                     const result = try text.computeText(0, 0);

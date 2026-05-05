@@ -138,6 +138,7 @@ pub const SdfTex = struct {
     // all of the fields uses viewport size, no world
     id: u32,
     size: texture_size.TextureSize = .{},
+    valid: bool = false, // by default sdf is invalid, this way we avoid rendering sdfs with 0 points(causes empty buffer error in WebGPU shader)
     scale: f32 = 1,
     padding: f32 = 0,
     round_err: Point = .{},

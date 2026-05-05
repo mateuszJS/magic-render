@@ -128,7 +128,7 @@ pub const Text = struct {
             self.sdf_tex.is_outdated = true;
         }
 
-        if (!fonts.fonts.contains(self.typo_props.font_family_id)) {
+        if (!fonts.isReady) {
             return .{
                 .content = self.content,
                 .selection_start = 0,

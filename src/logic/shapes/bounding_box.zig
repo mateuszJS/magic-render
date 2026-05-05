@@ -109,11 +109,9 @@ fn evaluateCubicBezierComponent(t: f32, p0: f32, p1: f32, p2: f32, p3: f32) f32 
     return p0 * one_minus_t3 + 3.0 * p1 * t * one_minus_t2 + 3.0 * p2 * t2 * one_minus_t + p3 * t3;
 }
 
-/// Get bounding box from curves array with padding
-/// Assumes curves array contains groups of 4 points (p0, p1, p2, p3) for each cubic Bézier
-/// Returns an allocated slice of 6 points representing two triangles for the bounding rectangle
-/// Caller owns the returned memory and must free it
-pub fn getBoundingBox(curves: []const Point) BoundingBox {
+/// Get bounding box from a list of curve paths.
+/// Each inner slice is a path containing groups of 4 points (p0, p1, p2, p3) for each cubic Bézier.
+pub fn getBoundingBox(curves: []const []Point) BoundingBox {
     if (curves.len == 0) {
         return BoundingBox{};
     }
@@ -124,32 +122,33 @@ pub fn getBoundingBox(curves: []const Point) BoundingBox {
         .max_y = -std.math.inf(f32),
     };
 
-    const num_cubic_curves = curves.len / 4;
+    for (curves) |path| {
+        const num_cubic_curves = path.len / 4;
 
-    var i: usize = 0;
-    while (i < num_cubic_curves) : (i += 1) {
-        const p0 = curves[i * 4 + 0];
-        var p1 = curves[i * 4 + 1];
-        var p2 = curves[i * 4 + 2];
-        const p3 = curves[i * 4 + 3];
+        var i: usize = 0;
+        while (i < num_cubic_curves) : (i += 1) {
+            const p0 = path[i * 4 + 0];
+            var p1 = path[i * 4 + 1];
+            var p2 = path[i * 4 + 2];
+            const p3 = path[i * 4 + 3];
 
-        // Do we need this? How did it worked before????? Wit treating stright handles as any point
-        if (path_utils.isStraightLineHandle(p1)) {
-            // If p1 is a straight line handle, we skip it
-            p1 = p0; // Use p0 as the first point
+            if (path_utils.isStraightLineHandle(p1)) {
+                // If p1 is a straight line handle, we skip it
+                p1 = p0; // Use p0 as the first point
+            }
+            if (path_utils.isStraightLineHandle(p2)) {
+                // If p2 is a straight line handle, we skip it
+                p2 = p3; // Use p3 as the last point
+            }
+
+            // Calculate real bounding box for this cubic Bézier curve
+            const bounds = calculateCubicBezierRealBounds(p0, p1, p2, p3);
+
+            box.min_x = @min(box.min_x, bounds.min_x);
+            box.min_y = @min(box.min_y, bounds.min_y);
+            box.max_x = @max(box.max_x, bounds.max_x);
+            box.max_y = @max(box.max_y, bounds.max_y);
         }
-        if (path_utils.isStraightLineHandle(p2)) {
-            // If p2 is a straight line handle, we skip it
-            p2 = p3; // Use p3 as the last point
-        }
-
-        // Calculate real bounding box for this cubic Bézier curve
-        const bounds = calculateCubicBezierRealBounds(p0, p1, p2, p3);
-
-        box.min_x = @min(box.min_x, bounds.min_x);
-        box.min_y = @min(box.min_y, bounds.min_y);
-        box.max_x = @max(box.max_x, bounds.max_x);
-        box.max_y = @max(box.max_y, bounds.max_y);
     }
 
     return box;

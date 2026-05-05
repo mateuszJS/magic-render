@@ -1,6 +1,5 @@
 const types = @import("types.zig");
 const sdf_drawing = @import("sdf/drawing.zig");
-const fonts = @import("texts/fonts.zig");
 const consts = @import("consts.zig");
 const webgpu_glue = @import("webgpu_glue.zig");
 const std = @import("std");
@@ -14,7 +13,7 @@ pub fn computeShape(
     tex_id: u32,
     bounds: [4]types.PointUV,
     padding: f32,
-    points: []types.Point, // it has to be a safe copy allocated with on a heap
+    paths: [][]types.Point, // it has to be a safe copy allocated with on a heap, all paths are closed
     resize: f32,
 ) !sdf_drawing.SdfTex {
     var sdf_tex = sdf_drawing.getTexture(
@@ -23,6 +22,28 @@ pub fn computeShape(
         padding,
         resize,
     );
+
+    // Force every path to wind clockwise BEFORE we scale into texel space. The
+    // SDF fragment shader picks the fill side from the tangent's half-plane
+    // (see ADRs/SDF rendering and drawShape/base.wgsl); mixing winding makes
+    // some paths render as inverted holes. Doing it here — while paths are
+    // still separate — means we never have to detect path boundaries inside a
+    // flat buffer.
+    ensureClockwiseOrientation(paths);
+
+    // Flatten the paths into one contiguous buffer so the rest of the function
+    // (scaling, arc-length sampling, the webgpu dispatch) can stay exactly the
+    // way it was before paths became explicit.
+    var total_len: usize = 0;
+    for (paths) |path| total_len += path.len;
+    const points = try std.heap.page_allocator.alloc(types.Point, total_len);
+    {
+        var offset: usize = 0;
+        for (paths) |path| {
+            @memcpy(points[offset .. offset + path.len], path);
+            offset += path.len;
+        }
+    }
 
     // jsut happened that we want 4 sampels per curve and also we have 4 poitns per curve, it's coincidence
     const uniform_t_list = try std.heap.page_allocator.alloc(f32, points.len + 1);
@@ -55,6 +76,7 @@ pub fn computeShape(
     }
 
     sdf_tex.points = points;
+    sdf_tex.valid = points.len > 0;
 
     // Fill uniform_t_list: cumulative arc length at t=0.25, 0.50, 0.75, 1.00 for each curve.
     // Points are already in texel space at this point.
@@ -104,4 +126,75 @@ pub fn computeShape(
     );
 
     return sdf_tex;
+}
+
+// Reverses any path that is not clockwise. Each `path` is a flat slice of
+// 4-point cubic-bezier segments [p0, p1, p2, p3, ...] and is assumed to be
+// already closed (curves[K].p3 == curves[K+1].p0 within the path, and the last
+// curve's p3 == the first curve's p0).
+//
+// "Clockwise" here means the visual clockwise direction under the codebase's
+// y-axis-up convention (see ADRs/y-axis coords). In y-up math that direction
+// has NEGATIVE signed area, so we flip whenever the signed area is positive.
+fn ensureClockwiseOrientation(paths: [][]types.Point) void {
+    for (paths) |path| {
+        if (signedArea(path) > 0) {
+            reversePath(path);
+        }
+    }
+}
+
+// Signed area of the polygon formed by the curve endpoints (p0 → p3 of every
+// curve). For any non-self-intersecting closed bezier path the SIGN of this
+// polygon's area matches the sign of the region the curves actually enclose,
+// so the off-curve handles p1/p2 don't need to be sampled.
+fn signedArea(path: []const types.Point) f32 {
+    var doubled_area: f32 = 0;
+    const num_curves = path.len / 4;
+    var ci: usize = 0;
+    while (ci < num_curves) : (ci += 1) {
+        const a = path[ci * 4 + 0];
+        const b = path[ci * 4 + 3];
+        doubled_area += a.x * b.y - b.x * a.y;
+    }
+    return doubled_area * 0.5;
+}
+
+// Reverses a path's curves in place while preserving the geometry: the curve
+// order is reversed, then within each curve p0<->p3 and p1<->p2 are swapped.
+// Together that flips t -> (1-t) on every curve and walks them back-to-front,
+// which is exactly what reversing the path direction means.
+//
+// Full-straight curves carry the STRAIGHT_LINE_HANDLE marker on BOTH p1 and
+// p2 (prepareHalfStraightLines guarantees this), so the inner swap is a no-op
+// and the marker survives. Shared endpoints across adjacent curves are still
+// shared after the reversal, so the path remains closed.
+fn reversePath(path: []types.Point) void {
+    const num_curves = path.len / 4;
+    if (num_curves == 0) return;
+
+    // Step 1: reverse curve order, pairing index n with (num_curves - 1 - n)
+    // and stopping at the midpoint. For odd `num_curves` the middle curve has
+    // no partner and is skipped — exactly what we want.
+    var n: usize = 0;
+    while (n < num_curves / 2) : (n += 1) {
+        const j = num_curves - 1 - n;
+        var k: usize = 0;
+        while (k < 4) : (k += 1) {
+            const tmp = path[n * 4 + k];
+            path[n * 4 + k] = path[j * 4 + k];
+            path[j * 4 + k] = tmp;
+        }
+    }
+
+    // Step 2: within each curve, swap (p0, p3) and (p1, p2).
+    var ci: usize = 0;
+    while (ci < num_curves) : (ci += 1) {
+        const old_p0 = path[ci * 4 + 0];
+        const old_p1 = path[ci * 4 + 1];
+        path[ci * 4 + 0] = path[ci * 4 + 3];
+        path[ci * 4 + 3] = old_p0;
+        path[ci * 4 + 1] = path[ci * 4 + 2];
+        path[ci * 4 + 2] = old_p1;
+    }
 }
