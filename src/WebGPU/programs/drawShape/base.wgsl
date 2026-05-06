@@ -170,7 +170,7 @@ struct VSOutput {
 
 struct Sample {
   t: f32,
-  distance: f32,  // +1 inside, -1 outside
+  is_inside: f32,  // +1 inside, -1 outside
   blend_angle: f32,
   total_weight: f32,
   number_of_valid_neighbors: f32,
@@ -182,6 +182,7 @@ struct Sample {
   // points to. Same caveat: debug only.
   dominant_curve_idx: f32,
   abs_distance: f32,
+  debug_probe: f32,
 };
 
 // One cached neighbour (a single texel near the fragment) plus all the
@@ -194,6 +195,7 @@ struct Neighbour {
   tan: vec2f,    // UNIT tangent at g  (g_to_bezier_tangent always normalises)
   arc: f32,      // raw cumulative arc length at g (pre-seam-wrap)
   norm_raw_dir: vec2f,
+  debug_probe: f32,
 };
 
 // Per-neighbour Newton refinement. The baker stored `t` as the
@@ -224,7 +226,7 @@ fn loadNeighbour(coord: vec2u, pos: vec2f) -> Neighbour {
   let raw_pos = t_to_pos(raw_t);
   let norm_raw_dir = normalize(raw_pos - pos);
 
-  
+  let debug_probe = 0.0;
 
   return Neighbour(
     redefined_t,
@@ -232,6 +234,7 @@ fn loadNeighbour(coord: vec2u, pos: vec2f) -> Neighbour {
     t_to_tan(redefined_t),
     t_to_arc(redefined_t),
     norm_raw_dir,
+    debug_probe,
   );
 }
 
@@ -253,7 +256,12 @@ fn arc_to_g(arc: f32) -> f32 {
   let ci = lo / u32(ARC_SAMPLES_PER_CURVE);
   let quarter = lo % u32(ARC_SAMPLES_PER_CURVE);
   let local_t = (f32(quarter) + frac) / ARC_SAMPLES_PER_CURVE;
-  return f32(ci) + local_t;
+  // return f32(ci) + local_t;
+  let result = f32(ci) + local_t;
+  // Clamp to just inside the last segment so floor(result) < num_curves and
+  // fract != 0 (i.e. not interpreted as a baker-snapped junction either).
+  let max_safe = f32(path_metrics.num_curves) - 1e-5;
+  return min(result, max_safe);
 }
 
 fn getNearestNeighbour(pos: vec2f, n00: Neighbour, n01: Neighbour, n10: Neighbour, n11: Neighbour) -> Neighbour {
@@ -273,6 +281,7 @@ fn getNearestNeighbour(pos: vec2f, n00: Neighbour, n01: Neighbour, n10: Neighbou
   let nearest_tan = select(select(n00.tan, n10.tan, prefer_x_lo), select(n01.tan, n11.tan, prefer_x_hi), prefer_top);
   let nearest_arc = select(select(n00.arc, n10.arc, prefer_x_lo), select(n01.arc, n11.arc, prefer_x_hi), prefer_top);
   let norm_raw_dir = vec2f(99999999); // Seems like not used?
+  let nearest_debug_probe = select(select(n00.debug_probe, n10.debug_probe, prefer_x_lo), select(n01.debug_probe, n11.debug_probe, prefer_x_hi), prefer_top);
 
   return Neighbour(
     nearest_g,
@@ -280,6 +289,7 @@ fn getNearestNeighbour(pos: vec2f, n00: Neighbour, n01: Neighbour, n10: Neighbou
     nearest_tan,
     nearest_arc,
     norm_raw_dir,
+    nearest_debug_probe,
   );
 }
 
@@ -314,10 +324,26 @@ fn getSample(pos: vec2f) -> Sample {
   // We do refine with Newton to eliminate harsh edges (see ./artifacts/hrash edges.png)
   // let refined_nearest = Refined(nNearest.pos, nNearest.t);
   // let refine_nearest_tan = t_to_tan(refined_nearest.t);
-  let inward_normal = vec2f(-nNearest.tan.y, nNearest.tan.x);
-  var nearest_sign = sign(dot(pos - nNearest.pos, inward_normal));
+  var debug_probe = atan2(nNearest.tan.y, nNearest.tan.x);
 
-  if (fract(nNearest.t) < T_JUNCTION_EPS) {
+  let inward_normal = vec2f(nNearest.tan.y, -nNearest.tan.x); // 90 degree CCW,
+  // outward -> something moving away from the center(shape) towards the exterior
+
+  // nNearest.tan IS WRONG at t = 0, it points to the right instead of up
+  
+  // debug_probe = atan2(nNearest.tan.y, nNearest.tan.x); // (0.97, -0.21) this doesn't look good
+  
+  // (nNearest.pos - pos)
+  // vec2f(-1.3, 0.23)
+  // x -> from -0.35 to -2.08, -0.05 to 0.49. This looks correct, pointing storngly left, a bit bottom or up
+
+  // nNearest.pos - pos points towards curve, so different direction base if inside or outside
+  // dot will receive 1 if direction points toward inside, and only outside points point towards inside
+  // that's why below we multiply by -1
+  var is_inside = -sign(dot(nNearest.pos - pos, inward_normal));
+  // nNearest.pos - pos = vector pointing from the tip of the pos toward the tip of nNearest.pos toward pos
+  
+  if (false && fract(nNearest.t) < T_JUNCTION_EPS) {
     let num_curves_u = path_metrics.num_curves;
     let cur_idx = u32(nNearest.t) % num_curves_u;
     let prev_idx = prev_curve_in_path(cur_idx, num_curves_u);
@@ -330,27 +356,38 @@ fn getSample(pos: vec2f) -> Sample {
     // 3*(pp3-pp2) collapses to zero — fall back to the chord, mirroring
     // g_to_bezier_tangent's degenerate-case handling.
     let prev_chord     = pp3 - pp0;
+
+      
     let prev_deriv_t1  = 3.0 * (pp3 - pp2);
-    let prev_use_chord = is_straight_line_marker(pp1)
+    let prev_use_chord = is_straight_line_marker(pp1) // = true
                        || dot(prev_deriv_t1, prev_deriv_t1) < 1e-12;
+
+                       
+
     let prev_tan_raw   = select(prev_deriv_t1, prev_chord, prev_use_chord);
     let prev_tan_len   = length(prev_tan_raw);
     // If even the chord is zero (fully degenerate prev curve), reuse the
     // current tangent — the corner is treated as smooth, which is the safest
     // visual outcome and avoids inventing a bogus +x axis.
+    
     let prev_tan_n     = select(nNearest.tan, prev_tan_raw / prev_tan_len, prev_tan_len > 1e-8);
 
     // cross2d = cur × prev. CW winding in Y-down:
     //   > 0 → concave (inner notch) → inside if EITHER half-plane says inside (max).
     //   < 0 → convex  (outer corner) → inside only if BOTH half-planes say inside (min).
     //   ≈ 0 → near-collinear → both branches give the same answer.
-    let cross_2d = nNearest.tan.x * prev_tan_n.y - nNearest.tan.y * prev_tan_n.x;
+
+
+    let cross_2d = nNearest.tan.x * prev_tan_n.y - nNearest.tan.y * prev_tan_n.x; // 0.98, but many correct pixels also haave 0.98
     let prev_normal = vec2f(-prev_tan_n.y, prev_tan_n.x);
-    let sign_cur  = sign(dot(pos - nNearest.pos, inward_normal));
-    let sign_prev = sign(dot(pos - nNearest.pos, prev_normal));
-    nearest_sign = select(min(sign_cur, sign_prev),
+    let sign_cur  = sign(dot(pos - nNearest.pos, inward_normal)); // 1 ONLY in pixels where artifact appear, rest have -1 around
+
+    let sign_prev = sign(dot(pos - nNearest.pos, prev_normal)); // sign_prev = -1, but other correct neighbor pixels also have -1 and they look correct
+   
+    is_inside = select(min(sign_cur, sign_prev),
                           max(sign_cur, sign_prev),
                           cross_2d > 0.0);
+                         
   }
 
   // ---------------------------------------------------------------------------
@@ -492,13 +529,14 @@ fn getSample(pos: vec2f) -> Sample {
 
   return Sample(
     refined_blended_global_t,
-    nearest_sign,
+    is_inside, // -1 = outside, 1 = inside
     blend_angle,
     total_w,
     number_of_valid_neighbors,
     dominant,
     dominant_curve_idx,
     abs_distance,
+    debug_probe,
   );
 }
 
@@ -524,8 +562,7 @@ fn t_to_arc(global_t: f32) -> f32 {
   return mix(arc_lengths[safe_lower], arc_lengths[safe_upper], frac);
 }
 
-// UNIT tangent at local t encoded in g. Always returns a unit-length vector
-// (or (1, 0) for fully degenerate curves where even the chord is zero).
+// returns unit vector tangent at global t
 fn t_to_tan(global_t: f32) -> vec2f {
   let idx = u32(global_t);
   let t = fract(global_t);
@@ -544,15 +581,33 @@ fn t_to_tan(global_t: f32) -> vec2f {
   let deriv = 3.0 * (mt * mt * (p1 - p0) + 2.0 * mt * t * (p2 - p1) + t * t * (p3 - p2));
   let deriv_len_sq = dot(deriv, deriv);
 
-  // Degenerate cubic at this endpoint (p1==p0 at t=0 or p2==p3 at t=1):
-  // derivative is zero. Fall back to the chord; if even that's zero, last-
-  // resort to (1, 0) so callers always see a non-zero unit vector.
-  if (deriv_len_sq < 1e-12) {
-    let chord = p3 - p0;
-    let chord_len_sq = dot(chord, chord);
-    return select(vec2f(1.0, 0.0), chord * inverseSqrt(chord_len_sq), chord_len_sq > 1e-12);
+  if (deriv_len_sq >= 1e-12) {
+    return deriv * inverseSqrt(deriv_len_sq);
   }
-  return deriv * inverseSqrt(deriv_len_sq);
+
+  // First derivative vanished. Use the second derivative — that's what the
+  // curve actually does next. For a cubic:
+  //   B''(t) = 6 * ((1-t)*(P2 - 2*P1 + P0) + t*(P3 - 2*P2 + P1))
+  //   B''(0) = 6 * (P2 - 2*P1 + P0)
+  //   B''(1) = 6 * (P3 - 2*P2 + P1)
+  // The leading constant 6 is irrelevant for normalisation.
+  let dd = mt * (p2 - 2.0 * p1 + p0) + t * (p3 - 2.0 * p2 + p1);
+  let dd_len_sq = dot(dd, dd);
+
+  if (dd_len_sq >= 1e-12) {
+    // At t=1 endpoint with P2 == P3, B'' points from P3 back toward P1, so
+    // the "direction of motion approaching t=1" is the negative. Flip sign
+    // when we're at the t=1 endpoint specifically — for interior t, both
+    // B' and B'' point along the curve direction as t increases.
+    let sign = select(1.0, -1.0, t > 0.5 && deriv_len_sq < 1e-12);
+    return dd * sign * inverseSqrt(dd_len_sq);
+  }
+
+  // Both B' and B'' vanished (e.g. P0 == P1 == P2). Cubic's third
+  // derivative is constant: B'''(t) = 6 * (P3 - 3*P2 + 3*P1 - P0). Use that.
+  let ddd = p3 - 3.0 * p2 + 3.0 * p1 - p0;
+  let ddd_len_sq = dot(ddd, ddd);
+  return select(vec2f(1.0, 0.0), ddd * inverseSqrt(ddd_len_sq), ddd_len_sq > 1e-12);
 }
 
 fn t_to_pos(global_t: f32) -> vec2f {
@@ -637,7 +692,6 @@ struct Refined {
   let uv = vsOut.uv;
   let sdf        = getSample(uv);
 
-
   // Refine the bilinear t estimate to the true nearest point on the curve.
   // let refined = refine_curve_pos(uv, sdf.t);
   // let curve_pos = refined.pos;
@@ -649,7 +703,7 @@ struct Refined {
   // let g = sdf.t;
 
   // Negative inside, positive outside, in pixel-space units (see header).
-  let distance = length(curve_pos - uv) * -sdf.distance;
+  let distance = length(curve_pos - uv) * sdf.is_inside;
   let angle = atan2(curve_pos.y - uv.y, curve_pos.x - uv.x);
 
   // Grid: fract(uv) is how far into the current texel we are (0..1).
@@ -677,7 +731,8 @@ struct Refined {
 
   // if (length(uv - p0) < 0.1 || length(uv - p3) < 0.1) {
   //   color = vec4f(0, 1, 0, 1);
-  // } else if (abs(distance) < 0.05) {
+  // } 
+  // else if (abs(distance) < 0.05) {
   //   color = vec4f(0, 0, 1, 1);
   // }
   
@@ -705,7 +760,7 @@ struct Refined {
   // }
 
   let final_result = vec4f(color.rgb, color.a * alpha);
-  return final_result;
+  // return final_result;
 
     // === DEBUG: per-screen-pixel-cell digit overlay ===========================
     // Cells are nominally 32×32 SCREEN pixels at 1x DPR; we multiply by
@@ -725,31 +780,42 @@ struct Refined {
     // (0..3). Adjacent cells with different dominants change colour at the
     // texel-grid Voronoi boundary — that's the stairstep we're hunting.
 
-    let cell_bg = debug_idx_to_color(floor(debug_sdf.t));
+    // let cell_bg = debug_idx_to_color(select(0.0, 1.0, debug_sdf.t >= 5.0));
+    let cell_bg = select(vec4f(0.85, 0.20, 0.20, 1.0),   // outside → red
+                        vec4f(0.20, 0.85, 0.20, 1.0),   // inside  → green
+                        debug_sdf.is_inside < 0.0);
     // let cell_bg = debug_idx_to_color(floor(debug_sdf.t));
 
     // Digits show the dominant neighbour's curve index (floor of its global_t).
     // If two adjacent cells have different curve indices that lines up with
     // the cell_bg colour change, we've confirmed the artifact == "neighbour-
     // pointing-at-different-curve" Voronoi pattern.
+
+    let debug_curve_pos = t_to_pos(debug_sdf.t);
+    let probe = length(debug_curve_pos - cell_data.uv) * debug_sdf.is_inside;
+
     let cell_uv = cell_data.uv;
-    let digits     = debug_render_digits(
+    let digits     = debug_render_arrow(
       vsOut.position.xy,
       cell.x,
-      floor(debug_sdf.t),
-      0,
+      debug_sdf.debug_probe, // debug_sdf.is_inside,
       DEBUG_PIXEL_SCALE * dbg_scale
     );
+    // let digits     = debug_render_digits(
+    //   vsOut.position.xy,
+    //   cell.x,
+    //   debug_sdf.debug_probe, // debug_sdf.is_inside,
+    //   2,
+    //   DEBUG_PIXEL_SCALE * dbg_scale
+    // );
     let grid       = debug_grid_line(vsOut.position.xy, cell, 1.0 * dbg_scale);
 
-    let sign_color = select(vec4f(0.7, 0.2, 0.7, 1.0),   // outside
-                        vec4f(0.2, 0.7, 0.2, 1.0),   // inside
-                        debug_sdf.distance > 0.0);
+
 
     // Background → grid lines → digits, painted in that order.
     // var dbg = final_result;              // 
-    var dbg = mix(final_result, cell_bg, 0.4);              // 
-    // var dbg     = mix(final_result, vec4f(0.8), grid);     // dark grid lines
+    var dbg = mix(final_result, cell_bg, 0.2);              // 
+    dbg     = mix(dbg, vec4f(0.8), grid);     // dark grid lines
     dbg     = mix(dbg, vec4f(0.0, 0.0, 0.0, 1.0), digits.a); // white digits on top
     // === /DEBUG ==============================================================
     return dbg;
@@ -994,6 +1060,91 @@ fn debug_render_digits(px: vec2f, cell_size: f32, value: f32, decimal_places: i3
 
   let on = ((glyph >> bit_index) & 1u) != 0u;
   if (on) {
+    return vec4f(1.0, 1.0, 1.0, 1.0);
+  }
+  return vec4f(0.0);
+}
+
+// =============================================================================
+// DEBUG: TINY ARROW RENDERER  (self-contained, copy-pasteable)
+//
+// Renders a single arrow centred in each grid cell, pointing along an angle
+// expressed in radians. The angle convention is **standard math (y-up
+// Cartesian)**: 0 = +x (right), π/2 = +y (up), π = -x (left), -π/2 = +y
+// inverted (down). The function flips the y component internally so the
+// arrow visually points the right way on a y-down screen pixel grid (which
+// is what `vsOut.position.xy` is in WebGPU framebuffers); callers don't
+// need to negate `angle` to compensate.
+//
+// Caller responsibilities:
+//   • Pass the absolute pixel position (e.g. `vsOut.position.xy`) so the
+//     cell grid lines up with the rest of the debug overlay.
+//   • Compute `angle` per-cell-uniform if you want a uniform arrow per
+//     cell. Pair with `debug_screen_cell` / `debug_cell_centre` so the
+//     angle is sampled once per cell instead of varying per fragment.
+//   • Choose a `cell_size` ≥ ~16 pixels so the arrow is visible.
+//   • `pixel_scale` controls stroke thickness in screen pixels and is
+//     snapped to integer ≥ 1 (same convention as `debug_render_digits`).
+//
+// Returns:
+//   vec4f(1, 1, 1, 1) on pixels that are part of the arrow; vec4f(0)
+//   elsewhere. Mix with the underlying colour:
+//     let a = debug_render_arrow(vsOut.position.xy, 32.0, angle, 1.5);
+//     return mix(base_color, vec4f(1, 0, 0, 1), a.a);   // red arrow
+//
+// Geometry: the arrow occupies the centre of the cell. Its full length
+// along the axis is ~80% of cell_size; the head is the last ~30% of that
+// length. Shaft thickness scales with `pixel_scale`. Both shaft and head
+// are pixel-snapped so the arrow renders cleanly without aliasing.
+// =============================================================================
+fn debug_render_arrow(px: vec2f, cell_size: f32, angle: f32, pixel_scale: f32) -> vec4f {
+  // 1. Locate the cell and the fragment's offset from the cell centre.
+  let cell_origin = floor(px / cell_size) * cell_size;
+  let cell_centre = cell_origin + vec2f(cell_size * 0.5);
+  let local       = px - cell_centre;
+
+  // 2. Stroke widths and arrow proportions in screen pixels.
+  let scale            = max(1.0, round(pixel_scale));
+  let arrow_half_len   = cell_size * 0.4;        // tip at +arrow_half_len, tail at -arrow_half_len
+  let head_len         = cell_size * 0.18;       // length of arrow head along the axis
+  let shaft_end        = arrow_half_len - head_len;
+  let shaft_half_width = scale;                  // shaft thickness = 2 * scale
+  let head_half_width  = scale * 3.0;            // head base half-width
+
+  // 3. Direction vector. Caller passes a math-convention (y-up) angle, but
+  //    the screen pixel grid is y-down, so flip y for the rendering basis.
+  //    With this flip:
+  //      angle = 0     → arrow points right  (+x screen)
+  //      angle = π/2   → arrow points up     (-y screen, visually up)
+  //      angle = π     → arrow points left   (-x screen)
+  //      angle = -π/2  → arrow points down   (+y screen, visually down)
+  let dir      = vec2f(cos(angle), -sin(angle));
+  // Perpendicular to dir (90° CCW in screen space; sign doesn't affect symmetric shaft / head).
+  let perp_dir = vec2f(-dir.y, dir.x);
+
+  // 4. Project fragment offset onto arrow's axis basis.
+  let along = dot(local, dir);       // distance along the arrow direction (0 at centre)
+  let perp  = dot(local, perp_dir);  // perpendicular distance from the axis
+
+  // 5. Outside the arrow's axial extent → not part of the arrow.
+  if (along < -arrow_half_len || along > arrow_half_len) {
+    return vec4f(0.0);
+  }
+
+  // 6. Shaft region (from tail up to the head's base): rectangle of
+  //    constant half-width.
+  if (along <= shaft_end) {
+    if (abs(perp) <= shaft_half_width) {
+      return vec4f(1.0, 1.0, 1.0, 1.0);
+    }
+    return vec4f(0.0);
+  }
+
+  // 7. Head region (from shaft_end to tip): triangle tapering linearly
+  //    from head_half_width at shaft_end to 0 at the tip.
+  let head_t = (along - shaft_end) / head_len;        // 0 at base, 1 at tip
+  let head_w = head_half_width * (1.0 - head_t);
+  if (abs(perp) <= head_w) {
     return vec4f(1.0, 1.0, 1.0, 1.0);
   }
   return vec4f(0.0);
