@@ -2,6 +2,20 @@ import { delayedDestroy, canvasMatrix } from '../initPrograms'
 import baseCode from './base.wgsl'
 import baseTestCode from './base.test.wgsl'
 
+type DebugType = 'arrow' | 'digits' | 'none'
+
+declare global {
+  interface Window {
+    setDebugType: (type: DebugType) => void
+  }
+}
+
+let debugType: DebugType = (window.localStorage.debugType as DebugType | undefined) || 'none'
+window.setDebugType = (type: DebugType) => {
+  debugType = type
+  window.localStorage.debugType = type
+}
+
 export default function getDrawShape(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
@@ -133,6 +147,12 @@ export default function getDrawShape(
     // debug_scale: physical-pixels-per-CSS-pixel so the debug overlay's grid
     // cells and digit glyphs stay visually the same size on retina displays.
     metricsF32[4] = window.devicePixelRatio || 1
+    // prettier-ignore
+    metricsU32[5] = debugType === 'arrow'
+      ? 1
+      : debugType === 'digits'
+        ? 2
+        : 0 // debug_arrow
 
     const pathMetricsBuffer = device.createBuffer({
       label: 'drawShape path metrics',

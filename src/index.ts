@@ -55,6 +55,9 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     format: presentationFormat,
     // Specify we want both RENDER_ATTACHMENT and COPY_SRC since we
     // will copy out of the swapchain texture.
+    colorSpace: 'display-p3', // HDR canvas support, requests an rgba16float swapchain with display-p3
+    // color space and extended tonemapping so we can output values above 1.0 from shaders
+    toneMapping: { mode: 'extended' },
   })
 
   function updateRenderScale() {

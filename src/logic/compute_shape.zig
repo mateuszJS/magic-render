@@ -29,7 +29,7 @@ pub fn computeShape(
     // "inside" of the reference shape ends up split into bands. After the
     // split each sub-path is non-self-crossing, so the CW/hole-flip steps
     // below can do their normal job.
-    const working_paths: [][]types.Point = blk: {
+    var working_paths: [][]types.Point = blk: {
         var split = std.ArrayList([]types.Point).init(std.heap.page_allocator);
         for (paths) |p| {
             const subs = try splitAtSelfIntersections(p, std.heap.page_allocator);
@@ -53,6 +53,17 @@ pub fn computeShape(
     // becomes the opposite winding, and the shader's tangent test reports the
     // hole region as outside.
     fixHoleWinding(working_paths);
+
+    // Drop sub-pixel "sliver" curves last, AFTER orientation and hole fixing.
+    // The orientation/hole passes need every curve in place to compute signed
+    // area and nesting correctly — removing slivers earlier could shift a
+    // path's signed area enough to flip its CW/CCW classification, and could
+    // also move the chord-midpoint test point used by `nestingDepth` into the
+    // wrong region. Once those decisions are locked in, the slivers are just
+    // dead weight to the SDF baker (they win the closest-curve lookup for a
+    // handful of texels and produce wrong-direction bands at curve-index
+    // boundaries), so we strip them right before the flatten step.
+    working_paths = try removeTinyCurves(working_paths, std.heap.page_allocator);
 
     // Flatten the paths into one contiguous buffer so the rest of the function
     // (scaling, arc-length sampling, the webgpu dispatch) can stay exactly the
@@ -211,12 +222,19 @@ fn fixHoleWinding(paths: [][]types.Point) void {
 }
 
 // Counts how many OTHER paths contain `paths[self_idx]`. Picks the test point
-// as the first curve's p0 — that point lies exactly on the path, but since we
-// assume paths don't cross, it's either fully inside or fully outside every
-// other path, so a single sample is enough.
+// as the chord midpoint of the first curve, NOT its p0 — after the
+// self-intersection split, sub-paths share their endpoints at the snap
+// points, so paths[self_idx][0] is often also a vertex of another sub-path.
+// A point-in-polygon test with the test point sitting exactly on a polygon
+// vertex is unstable (the horizontal-ray crossing count depends on
+// floating-point tie-breaking between equal y-coordinates), and that
+// instability was misclassifying nesting depth and reverse-flipping
+// non-hole sub-paths. The chord midpoint of the first curve sits in the
+// interior of that curve segment, which is essentially never a vertex of
+// any other sub-path.
 fn nestingDepth(paths: [][]types.Point, self_idx: usize) usize {
     if (paths[self_idx].len < 4) return 0;
-    const test_point = paths[self_idx][0];
+    const test_point = paths[self_idx][0].mid(paths[self_idx][3]);
 
     var depth: usize = 0;
     for (paths, 0..) |other, j| {
@@ -260,6 +278,161 @@ fn isPointInsidePath(point: types.Point, path: []const types.Point) bool {
         j = i;
     }
     return inside;
+}
+
+// =============================================================================
+// TINY-CURVE REMOVAL
+// =============================================================================
+// The SDF baker stores `t = curve_idx + local_t` for the closest curve at each
+// texel. Sub-pixel "sliver" curves wedged between two real curves get picked
+// as the closest segment for fragments whose neighbourhood happens to straddle
+// them, producing wrong-direction bands and distance jumps at curve-index
+// boundaries (the bug shows up as a tiny region with a different curve index
+// than its surroundings — see the index-0 sliver at the bottom crossing in
+// the reference render).
+//
+// `removeTinyCurves` walks each path, finds maximal RUNS of consecutive curves
+// whose chord (|p3 − p0|) is below TINY_CHORD_THRESHOLD, drops the whole run,
+// and snaps the predecessor's p3 and successor's p0 to the midpoint of
+// (run.first.p0, run.last.p3). That keeps the path continuous (the
+// p3-equals-next-p0 invariant the rest of the pipeline relies on) and
+// concentrates the path near where the sliver detour was, without trying to
+// preserve any of the visually-imperceptible curvature it carried.
+//
+// Closed-path wrap-around is handled by anchoring the scan at the first kept
+// curve, so any run is contiguous in the rotated indexing — even when it
+// physically straddles the seam between curves[N-1] and curves[0]. Paths
+// whose every curve is tiny are dropped entirely.
+//
+// A single pass is enough: the snap moves the predecessor/successor endpoints
+// by at most half the sliver chord (i.e. sub-threshold), so it never grows
+// a previously-big curve into something that should now be classified tiny.
+
+const TINY_CHORD_THRESHOLD: f32 = 2.5;
+
+pub fn removeTinyCurves(
+    paths: [][]types.Point,
+    allocator: std.mem.Allocator,
+) ![][]types.Point {
+    var result = std.ArrayList([]types.Point).init(allocator);
+
+    for (paths) |path| {
+        if (try cleanTinyCurvesInPath(path, allocator)) |cleaned| {
+            try result.append(cleaned);
+        }
+        // null result means the entire path was tiny — drop it.
+    }
+
+    return result.toOwnedSlice();
+}
+
+// Returns the cleaned-up path as a fresh allocation, or null if every curve
+// in the input was tiny (caller should drop the whole path in that case).
+fn cleanTinyCurvesInPath(
+    path: []const types.Point,
+    allocator: std.mem.Allocator,
+) !?[]types.Point {
+    if (path.len == 0 or path.len % 4 != 0) return null;
+    const num_curves = path.len / 4;
+
+    var keep = try allocator.alloc(bool, num_curves);
+    defer allocator.free(keep);
+
+    var kept_count: usize = 0;
+    for (0..num_curves) |i| {
+        const p0 = path[i * 4 + 0];
+        const p3 = path[i * 4 + 3];
+        const chord = p0.distance(p3);
+        keep[i] = chord >= TINY_CHORD_THRESHOLD;
+        if (keep[i]) kept_count += 1;
+        // std.log.debug(
+        //     "removeTinyCurves: curve {} chord {d:.6} threshold {d:.6} -> {s} (p0=({d:.3},{d:.3}) p3=({d:.3},{d:.3}))",
+        //     .{
+        //         i,
+        //         chord,
+        //         TINY_CHORD_THRESHOLD,
+        //         if (keep[i]) "KEEP" else "DROP",
+        //         p0.x,
+        //         p0.y,
+        //         p3.x,
+        //         p3.y,
+        //     },
+        // );
+    }
+
+    if (kept_count == 0) return null;
+    if (kept_count == num_curves) {
+        // No tiny curves — copy the input through unchanged so the caller
+        // can free every returned path the same way.
+        const copy = try allocator.alloc(types.Point, path.len);
+        @memcpy(copy, path);
+        return copy;
+    }
+
+    // Working buffer of curves so we can mutate p0/p3 at the snap points
+    // without touching the input.
+    var curves = try allocator.alloc([4]types.Point, num_curves);
+    defer allocator.free(curves);
+    for (0..num_curves) |i| {
+        curves[i] = .{
+            path[i * 4 + 0],
+            path[i * 4 + 1],
+            path[i * 4 + 2],
+            path[i * 4 + 3],
+        };
+    }
+
+    // Anchor the scan at any kept curve so a wrap-around run becomes
+    // contiguous in the rotated indexing.
+    var first_kept: usize = 0;
+    while (first_kept < num_curves and !keep[first_kept]) : (first_kept += 1) {}
+
+    var i: usize = 0;
+    while (i < num_curves) {
+        const idx = (first_kept + i) % num_curves;
+        if (keep[idx]) {
+            i += 1;
+            continue;
+        }
+
+        var run_len: usize = 1;
+        while (i + run_len < num_curves) : (run_len += 1) {
+            const next_idx = (first_kept + i + run_len) % num_curves;
+            if (keep[next_idx]) break;
+        }
+
+        const run_first_phys = idx;
+        const run_last_phys = (first_kept + i + run_len - 1) % num_curves;
+        const snap = types.Point{
+            .x = (curves[run_first_phys][0].x + curves[run_last_phys][3].x) * 0.5,
+            .y = (curves[run_first_phys][0].y + curves[run_last_phys][3].y) * 0.5,
+        };
+
+        const pred_phys = (run_first_phys + num_curves - 1) % num_curves;
+        const succ_phys = (run_last_phys + 1) % num_curves;
+        // pred and succ may be the same curve when the run wraps around
+        // everything except a single kept curve — that's fine, it just
+        // collapses the kept curve to a self-loop, which is the right
+        // geometric answer for "the rest of the path was a sliver".
+        curves[pred_phys][3] = snap;
+        curves[succ_phys][0] = snap;
+
+        i += run_len;
+    }
+
+    // Compact kept curves into the output, preserving original order.
+    var result = try allocator.alloc(types.Point, kept_count * 4);
+    var out_i: usize = 0;
+    for (0..num_curves) |k| {
+        if (keep[k]) {
+            result[out_i * 4 + 0] = curves[k][0];
+            result[out_i * 4 + 1] = curves[k][1];
+            result[out_i * 4 + 2] = curves[k][2];
+            result[out_i * 4 + 3] = curves[k][3];
+            out_i += 1;
+        }
+    }
+    return result;
 }
 
 // =============================================================================
@@ -446,12 +619,41 @@ fn subdivideBox(b: SubBox) [2]SubBox {
     };
 }
 
+/// Parametric line-line intersection between segments p0→p1 and q0→q1.
+/// Returns (s, t) ∈ [0, 1]² such that p0 + s·(p1−p0) == q0 + t·(q1−q0), or
+/// null when the segments don't cross within their parameter ranges (or are
+/// parallel / degenerate). Used at convergence in findCurvePairIntersections
+/// to distinguish "two curves cross here" from "two curves come close enough
+/// for their bounding boxes to overlap, but never actually cross" — which is
+/// what happens all over a tight letter shape like a `D` or `R`.
+fn chordIntersect(
+    p0: types.Point,
+    p1: types.Point,
+    q0: types.Point,
+    q1: types.Point,
+) ?[2]f32 {
+    const ax = p1.x - p0.x;
+    const ay = p1.y - p0.y;
+    const bx = q1.x - q0.x;
+    const by = q1.y - q0.y;
+    const det = ay * bx - ax * by;
+    if (@abs(det) < 1e-9) return null;
+    const rx = q0.x - p0.x;
+    const ry = q0.y - p0.y;
+    const s = (ry * bx - rx * by) / det;
+    const t = (ax * ry - ay * rx) / det;
+    if (s < 0.0 or s > 1.0 or t < 0.0 or t > 1.0) return null;
+    return .{ s, t };
+}
+
 /// Recursively bisect two curves, halving whichever still has the larger
-/// bounding box, and report a crossing whenever both bboxes have shrunk
-/// below SUBDIVISION_TOLERANCE while still overlapping. The endpoint joints
-/// between consecutive curves (and the wrap joint at the seam) are not real
-/// crossings — they're just the shared p0/p3 of the path — and are filtered
-/// out before we record anything.
+/// bounding box. When both bboxes have shrunk below SUBDIVISION_TOLERANCE,
+/// fall back to a parametric chord-vs-chord intersection: bbox overlap at
+/// that scale just means "the two curves come close here", not "they cross
+/// here", and treating proximity as a crossing was producing tens of phantom
+/// splits per glyph. The endpoint joints between consecutive curves (and the
+/// wrap joint at the seam) are filtered out before recording — they're
+/// shared p0/p3 of the path, not real crossings.
 fn findCurvePairIntersections(
     a: SubBox,
     b: SubBox,
@@ -470,16 +672,20 @@ fn findCurvePairIntersections(
     const b_size = boxLargestSide(b_bb);
 
     if ((a_size < SUBDIVISION_TOLERANCE and b_size < SUBDIVISION_TOLERANCE) or depth >= MAX_SUBDIVISION_DEPTH) {
-        const t_a = (a.t_min + a.t_max) * 0.5;
-        const t_b = (b.t_min + b.t_max) * 0.5;
+        // At this scale each sub-curve is essentially its chord; use a real
+        // line-line intersection to confirm the curves actually cross instead
+        // of just brushing past each other.
+        const cross = chordIntersect(a.p0, a.p3, b.p0, b.p3) orelse return;
+        const t_a = a.t_min + cross[0] * (a.t_max - a.t_min);
+        const t_b = b.t_min + cross[1] * (b.t_max - b.t_min);
 
         // Drop the trivial endpoint joins between consecutive curves.
         if (adjacent_forward and t_a > 1.0 - ENDPOINT_T_EPS and t_b < ENDPOINT_T_EPS) return;
         if (adjacent_wrap and t_b > 1.0 - ENDPOINT_T_EPS and t_a < ENDPOINT_T_EPS) return;
 
         const point: types.Point = .{
-            .x = (a_bb[0] + a_bb[2]) * 0.5,
-            .y = (a_bb[1] + a_bb[3]) * 0.5,
+            .x = a.p0.x + cross[0] * (a.p3.x - a.p0.x),
+            .y = a.p0.y + cross[0] * (a.p3.y - a.p0.y),
         };
 
         // Recursion can bracket the same crossing from both halves of a

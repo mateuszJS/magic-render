@@ -328,6 +328,16 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             } else if (assets.selected_asset_id.getPrim() >= consts.ASSET_ID_MIN and
                 assets.selected_asset_id.getPrim() == state.hovered_asset_id.getPrim())
             {
+                if (assets.getSelectedShape()) |shape| {
+                    _ = shape; // autofix
+                    // std.debug.print("=============SHAPE POINTS=============\n", .{});
+                    // for (shape.paths.items) |path| {
+                    //     for (path.points.items) |point| {
+                    //         std.debug.print("{d} {d}\n", .{ point.x, point.y });
+                    //     }
+                    // }
+                }
+
                 state.selected_asset_copied = false;
                 state.action = .Move;
                 state.action_pointer_offset = types.Point{
@@ -915,6 +925,7 @@ pub fn computePhase() !void {
                     const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
 
                     shape.sdf_tex.deinit();
+                    std.debug.print("=============COMPUTE SHAPE============= id: {d}\n", .{shape.id});
                     shape.sdf_tex = try computeShape(
                         shape.sdf_tex.id,
                         shape.bounds,
@@ -923,11 +934,56 @@ pub fn computePhase() !void {
                         consts.SDF_RESIZE_STEP,
                     );
 
+                    if (shape.id == 1019) {
+                        for (shape.sdf_tex.points) |point| {
+                            _ = point; // autofix
+                            // std.debug.print("{d} {d}\n", .{ point.x, point.y });
+                        }
+                    }
+
                     shape.outdated_cache = true;
                 }
 
                 shape.should_update_sdf = false;
             },
+
+            // 13.006909 20.819618
+            // 100000000000 0
+            // 100000000000 0
+            // 11.557464 15.901351
+            // 11.557464 15.901351
+            // 6.8526325 19.11583
+            // 2.252256 22.539345
+            // 3.3104331 25.667856
+            // 3.3104331 25.667856
+            // 4.198273 28.29274
+            // 9.876935 28.935127
+            // 15.624522 29.288727
+            // 15.624522 29.288727
+            // 13.805719 25.242552
+            // 13.006909 20.819618
+            // 13.006909 20.819618
+            // 15.624522 29.288727
+            // 17.763805 34.047844
+            // 21.314205 38.28574
+            // 26.635637 34.192207
+            // 26.635637 34.192207
+            // 32.466988 29.706656
+            // 23.973047 29.80234
+            // 15.624522 29.288727
+            // 11.557464 15.901351
+            // 100000000000 0
+            // 100000000000 0
+            // 8.72936 6.305017
+            // 8.72936 6.305017
+            // 10.438309 1.5942386
+            // 17.61399 2.4549937
+            // 20.26472 6.999194
+            // 20.26472 6.999194
+            // 21.627316 9.335051
+            // 16.533957 12.501266
+            // 11.557464 15.901351
+
             .text => |*text| {
                 if (text.is_sdf_shared) {
                     if (!text.sdf_tex.is_outdated) continue;
@@ -1050,18 +1106,16 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                     );
                 } else {
                     const bounds = shape.getDrawBounds(false);
-                    if (shape.sdf_tex.points.len == 0) {
-                        std.debug.print("renderDraw - shape", .{});
-                        continue;
-                    }
-                    for (shape.effects.items) |effect| {
-                        webgpu_glue.draw_shape(
-                            &bounds,
-                            shape.getDrawUniform(effect),
-                            shape.sdf_tex.id,
-                            shape.sdf_tex.points,
-                            shape.sdf_tex.uniform_t,
-                        );
+                    if (shape.sdf_tex.valid) {
+                        for (shape.effects.items) |effect| {
+                            webgpu_glue.draw_shape(
+                                &bounds,
+                                shape.getDrawUniform(effect),
+                                shape.sdf_tex.id,
+                                shape.sdf_tex.points,
+                                shape.sdf_tex.uniform_t,
+                            );
+                        }
                     }
                 }
             },

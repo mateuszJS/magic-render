@@ -93,10 +93,10 @@ fn is_straight_line_marker(p1: vec2f) -> bool {
 //
 // Cost: cheap path (one vec2 compare) for non-boundary cases; O(curves-in-path)
 // for the rare first-of-path case. Only invoked at junction fragments.
-fn prev_curve_in_path(cur_idx: u32, num_curves: u32) -> u32 {
+fn prev_curve_in_path(cur_idx: u32) -> u32 {
   // Alternative version of this function(look for next path) lives in renderShapeSdf/shader.wgsl
   let cur_p0 = curves[cur_idx * 4u + 0u];
-  let candidate_prev = (cur_idx + num_curves - 1u) % num_curves;
+  let candidate_prev = (cur_idx + base_u.num_curves - 1u) % base_u.num_curves;
   let candidate_p3 = curves[candidate_prev * 4u + 3u];
   let bridge = candidate_p3 - cur_p0;
   if (dot(bridge, bridge) < 1e-6) {
@@ -106,8 +106,8 @@ fn prev_curve_in_path(cur_idx: u32, num_curves: u32) -> u32 {
   // cur_idx is the first curve of its path. Walk forward looking for the LAST
   // curve of this path: a curve i whose p3 doesn't match the next curve's p0.
   var i = cur_idx;
-  for (var k = 0u; k < num_curves; k = k + 1u) {
-    let next_i  = (i + 1u) % num_curves;
+  for (var k = 0u; k < base_u.num_curves; k = k + 1u) {
+    let next_i  = (i + 1u) % base_u.num_curves;
     let i_p3    = curves[i * 4u + 3u];
     let next_p0 = curves[next_i * 4u + 0u];
     let gap     = i_p3 - next_p0;
@@ -145,13 +145,14 @@ struct Vertex {
 //   off 12 : num_curves      (u32,   align 4)
 //   off 16 : debug_scale     (f32,   align 4)
 //   off 20 : 12 bytes padding to round struct size up to 32
-struct PathMetrics {
+struct BaseUniform {
   texture_size: vec2f,
   total_arc_len: f32,
   num_curves: u32,
   debug_scale: f32,
+  debug_arrow: u32,
 };
-@group(0) @binding(5) var<uniform> path_metrics: PathMetrics;
+@group(0) @binding(5) var<uniform> base_u: BaseUniform;
 
 struct VSOutput {
   @builtin(position) position: vec4f,
@@ -162,7 +163,7 @@ struct VSOutput {
 @vertex fn vs(vert: Vertex) -> VSOutput {
   return VSOutput(
     camera_projection * vec4f(vert.position.xy, 0.0, 1.0),
-    vert.position.zw * path_metrics.texture_size,
+    vert.position.zw * base_u.texture_size,
     vert.position.zw,
   );
 }
@@ -209,7 +210,7 @@ fn loadNeighbour(coord: vec2u, pos: vec2f) -> Neighbour {
 
   // combiendSdf have all texels filled with -3.4e38 on the start, so we filter those out
   // and let other guards handle this case
-  let is_valid = raw_t >= 0.0 && raw_t < f32(path_metrics.num_curves);
+  let is_valid = raw_t >= 0.0 && raw_t < f32(base_u.num_curves);
 
   var redefined_t = raw_t;
   // maybe we should do it only if distance is smaller than 1-2 texels?
@@ -260,7 +261,7 @@ fn arc_to_g(arc: f32) -> f32 {
   let result = f32(ci) + local_t;
   // Clamp to just inside the last segment so floor(result) < num_curves and
   // fract != 0 (i.e. not interpreted as a baker-snapped junction either).
-  let max_safe = f32(path_metrics.num_curves) - 1e-5;
+  let max_safe = f32(base_u.num_curves) - 1e-5;
   return min(result, max_safe);
 }
 
@@ -297,7 +298,7 @@ fn getSample(pos: vec2f) -> Sample {
   let floor_pos = floor(pos - 0.5);
   let fract_pos = pos - 0.5 - floor_pos;
 
-  let max_coord = vec2i(path_metrics.texture_size) - vec2i(1, 1);
+  let max_coord = vec2i(base_u.texture_size) - vec2i(1, 1);
 
   let p00 = vec2u(clamp(vec2i(floor_pos),                   vec2i(0, 0), max_coord));
   let p10 = vec2u(clamp(vec2i(floor_pos + vec2f(1.0, 0.0)), vec2i(0, 0), max_coord));
@@ -311,83 +312,42 @@ fn getSample(pos: vec2f) -> Sample {
   let nNearest = getNearestNeighbour(pos, n00, n10, n01, n11);
 
 
-  // ---------------------------------------------------------------------------
-  // Sign: tangent-based half-plane test.
-  // Single-tangent default works everywhere except curve junctions; at a
-  // junction we ALSO consult the previous curve's end tangent. We always run
-  // the two-half-plane test when fract(g)≈0 — when the corner is near-straight
-  // the two half-planes give the same answer, so this reduces to the single-
-  // tangent result with no threshold-driven discontinuity.
-  // ---------------------------------------------------------------------------
-  
-  // Should we use redefined t alread yhere? We redefine it later right now
-  // We do refine with Newton to eliminate harsh edges (see ./artifacts/hrash edges.png)
-  // let refined_nearest = Refined(nNearest.pos, nNearest.t);
-  // let refine_nearest_tan = t_to_tan(refined_nearest.t);
-  var debug_probe = atan2(nNearest.tan.y, nNearest.tan.x);
+  var debug_probe = 99.0;
 
   let inward_normal = vec2f(nNearest.tan.y, -nNearest.tan.x); // 90 degree CCW,
-  // outward -> something moving away from the center(shape) towards the exterior
+  // inward -> something moving towards from the center(shape), towards the interior
 
-  // nNearest.tan IS WRONG at t = 0, it points to the right instead of up
-  
-  // debug_probe = atan2(nNearest.tan.y, nNearest.tan.x); // (0.97, -0.21) this doesn't look good
-  
-  // (nNearest.pos - pos)
-  // vec2f(-1.3, 0.23)
-  // x -> from -0.35 to -2.08, -0.05 to 0.49. This looks correct, pointing storngly left, a bit bottom or up
-
-  // nNearest.pos - pos points towards curve, so different direction base if inside or outside
-  // dot will receive 1 if direction points toward inside, and only outside points point towards inside
-  // that's why below we multiply by -1
+  // nNearest.pos - pos points towards curve, so different direction base if inside or outside.
+  // Dot will return 1 if direction is towards the inside. This is true onyl for exterior pixels, all pixels insdie shape
+  // will point toward closest curve, so exterior, that's why we multiply by -1
   var is_inside = -sign(dot(nNearest.pos - pos, inward_normal));
-  // nNearest.pos - pos = vector pointing from the tip of the pos toward the tip of nNearest.pos toward pos
   
-  if (false && fract(nNearest.t) < T_JUNCTION_EPS) {
-    let num_curves_u = path_metrics.num_curves;
-    let cur_idx = u32(nNearest.t) % num_curves_u;
-    let prev_idx = prev_curve_in_path(cur_idx, num_curves_u);
-    let pp0 = curves[prev_idx * 4u + 0u];
-    let pp1 = curves[prev_idx * 4u + 1u];
-    let pp2 = curves[prev_idx * 4u + 2u];
-    let pp3 = curves[prev_idx * 4u + 3u];
+  if (fract(nNearest.t) < T_JUNCTION_EPS) {
+    // when corner is sharp(or jsut tangent discontinue), then for many pixels the closest point will be local_t = 0, singular point
+    // of the current path, but it causes issues when actually the previous path should be used
+    // see ./artifacts/cave incorrect path.png and ./artifacts/exterior incorrect path.png
 
-    // End tangent of prev curve at t=1. For "no-handle" corners (pp2 == pp3)
-    // 3*(pp3-pp2) collapses to zero — fall back to the chord, mirroring
-    // g_to_bezier_tangent's degenerate-case handling.
-    let prev_chord     = pp3 - pp0;
-
-      
-    let prev_deriv_t1  = 3.0 * (pp3 - pp2);
-    let prev_use_chord = is_straight_line_marker(pp1) // = true
-                       || dot(prev_deriv_t1, prev_deriv_t1) < 1e-12;
-
-                       
-
-    let prev_tan_raw   = select(prev_deriv_t1, prev_chord, prev_use_chord);
-    let prev_tan_len   = length(prev_tan_raw);
-    // If even the chord is zero (fully degenerate prev curve), reuse the
-    // current tangent — the corner is treated as smooth, which is the safest
-    // visual outcome and avoids inventing a bogus +x axis.
+    let cur_idx = u32(nNearest.t) % base_u.num_curves;
+    let prev_idx = prev_curve_in_path(cur_idx);
+    let prev_max_t = f32(prev_idx) + 1 - T_JUNCTION_EPS;
+    let prev_tan = t_to_tan(prev_max_t);
     
-    let prev_tan_n     = select(nNearest.tan, prev_tan_raw / prev_tan_len, prev_tan_len > 1e-8);
-
-    // cross2d = cur × prev. CW winding in Y-down:
-    //   > 0 → concave (inner notch) → inside if EITHER half-plane says inside (max).
-    //   < 0 → convex  (outer corner) → inside only if BOTH half-planes say inside (min).
+    let cross_2d = nNearest.tan.x * prev_tan.y - prev_tan.x * nNearest.tan.y;
+    // cross2d = curr x prev. CW winding in Y-down:
+    //   > 0 → conves, like exterior pixels around the rect corner(outside the shape)
+    //   < 0 → concave, like interior pixels around the rect corner(inside the shape)
     //   ≈ 0 → near-collinear → both branches give the same answer.
+    // WARNING: it only works because of CW paths + Y-up coordinates.
 
+    let sign_cur  = sign(dot(pos - nNearest.pos, inward_normal));
+    // for exterior pixels, pos - nNearest.pos points toward exterior
 
-    let cross_2d = nNearest.tan.x * prev_tan_n.y - nNearest.tan.y * prev_tan_n.x; // 0.98, but many correct pixels also haave 0.98
-    let prev_normal = vec2f(-prev_tan_n.y, prev_tan_n.x);
-    let sign_cur  = sign(dot(pos - nNearest.pos, inward_normal)); // 1 ONLY in pixels where artifact appear, rest have -1 around
-
-    let sign_prev = sign(dot(pos - nNearest.pos, prev_normal)); // sign_prev = -1, but other correct neighbor pixels also have -1 and they look correct
-   
+    let prev_normal = vec2f(prev_tan.y, -prev_tan.x);
+    let sign_prev = sign(dot(pos - nNearest.pos, prev_normal));
+  
     is_inside = select(min(sign_cur, sign_prev),
                           max(sign_cur, sign_prev),
-                          cross_2d > 0.0);
-                         
+                          cross_2d < 0.0);
   }
 
   // ---------------------------------------------------------------------------
@@ -399,7 +359,7 @@ fn getSample(pos: vec2f) -> Sample {
   //   - Wrap each neighbour's arc length to the period closest to nearest_arc
   //     so the start/end seam blends smoothly.
   // ---------------------------------------------------------------------------
-  let total_arc_len = path_metrics.total_arc_len;
+  let total_arc_len = base_u.total_arc_len;
   let inv_arc = select(0.0, 1.0 / total_arc_len, total_arc_len > 1e-8);
 
   let arc00 = n00.arc + total_arc_len * round((nNearest.arc - n00.arc) * inv_arc);
@@ -499,7 +459,8 @@ fn getSample(pos: vec2f) -> Sample {
   // Blending angles on curve looks ugly because they mix texels inside with texels outside, 
   // those two groups point to the opposite angles (see ./artifacts/blend angles on curve.png)
   // so we add condition with distance
-  let blend_angle = select(fallback_angle, primary_angle, abs_distance < 1);
+  let blend_angle = fallback_angle;
+  // let blend_angle = select(fallback_angle, primary_angle, abs_distance < 1);
 
   let number_of_valid_neighbors = 0.0 +
     select(0.0, 1.0, keep00) +
@@ -760,65 +721,76 @@ struct Refined {
   // }
 
   let final_result = vec4f(color.rgb, color.a * alpha);
-  // return final_result;
 
-    // === DEBUG: per-screen-pixel-cell digit overlay ===========================
-    // Cells are nominally 32×32 SCREEN pixels at 1x DPR; we multiply by
-    // `path_metrics.debug_scale` (typically devicePixelRatio) so cells stay
-    // the same physical size on retina displays. The digit pixel scale and
-    // grid line width receive the same multiplier so their visual weight
-    // matches across DPRs. The screen-cell centre and the matching uv-at-
-    // centre are computed together; sdf.t sampled at uv-at-centre is
-    // therefore uniform across all fragments inside the same screen cell,
-    // so every fragment in the cell renders the same digit pair.
-    let dbg_scale  = path_metrics.debug_scale;
-    let cell       = vec2f(32.0, 32.0) * dbg_scale;
-    let cell_data  = debug_screen_cell(vsOut.position.xy, vsOut.uv, cell);
-    let debug_sdf  = getSample(cell_data.uv);
+    if (base_u.debug_arrow > 0u) {
 
-    // Per-cell flat-shaded background = colour of the dominant neighbour
-    // (0..3). Adjacent cells with different dominants change colour at the
-    // texel-grid Voronoi boundary — that's the stairstep we're hunting.
+      // === DEBUG: per-screen-pixel-cell digit overlay ===========================
+      // Cells are nominally 32×32 SCREEN pixels at 1x DPR; we multiply by
+      // `base_u.debug_scale` (typically devicePixelRatio) so cells stay
+      // the same physical size on retina displays. The digit pixel scale and
+      // grid line width receive the same multiplier so their visual weight
+      // matches across DPRs. The screen-cell centre and the matching uv-at-
+      // centre are computed together; sdf.t sampled at uv-at-centre is
+      // therefore uniform across all fragments inside the same screen cell,
+      // so every fragment in the cell renders the same digit pair.
+      let dbg_scale  = base_u.debug_scale;
+      let cell       = vec2f(32.0, 32.0) * dbg_scale;
+      let cell_data  = debug_screen_cell(vsOut.position.xy, vsOut.uv, cell);
+      let debug_sdf  = getSample(cell_data.uv);
 
-    // let cell_bg = debug_idx_to_color(select(0.0, 1.0, debug_sdf.t >= 5.0));
-    let cell_bg = select(vec4f(0.85, 0.20, 0.20, 1.0),   // outside → red
-                        vec4f(0.20, 0.85, 0.20, 1.0),   // inside  → green
-                        debug_sdf.is_inside < 0.0);
-    // let cell_bg = debug_idx_to_color(floor(debug_sdf.t));
+      // Per-cell flat-shaded background = colour of the dominant neighbour
+      // (0..3). Adjacent cells with different dominants change colour at the
+      // texel-grid Voronoi boundary — that's the stairstep we're hunting.
 
-    // Digits show the dominant neighbour's curve index (floor of its global_t).
-    // If two adjacent cells have different curve indices that lines up with
-    // the cell_bg colour change, we've confirmed the artifact == "neighbour-
-    // pointing-at-different-curve" Voronoi pattern.
+      // let cell_bg = debug_idx_to_color(select(0.0, 1.0, debug_sdf.t >= 5.0));
+      // let cell_bg = select(vec4f(0.85, 0.20, 0.20, 1.0),   // outside → red
+      //                     vec4f(0.20, 0.85, 0.20, 1.0),   // inside  → green
+      //                     debug_sdf.is_inside < 0.0);
+      let cell_bg = debug_idx_to_color(floor(debug_sdf.t));
 
-    let debug_curve_pos = t_to_pos(debug_sdf.t);
-    let probe = length(debug_curve_pos - cell_data.uv) * debug_sdf.is_inside;
+      // Digits show the dominant neighbour's curve index (floor of its global_t).
+      // If two adjacent cells have different curve indices that lines up with
+      // the cell_bg colour change, we've confirmed the artifact == "neighbour-
+      // pointing-at-different-curve" Voronoi pattern.
 
-    let cell_uv = cell_data.uv;
-    let digits     = debug_render_arrow(
-      vsOut.position.xy,
-      cell.x,
-      debug_sdf.debug_probe, // debug_sdf.is_inside,
-      DEBUG_PIXEL_SCALE * dbg_scale
-    );
-    // let digits     = debug_render_digits(
-    //   vsOut.position.xy,
-    //   cell.x,
-    //   debug_sdf.debug_probe, // debug_sdf.is_inside,
-    //   2,
-    //   DEBUG_PIXEL_SCALE * dbg_scale
-    // );
-    let grid       = debug_grid_line(vsOut.position.xy, cell, 1.0 * dbg_scale);
+      let debug_curve_pos = t_to_pos(debug_sdf.t);
+      let probe = length(debug_curve_pos - cell_data.uv) * debug_sdf.is_inside;
+
+      let cell_uv = cell_data.uv;
+      
+      var debug_output: vec4f;
+      if (base_u.debug_arrow == 1u) {
+        debug_output = debug_render_arrow(
+          vsOut.position.xy,
+          cell.x,
+          debug_sdf.debug_probe, // debug_sdf.is_inside,
+          DEBUG_PIXEL_SCALE * dbg_scale
+        );
+      } else {
+        debug_output = debug_render_digits(
+          vsOut.position.xy,
+          cell.x,
+          debug_sdf.debug_probe, // debug_sdf.is_inside,
+          2,
+          DEBUG_PIXEL_SCALE * dbg_scale
+        );
+      }
 
 
+      let grid = debug_grid_line(vsOut.position.xy, cell, 1.0 * dbg_scale);
 
-    // Background → grid lines → digits, painted in that order.
-    // var dbg = final_result;              // 
-    var dbg = mix(final_result, cell_bg, 0.2);              // 
-    dbg     = mix(dbg, vec4f(0.8), grid);     // dark grid lines
-    dbg     = mix(dbg, vec4f(0.0, 0.0, 0.0, 1.0), digits.a); // white digits on top
-    // === /DEBUG ==============================================================
-    return dbg;
+      // Background → grid lines → digits, painted in that order.
+      // var dbg = final_result;              // 
+      var dbg = mix(final_result, cell_bg, 0.1);              // 
+      dbg     = mix(dbg, vec4f(0.8), grid);     // dark grid lines
+      dbg     = mix(dbg, vec4f(0.0, 1.0, 0.0, 1.0), debug_output.a); // white digits on top
+      // === /DEBUG ==============================================================
+      return dbg;
+    } else {
+      return final_result;
+    }
+
+
 }
 
 // =============================================================================
