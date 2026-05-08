@@ -507,7 +507,7 @@ pub fn onPointerMove(x: f32, y: f32, constrained: bool, alt_key: bool) !void {
 
     const selected_asset = assets.getSelectedAsset() orelse return;
 
-    const asset = if (!state.selected_asset_copied and alt_key) b: {
+    const asset = if (state.action == .Move and !state.selected_asset_copied and alt_key) b: {
         state.selected_asset_copied = true;
         const cloned_asset = try assets.clone(selected_asset.*);
         break :b cloned_asset;

@@ -19,7 +19,7 @@
 //   regions expand it), so blending in arc-length space matches what the eye
 //   sees on the path.
 //   g_to_arc()    is the forward map (g → arc length).
-//   arc_to_g()    is the inverse (binary search).
+//   arc_to_t()    is the inverse (binary search).
 // 
 // 
 //   Every T is global, if we deal with local t then the name is "local_t"
@@ -51,6 +51,38 @@ const ARC_SAMPLES_PER_CURVE = 4.0;
 // The baker snaps t≥1 to t=0 of the next curve, so junctions ARE exactly 0,
 // but we leave a tiny slop for any downstream interpolation drift.
 const T_JUNCTION_EPS = 1e-5;
+
+// Step along the path (in ARC-LENGTH units, i.e. world distance walked along
+// the curve) for the arc-sampled `soft_nearest_angle` blender. The function
+// samples the curve at (arc − step, arc, arc + step) and tent-blends the
+// three direction-to-fragment unit vectors with weights 0.25 / 0.5 / 0.25.
+//
+//   Smaller step → sharper medial axis.
+//   Larger step  → softer; eventually the three samples cover most of the
+//                  path and the angle becomes meaningless.
+//
+// Arc length (not bezier `t`) because t is non-linear: sharp bends compress
+// it, stretched regions expand it. Equal arc steps give equal world-space
+// walks along the curve, regardless of texel resolution or local curvature.
+const SOFT_NEAREST_ARC_STEP: f32 = 2.0;
+
+// Global-arc soft-min blender (`global_arc_soft_min_angle`) parameters.
+//
+// Sweep the entire path at GLOBAL_ARC_SAMPLES evenly-spaced arc positions,
+// soft-min-blend the unit directions toward each sampled curve point.
+//
+//   GLOBAL_ARC_SAMPLES — sampling density along the path. Higher = finer
+//                        medial-axis resolution (catches sharper concave
+//                        features), at proportional compute cost. The cost
+//                        is independent of texel resolution, only of N.
+//
+//   GLOBAL_ARC_TAU_FACTOR — softening width as a fraction of d_min (the
+//                           closest sampled distance). The medial axis
+//                           softens over roughly TAU_FACTOR × d_min in
+//                           world units. 0.0 = hard min, 1.0 = aggressive
+//                           uniform blend.
+const GLOBAL_ARC_SAMPLES:    i32 = 64;
+const GLOBAL_ARC_TAU_FACTOR: f32 = 0.3;
 
 struct CubicBezier {
   p0: vec2f,
@@ -239,8 +271,8 @@ fn loadNeighbour(coord: vec2u, pos: vec2f) -> Neighbour {
   );
 }
 
-// Inverse arc-length map: arc length → g (curve_idx + local_t).
-fn arc_to_g(arc: f32) -> f32 {
+// Inverse arc-length map: arc length → t (curve_idx + local_t).
+fn arc_to_t(arc: f32) -> f32 {
   let len = arrayLength(&arc_lengths);
   // Empty / single-entry buffer: no curves to look up. Return start.
   if (len < 2u) { return 0.0; }
@@ -294,6 +326,144 @@ fn getNearestNeighbour(pos: vec2f, n00: Neighbour, n01: Neighbour, n10: Neighbou
   );
 }
 
+// Resolution-independent soft-nearest angle by sampling the curve at three
+// points evenly spaced in ARC LENGTH around the bilinear-blended `arc` value:
+// (arc − step, arc, arc + step). For each sample we take the unit direction
+// from `pos` toward the curve point at that arc, then tent-blend the three
+// directions with weights 0.25 / 0.5 / 0.25 and atan2 the result.
+//
+// Why arc, not t:
+//   Bezier `t` is non-linear in distance — sharp bends compress it, slow
+//   regions expand it. A fixed step in `t` would walk a wildly varying
+//   physical distance along the curve. Arc length is linear in world
+//   distance, so a fixed step gives a uniform sample stride along the
+//   path, which is what we want for a symmetric tent kernel.
+//
+// Why this softens the medial axis:
+//   Near the skeleton, the closest curve point as a function of fragment
+//   position changes RAPIDLY in arc — a small fragment shift past the
+//   skeleton flips the "best" arc from one side of the path to the other.
+//   The three-arc tent blends directions across that flip, so the angle
+//   rotates smoothly through the skeleton instead of snapping.
+//
+// Why this is resolution-independent:
+//   Nothing here depends on texel size; `arc` and `step` are world-units
+//   quantities and we only read the curve / arc-length buffers.
+
+struct SoftAngleDebug {
+  angle: f32,
+  debug_probe: f32,
+}
+
+fn soft_nearest_angle(pos: vec2f, arc: f32) -> SoftAngleDebug {
+  let total = base_u.total_arc_len;
+  // Clamp to the open path's arc range. Closed paths could wrap with
+  // modulo, but that's wrong across multi-subpath shapes (e.g. letter
+  // counters), so we play safe.
+
+  let tan_minus_2 = t_to_tan(arc_to_t(arc - 2));
+  let tan_minus_1 = t_to_tan(arc_to_t(arc - 1));
+  let tan_curr  = t_to_tan(arc_to_t(arc));
+  let tan_plus_1  = t_to_tan(arc_to_t(arc + 1));
+  let tan_plus_2  = t_to_tan(arc_to_t(arc + 2));
+
+  let interpolate_towards = sign(
+    dot(tan_plus_1, tan_plus_2) - dot(tan_minus_1, tan_minus_2)
+  );
+
+  var inter_far: vec2f;
+  var inter: vec2f;
+
+  if (interpolate_towards < 0.0) {
+    // go towards plus
+    inter_far = tan_plus_2;
+    inter = tan_plus_1;
+  } else {
+    // go towards minus
+    inter_far = tan_minus_2;
+    inter = tan_minus_1;
+  }
+
+  // Tent blend in vector space; atan2 once. Vector-space averaging handles
+  // angle wraparound naturally — no modulo bookkeeping needed.
+  let blended = 0.45 * inter_far + 0.35 * inter + 0.2 * tan_curr;
+  let outward = vec2f(-blended.y, blended.x); // 90 degree CCW, points outward from the curve
+  return SoftAngleDebug(atan2(outward.y, outward.x), atan2(outward.y, outward.x));
+}
+
+// Resolution-independent angle field by sweeping the ENTIRE path at
+// GLOBAL_ARC_SAMPLES evenly-arc-spaced positions and soft-min-blending the
+// unit directions from `pos` toward each sampled curve point.
+//
+// Why this dodges every previous failure mode:
+//   - Resolution-independent: nothing references the texel grid, only the
+//     curve & arc-length buffers. Increasing texture density doesn't
+//     change the result at all.
+//   - Catches every medial axis: with a global sweep, the equidistant
+//     "second branch" at the skeleton is always among the samples, no
+//     matter how far it is in arc from the primary closest point. The
+//     4-bilinear-neighbour formulations couldn't see it when the texels
+//     themselves didn't span both sides; here the curve buffer does.
+//   - Smooth softening: soft-min in world units. τ = TAU_FACTOR × d_min
+//     so softening width scales with how far we are from the boundary
+//     (wider blend deep in the interior, sharper near the curve).
+//
+// `d_min` is the caller's already-computed Newton-refined distance from
+// `pos` to the nearest curve point. Used both as the soft-min reference
+// (weights = exp(-(d_i - d_min)/τ)) and to scale τ. Passing it in lets us
+// skip a pre-pass through the samples that would otherwise compute it.
+fn global_arc_soft_min_angle(pos: vec2f, d_min: f32) -> f32 {
+  let total = base_u.total_arc_len;
+  let n_f = f32(GLOBAL_ARC_SAMPLES);
+
+  // τ in world units, scaled by d_min so softening adapts to interior depth.
+  let tau = max(GLOBAL_ARC_TAU_FACTOR * d_min, 1e-6);
+  let inv_tau = 1.0 / tau;
+
+  // Single weighted pass. Samples sit at arc = (i + 0.5) * total / N — the
+  // half-open offset avoids double-sampling arc=0 and arc=total in closed
+  // paths. exp(-(d - d_min)/τ) peaks at the closest sample (≈1 since d_min
+  // is the true closest by construction) and decays for far samples.
+  var sum = vec2f(0.0);
+  for (var i = 0; i < GLOBAL_ARC_SAMPLES; i = i + 1) {
+    let arc = (f32(i) + 0.5) * total / n_f;
+    let p = t_to_pos(arc_to_t(arc));
+    let to_curve = p - pos;
+    let d = length(to_curve);
+    if (d < 1e-6) { continue; }
+    let w = exp(-(d - d_min) * inv_tau);
+    sum = sum + (to_curve / d) * w;
+  }
+  return atan2(sum.y, sum.x);
+}
+
+struct DebugValue {
+  value: f32,
+  debug_probe: f32,
+}
+fn my_custom_angle_solution(pos: vec2f, arc_primary: f32, d_min: f32) -> DebugValue {
+  let arc_offset = 0.2 * (0.36 * d_min * d_min + 1.05 * d_min - 1.19);
+  let arc_curr = t_to_tan(arc_to_t(arc_primary));
+  let arc_forward = t_to_tan(arc_to_t(arc_primary + arc_offset));
+  let arc_backward = t_to_tan(arc_to_t(arc_primary - arc_offset));
+  let forward_dot = dot(arc_forward, arc_curr);
+  let backward_dot = dot(arc_backward, arc_curr);
+
+  // return DebugValue(0.0, atan2(arc_forward.y, arc_forward.x));
+
+  if (forward_dot < backward_dot) {
+    let outward_tan = vec2f(-arc_forward.y, arc_forward.x);
+    let outward_angle = atan2(outward_tan.y, outward_tan.x);
+    return DebugValue(outward_angle, outward_angle);
+  }
+
+    let outward_tan = vec2f(-arc_backward.y, arc_backward.x);
+    let outward_angle = atan2(outward_tan.y, outward_tan.x);
+    return DebugValue(outward_angle, outward_angle);
+
+}
+
+
 fn getSample(pos: vec2f) -> Sample {
   let floor_pos = floor(pos - 0.5);
   let fract_pos = pos - 0.5 - floor_pos;
@@ -312,7 +482,7 @@ fn getSample(pos: vec2f) -> Sample {
   let nNearest = getNearestNeighbour(pos, n00, n10, n01, n11);
 
 
-  var debug_probe = 99.0;
+  var debug_probe = nNearest.arc;
 
   let inward_normal = vec2f(nNearest.tan.y, -nNearest.tan.x); // 90 degree CCW,
   // inward -> something moving towards from the center(shape), towards the interior
@@ -400,7 +570,7 @@ fn getSample(pos: vec2f) -> Sample {
                                (arc00 * w00 + arc10 * w10 + arc01 * w01 + arc11 * w11) / total_w,
                                total_w > 1e-6);
   let arc_blended = clamp(arc_blended_raw, 0.0, total_arc_len);
-  let _blended_global_t = arc_to_g(arc_blended);
+  let _blended_global_t = arc_to_t(arc_blended);
 
   // ---------------------------------------------------------------------------
   // blend_angle: angle from `pos` toward the closest curve point.
@@ -437,25 +607,29 @@ fn getSample(pos: vec2f) -> Sample {
 
   let primary_angle = atan2(refined_primary.pos.y - pos.y, refined_primary.pos.x - pos.x);
 
-  let dir00 = normalize(n00.norm_raw_dir) * bili_dist00;
-  let dir10 = normalize(n10.norm_raw_dir) * bili_dist10;
-  let dir01 = normalize(n01.norm_raw_dir) * bili_dist01;
-  let dir11 = normalize(n11.norm_raw_dir) * bili_dist11;
+    let refined_blended_global_t = refine_curve_pos(pos, blended_global_t).t; // looks good for distance
+  let abs_distance = length(pos - t_to_pos(refined_blended_global_t));
+  debug_probe = abs_distance;
 
-  let blended_dir = dir00 + dir10 + dir01 + dir11;
+  // Resolution-independent arc-sampled blend. Three samples on the curve at
+  // (arc − step, arc, arc + step), tent-weighted 0.25/0.5/0.25. Tune step
+  // via SOFT_NEAREST_ARC_STEP at the top of this file. No texture reads —
+  // only curve/arc-length buffer evaluations.
+  // let result_soft_angle = soft_nearest_angle(pos, arc_blended);
+  // let fallback_angle = result_soft_angle.angle;
 
-  // the aim of blend_angle is to reduce harsh effect of medial axis(skeleton of the shape)
-  // because user wants pretty angle with nice gradients more than angle to actual closest point on curve
-  let fallback_angle = atan2(blended_dir.y, blended_dir.x);
-
+  // Global-arc soft-min sweep. Samples GLOBAL_ARC_SAMPLES positions along the
+  // entire path and soft-min-blends the unit directions toward each sampled
+  // curve point. Tune GLOBAL_ARC_SAMPLES / GLOBAL_ARC_TAU_FACTOR at the top
+  // of this file. No texture reads — independent of texel resolution.
+  let fallback_angle = global_arc_soft_min_angle(pos, abs_distance);
+  
 
 
   // If we refine neighbours then we HAVE TO do this additiona refinement here, otherwise
   // we got noise (see ./artifacts/neighbour refinement only noise.png)
-  let refined_blended_global_t = refine_curve_pos(pos, blended_global_t).t; // looks good for distance
-  let abs_distance = length(pos - t_to_pos(refined_blended_global_t));
 
-
+  // debug_probe = result_soft_angle.debug_probe;
   // Blending angles on curve looks ugly because they mix texels inside with texels outside, 
   // those two groups point to the opposite angles (see ./artifacts/blend angles on curve.png)
   // so we add condition with distance
