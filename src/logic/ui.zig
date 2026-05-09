@@ -96,7 +96,8 @@ pub fn draw(dataset: []DrawVertex) !void {
                 uniform,
                 shape.sdf_tex.id,
                 shape.sdf_tex.points,
-                shape.sdf_tex.uniform_t,
+                shape.sdf_tex.arc_lengths,
+                shape.sdf_tex.max_distances,
             );
         }
     }

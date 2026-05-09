@@ -137,9 +137,17 @@ export function runCreator(
         sigmaPerPassY
       )
     },
-    draw_shape: (bound_box_data, uniform_data, textureId, curves_data, uniform_t) => {
+    draw_shape: (
+      bound_box_data,
+      uniform_data,
+      textureId,
+      curves_data,
+      arc_lengths_data,
+      max_distances_data
+    ) => {
       const curvesDataView = curves_data['*'].dataView
-      const uniformDataView = uniform_t['*'].dataView
+      const arcLengthsDataView = arc_lengths_data['*'].dataView
+      const maxDistanceDataView = max_distances_data['*'].dataView
 
       let program
       let uniform
@@ -167,16 +175,25 @@ export function runCreator(
         boundBoxDataView,
         uniform.dataView,
         curvesDataView,
-        uniformDataView
+        arcLengthsDataView,
+        maxDistanceDataView
       )
     },
     pick_texture: (vertex_data, texture_id) => {
       const dataView = vertex_data['*'].dataView
       pickTexture(pickPass, dataView, Textures.getTextureSafe(texture_id))
     },
-    pick_shape: (bound_box_data, uniform, textureId, curves_data, uniform_t) => {
+    pick_shape: (
+      bound_box_data,
+      uniform,
+      textureId,
+      curves_data,
+      arc_lengths_data,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      _max_distances
+    ) => {
       const curvesDataView = curves_data['*'].dataView
-      const uniformDataView = uniform_t['*'].dataView
+      const arcLengthsDataView = arc_lengths_data['*'].dataView
 
       pickShape(
         pickPass,
@@ -184,7 +201,7 @@ export function runCreator(
         uniform.dataView,
         Textures.getTexture(textureId),
         curvesDataView,
-        uniformDataView
+        arcLengthsDataView
       )
     },
     pick_triangle: (vertex_data) => {

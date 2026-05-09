@@ -80,8 +80,11 @@ pub fn computeShape(
     }
 
     // jsut happened that we want 4 sampels per curve and also we have 4 poitns per curve, it's coincidence
-    const uniform_t_list = try std.heap.page_allocator.alloc(f32, points.len + 1);
-    uniform_t_list[0] = 0;
+    const arc_lengths = try std.heap.page_allocator.alloc(f32, points.len + 1);
+    arc_lengths[0] = 0;
+
+    // max distances, mainly used to normalize distance
+    const max_distances_list = try std.heap.page_allocator.alloc(f32, points.len + 1);
 
     for (points, 0..) |*point, i| {
         _ = i; // autofix
@@ -112,7 +115,7 @@ pub fn computeShape(
     sdf_tex.points = points;
     sdf_tex.valid = points.len > 0;
 
-    // Fill uniform_t_list: cumulative arc length at t=0.25, 0.50, 0.75, 1.00 for each curve.
+    // Fill arc_lengths: cumulative arc length at t=0.25, 0.50, 0.75, 1.00 for each curve.
     // Points are already in texel space at this point.
     const num_curves = points.len / 4;
     var cumulative: f32 = 0;
@@ -147,10 +150,98 @@ pub fn computeShape(
                 cumulative += prev.distance(pt);
                 prev = pt;
             }
-            uniform_t_list[ci * 4 + quarter + 1] = cumulative;
+            arc_lengths[ci * 4 + quarter + 1] = cumulative;
         }
     }
-    sdf_tex.uniform_t = uniform_t_list;
+    sdf_tex.arc_lengths = arc_lengths;
+
+    // =========================================================================
+    // MEDIAL-AXIS DISTANCE  (max_distances_list)
+    // =========================================================================
+    // For every sample point P (4N + 1 of them, layout matches arc_lengths)
+    // we compute the radius of the largest inscribed disk tangent to the
+    // boundary at P. That radius is the distance from P to the medial axis
+    // along P's inward normal.
+    //
+    // BISECTOR FORMULA. With unit inward normal N̂ at P, the disk centred at
+    //   C = P + s · N̂
+    // and tangent to the boundary at P passes through another boundary point
+    // Q iff |C − Q| = s, which solves to
+    //   s = |Q − P|² / (2 · N̂ · (Q − P))
+    // (provided the denominator is positive — Q must sit "ahead" of P in the
+    // inward direction). The radius we want is the minimum positive s over
+    // all boundary points Q on every OTHER curve.
+    //
+    // SCOPE.
+    //   - We skip P's own curve. For non-self-crossing closed paths
+    //     (`splitAtSelfIntersections` upstream guarantees that) the medial-
+    //     axis partner of a sample lives on a different curve. Including the
+    //     own curve would force us to skip a neighbourhood around P (else
+    //     N̂·(Q − P) → 0 and s collapses), and that's complexity we don't
+    //     need yet.
+    //   - At boundary indices ci*4 + 4 (= (ci+1)*4 + 0) we use curve ci's
+    //     tangent at t = 1.0, mirroring `arc_lengths`'s convention for
+    //     which curve "owns" the shared index. Index 0 uses curve 0's t = 0.
+    //
+    // COST. (4N + 1) · MEDIAL_SUBSAMPLES · (N − 1) bezier evaluations. With
+    // N = 100 and MEDIAL_SUBSAMPLES = 32 that's ~1.3 M float ops per shape,
+    // invisible compared to the SDF bake.
+    const MEDIAL_SUBSAMPLES: usize = 32;
+
+    for (0..points.len + 1) |sample_idx| {
+        // Decode sample_idx → (curve_idx, t):
+        //   index 0          → (0, 0)
+        //   index ci*4 + k   → (ci, k * 0.25)  for k in 1..4
+        const curve_idx: usize = if (sample_idx == 0) 0 else (sample_idx - 1) / 4;
+        const k_in_curve: usize = if (sample_idx == 0) 0 else ((sample_idx - 1) % 4) + 1;
+        const sample_t: f32 = @as(f32, @floatFromInt(k_in_curve)) * 0.25;
+
+        const sp0 = points[curve_idx * 4 + 0];
+        const sp1 = points[curve_idx * 4 + 1];
+        const sp2 = points[curve_idx * 4 + 2];
+        const sp3 = points[curve_idx * 4 + 3];
+        const s_is_straight = path_utils.isStraightLineHandle(sp1);
+        const p_pos = bezierPos(sp0, sp1, sp2, sp3, sample_t, s_is_straight);
+        const p_tan = bezierTan(sp0, sp1, sp2, sp3, sample_t, s_is_straight);
+        // Inward normal — same convention as base.wgsl
+        // (`vec2f(tan.y, -tan.x)`): 90° rotation of the tangent that points
+        // into the shape interior for CW-wound paths in texel space.
+        const n_x = p_tan.y;
+        const n_y = -p_tan.x;
+
+        var min_r: f32 = std.math.floatMax(f32);
+
+        for (0..num_curves) |cj| {
+            if (cj == curve_idx) continue; // skip own curve
+
+            const qp0 = points[cj * 4 + 0];
+            const qp1 = points[cj * 4 + 1];
+            const qp2 = points[cj * 4 + 2];
+            const qp3 = points[cj * 4 + 3];
+            const q_is_straight = path_utils.isStraightLineHandle(qp1);
+
+            for (0..MEDIAL_SUBSAMPLES) |k| {
+                // Bin midpoints in (0, 1): k = 0 → 1/(2M), k = M-1 → 1 − 1/(2M).
+                const qt = (@as(f32, @floatFromInt(k)) + 0.5) / @as(f32, @floatFromInt(MEDIAL_SUBSAMPLES));
+                const q = bezierPos(qp0, qp1, qp2, qp3, qt, q_is_straight);
+
+                const dx = q.x - p_pos.x;
+                const dy = q.y - p_pos.y;
+                const denom = 2.0 * (n_x * dx + n_y * dy);
+                if (denom <= 1e-6) continue; // Q is behind P, or P sits on a flat — skip.
+
+                const s_radius = (dx * dx + dy * dy) / denom;
+                if (s_radius > 0 and s_radius < min_r) min_r = s_radius;
+            }
+        }
+
+        // Degenerate case (single-curve path, or every other curve sits behind
+        // the inward normal): no inscribed radius found. 0 is a sane fallback —
+        // it just disables the medial-distance contribution at that sample.
+        if (min_r == std.math.floatMax(f32)) min_r = 0;
+        max_distances_list[sample_idx] = min_r;
+    }
+    sdf_tex.max_distances = max_distances_list;
 
     webgpu_glue.compute_shape(
         sdf_tex.points,
@@ -160,6 +251,58 @@ pub fn computeShape(
     );
 
     return sdf_tex;
+}
+
+// =============================================================================
+// BEZIER EVAL HELPERS (used by the medial-axis pass)
+// =============================================================================
+// Both helpers respect the straight-line marker convention (p1.x and p2.x set
+// to STRAIGHT_LINE_HANDLE.x): a "straight" curve is the chord p0 → p3 and the
+// handles are ignored. For real cubics we use the standard Bernstein /
+// derivative forms; the tangent helper falls back to the chord direction when
+// the first derivative vanishes (p1 == p0 at t = 0, or p2 == p3 at t = 1 for
+// "no-handle" corners). Returned tangent is unit length.
+
+fn bezierPos(p0: types.Point, p1: types.Point, p2: types.Point, p3: types.Point, t: f32, is_straight: bool) types.Point {
+    if (is_straight) {
+        return types.Point{
+            .x = p0.x + (p3.x - p0.x) * t,
+            .y = p0.y + (p3.y - p0.y) * t,
+        };
+    }
+    const mt = 1.0 - t;
+    return types.Point{
+        .x = mt * mt * mt * p0.x + 3 * mt * mt * t * p1.x + 3 * mt * t * t * p2.x + t * t * t * p3.x,
+        .y = mt * mt * mt * p0.y + 3 * mt * mt * t * p1.y + 3 * mt * t * t * p2.y + t * t * t * p3.y,
+    };
+}
+
+fn bezierTan(p0: types.Point, p1: types.Point, p2: types.Point, p3: types.Point, t: f32, is_straight: bool) types.Point {
+    if (is_straight) {
+        const cx = p3.x - p0.x;
+        const cy = p3.y - p0.y;
+        const len_sq = cx * cx + cy * cy;
+        if (len_sq < 1e-12) return types.Point{ .x = 1, .y = 0 };
+        const inv = 1.0 / @sqrt(len_sq);
+        return types.Point{ .x = cx * inv, .y = cy * inv };
+    }
+    const mt = 1.0 - t;
+    const dx = 3.0 * (mt * mt * (p1.x - p0.x) + 2 * mt * t * (p2.x - p1.x) + t * t * (p3.x - p2.x));
+    const dy = 3.0 * (mt * mt * (p1.y - p0.y) + 2 * mt * t * (p2.y - p1.y) + t * t * (p3.y - p2.y));
+    const len_sq = dx * dx + dy * dy;
+    if (len_sq >= 1e-12) {
+        const inv = 1.0 / @sqrt(len_sq);
+        return types.Point{ .x = dx * inv, .y = dy * inv };
+    }
+    // First derivative vanished (p0 == p1 at t = 0, or p2 == p3 at t = 1).
+    // Fall back to the chord direction — close enough for a per-sample
+    // inward normal at "no handle" corners.
+    const cx = p3.x - p0.x;
+    const cy = p3.y - p0.y;
+    const chord_sq = cx * cx + cy * cy;
+    if (chord_sq < 1e-12) return types.Point{ .x = 1, .y = 0 };
+    const inv = 1.0 / @sqrt(chord_sq);
+    return types.Point{ .x = cx * inv, .y = cy * inv };
 }
 
 // Reverses any path that is not clockwise. Each `path` is a flat slice of

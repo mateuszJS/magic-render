@@ -131,14 +131,16 @@ declare module '*.zig' {
       uniformData: ShapeDrawUniform,
       sdf_texture_id: number,
       curves_data: ArrayPointerDataView,
-      uniform_t: ArrayPointerDataView
+      arc_lengths_data: ArrayPointerDataView,
+      max_distances_data: ArrayPointerDataView
     ) => void
     pick_shape: (
       bound_box_data: ArrayPointerDataView,
       uniformData: PointerDataView,
       sdf_texture_id: number,
       curves_data: ArrayPointerDataView,
-      uniform_t: ArrayPointerDataView
+      arc_lengths_data: ArrayPointerDataView,
+      max_distances_data: ArrayPointerDataView
     ) => void
   }) => void
   export function glueJsGeneral(

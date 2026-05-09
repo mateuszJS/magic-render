@@ -94,7 +94,8 @@ export default function getDrawShape(
     boundingBoxDataView: DataView<ArrayBuffer>,
     uniformDataView: DataView<ArrayBuffer>,
     curvesDataView: DataView<ArrayBuffer>,
-    arcLengthsDataView: DataView<ArrayBuffer>
+    arcLengthsDataView: DataView<ArrayBuffer>,
+    maxDistancesDataView: DataView<ArrayBuffer>
   ) {
     const boundBoxBuffer = device.createBuffer({
       label: 'drawShape vertex buffer',
@@ -127,6 +128,14 @@ export default function getDrawShape(
     })
     device.queue.writeBuffer(arcLengthsBuffer, 0, arcLengthsDataView)
     delayedDestroy(arcLengthsBuffer)
+
+    const maxDistancesBuffer = device.createBuffer({
+      label: 'drawShape local distances buffer',
+      size: maxDistancesDataView.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    })
+    device.queue.writeBuffer(maxDistancesBuffer, 0, maxDistancesDataView)
+    delayedDestroy(maxDistancesBuffer)
 
     // Build the PathMetrics uniform from the data we already have.
     // `total_arc_len` is the last entry of arc_lengths (cumulative arc length
@@ -174,6 +183,7 @@ export default function getDrawShape(
         { binding: 3, resource: { buffer: curvesBuffer } },
         { binding: 4, resource: { buffer: arcLengthsBuffer } },
         { binding: 5, resource: { buffer: pathMetricsBuffer } },
+        { binding: 6, resource: { buffer: maxDistancesBuffer } },
       ],
     })
 

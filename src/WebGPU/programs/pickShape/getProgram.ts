@@ -42,7 +42,7 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
     uniformData: DataView<ArrayBuffer>,
     sdfTexture: GPUTexture,
     curvesDataView: DataView<ArrayBuffer>,
-    uniformTDataView: DataView<ArrayBuffer>
+    arcLengthsDataView: DataView<ArrayBuffer>
   ) {
     const numVertices = vertexData.byteLength / STRIDE
 
@@ -70,13 +70,13 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
     device.queue.writeBuffer(curvesBuffer, 0, curvesDataView)
     delayedDestroy(curvesBuffer)
 
-    const uniformTBuffer = device.createBuffer({
+    const arcLengthsBuffer = device.createBuffer({
       label: 'pickShape uniform T buffer',
-      size: uniformTDataView.byteLength,
+      size: arcLengthsDataView.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     })
-    device.queue.writeBuffer(uniformTBuffer, 0, uniformTDataView)
-    delayedDestroy(uniformTBuffer)
+    device.queue.writeBuffer(arcLengthsBuffer, 0, arcLengthsDataView)
+    delayedDestroy(arcLengthsBuffer)
 
     // Get or create bind group for this texture
     const bindGroup = device.createBindGroup({
