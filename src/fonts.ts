@@ -60,7 +60,6 @@ export async function loadFont(fontId: number) {
 }
 
 export function getKerning(fontId: number, charA: number, charB: number): number {
-  // todo, use defualt font if doesntexists
   const font = fonts.get(fontId)
 
   if (!font) {
@@ -77,7 +76,6 @@ export function getKerning(fontId: number, charA: number, charB: number): number
 
 export function getCharData(fontId: number, char_code: number): Logic.SerializedCharDetails {
   const font = fonts.get(fontId)
-  // todo, use defualt font if doesntexists
 
   if (!font) {
     throw Error('getCharData, font not loaded yet, font id: ' + fontId)
