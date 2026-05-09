@@ -13,7 +13,7 @@ pub fn computeShape(
     tex_id: u32,
     bounds: [4]types.PointUV,
     padding: f32,
-    paths: [][]types.Point, // it has to be a safe copy allocated with on a heap, all paths are closed
+    paths: [][]types.Point,
     resize: f32,
 ) !sdf_drawing.SdfTex {
     var sdf_tex = sdf_drawing.getTexture(
@@ -23,85 +23,13 @@ pub fn computeShape(
         resize,
     );
 
-    // Split any self-crossing path into its Seifert-smoothed sub-paths BEFORE
-    // we touch winding. A figure-8 entered as one path would otherwise have
-    // the shader's tangent test flip polarity at every crossing — the magenta
-    // "inside" of the reference shape ends up split into bands. After the
-    // split each sub-path is non-self-crossing, so the CW/hole-flip steps
-    // below can do their normal job.
-    var working_paths: [][]types.Point = blk: {
-        var split = std.ArrayList([]types.Point).init(std.heap.page_allocator);
-        for (paths) |p| {
-            const subs = try splitAtSelfIntersections(p, std.heap.page_allocator);
-            try split.appendSlice(subs);
-            std.heap.page_allocator.free(subs);
-        }
-        break :blk try split.toOwnedSlice();
-    };
+    const points = if (paths[0].len == 8)
+        try flatter_paths(paths)
+    else
+        try flatter_paths(try sanitize_paths(paths));
 
-    // Force every path to wind clockwise BEFORE we scale into texel space. The
-    // SDF fragment shader picks the fill side from the tangent's half-plane
-    // (see ADRs/SDF rendering and drawShape/base.wgsl); mixing winding makes
-    // some paths render as inverted holes. Doing it here — while paths are
-    // still separate — means we never have to detect path boundaries inside a
-    // flat buffer.
-    ensureClockwiseOrientation(working_paths);
-
-    // Now that every path is CW, walk the containment hierarchy and flip any
-    // path whose nesting depth is odd back to CCW. That gives us "e", "o", "q"
-    // style holes for free: outer contour stays a fill, the inner contour
-    // becomes the opposite winding, and the shader's tangent test reports the
-    // hole region as outside.
-    fixHoleWinding(working_paths);
-
-    // Drop sub-pixel "sliver" curves last, AFTER orientation and hole fixing.
-    // The orientation/hole passes need every curve in place to compute signed
-    // area and nesting correctly — removing slivers earlier could shift a
-    // path's signed area enough to flip its CW/CCW classification, and could
-    // also move the chord-midpoint test point used by `nestingDepth` into the
-    // wrong region. Once those decisions are locked in, the slivers are just
-    // dead weight to the SDF baker (they win the closest-curve lookup for a
-    // handful of texels and produce wrong-direction bands at curve-index
-    // boundaries), so we strip them right before the flatten step.
-    working_paths = try removeTinyCurves(working_paths, std.heap.page_allocator);
-
-    // Flatten the paths into one contiguous buffer so the rest of the function
-    // (scaling, arc-length sampling, the webgpu dispatch) can stay exactly the
-    // way it was before paths became explicit.
-    var total_len: usize = 0;
-    for (working_paths) |path| total_len += path.len;
-    const points = try std.heap.page_allocator.alloc(types.Point, total_len);
-    {
-        var offset: usize = 0;
-        for (working_paths) |path| {
-            @memcpy(points[offset .. offset + path.len], path);
-            offset += path.len;
-        }
-    }
-
-    // jsut happened that we want 4 sampels per curve and also we have 4 poitns per curve, it's coincidence
-    const arc_lengths = try std.heap.page_allocator.alloc(f32, points.len + 1);
-    arc_lengths[0] = 0;
-
-    // max distances, mainly used to normalize distance
-    const max_distances_list = try std.heap.page_allocator.alloc(f32, points.len + 1);
-
-    for (points, 0..) |*point, i| {
-        _ = i; // autofix
+    for (points) |*point| {
         if (path_utils.isStraightLineHandle(point.*)) {
-            // if (i % 4 == 1) {
-            //     point.x = points[i - 1].x;
-            //     point.y = points[i - 1].y;
-
-            //     continue; // this point already was multiplied by computations below
-            //     // avoid doign it again
-            // } else if (i % 4 == 2) {
-            //     // not sure if that case is even possible
-            //     point.x = points[i + 1].x;
-            //     point.y = points[i + 1].y;
-            // } else {
-            //     @panic("Unexpected handle inde");
-            // }
             continue;
         }
 
@@ -114,134 +42,8 @@ pub fn computeShape(
 
     sdf_tex.points = points;
     sdf_tex.valid = points.len > 0;
-
-    // Fill arc_lengths: cumulative arc length at t=0.25, 0.50, 0.75, 1.00 for each curve.
-    // Points are already in texel space at this point.
-    const num_curves = points.len / 4;
-    var cumulative: f32 = 0;
-    for (0..num_curves) |ci| {
-        const p0 = points[ci * 4 + 0];
-        const p1 = points[ci * 4 + 1];
-        const p2 = points[ci * 4 + 2];
-        const p3 = points[ci * 4 + 3];
-        const is_straight = path_utils.isStraightLineHandle(points[ci * 4 + 1]);
-
-        // Sample arc length at t = 0.25, 0.50, 0.75, 1.00 using 16 linear segments per quarter.
-        const segments_per_quarter: u32 = 4;
-        var prev = p0;
-        for (0..4) |quarter| {
-            const t_start: f32 = @as(f32, @floatFromInt(quarter)) * 0.25;
-            const t_end: f32 = t_start + 0.25;
-            for (1..segments_per_quarter + 1) |s| {
-                const t = t_start + (t_end - t_start) * @as(f32, @floatFromInt(s)) / @as(f32, @floatFromInt(segments_per_quarter));
-                const pt = if (is_straight) blk: {
-                    // linear interpolation between p0 and p3
-                    break :blk types.Point{
-                        .x = p0.x + (p3.x - p0.x) * t,
-                        .y = p0.y + (p3.y - p0.y) * t,
-                    };
-                } else blk: {
-                    const mt = 1.0 - t;
-                    break :blk types.Point{
-                        .x = mt * mt * mt * p0.x + 3 * mt * mt * t * p1.x + 3 * mt * t * t * p2.x + t * t * t * p3.x,
-                        .y = mt * mt * mt * p0.y + 3 * mt * mt * t * p1.y + 3 * mt * t * t * p2.y + t * t * t * p3.y,
-                    };
-                };
-                cumulative += prev.distance(pt);
-                prev = pt;
-            }
-            arc_lengths[ci * 4 + quarter + 1] = cumulative;
-        }
-    }
-    sdf_tex.arc_lengths = arc_lengths;
-
-    // =========================================================================
-    // MEDIAL-AXIS DISTANCE  (max_distances_list)
-    // =========================================================================
-    // For every sample point P (4N + 1 of them, layout matches arc_lengths)
-    // we compute the radius of the largest inscribed disk tangent to the
-    // boundary at P. That radius is the distance from P to the medial axis
-    // along P's inward normal.
-    //
-    // BISECTOR FORMULA. With unit inward normal N̂ at P, the disk centred at
-    //   C = P + s · N̂
-    // and tangent to the boundary at P passes through another boundary point
-    // Q iff |C − Q| = s, which solves to
-    //   s = |Q − P|² / (2 · N̂ · (Q − P))
-    // (provided the denominator is positive — Q must sit "ahead" of P in the
-    // inward direction). The radius we want is the minimum positive s over
-    // all boundary points Q on every OTHER curve.
-    //
-    // SCOPE.
-    //   - We skip P's own curve. For non-self-crossing closed paths
-    //     (`splitAtSelfIntersections` upstream guarantees that) the medial-
-    //     axis partner of a sample lives on a different curve. Including the
-    //     own curve would force us to skip a neighbourhood around P (else
-    //     N̂·(Q − P) → 0 and s collapses), and that's complexity we don't
-    //     need yet.
-    //   - At boundary indices ci*4 + 4 (= (ci+1)*4 + 0) we use curve ci's
-    //     tangent at t = 1.0, mirroring `arc_lengths`'s convention for
-    //     which curve "owns" the shared index. Index 0 uses curve 0's t = 0.
-    //
-    // COST. (4N + 1) · MEDIAL_SUBSAMPLES · (N − 1) bezier evaluations. With
-    // N = 100 and MEDIAL_SUBSAMPLES = 32 that's ~1.3 M float ops per shape,
-    // invisible compared to the SDF bake.
-    const MEDIAL_SUBSAMPLES: usize = 32;
-
-    for (0..points.len + 1) |sample_idx| {
-        // Decode sample_idx → (curve_idx, t):
-        //   index 0          → (0, 0)
-        //   index ci*4 + k   → (ci, k * 0.25)  for k in 1..4
-        const curve_idx: usize = if (sample_idx == 0) 0 else (sample_idx - 1) / 4;
-        const k_in_curve: usize = if (sample_idx == 0) 0 else ((sample_idx - 1) % 4) + 1;
-        const sample_t: f32 = @as(f32, @floatFromInt(k_in_curve)) * 0.25;
-
-        const sp0 = points[curve_idx * 4 + 0];
-        const sp1 = points[curve_idx * 4 + 1];
-        const sp2 = points[curve_idx * 4 + 2];
-        const sp3 = points[curve_idx * 4 + 3];
-        const s_is_straight = path_utils.isStraightLineHandle(sp1);
-        const p_pos = bezierPos(sp0, sp1, sp2, sp3, sample_t, s_is_straight);
-        const p_tan = bezierTan(sp0, sp1, sp2, sp3, sample_t, s_is_straight);
-        // Inward normal — same convention as base.wgsl
-        // (`vec2f(tan.y, -tan.x)`): 90° rotation of the tangent that points
-        // into the shape interior for CW-wound paths in texel space.
-        const n_x = p_tan.y;
-        const n_y = -p_tan.x;
-
-        var min_r: f32 = std.math.floatMax(f32);
-
-        for (0..num_curves) |cj| {
-            if (cj == curve_idx) continue; // skip own curve
-
-            const qp0 = points[cj * 4 + 0];
-            const qp1 = points[cj * 4 + 1];
-            const qp2 = points[cj * 4 + 2];
-            const qp3 = points[cj * 4 + 3];
-            const q_is_straight = path_utils.isStraightLineHandle(qp1);
-
-            for (0..MEDIAL_SUBSAMPLES) |k| {
-                // Bin midpoints in (0, 1): k = 0 → 1/(2M), k = M-1 → 1 − 1/(2M).
-                const qt = (@as(f32, @floatFromInt(k)) + 0.5) / @as(f32, @floatFromInt(MEDIAL_SUBSAMPLES));
-                const q = bezierPos(qp0, qp1, qp2, qp3, qt, q_is_straight);
-
-                const dx = q.x - p_pos.x;
-                const dy = q.y - p_pos.y;
-                const denom = 2.0 * (n_x * dx + n_y * dy);
-                if (denom <= 1e-6) continue; // Q is behind P, or P sits on a flat — skip.
-
-                const s_radius = (dx * dx + dy * dy) / denom;
-                if (s_radius > 0 and s_radius < min_r) min_r = s_radius;
-            }
-        }
-
-        // Degenerate case (single-curve path, or every other curve sits behind
-        // the inward normal): no inscribed radius found. 0 is a sane fallback —
-        // it just disables the medial-distance contribution at that sample.
-        if (min_r == std.math.floatMax(f32)) min_r = 0;
-        max_distances_list[sample_idx] = min_r;
-    }
-    sdf_tex.max_distances = max_distances_list;
+    sdf_tex.arc_lengths = try get_arc_lengths(points);
+    sdf_tex.max_distances = try get_max_distances(points);
 
     webgpu_glue.compute_shape(
         sdf_tex.points,
@@ -451,7 +253,7 @@ fn isPointInsidePath(point: types.Point, path: []const types.Point) bool {
 // by at most half the sliver chord (i.e. sub-threshold), so it never grows
 // a previously-big curve into something that should now be classified tiny.
 
-const TINY_CHORD_THRESHOLD: f32 = 2.5;
+const TINY_CHORD_THRESHOLD: f32 = 0.5;
 
 pub fn removeTinyCurves(
     paths: [][]types.Point,
@@ -488,19 +290,6 @@ fn cleanTinyCurvesInPath(
         const chord = p0.distance(p3);
         keep[i] = chord >= TINY_CHORD_THRESHOLD;
         if (keep[i]) kept_count += 1;
-        // std.log.debug(
-        //     "removeTinyCurves: curve {} chord {d:.6} threshold {d:.6} -> {s} (p0=({d:.3},{d:.3}) p3=({d:.3},{d:.3}))",
-        //     .{
-        //         i,
-        //         chord,
-        //         TINY_CHORD_THRESHOLD,
-        //         if (keep[i]) "KEEP" else "DROP",
-        //         p0.x,
-        //         p0.y,
-        //         p3.x,
-        //         p3.y,
-        //     },
-        // );
     }
 
     if (kept_count == 0) return null;
@@ -1237,4 +1026,214 @@ fn reversePath(path: []types.Point) void {
         path[ci * 4 + 1] = path[ci * 4 + 2];
         path[ci * 4 + 2] = old_p1;
     }
+}
+
+/// Ensures all paths are CCW, expect cutouts.
+/// Ensures there is no tiny segments which tend to cause artifacts.
+/// Ensures paths which corsses each otehr are correctly splitted into smaller shaper
+fn sanitize_paths(paths: [][]types.Point) ![][]types.Point {
+    // Split any self-crossing path into its Seifert-smoothed sub-paths BEFORE
+    // we touch winding. A figure-8 entered as one path would otherwise have
+    // the shader's tangent test flip polarity at every crossing — the magenta
+    // "inside" of the reference shape ends up split into bands. After the
+    // split each sub-path is non-self-crossing, so the CW/hole-flip steps
+    // below can do their normal job.
+    var working_paths: [][]types.Point = blk: {
+        var split = std.ArrayList([]types.Point).init(std.heap.page_allocator);
+        for (paths) |p| {
+            const subs = try splitAtSelfIntersections(p, std.heap.page_allocator);
+            try split.appendSlice(subs);
+            std.heap.page_allocator.free(subs);
+        }
+        break :blk try split.toOwnedSlice();
+    };
+
+    // Force every path to wind clockwise BEFORE we scale into texel space. The
+    // SDF fragment shader picks the fill side from the tangent's half-plane
+    // (see ADRs/SDF rendering and drawShape/base.wgsl); mixing winding makes
+    // some paths render as inverted holes. Doing it here — while paths are
+    // still separate — means we never have to detect path boundaries inside a
+    // flat buffer.
+    ensureClockwiseOrientation(working_paths);
+
+    // Now that every path is CW, walk the containment hierarchy and flip any
+    // path whose nesting depth is odd back to CCW. That gives us "e", "o", "q"
+    // style holes for free: outer contour stays a fill, the inner contour
+    // becomes the opposite winding, and the shader's tangent test reports the
+    // hole region as outside.
+    fixHoleWinding(working_paths);
+
+    // Drop sub-pixel "sliver" curves last, AFTER orientation and hole fixing.
+    // The orientation/hole passes need every curve in place to compute signed
+    // area and nesting correctly — removing slivers earlier could shift a
+    // path's signed area enough to flip its CW/CCW classification, and could
+    // also move the chord-midpoint test point used by `nestingDepth` into the
+    // wrong region. Once those decisions are locked in, the slivers are just
+    // dead weight to the SDF baker (they win the closest-curve lookup for a
+    // handful of texels and produce wrong-direction bands at curve-index
+    // boundaries), so we strip them right before the flatten step.
+    working_paths = try removeTinyCurves(working_paths, std.heap.page_allocator);
+
+    return working_paths;
+}
+
+fn flatter_paths(paths: [][]types.Point) ![]types.Point {
+    // Flatten the paths into one contiguous buffer so the rest of the function
+    // (scaling, arc-length sampling, the webgpu dispatch) can stay exactly the
+    // way it was before paths became explicit.
+    var total_len: usize = 0;
+    for (paths) |path| total_len += path.len;
+    const points = try std.heap.page_allocator.alloc(types.Point, total_len);
+    {
+        var offset: usize = 0;
+        for (paths) |path| {
+            @memcpy(points[offset .. offset + path.len], path);
+            offset += path.len;
+        }
+    }
+
+    return points;
+}
+
+fn get_arc_lengths(points: []types.Point) ![]f32 {
+
+    // jsut happened that we want 4 sampels per curve and also we have 4 poitns per curve, it's coincidence
+    const arc_lengths = try std.heap.page_allocator.alloc(f32, points.len + 1);
+    arc_lengths[0] = 0;
+
+    const num_curves = points.len / 4;
+    var cumulative: f32 = 0;
+    for (0..num_curves) |ci| {
+        const p0 = points[ci * 4 + 0];
+        const p1 = points[ci * 4 + 1];
+        const p2 = points[ci * 4 + 2];
+        const p3 = points[ci * 4 + 3];
+        const is_straight = path_utils.isStraightLineHandle(points[ci * 4 + 1]);
+
+        // Sample arc length at t = 0.25, 0.50, 0.75, 1.00 using 16 linear segments per quarter.
+        const segments_per_quarter: u32 = 4;
+        var prev = p0;
+        for (0..4) |quarter| {
+            const t_start: f32 = @as(f32, @floatFromInt(quarter)) * 0.25;
+            const t_end: f32 = t_start + 0.25;
+            for (1..segments_per_quarter + 1) |s| {
+                const t = t_start + (t_end - t_start) * @as(f32, @floatFromInt(s)) / @as(f32, @floatFromInt(segments_per_quarter));
+                const pt = if (is_straight) blk: {
+                    // linear interpolation between p0 and p3
+                    break :blk types.Point{
+                        .x = p0.x + (p3.x - p0.x) * t,
+                        .y = p0.y + (p3.y - p0.y) * t,
+                    };
+                } else blk: {
+                    const mt = 1.0 - t;
+                    break :blk types.Point{
+                        .x = mt * mt * mt * p0.x + 3 * mt * mt * t * p1.x + 3 * mt * t * t * p2.x + t * t * t * p3.x,
+                        .y = mt * mt * mt * p0.y + 3 * mt * mt * t * p1.y + 3 * mt * t * t * p2.y + t * t * t * p3.y,
+                    };
+                };
+                cumulative += prev.distance(pt);
+                prev = pt;
+            }
+            arc_lengths[ci * 4 + quarter + 1] = cumulative;
+        }
+    }
+
+    return arc_lengths;
+}
+
+fn get_max_distances(points: []types.Point) ![]f32 {
+    // =========================================================================
+    // MEDIAL-AXIS DISTANCE  (max_distances_list)
+    // =========================================================================
+    // For every sample point P (4N + 1 of them, layout matches arc_lengths)
+    // we compute the radius of the largest inscribed disk tangent to the
+    // boundary at P. That radius is the distance from P to the medial axis
+    // along P's inward normal.
+    //
+    // BISECTOR FORMULA. With unit inward normal N̂ at P, the disk centred at
+    //   C = P + s · N̂
+    // and tangent to the boundary at P passes through another boundary point
+    // Q iff |C − Q| = s, which solves to
+    //   s = |Q − P|² / (2 · N̂ · (Q − P))
+    // (provided the denominator is positive — Q must sit "ahead" of P in the
+    // inward direction). The radius we want is the minimum positive s over
+    // all boundary points Q on every OTHER curve.
+    //
+    // SCOPE.
+    //   - We skip P's own curve. For non-self-crossing closed paths
+    //     (`splitAtSelfIntersections` upstream guarantees that) the medial-
+    //     axis partner of a sample lives on a different curve. Including the
+    //     own curve would force us to skip a neighbourhood around P (else
+    //     N̂·(Q − P) → 0 and s collapses), and that's complexity we don't
+    //     need yet.
+    //   - At boundary indices ci*4 + 4 (= (ci+1)*4 + 0) we use curve ci's
+    //     tangent at t = 1.0, mirroring `arc_lengths`'s convention for
+    //     which curve "owns" the shared index. Index 0 uses curve 0's t = 0.
+    //
+    // COST. (4N + 1) · MEDIAL_SUBSAMPLES · (N − 1) bezier evaluations. With
+    // N = 100 and MEDIAL_SUBSAMPLES = 32 that's ~1.3 M float ops per shape,
+    // invisible compared to the SDF bake.
+    const MEDIAL_SUBSAMPLES: usize = 32;
+
+    // max distances, mainly used to normalize distance
+    const max_distances_list = try std.heap.page_allocator.alloc(f32, points.len + 1);
+
+    const num_curves = points.len / 4;
+
+    for (0..points.len + 1) |sample_idx| {
+        // Decode sample_idx → (curve_idx, t):
+        //   index 0          → (0, 0)
+        //   index ci*4 + k   → (ci, k * 0.25)  for k in 1..4
+
+        const curve_idx: usize = if (sample_idx == 0) 0 else (sample_idx - 1) / 4;
+        const k_in_curve: usize = if (sample_idx == 0) 0 else ((sample_idx - 1) % 4) + 1;
+        const sample_t: f32 = @as(f32, @floatFromInt(k_in_curve)) * 0.25;
+
+        const sp0 = points[curve_idx * 4 + 0];
+        const sp1 = points[curve_idx * 4 + 1];
+        const sp2 = points[curve_idx * 4 + 2];
+        const sp3 = points[curve_idx * 4 + 3];
+        const s_is_straight = path_utils.isStraightLineHandle(sp1);
+        const p_pos = bezierPos(sp0, sp1, sp2, sp3, sample_t, s_is_straight);
+        const p_tan = bezierTan(sp0, sp1, sp2, sp3, sample_t, s_is_straight);
+        // Inward normal — same convention as base.wgsl
+        // (`vec2f(tan.y, -tan.x)`): 90° rotation of the tangent that points
+        // into the shape interior for CW-wound paths in texel space.
+        const n_x = p_tan.y;
+        const n_y = -p_tan.x;
+
+        var min_r: f32 = std.math.floatMax(f32);
+
+        for (0..num_curves) |cj| {
+            if (cj == curve_idx) continue; // skip own curve
+
+            const qp0 = points[cj * 4 + 0];
+            const qp1 = points[cj * 4 + 1];
+            const qp2 = points[cj * 4 + 2];
+            const qp3 = points[cj * 4 + 3];
+            const q_is_straight = path_utils.isStraightLineHandle(qp1);
+
+            for (0..MEDIAL_SUBSAMPLES) |k| {
+                // Bin midpoints in (0, 1): k = 0 → 1/(2M), k = M-1 → 1 − 1/(2M).
+                const qt = (@as(f32, @floatFromInt(k)) + 0.5) / @as(f32, @floatFromInt(MEDIAL_SUBSAMPLES));
+                const q = bezierPos(qp0, qp1, qp2, qp3, qt, q_is_straight);
+
+                const dx = q.x - p_pos.x;
+                const dy = q.y - p_pos.y;
+                const denom = 2.0 * (n_x * dx + n_y * dy);
+                if (denom <= 1e-6) continue; // Q is behind P, or P sits on a flat — skip.
+
+                const s_radius = (dx * dx + dy * dy) / denom;
+                if (s_radius > 0 and s_radius < min_r) min_r = s_radius;
+            }
+        }
+
+        // Degenerate case (single-curve path, or every other curve sits behind
+        // the inward normal): no inscribed radius found. 0 is a sane fallback —
+        // it just disables the medial-distance contribution at that sample.
+        if (min_r == std.math.floatMax(f32)) min_r = 0;
+        max_distances_list[sample_idx] = min_r;
+    }
+
+    return max_distances_list;
 }

@@ -328,16 +328,6 @@ pub fn onPointerDown(x: f32, y: f32) !void {
             } else if (assets.selected_asset_id.getPrim() >= consts.ASSET_ID_MIN and
                 assets.selected_asset_id.getPrim() == state.hovered_asset_id.getPrim())
             {
-                if (assets.getSelectedShape()) |shape| {
-                    _ = shape; // autofix
-                    // std.debug.print("=============SHAPE POINTS=============\n", .{});
-                    // for (shape.paths.items) |path| {
-                    //     for (path.points.items) |point| {
-                    //         std.debug.print("{d} {d}\n", .{ point.x, point.y });
-                    //     }
-                    // }
-                }
-
                 state.selected_asset_copied = false;
                 state.action = .Move;
                 state.action_pointer_offset = types.Point{
@@ -904,7 +894,6 @@ pub fn computePhase() !void {
                 );
 
                 ch_d.sdf_tex = new_sdf_tex;
-
                 ch_d.viewport_font_size = consts.SDF_RESIZE_STEP * ch_d.font_size / shared.render_scale;
             }
         }
@@ -926,7 +915,7 @@ pub fn computePhase() !void {
                     const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
 
                     shape.sdf_tex.deinit();
-                    std.debug.print("=============COMPUTE SHAPE============= id: {d}\n", .{shape.id});
+
                     shape.sdf_tex = try computeShape(
                         shape.sdf_tex.id,
                         shape.bounds,
@@ -934,13 +923,6 @@ pub fn computePhase() !void {
                         paths,
                         consts.SDF_RESIZE_STEP,
                     );
-
-                    if (shape.id == 1019) {
-                        for (shape.sdf_tex.points) |point| {
-                            _ = point; // autofix
-                            // std.debug.print("{d} {d}\n", .{ point.x, point.y });
-                        }
-                    }
 
                     shape.outdated_cache = true;
                 }
@@ -1230,14 +1212,16 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
         const hover_point_id = state.hovered_asset_id;
 
         if (assets.getSelectedShape()) |shape| {
-            webgpu_glue.draw_shape(
-                &shape.getDrawBounds(false),
-                shape.getSkeletonUniform(),
-                shape.sdf_tex.id,
-                shape.sdf_tex.points,
-                shape.sdf_tex.arc_lengths,
-                shape.sdf_tex.max_distances,
-            );
+            if (shape.sdf_tex.valid) {
+                webgpu_glue.draw_shape(
+                    &shape.getDrawBounds(false),
+                    shape.getSkeletonUniform(),
+                    shape.sdf_tex.id,
+                    shape.sdf_tex.points,
+                    shape.sdf_tex.arc_lengths,
+                    shape.sdf_tex.max_distances,
+                );
+            }
 
             const hover_id = if (shape.id == hover_point_id.getPrim()) hover_point_id else null;
             const vertex_data = try shape.getSkeletonDrawVertexData(
