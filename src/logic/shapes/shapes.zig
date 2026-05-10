@@ -189,7 +189,7 @@ pub const Shape = struct {
     }
 
     // return flag indicating if there is a valid boudning box
-    // invlaid bounxing box happens if width or height is nearly 0 or there is no points
+    // invalid bounding box happens if width or height is nearly 0 or there is no points
     pub fn update_bounds(self: *Shape, allocator: std.mem.Allocator, option_preview_point: ?Point) !bool {
         const paths = try self.getSanitizedPaths(
             allocator,
@@ -312,7 +312,7 @@ pub const Shape = struct {
         return skeleton_buffer.toOwnedSlice();
     }
 
-    // returns paths whic hare render ready - straight lines are sanitized, preview point is included
+    // returns paths which are render ready - straight lines are sanitized, preview point is included
     fn getSanitizedPaths(
         self: Shape,
         allocator: std.mem.Allocator,
@@ -361,16 +361,6 @@ pub const Shape = struct {
         if (!self.sdf_tex.is_outdated and !self.should_update_sdf) {
             @panic("getRelativePaths was called but the shape sdf was not marked as outdated!");
         }
-
-        // Before we did this check firstly, but now we just check if bounding box is returned
-        // const check_points = try self.getAllPoints(
-        //     allocator,
-        //     self.preview_point,
-        //     active_path_index,
-        // );
-        // if (check_points.len < 4) {
-        //     return null;
-        // }
 
         const is_valid_bbox = try self.update_bounds(allocator, self.preview_point);
 
