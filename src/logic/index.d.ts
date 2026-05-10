@@ -144,7 +144,7 @@ declare module '*.zig' {
     ) => void
   }) => void
   export function glueJsGeneral(
-    onAssetUpdate: (snapshot: ZigProjectSnapshot, commit: boolean) => void,
+    passSnapshot: (snapshot: ZigProjectSnapshot, commit: boolean) => void,
     onAssetSelection: (data: Id) => void,
     onUpdateTool: (new_tool: number) => void,
     createSdfTexture: () => number,

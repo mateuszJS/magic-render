@@ -403,6 +403,23 @@ pub const Text = struct {
         );
     }
 
+    pub fn clone(self: Text) !Text {
+        const cloned_content = try std.heap.page_allocator.alloc(u8, self.content.len);
+        @memcpy(cloned_content, self.content);
+
+        return Text{
+            .id = utils.generateId(),
+            .content = cloned_content,
+            .bounds = self.bounds,
+            .text_vertex = try self.text_vertex.clone(),
+            .is_sdf_shared = self.is_sdf_shared,
+            .sdf_tex = sdf_drawing.SdfTex{ .id = js_glue.createSdfTexture() },
+            .props = self.props,
+            .effects = try sdf_effect.clone(self.effects),
+            .typo_props = self.typo_props,
+        };
+    }
+
     pub fn serialize(self: Text, allocator: std.mem.Allocator) !Serialized {
         var effects_list = std.ArrayList(sdf_effect.Serialized).init(allocator);
         for (self.effects.items) |effect| {

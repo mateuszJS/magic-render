@@ -43,7 +43,7 @@ pub fn connectWebGpuPrograms(programs: *const webgpu_glue.WebGpuProgramsInput) v
 }
 
 pub fn glueJsGeneral(
-    onAssetUpdate: *const fn (snapshots.ProjectSnapshot, bool) void,
+    passSnapshot: *const fn (snapshots.ProjectSnapshot, bool) void,
     onAssetSelection: *const fn ([4]u32) void,
     onUpdateTool: *const fn (u16) void,
     createSdfTexture: *const fn () u32,
@@ -51,7 +51,7 @@ pub fn glueJsGeneral(
     getCharData: *const fn (u32, u21) SerializedCharDetails,
     getKerning: *const fn (u32, u21, u21) f32,
 ) void {
-    snapshots.passSnapshot = onAssetUpdate;
+    snapshots.passSnapshot = passSnapshot;
     js_glue.onAssetSelection = onAssetSelection;
     js_glue.onUpdateTool = onUpdateTool;
     js_glue.createSdfTexture = createSdfTexture;
@@ -454,6 +454,7 @@ pub fn onPointerMove(x: f32, y: f32, constrained: bool, alt_key: bool) !void {
     const asset = if (state.action == .Move and !state.selected_asset_copied and alt_key) b: {
         state.selected_asset_copied = true;
         const cloned_asset = try assets.clone(selected_asset.*);
+        js_glue.onAssetSelection(assets.selected_asset_id.serialize());
         break :b cloned_asset;
     } else selected_asset;
 

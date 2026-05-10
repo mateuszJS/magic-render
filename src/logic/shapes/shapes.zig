@@ -459,34 +459,17 @@ pub const Shape = struct {
     }
 
     pub fn clone(self: Shape) !Shape {
-
-        // var paths_list_clone = std.ArrayList(Path).init(std.heap.page_allocator);
-
-        // for (input_paths) |input_path| {
-        //     const path = try Path.newFromPoints(
-        //         input_path,
-        //         allocator,
-        //     );
-        //     try paths_list.append(path);
-        // }
-
-        // var shape = Shape{
-        //     .id = id,
-        //     .paths = self.paths.clone(),
-        //     .props = props,
-        //     .effects = try sdf_effect.deserialize(input_effects, allocator),
-        //     .sdf_tex = sdf_drawing.SdfTex{ .id = sdf_texture_id },
-        //     .should_update_sdf = false,
-        //     .bounds = input_bounds,
-        //     .cache_texture_id = cache_texture_id,
-        //     .outdated_cache = true,
-        // };
+        const cloned_paths = try self.paths.clone();
+        for (cloned_paths.items) |*path| {
+            const cloned_path = try path.clone();
+            path.* = cloned_path;
+        }
 
         return Shape{
             .id = utils.generateId(),
-            .paths = try self.paths.clone(),
+            .paths = cloned_paths,
             .props = self.props,
-            .effects = try self.effects.clone(),
+            .effects = try sdf_effect.clone(self.effects),
             .sdf_tex = sdf_drawing.SdfTex{ .id = js_glue.createSdfTexture() },
             .should_update_sdf = self.should_update_sdf,
             .bounds = self.bounds,

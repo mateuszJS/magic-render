@@ -86,7 +86,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     abortController.signal
   )
 
-  const onAssetUpdate = (snapshot: ZigProjectSnapshot, commit: boolean) => {
+  const passSnapshot = (snapshot: ZigProjectSnapshot, commit: boolean) => {
     Snapshots.saveSnapshot(snapshot)
     props.onSnapshotUpdate(Snapshots.lastSnapshot, commit)
     if (commit) {
@@ -95,7 +95,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
   }
 
   Logic.glueJsGeneral(
-    onAssetUpdate,
+    passSnapshot, // TODO: call it in zig at least once, when project is init(received first snapshot maybe)
     (id) => props.onAssetSelect([...id] as Id),
     props.onUpdateTool,
     Textures.createSDF,

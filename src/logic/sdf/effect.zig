@@ -14,6 +14,26 @@ pub const Serialized = struct {
     fill: fill.SerializedFill,
 };
 
+pub fn clone(effects: std.ArrayList(Effect)) !std.ArrayList(Effect) {
+    const cloned_effects = try effects.clone();
+
+    for (cloned_effects.items) |*effect| {
+        switch (effect.fill) {
+            .linear => |*linear| {
+                const cloned_stops = try linear.stops.clone();
+                linear.stops = cloned_stops;
+            },
+            .radial => |*radial| {
+                const cloned_stops = try radial.stops.clone();
+                radial.stops = cloned_stops;
+            },
+            else => {},
+        }
+    }
+
+    return cloned_effects;
+}
+
 pub fn serialize(effects: std.ArrayList(Effect), allocator: std.mem.Allocator) ![]Serialized {
     var effects_list = std.ArrayList(Serialized).init(allocator);
 

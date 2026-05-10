@@ -156,7 +156,7 @@ async function test() {
     disableMinaitures: false,
   })
 
-  creator.setSnapshot(sanitizedLastSnapshot, { produceSnapshot: false, addHistoryEntry: true })
+  creator.setSnapshot(sanitizedLastSnapshot, { produceSnapshot: true, addHistoryEntry: true })
 
   const resetProjectBtn = document.querySelector<HTMLInputElement>('#reset-project')!
   resetProjectBtn.addEventListener('click', () => {
