@@ -38,6 +38,45 @@ pub fn compareBounds(bounds1: [4]PointUV, bounds2: [4]PointUV) bool {
     return true;
 }
 
+fn projectBoundsOnAxis(rect: [4]PointUV, nx: f32, ny: f32) [2]f32 {
+    var lo: f32 = rect[0].x * nx + rect[0].y * ny;
+    var hi: f32 = lo;
+    for (rect[1..]) |p| {
+        const proj = p.x * nx + p.y * ny;
+        lo = @min(lo, proj);
+        hi = @max(hi, proj);
+    }
+    return .{ lo, hi };
+}
+
+/// Returns true when two (possibly rotated) rectangles overlap.
+/// Uses the Separating Axis Theorem: for two convex polygons there is no
+/// overlap iff there exists an axis on which their projections don't intersect.
+/// For rectangles only two edge directions per rect are unique, so we test
+/// 4 axes total. Correctly handles edges crossing without any corner being
+/// inside the other rect, and full containment in either direction.
+pub fn rectanglesOverlap(a: [4]PointUV, b: [4]PointUV) bool {
+    const rects = [_][4]PointUV{ a, b };
+    for (rects) |rect| {
+        var i: usize = 0;
+        while (i < 2) : (i += 1) {
+            // Edge from rect[i] to rect[i+1]; perpendicular axis is (-ey, ex).
+            const ex = rect[i + 1].x - rect[i].x;
+            const ey = rect[i + 1].y - rect[i].y;
+            const nx = -ey;
+            const ny = ex;
+
+            const proj_a = projectBoundsOnAxis(a, nx, ny);
+            const proj_b = projectBoundsOnAxis(b, nx, ny);
+
+            if (proj_a[1] < proj_b[0] or proj_b[1] < proj_a[0]) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 pub fn createBounds(w: f32, h: f32) [4]PointUV {
     return [_]PointUV{
         .{ .x = 0, .y = h, .u = 0, .v = 1 },

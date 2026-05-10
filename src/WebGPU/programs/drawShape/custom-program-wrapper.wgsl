@@ -7,7 +7,7 @@ struct Uniforms {
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
 
-fn getColor(_distance_X821b6_private: f32, path_t: f32, angle: f32, world_uv: vec2f, uv: vec2f) -> vec4f {
+fn getColor(_distance_X821b6_private: f32, path_t: f32, angle: f32, world_uv: vec2f, uv: vec2f, norm_distance: f32) -> vec4f {
   let signed_distance = _distance_X821b6_private / u.sdf_scale;
   var color = vec4f(1.0, 1.0, 1.0, 1.0);
 

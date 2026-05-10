@@ -1,6 +1,21 @@
 import { delayedDestroy, canvasMatrix } from '../initPrograms'
 import baseCode from './base.wgsl'
 import baseTestCode from './base.test.wgsl'
+import bazierUtilsCode from '../bezier-utils.wgsl'
+
+type DebugType = 'arrow' | 'digits' | 'none'
+
+declare global {
+  interface Window {
+    setDebugType: (type: DebugType) => void
+  }
+}
+
+let debugType: DebugType = (window.localStorage.debugType as DebugType | undefined) || 'none'
+window.setDebugType = (type: DebugType) => {
+  debugType = type
+  window.localStorage.debugType = type
+}
 
 export default function getDrawShape(
   device: GPUDevice,
@@ -12,7 +27,8 @@ export default function getDrawShape(
 ) {
   const shaderModule = device.createShaderModule({
     label: 'drawShape shader',
-    code: baseCode.replace('${TEST}', isTest ? baseTestCode : '') + fragmentShader,
+    code:
+      baseCode.replace('${TEST}', isTest ? baseTestCode : '') + fragmentShader + bazierUtilsCode,
   })
 
   if (onCompilation) {
@@ -68,8 +84,9 @@ export default function getDrawShape(
   //   off  0 : texture_size    vec2f  (dimensions in texels)
   //   off  8 : total_arc_len   f32
   //   off 12 : num_curves      u32
-  // Total: 16 bytes (matches WGSL uniform alignment for the struct).
-  const PATH_METRICS_BYTES = 16
+  //   off 16 : debug_scale     f32    (devicePixelRatio for debug overlay)
+  //   off 20 : 12 bytes padding (struct rounded up to 32 for uniform align)
+  const PATH_METRICS_BYTES = 32
   // Size of one cubic curve in `curves` storage buffer: 4 vec2f × 8 bytes.
   const CURVE_STRIDE_BYTES = 4 * 2 * 4
 
@@ -79,7 +96,8 @@ export default function getDrawShape(
     boundingBoxDataView: DataView<ArrayBuffer>,
     uniformDataView: DataView<ArrayBuffer>,
     curvesDataView: DataView<ArrayBuffer>,
-    arcLengthsDataView: DataView<ArrayBuffer>
+    arcLengthsDataView: DataView<ArrayBuffer>,
+    maxDistancesDataView: DataView<ArrayBuffer>
   ) {
     const boundBoxBuffer = device.createBuffer({
       label: 'drawShape vertex buffer',
@@ -113,6 +131,14 @@ export default function getDrawShape(
     device.queue.writeBuffer(arcLengthsBuffer, 0, arcLengthsDataView)
     delayedDestroy(arcLengthsBuffer)
 
+    const maxDistancesBuffer = device.createBuffer({
+      label: 'drawShape local distances buffer',
+      size: maxDistancesDataView.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    })
+    device.queue.writeBuffer(maxDistancesBuffer, 0, maxDistancesDataView)
+    delayedDestroy(maxDistancesBuffer)
+
     // Build the PathMetrics uniform from the data we already have.
     // `total_arc_len` is the last entry of arc_lengths (cumulative arc length
     // at end of last curve). `num_curves` is the curve count derived from
@@ -129,6 +155,15 @@ export default function getDrawShape(
     metricsF32[1] = sdfTexture.height // texture_size.y
     metricsF32[2] = totalArcLen // total_arc_len
     metricsU32[3] = numCurves // num_curves
+    // debug_scale: physical-pixels-per-CSS-pixel so the debug overlay's grid
+    // cells and digit glyphs stay visually the same size on retina displays.
+    metricsF32[4] = window.devicePixelRatio || 1
+    // prettier-ignore
+    metricsU32[5] = debugType === 'arrow'
+      ? 1
+      : debugType === 'digits'
+        ? 2
+        : 0 // debug_arrow
 
     const pathMetricsBuffer = device.createBuffer({
       label: 'drawShape path metrics',
@@ -150,6 +185,7 @@ export default function getDrawShape(
         { binding: 3, resource: { buffer: curvesBuffer } },
         { binding: 4, resource: { buffer: arcLengthsBuffer } },
         { binding: 5, resource: { buffer: pathMetricsBuffer } },
+        { binding: 6, resource: { buffer: maxDistancesBuffer } },
       ],
     })
 

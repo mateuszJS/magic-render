@@ -16,7 +16,7 @@ struct Uniform {
 @group(0) @binding(0) var<uniform> u: Uniform;
 
 
-fn getColor(_distance_X821b6_private: f32, t: f32, angle: f32, world_uv: vec2f, uv: vec2f) -> vec4f {
+fn getColor(_distance_X821b6_private: f32, t: f32, angle: f32, world_uv: vec2f, uv: vec2f, norm_distance: f32) -> vec4f {
   // Fallbacks
   if (u.stops_count == 0u) {
     return vec4f(1.0, 1.0, 1.0, 1.0);

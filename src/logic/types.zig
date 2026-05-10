@@ -24,6 +24,7 @@ pub const State = struct {
     hovered_asset_id: AssetId,
     action: ActionType,
     tool: Tool,
+    selected_asset_copied: bool,
     action_pointer_offset: Point,
     init_action_bounds: [4]PointUV,
     redraw_needed: bool,

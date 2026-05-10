@@ -2,7 +2,6 @@ import { Asset, ProjectSnapshot, ZigProjectSnapshot } from 'types'
 import { toBounds, toEffects, toBasicProps, toTypoProps } from './convert'
 import * as Typing from 'typing'
 import * as Textures from 'textures'
-import * as Fonts from 'fonts'
 
 export let lastSnapshot: ProjectSnapshot
 let snapshotWaitingCalls: Array<(snapshot: ProjectSnapshot) => void> | null // to delay calls until initial snapshot is ready
@@ -54,10 +53,6 @@ export function saveSnapshot(snapshot: ZigProjectSnapshot) {
         cache_texture_id: shape.cache_texture_id,
       }
     } else if ('text' in asset && asset.text) {
-      const fontId = asset.text.typo_props.font_family_id
-      Fonts.loadFont(fontId) // ensure font is loaded
-      // this is besst place since saveSnapshot is called on each change and on initial load too
-
       return {
         id: asset.text.id,
         content: Typing.sanitizeContent(asset.text.content),

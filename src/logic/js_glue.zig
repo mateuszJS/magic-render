@@ -14,18 +14,21 @@ pub var startCache: *const fn (u32, bounding_box.BoundingBox, f32, f32) void = u
 pub var endCache: *const fn () void = undefined;
 
 pub const SerializedCharDetails = struct {
-    points: []const types.Point = &.{},
+    paths: []const []types.Point = &.{},
     x: f32,
     y: f32,
     width: f32,
     height: f32,
     sdf_texture_id: ?u32,
 
-    pub fn setPaths(self: *SerializedCharDetails, points: []const types.Point) !void {
-        self.points =
-            if (points.len > 0)
-                try std.heap.page_allocator.dupe(types.Point, points)
-            else
-                &.{};
+    pub fn setPaths(self: *SerializedCharDetails, paths: []const []types.Point) !void {
+        self.paths =
+            if (paths.len > 0) b: {
+                var deep_copy = try std.heap.page_allocator.alloc([]types.Point, paths.len);
+                for (paths, 0..) |slice, i| {
+                    deep_copy[i] = try std.heap.page_allocator.dupe(types.Point, slice);
+                }
+                break :b deep_copy;
+            } else &.{};
     }
 };

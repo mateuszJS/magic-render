@@ -138,17 +138,14 @@ pub const SdfTex = struct {
     // all of the fields uses viewport size, no world
     id: u32,
     size: texture_size.TextureSize = .{},
+    valid: bool = false, // by default sdf is invalid, this way we avoid rendering sdfs with 0 points(causes empty buffer error in WebGPU shader)
     scale: f32 = 1,
     padding: f32 = 0,
     round_err: Point = .{},
     is_outdated: bool = true,
     points: []const Point = &.{},
-    uniform_t: []const f32 = &.{}, // map real bezier t to real distance along the curve
-    // each bezier curve gets 4 samples, if the curve is just a line of length 2 it would be
-    // {0.5, 1.0, 1.5, 2.0, next curve values.....}
-    // then the next curve values are coming like ...2.1, 2.2, 2.6, 5.4}
-    // each value representing distance at t = 25%, t = 50%, t = 75%, t = 100% of the curve
-    // It's used in shader to map relative bezier "t" value to absolute distance along the curve
+    arc_lengths: []const f32 = &.{},
+    max_distances: []const f32 = &.{},
 
     pub fn isBiggerThan(self: SdfTex, other: SdfTex) bool {
         return self.size.w > other.size.w + consts.EPSILON or self.size.h > other.size.h + consts.EPSILON;
@@ -159,9 +156,13 @@ pub const SdfTex = struct {
             std.heap.page_allocator.free(self.points);
             self.points = &.{};
         }
-        if (self.uniform_t.len != 0) {
-            std.heap.page_allocator.free(self.uniform_t);
-            self.uniform_t = &.{};
+        if (self.arc_lengths.len != 0) {
+            std.heap.page_allocator.free(self.arc_lengths);
+            self.arc_lengths = &.{};
+        }
+        if (self.max_distances.len != 0) {
+            std.heap.page_allocator.free(self.max_distances);
+            self.max_distances = &.{};
         }
     }
 };

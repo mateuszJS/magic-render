@@ -72,7 +72,7 @@ declare module '*.zig' {
     width: number
     height: number
     sdf_texture_id: number | null
-    setPaths(paths: Point[]): void // we have to call std.mem.Allocator.dupe() to allocate permament memory in zig
+    setPaths(paths: Point[][]): void // we have to call std.mem.Allocator.dupe() to allocate permament memory in zig
   }
 
   export const SerializedCharDetails: new ({
@@ -131,18 +131,20 @@ declare module '*.zig' {
       uniformData: ShapeDrawUniform,
       sdf_texture_id: number,
       curves_data: ArrayPointerDataView,
-      uniform_t: ArrayPointerDataView
+      arc_lengths_data: ArrayPointerDataView,
+      max_distances_data: ArrayPointerDataView
     ) => void
     pick_shape: (
       bound_box_data: ArrayPointerDataView,
       uniformData: PointerDataView,
       sdf_texture_id: number,
       curves_data: ArrayPointerDataView,
-      uniform_t: ArrayPointerDataView
+      arc_lengths_data: ArrayPointerDataView,
+      max_distances_data: ArrayPointerDataView
     ) => void
   }) => void
   export function glueJsGeneral(
-    onAssetUpdate: (snapshot: ZigProjectSnapshot, commit: boolean) => void,
+    passSnapshot: (snapshot: ZigProjectSnapshot, commit: boolean) => void,
     onAssetSelection: (data: Id) => void,
     onUpdateTool: (new_tool: number) => void,
     createSdfTexture: () => number,
@@ -189,6 +191,7 @@ declare module '*.zig' {
   export const onBlurTextArea: VoidFunction
 
   export const INFINITE_DISTANCE: number
+  export const DEFAULT_FONT_ID: number
 
   export const invalidateCache: (ids: number[]) => void
   export const invalidateCacheByProgram: (id: number) => void

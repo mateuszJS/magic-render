@@ -1,6 +1,4 @@
 const STRAIGHT_LINE_THRESHOLD = 1e10;
-const EPSILON = 1e-10;
-const PI = 3.141592653589793;
 
 struct CubicBezier {
   p0: vec2f,
@@ -24,9 +22,7 @@ struct VSOutput {
 }
 
 @fragment fn fs(vsOut: VSOutput) -> @location(0) f32 {
-  let pos = vsOut.position.xy;
-  let shape_info = evaluate_shape(pos);
-  return shape_info.t;
+  return evaluate_shape(vsOut.position.xy);
 }
 
 fn bezier_point(curve: CubicBezier, t: f32) -> vec2f {
@@ -43,7 +39,6 @@ fn bezier_point(curve: CubicBezier, t: f32) -> vec2f {
 }
 
 // Evaluate P(t), P'(t) and P''(t) in one de Casteljau pass.
-// ~50% fewer arithmetic ops vs evaluating each separately.
 struct BezierEval {
   p: vec2f,
   dp: vec2f,   // P'(t)
@@ -65,9 +60,7 @@ fn bezier_eval_all(curve: CubicBezier, t: f32) -> BezierEval {
 // Find closest point on cubic Bézier: Newton-Raphson on f(t)=dot(P(t)-q, P'(t))=0
 fn closest_point_on_bezier(point: vec2f, curve: CubicBezier) -> f32 {
   var best_t = initial_guess_closest_point(point, curve);
-  // if there is any weird artifact in the middle of the shape, then it's most likely because of initial guess!
 
-  // Fixed 4 iterations — no early-exit branches so all GPU threads stay in lockstep.
   for (var i = 0; i < 4; i++) {
     let ev = bezier_eval_all(curve, best_t);
     let diff = ev.p - point;
@@ -80,15 +73,8 @@ fn closest_point_on_bezier(point: vec2f, curve: CubicBezier) -> f32 {
   return best_t;
 }
 
-// Divide-and-conquer initial guess:
-//   Phase 1 — 8 coarse uniform samples to identify the best interval.
-//   Phase 2 — 5 ternary-search iterations within that interval.
-// Total: 8 + 10 = 18 bezier_point calls  vs  17+9 = 26 in the previous version.
-// Ternary search is guaranteed to find the minimum if the function is unimodal on
-// the identified interval, which is the common case for Bézier closest-point queries.
 fn initial_guess_closest_point(point: vec2f, curve: CubicBezier) -> f32 {
-  // Phase 1: coarse uniform scan
-  let COARSE = 7u; // 8 samples: t = 0, 1/7, ..., 1
+  let COARSE = 7u;
   var best_t = 0.0;
   var min_dist_sq = 1e30;
 
@@ -102,7 +88,6 @@ fn initial_guess_closest_point(point: vec2f, curve: CubicBezier) -> f32 {
     }
   }
 
-  // Phase 2: ternary search within ±one coarse step of best_t
   let step = 1.0 / f32(COARSE);
   var lo = max(0.0, best_t - step);
   var hi = min(1.0, best_t + step);
@@ -121,7 +106,6 @@ fn initial_guess_closest_point(point: vec2f, curve: CubicBezier) -> f32 {
   return (lo + hi) * 0.5;
 }
 
-// Project point onto line segment and return parameter [0,1]
 fn project_point_to_line_segment(point: vec2f, line_start: vec2f, line_end: vec2f) -> f32 {
   let line_vec = line_end - line_start;
   let point_vec = point - line_start;
@@ -129,14 +113,13 @@ fn project_point_to_line_segment(point: vec2f, line_start: vec2f, line_end: vec2
   let line_length_sq = dot(line_vec, line_vec);
 
   if (line_length_sq < 1e-8) {
-    return 0.0; // Degenerate line
+    return 0.0;
   }
 
   let t = dot(point_vec, line_vec) / line_length_sq;
   return clamp(t, 0.0, 1.0);
 }
 
-// Calculate distance from point to line segment
 fn distance_to_line_segment(point: vec2f, line_start: vec2f, line_end: vec2f) -> f32 {
   let line_vec = line_end - line_start;
   let point_vec = point - line_start;
@@ -144,136 +127,26 @@ fn distance_to_line_segment(point: vec2f, line_start: vec2f, line_end: vec2f) ->
   let line_length_sq = dot(line_vec, line_vec);
 
   if (line_length_sq < 1e-8) {
-    // Degenerate line - distance to start point
     return length(point_vec);
   }
 
   let t = dot(point_vec, line_vec) / line_length_sq;
 
   if (t <= 0.0) {
-    // Closest point is the start of the line segment
     return length(point_vec);
   } else if (t >= 1.0) {
-    // Closest point is the end of the line segment
     return length(point - line_end);
   } else {
-    // Closest point is on the line segment
     let closest_point = line_start + t * line_vec;
     return length(point - closest_point);
   }
 }
 
-// Calculate winding number contribution from a line segment
-fn line_winding_contribution(point: vec2f, line_start: vec2f, line_end: vec2f) -> f32 {
-  // Vector from query point to line endpoints
-  let v1 = line_start - point;
-  let v2 = line_end - point;
-
-  // Skip if either point is very close to avoid numerical issues
-  let dist1 = length(v1);
-  let dist2 = length(v2);
-  if (dist1 < 1e-6 || dist2 < 1e-6) {
-    return 0.0;
-  }
-
-  // Normalize vectors
-  let n1 = v1 / dist1;
-  let n2 = v2 / dist2;
-
-  // Calculate signed angle using atan2 for proper quadrant handling
-  let cross_prod = n1.x * n2.y - n1.y * n2.x;
-  let dot_prod = dot(n1, n2);
-
-  // Use atan2 for proper quadrant handling
-  let angle = atan2(cross_prod, dot_prod);
-
-  return angle / (2.0 * 3.14159);
-}
-
-// Ray casting: count intersections of horizontal ray with curve.
-// Reuses the previous sample as the left endpoint of each segment — cuts
-// bezier_point calls from 2×N to N+1 (64 → 17 with N=16).
-fn ray_cast_curve_crossing(point: vec2f, curve: CubicBezier) -> i32 {
-  let y_min = min(min(curve.p0.y, curve.p1.y), min(curve.p2.y, curve.p3.y));
-  let y_max = max(max(curve.p0.y, curve.p1.y), max(curve.p2.y, curve.p3.y));
-  let x_min = max(max(curve.p0.x, curve.p1.x), max(curve.p2.x, curve.p3.x));
-
-  if (point.y < y_min || point.y > y_max || point.x > x_min) {
-    return 0;
-  }
-
-  let samples = 16u;
-  var crossings = 0;
-  var p_prev = bezier_point(curve, 0.0);
-
-  for (var i = 0u; i < samples; i++) {
-    let t_next = f32(i + 1u) / f32(samples);
-    let p_next = bezier_point(curve, t_next);
-
-    if (ray_crosses_segment(point, p_prev, p_next)) {
-      let intersection_x = get_ray_intersection_x(point.y, p_prev, p_next);
-      if (intersection_x > point.x) {
-        if (p_prev.y < point.y && p_next.y >= point.y) {
-          crossings += 1;
-        } else if (p_prev.y >= point.y && p_next.y < point.y) {
-          crossings -= 1;
-        }
-      }
-    }
-
-    p_prev = p_next;
-  }
-
-  return crossings;
-}
-
-// Check if horizontal ray from point crosses the line segment
-fn ray_crosses_segment(point: vec2f, p1: vec2f, p2: vec2f) -> bool {
-  // Check if the segment crosses the horizontal line at point.y
-  return (p1.y < point.y && p2.y >= point.y) || (p1.y >= point.y && p2.y < point.y);
-}
-
-// Calculate X coordinate where horizontal ray intersects line segment
-fn get_ray_intersection_x(ray_y: f32, p1: vec2f, p2: vec2f) -> f32 {
-  if (abs(p2.y - p1.y) < 1e-8) {
-    // Horizontal line - return leftmost X
-    return min(p1.x, p2.x);
-  }
-
-  // Linear interpolation to find intersection X
-  let t = (ray_y - p1.y) / (p2.y - p1.y);
-  return p1.x + t * (p2.x - p1.x);
-}
-
-// Helper function: distance from point to line (for flatness test)
-fn distance_point_to_line(point: vec2f, line_start: vec2f, line_end: vec2f) -> f32 {
-  let line_vec = line_end - line_start;
-  let point_vec = point - line_start;
-
-  let line_length_sq = dot(line_vec, line_vec);
-  if (line_length_sq < 1e-8) {
-    return length(point_vec);
-  }
-
-  let t = dot(point_vec, line_vec) / line_length_sq;
-  let closest = line_start + clamp(t, 0.0, 1.0) * line_vec;
-  return length(point - closest);
-}
-
-struct ShapeInfo {
-  signed_distance: f32,
-  t: f32,
-  angle: f32
-}
-
-// Main shape evaluation function using SDF approach with ray casting
-fn evaluate_shape(point: vec2f) -> ShapeInfo {
-  var total_crossings: i32 = 0;
+fn evaluate_shape(point: vec2f) -> f32 {
   var closest_curve_idx = 0u;
   var closest_t = 0.0;
   var min_distance: f32 = 1e+10;
 
-  // For each curve, find closest point and count ray crossings
   let num_curves = arrayLength(&curves) / 4;
   for (var i = 0u; i < num_curves; i++) {
     let curve = CubicBezier(
@@ -283,34 +156,16 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
       curves[i * 4 + 3]
     );
 
-    // Check if this is a straight line,
-    // we could check also p2, but at this point we should receive only
-    // straight line on both handles, not a case for just one straight handle,
-    // those are changed to have sibling cp value
     let is_straight_line = curve.p1.x > STRAIGHT_LINE_THRESHOLD;
 
     if (is_straight_line) {
-      // Handle as straight line from p0 to p3
       let distance = distance_to_line_segment(point, curve.p0, curve.p3);
       if (distance < min_distance) {
         closest_curve_idx = i;
         closest_t = project_point_to_line_segment(point, curve.p0, curve.p3);
         min_distance = distance;
       }
-
-      // Simple ray casting for line segment
-      if (ray_crosses_segment(point, curve.p0, curve.p3)) {
-        let intersection_x = get_ray_intersection_x(point.y, curve.p0, curve.p3);
-        if (intersection_x > point.x) {
-          if (curve.p0.y < point.y && curve.p3.y >= point.y) {
-            total_crossings += 1; // Upward crossing
-          } else if (curve.p0.y >= point.y && curve.p3.y < point.y) {
-            total_crossings -= 1; // Downward crossing
-          }
-        }
-      }
     } else {
-      // Handle as normal cubic Bézier curve
       let t = closest_point_on_bezier(point, curve);
       let closest_point = bezier_point(curve, t);
       let distance = length(point - closest_point);
@@ -319,46 +174,27 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
         closest_t = t;
         min_distance = distance;
       }
-
-      // Ray casting for curve
-      total_crossings += ray_cast_curve_crossing(point, curve);
     }
   }
 
-  // t=1.0 of curve i and t=0.0 of curve i+1 are the same point on the path.
-  // Normalise to t=0 of the next-curve-in-the-same-path so that c_g (= curve_idx + t)
-  // never reaches num_curves and so the fragment-shader corner branch sees a
-  // consistent fract(g) == 0 invariant at every junction(between start and end of path).
-  //
-  // MULTI-PATH SHAPES (e.g. letters with counters like "q", "e"):
-  //   The curve buffer stores all paths concatenated. Naively wrapping with
-  //   (i+1) % N would jump from the LAST curve of path A to the FIRST curve of
-  //   path B — geometrically meaningless and produces visible artifacts at
-  //   path-boundary fragments. Instead we detect path boundaries from the data:
-  //   a curve K starts a new path iff curves[K].p0 != curves[K-1].p3 (no shared
-  //   endpoint). When the simple (i+1) wrap would cross a boundary, we instead
-  //   wrap to the FIRST curve of the path that contains `closest_curve_idx`.
+  // Normalise t=1.0 to t=0.0 of the next-curve-in-the-same-path so that
+  // (curve_idx + t) never reaches num_curves and stays consistent at junctions.
   if (closest_t >= 1.0) {
-    // Alternative version of this block of code(look for previous path) lives in drawShape/base.wgsl
     let next_idx = (closest_curve_idx + 1u) % num_curves;
     let cur_p3   = curves[closest_curve_idx * 4u + 3u];
     let next_p0  = curves[next_idx * 4u + 0u];
     let bridge   = next_p0 - cur_p3;
 
     if (dot(bridge, bridge) < 1e-6) {
-      // Same-path neighbours; simple wrap is correct.
       closest_curve_idx = next_idx;
     } else {
-      // We're at the END of a path. Walk backwards from `closest_curve_idx`
-      // until we find a curve whose own p0 doesn't match the previous curve's
-      // p3 — that's the FIRST curve of this path.
       var i = closest_curve_idx;
       for (var k = 0u; k < num_curves; k = k + 1u) {
         let prev_i  = (i + num_curves - 1u) % num_curves;
         let prev_p3 = curves[prev_i * 4u + 3u];
         let i_p0    = curves[i * 4u + 0u];
         let gap     = prev_p3 - i_p0;
-        if (dot(gap, gap) > 1e-6) { break; } // i is first of this path
+        if (dot(gap, gap) > 1e-6) { break; }
         i = prev_i;
       }
       closest_curve_idx = i;
@@ -366,35 +202,5 @@ fn evaluate_shape(point: vec2f) -> ShapeInfo {
     closest_t = 0.0;
   }
 
-  var curve = CubicBezier(
-    curves[closest_curve_idx * 4 + 0],
-    curves[closest_curve_idx * 4 + 1],
-    curves[closest_curve_idx * 4 + 2],
-    curves[closest_curve_idx * 4 + 3]
-  );
-
-  // handling straight line case
-  if (curve.p1.x > STRAIGHT_LINE_THRESHOLD) {
-    curve.p1 = curve.p0;
-    curve.p2 = curve.p3;
-  }
-
-  let closest_point = bezier_point(curve, closest_t);
-  let angle = PI + atan2(point.y - closest_point.y, point.x - closest_point.x);
-
-  // Determine if point is inside using odd-even rule (ray casting)
-  let crossing_count = abs(total_crossings);
-  let is_inside = (crossing_count % 2) == 1;
-
-  // if you would like to use non zero rule, uncomment below
-  // let is_inside = total_crossings != 0;
-
-  let signed_dist = select(-min_distance, min_distance, is_inside);
-
-  let t = f32(closest_curve_idx) + closest_t + 1.0; // plus one to avoid 0
-  // 0 cannot indicate if its negative or positive
-  let signed_t = select(-t, t, is_inside);
-  // let signed_t = t;
-
-  return ShapeInfo(signed_dist, signed_t, angle);
+  return f32(closest_curve_idx) + closest_t;
 }

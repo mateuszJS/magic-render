@@ -17,6 +17,7 @@ const sdf_drawing = @import("../sdf/drawing.zig");
 const AssetId = @import("../asset_id.zig").AssetId;
 const asset_props = @import("../asset_props.zig");
 const sdf_effect = @import("../sdf/effect.zig");
+const js_glue = @import("../js_glue.zig");
 
 const CREATE_HANDLE_THRESHOLD = 10.0;
 // above this distance two handles are created around control point
@@ -103,7 +104,7 @@ pub const Shape = struct {
         defer arena.deinit();
         const arena_allocator = arena.allocator();
 
-        try shape.update_bounds(arena_allocator, null);
+        _ = try shape.update_bounds(arena_allocator, null);
 
         return shape;
     }
@@ -187,20 +188,22 @@ pub const Shape = struct {
         }
     }
 
-    pub fn update_bounds(self: *Shape, allocator: std.mem.Allocator, option_preview_point: ?Point) !void {
-        const points = try self.getAllPoints(
+    // return flag indicating if there is a valid boudning box
+    // invalid bounding box happens if width or height is nearly 0 or there is no points
+    pub fn update_bounds(self: *Shape, allocator: std.mem.Allocator, option_preview_point: ?Point) !bool {
+        const paths = try self.getSanitizedPaths(
             allocator,
             option_preview_point,
             active_path_index,
         );
 
-        const box = bounding_box.getBoundingBox(points);
+        const box = bounding_box.getBoundingBox(paths);
 
         const new_width = box.max_x - box.min_x;
         const new_height = box.max_y - box.min_y;
 
         if (new_width < 1e-6 or new_height < 1e-6) {
-            return; // No valid bounding box, we gonna get not invertable matrix out of it
+            return false; // No valid bounding box, we gonna get not invertable matrix out of it
         }
 
         // Normalize points to [0,1] range
@@ -219,6 +222,8 @@ pub const Shape = struct {
             matrix.getUV(.{ .x = box.max_x, .y = box.min_y, .u = 1.0, .v = 0.0 }),
             matrix.getUV(.{ .x = box.min_x, .y = box.min_y, .u = 0.0, .v = 0.0 }),
         };
+
+        return true; // valid bounding box
     }
 
     fn updateLastHandle(self: *Shape, absolute_point: Point) void {
@@ -307,13 +312,15 @@ pub const Shape = struct {
         return skeleton_buffer.toOwnedSlice();
     }
 
-    fn getAllPoints(
+    // returns paths which are render ready - straight lines are sanitized, preview point is included
+    fn getSanitizedPaths(
         self: Shape,
         allocator: std.mem.Allocator,
         option_preview_point: ?Point,
         option_preview_index: ?usize,
-    ) ![]Point {
-        var points = std.ArrayList(Point).init(allocator);
+    ) ![][]Point {
+        var paths = std.ArrayList([]Point).init(allocator);
+
         for (self.paths.items, 0..) |path, i| {
             var preview_p: ?Point = null;
 
@@ -326,12 +333,12 @@ pub const Shape = struct {
                 }
             }
 
-            try path.getClosedPathPoints(&points, preview_p);
+            const colleted_points = try path.getClosedPathPoints(allocator, preview_p);
+            path_utils.prepareHalfStraightLines(colleted_points);
+            try paths.append(colleted_points);
         }
 
-        path_utils.prepareHalfStraightLines(points.items);
-
-        return points.toOwnedSlice();
+        return paths.toOwnedSlice();
     }
 
     pub fn getPickUniform(self: Shape, effect: sdf_effect.Effect) PickUniform {
@@ -349,44 +356,39 @@ pub const Shape = struct {
         );
     }
 
-    pub fn getRelativePoints(self: *Shape, allocator: std.mem.Allocator) !?[]Point {
+    // returns closed paths, whci halready include preview point also
+    pub fn getRelativePaths(self: *Shape, allocator: std.mem.Allocator) !?[][]Point {
         if (!self.sdf_tex.is_outdated and !self.should_update_sdf) {
-            @panic("getRelativePoints was called but the shape sdf was not marked as outdated!");
+            @panic("getRelativePaths was called but the shape sdf was not marked as outdated!");
         }
-        const check_points = try self.getAllPoints(
+
+        const is_valid_bbox = try self.update_bounds(allocator, self.preview_point);
+
+        if (!is_valid_bbox) {
+            return null;
+        }
+
+        const paths = try self.getSanitizedPaths(
             allocator,
             self.preview_point,
             active_path_index,
         );
-        if (check_points.len < 4) {
-            return null;
-        }
-
-        try self.update_bounds(allocator, self.preview_point);
-
-        const points = try self.getAllPoints(
-            allocator,
-            self.preview_point,
-            active_path_index,
-        );
-
-        if (points.len == 0) {
-            return null;
-        }
 
         const scale = Matrix3x3.scaling(
             self.bounds[0].distance(self.bounds[1]),
             self.bounds[0].distance(self.bounds[3]),
         );
 
-        for (points) |*point| {
-            if (path_utils.isStraightLineHandle(point.*)) continue;
-            const scaled = scale.get(point);
-            point.x = scaled.x;
-            point.y = scaled.y;
+        for (paths) |path| {
+            for (path) |*point| {
+                if (path_utils.isStraightLineHandle(point.*)) continue;
+                const scaled = scale.get(point);
+                point.x = scaled.x;
+                point.y = scaled.y;
+            }
         }
 
-        return points;
+        return paths;
     }
 
     pub fn getDrawBounds(self: Shape, filter_margin: bool) [6]PointUV {
@@ -444,6 +446,26 @@ pub const Shape = struct {
         }
         self.paths.deinit();
         sdf_effect.deinit(self.effects);
+    }
+
+    pub fn clone(self: Shape) !Shape {
+        const cloned_paths = try self.paths.clone();
+        for (cloned_paths.items) |*path| {
+            const cloned_path = try path.clone();
+            path.* = cloned_path;
+        }
+
+        return Shape{
+            .id = utils.generateId(),
+            .paths = cloned_paths,
+            .props = self.props,
+            .effects = try sdf_effect.clone(self.effects),
+            .sdf_tex = sdf_drawing.SdfTex{ .id = js_glue.createSdfTexture() },
+            .should_update_sdf = self.should_update_sdf,
+            .bounds = self.bounds,
+            .cache_texture_id = if (self.props.blur != null) js_glue.createCacheTexture() else null,
+            .outdated_cache = true,
+        };
     }
 };
 

@@ -55,6 +55,9 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     format: presentationFormat,
     // Specify we want both RENDER_ATTACHMENT and COPY_SRC since we
     // will copy out of the swapchain texture.
+    colorSpace: 'display-p3', // HDR canvas support, requests an rgba16float swapchain with display-p3
+    // color space and extended tonemapping so we can output values above 1.0 from shaders
+    toneMapping: { mode: 'extended' },
   })
 
   function updateRenderScale() {
@@ -83,7 +86,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     abortController.signal
   )
 
-  const onAssetUpdate = (snapshot: ZigProjectSnapshot, commit: boolean) => {
+  const passSnapshot = (snapshot: ZigProjectSnapshot, commit: boolean) => {
     Snapshots.saveSnapshot(snapshot)
     props.onSnapshotUpdate(Snapshots.lastSnapshot, commit)
     if (commit) {
@@ -92,7 +95,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
   }
 
   Logic.glueJsGeneral(
-    onAssetUpdate,
+    passSnapshot, // TODO: call it in zig at least once, when project is init(received first snapshot maybe)
     (id) => props.onAssetSelect([...id] as Id),
     props.onUpdateTool,
     Textures.createSDF,
@@ -203,7 +206,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     })
   }
 
-  Fonts.loadFont(0)
+  Fonts.loadFont(Logic.DEFAULT_FONT_ID)
 
   const setSnapshot: CreatorAPI['setSnapshot'] = async (
     snapshot,

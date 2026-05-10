@@ -144,11 +144,12 @@ pub const Path = struct {
         return skeleton_buffer.toOwnedSlice();
     }
 
-    pub fn getClosedPathPoints(self: Path, buffer: *std.ArrayList(Point), preview_point: ?Point) !void {
+    pub fn getClosedPathPoints(self: Path, allocator: std.mem.Allocator, preview_point: ?Point) ![]Point {
+        var outputBuf = std.ArrayList(Point).init(allocator);
         const points = self.points.items;
 
         if (points.len <= 1 and preview_point == null) {
-            return;
+            return outputBuf.toOwnedSlice();
         }
 
         for (points, 0..) |point, i| {
@@ -157,9 +158,9 @@ pub const Path = struct {
                 // its not the first point
                 // it is a control point
                 // if it's last point, make sure path is not closed
-                try buffer.append(point);
+                try outputBuf.append(point);
             }
-            try buffer.append(point);
+            try outputBuf.append(point);
         }
 
         if (!self.closed) {
@@ -167,20 +168,22 @@ pub const Path = struct {
                 if (points.len > 2) {
                     const last_cp = self.points.getLast();
                     const last_handle = points[points.len - 2];
-                    try buffer.append(path_utils.getOppositeHandle(last_cp, last_handle));
+                    try outputBuf.append(path_utils.getOppositeHandle(last_cp, last_handle));
                 }
-                try buffer.append(path_utils.STRAIGHT_LINE_HANDLE);
-                try buffer.append(preview);
-                try buffer.append(preview);
+                try outputBuf.append(path_utils.STRAIGHT_LINE_HANDLE);
+                try outputBuf.append(preview);
+                try outputBuf.append(preview);
             }
 
             if (points.len > 2 or preview_point != null) {
-                try buffer.append(path_utils.STRAIGHT_LINE_HANDLE);
+                try outputBuf.append(path_utils.STRAIGHT_LINE_HANDLE);
             }
-            try buffer.append(path_utils.STRAIGHT_LINE_HANDLE);
+            try outputBuf.append(path_utils.STRAIGHT_LINE_HANDLE);
         }
 
-        try buffer.append(points[0]);
+        try outputBuf.append(points[0]);
+
+        return outputBuf.toOwnedSlice();
     }
 
     pub fn updateLastHandle(self: *Path, preview_point: Point) void {
@@ -197,6 +200,13 @@ pub const Path = struct {
         } else {
             points[points.len - 2] = opposite_handle;
         }
+    }
+
+    pub fn clone(self: Path) !Path {
+        return Path{
+            .points = try self.points.clone(),
+            .closed = self.closed,
+        };
     }
 
     pub fn serialize(self: Path) []const Point {

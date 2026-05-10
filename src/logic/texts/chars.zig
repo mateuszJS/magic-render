@@ -7,6 +7,7 @@ const TextureSize = @import("../texture_size.zig").TextureSize;
 const texts = @import("./texts.zig");
 const fonts = @import("./fonts.zig");
 const sdf_drawing = @import("../sdf/drawing.zig");
+const js_glue = @import("../js_glue.zig");
 
 pub const Details = struct {
     x: f32,
@@ -14,7 +15,7 @@ pub const Details = struct {
     width: f32,
     height: f32,
 
-    points: []const Point,
+    paths: []const []Point,
     kerning: std.AutoArrayHashMap(u21, f32), // kerning between current char and next one
 
     sdf_tex: ?sdf_drawing.SdfTex = null,
@@ -62,7 +63,7 @@ pub const Chars = struct {
 };
 
 pub fn requestCharsSdfs(text: texts.Text) !void {
-    if (!fonts.fonts.contains(text.typo_props.font_family_id)) return;
+    if (!fonts.isReady) return;
 
     const padding = sdf_drawing.getSdfPadding(text.effects.items);
 

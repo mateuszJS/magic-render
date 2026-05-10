@@ -128,7 +128,7 @@ pub const Text = struct {
             self.sdf_tex.is_outdated = true;
         }
 
-        if (!fonts.fonts.contains(self.typo_props.font_family_id)) {
+        if (!fonts.isReady) {
             return .{
                 .content = self.content,
                 .selection_start = 0,
@@ -401,6 +401,23 @@ pub const Text = struct {
             sdf_scale,
             self.props.opacity,
         );
+    }
+
+    pub fn clone(self: Text) !Text {
+        const cloned_content = try std.heap.page_allocator.alloc(u8, self.content.len);
+        @memcpy(cloned_content, self.content);
+
+        return Text{
+            .id = utils.generateId(),
+            .content = cloned_content,
+            .bounds = self.bounds,
+            .text_vertex = try self.text_vertex.clone(),
+            .is_sdf_shared = self.is_sdf_shared,
+            .sdf_tex = sdf_drawing.SdfTex{ .id = js_glue.createSdfTexture() },
+            .props = self.props,
+            .effects = try sdf_effect.clone(self.effects),
+            .typo_props = self.typo_props,
+        };
     }
 
     pub fn serialize(self: Text, allocator: std.mem.Allocator) !Serialized {
