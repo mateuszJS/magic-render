@@ -1,10 +1,11 @@
 import { delayedDestroy } from '../initPrograms'
 import shaderCode from './shader.wgsl'
+import bazierUtilsCode from '../bezier-utils.wgsl'
 
 export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer) {
   const module = device.createShaderModule({
     label: 'pickShape shader',
-    code: shaderCode,
+    code: shaderCode + bazierUtilsCode,
   })
 
   const STRIDE = (4 /*position */ + 4) /*id*/ * 4

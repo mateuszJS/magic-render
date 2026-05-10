@@ -1,6 +1,7 @@
 import { delayedDestroy, canvasMatrix } from '../initPrograms'
 import baseCode from './base.wgsl'
 import baseTestCode from './base.test.wgsl'
+import bazierUtilsCode from '../bezier-utils.wgsl'
 
 type DebugType = 'arrow' | 'digits' | 'none'
 
@@ -26,7 +27,8 @@ export default function getDrawShape(
 ) {
   const shaderModule = device.createShaderModule({
     label: 'drawShape shader',
-    code: baseCode.replace('${TEST}', isTest ? baseTestCode : '') + fragmentShader,
+    code:
+      baseCode.replace('${TEST}', isTest ? baseTestCode : '') + fragmentShader + bazierUtilsCode,
   })
 
   if (onCompilation) {
