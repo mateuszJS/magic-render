@@ -19,7 +19,6 @@ pub fn init() void {
 pub fn get(_font_id: u32, c: u21) !*chars.Details {
     const safe_font_id = if (fonts.contains(_font_id)) _font_id else DEFAULT_FONT_ID;
 
-    // onrelese use default font
     const font = fonts.getPtr(safe_font_id) orelse @panic("Font ID not found");
     const details = font.getChar(c);
     if (details) |d| {

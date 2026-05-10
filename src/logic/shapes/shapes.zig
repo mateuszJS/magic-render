@@ -415,16 +415,6 @@ pub const Shape = struct {
         return buffer;
     }
 
-    // returns copy of paths which can be edited, main purpose is to prepare them for rendering and use as shader inputs
-    // pub fn getClonedPaths(self: Shape, allocator: std.mem.Allocator) ![][]Point {
-    //     var paths = std.ArrayList([]const Point).init(allocator);
-    //     for (self.paths.items) |path| {
-    //         const points_copy = try allocator.dupe(types.Point, path.serialize());
-    //         try paths.append(points_copy);
-    //     }
-    //     return paths.toOwnedSlice();
-    // }
-
     pub fn getFilterMargin(self: Shape) Point {
         return if (self.props.blur) |blur| Point{
             .x = 3 * blur.x,
