@@ -23,6 +23,10 @@ pub fn computeShape(
         resize,
     );
 
+    if (paths[0].len == 4) {
+        return sdf_tex;
+    }
+
     const points = if (paths[0].len == 8)
         try flatter_paths(paths)
     else
@@ -42,6 +46,7 @@ pub fn computeShape(
 
     sdf_tex.points = points;
     sdf_tex.valid = points.len > 0;
+
     sdf_tex.arc_lengths = try get_arc_lengths(points);
     sdf_tex.max_distances = try get_max_distances(points);
 
