@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "lib": ["es2020"],
+    "lib": ["es2024"],
     "outDir": "./lib",
     "sourceMap": true,
     "module": "ESNext", // normally it would be es6, but because of dynamic import it need to be something modern

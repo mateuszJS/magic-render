@@ -21,21 +21,23 @@ export default function getDrawShape(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
   fragmentShader: string,
-  uniformSize: number,
+  uniformDefinition: string,
   isTest: boolean,
   onCompilation?: (info: GPUCompilationInfo) => void
 ) {
   const shaderModule = device.createShaderModule({
     label: 'drawShape shader',
     code:
-      baseCode.replace('${TEST}', isTest ? baseTestCode : '') + fragmentShader + bazierUtilsCode,
+      baseCode
+        .replace('${OPTIONAL_UNIFORM_DECLARATION}', uniformDefinition)
+        .replace('${TEST}', isTest ? baseTestCode : '') +
+      fragmentShader +
+      bazierUtilsCode,
   })
 
   if (onCompilation) {
     shaderModule.getCompilationInfo().then(onCompilation)
   }
-
-  const uniformBufferSize = uniformSize * 4
 
   const pipeline = device.createRenderPipeline({
     label: 'drawShape pipeline',
@@ -80,21 +82,11 @@ export default function getDrawShape(
     },
   })
 
-  // PathMetrics uniform layout (must match base.wgsl `struct PathMetrics`):
-  //   off  0 : texture_size    vec2f  (dimensions in texels)
-  //   off  8 : total_arc_len   f32
-  //   off 12 : num_curves      u32
-  //   off 16 : debug_scale     f32    (devicePixelRatio for debug overlay)
-  //   off 20 : 12 bytes padding (struct rounded up to 32 for uniform align)
-  const PATH_METRICS_BYTES = 32
-  // Size of one cubic curve in `curves` storage buffer: 4 vec2f × 8 bytes.
-  const CURVE_STRIDE_BYTES = 4 * 2 * 4
-
   return function drawShape(
     passEncoder: GPURenderPassEncoder,
     sdfTexture: GPUTexture,
     boundingBoxDataView: DataView<ArrayBuffer>,
-    uniformDataView: DataView<ArrayBuffer>,
+    uniformDataView: GPUAllowSharedBufferSource,
     curvesDataView: DataView<ArrayBuffer>,
     arcLengthsDataView: DataView<ArrayBuffer>,
     maxDistancesDataView: DataView<ArrayBuffer>
@@ -109,7 +101,7 @@ export default function getDrawShape(
 
     const uniformBuffer = device.createBuffer({
       label: 'drawShape uniforms',
-      size: uniformBufferSize,
+      size: uniformDataView.byteLength,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(uniformBuffer, 0, uniformDataView)
@@ -139,39 +131,14 @@ export default function getDrawShape(
     device.queue.writeBuffer(maxDistancesBuffer, 0, maxDistancesDataView)
     delayedDestroy(maxDistancesBuffer)
 
-    // Build the PathMetrics uniform from the data we already have.
-    // `total_arc_len` is the last entry of arc_lengths (cumulative arc length
-    // at end of last curve). `num_curves` is the curve count derived from
-    // the curves storage buffer's byte length.
-    const metricsArrayBuffer = new ArrayBuffer(PATH_METRICS_BYTES)
-    const metricsF32 = new Float32Array(metricsArrayBuffer)
-    const metricsU32 = new Uint32Array(metricsArrayBuffer)
-    const totalArcLen =
-      arcLengthsDataView.byteLength >= 4
-        ? arcLengthsDataView.getFloat32(arcLengthsDataView.byteLength - 4, true)
-        : 0
-    const numCurves = (curvesDataView.byteLength / CURVE_STRIDE_BYTES) | 0
-    metricsF32[0] = sdfTexture.width // texture_size.x
-    metricsF32[1] = sdfTexture.height // texture_size.y
-    metricsF32[2] = totalArcLen // total_arc_len
-    metricsU32[3] = numCurves // num_curves
-    // debug_scale: physical-pixels-per-CSS-pixel so the debug overlay's grid
-    // cells and digit glyphs stay visually the same size on retina displays.
-    metricsF32[4] = window.devicePixelRatio || 1
-    // prettier-ignore
-    metricsU32[5] = debugType === 'arrow'
-      ? 1
-      : debugType === 'digits'
-        ? 2
-        : 0 // debug_arrow
-
-    const pathMetricsBuffer = device.createBuffer({
+    const baseUniformBuffer = device.createBuffer({
       label: 'drawShape path metrics',
-      size: PATH_METRICS_BYTES,
+      size: BASE_UNIFORM_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
-    device.queue.writeBuffer(pathMetricsBuffer, 0, metricsArrayBuffer)
-    delayedDestroy(pathMetricsBuffer)
+    const metricsArrayBuffer = getBaseUniformValues(sdfTexture, curvesDataView, arcLengthsDataView)
+    device.queue.writeBuffer(baseUniformBuffer, 0, metricsArrayBuffer)
+    delayedDestroy(baseUniformBuffer)
 
     passEncoder.setPipeline(pipeline)
 
@@ -184,7 +151,7 @@ export default function getDrawShape(
         { binding: 2, resource: { buffer: canvasMatrix.buffer } },
         { binding: 3, resource: { buffer: curvesBuffer } },
         { binding: 4, resource: { buffer: arcLengthsBuffer } },
-        { binding: 5, resource: { buffer: pathMetricsBuffer } },
+        { binding: 5, resource: { buffer: baseUniformBuffer } },
         { binding: 6, resource: { buffer: maxDistancesBuffer } },
       ],
     })
@@ -193,4 +160,48 @@ export default function getDrawShape(
     passEncoder.setVertexBuffer(0, boundBoxBuffer)
     passEncoder.draw(6) // Draw quad
   }
+}
+
+// PathMetrics uniform layout (must match base.wgsl `struct PathMetrics`):
+//   off  0 : texture_size    vec2f  (dimensions in texels)
+//   off  8 : total_arc_len   f32
+//   off 12 : num_curves      u32
+//   off 16 : debug_scale     f32    (devicePixelRatio for debug overlay)
+//   off 20 : 12 bytes padding (struct rounded up to 32 for uniform align)
+const BASE_UNIFORM_BYTES = 32
+// Size of one cubic curve in `curves` storage buffer: 4 vec2f × 8 bytes.
+const CURVE_STRIDE_BYTES = 4 * 2 * 4
+
+function getBaseUniformValues(
+  sdfTexture: GPUTexture,
+  curvesDataView: DataView<ArrayBuffer>,
+  arcLengthsDataView: DataView<ArrayBuffer>
+) {
+  // Build the PathMetrics uniform from the data we already have.
+  // `total_arc_len` is the last entry of arc_lengths (cumulative arc length
+  // at end of last curve). `num_curves` is the curve count derived from
+  // the curves storage buffer's byte length.
+  const metricsArrayBuffer = new ArrayBuffer(BASE_UNIFORM_BYTES)
+  const metricsF32 = new Float32Array(metricsArrayBuffer)
+  const metricsU32 = new Uint32Array(metricsArrayBuffer)
+  const totalArcLen =
+    arcLengthsDataView.byteLength >= 4
+      ? arcLengthsDataView.getFloat32(arcLengthsDataView.byteLength - 4, true)
+      : 0
+  const numCurves = (curvesDataView.byteLength / CURVE_STRIDE_BYTES) | 0
+  metricsF32[0] = sdfTexture.width // texture_size.x
+  metricsF32[1] = sdfTexture.height // texture_size.y
+  metricsF32[2] = totalArcLen // total_arc_len
+  metricsU32[3] = numCurves // num_curves
+  // debug_scale: physical-pixels-per-CSS-pixel so the debug overlay's grid
+  // cells and digit glyphs stay visually the same size on retina displays.
+  metricsF32[4] = window.devicePixelRatio || 1
+  // prettier-ignore
+  metricsU32[5] = debugType === 'arrow'
+      ? 1
+      : debugType === 'digits'
+        ? 2
+        : 0 // debug_arrow
+
+  return metricsArrayBuffer
 }

@@ -12,8 +12,9 @@ import * as Fonts from 'fonts'
 import { Asset, CreatorAPI, CreatorProps, Id, ZigAsset, ZigProjectSnapshot } from './types'
 import { destroyCanvasTextures } from 'getCanvasRenderDescriptor'
 import setCamera from 'utils/setCamera'
-import { toZigEffects, toZigProps } from 'snapshots/convert'
-import * as CustomPrograms from 'customPrograms'
+import { toZigProps } from 'snapshots/convert'
+import * as CustomPrograms from 'programsCompiler/programs'
+import * as CustomProgramInputs from 'programsCompiler/inputs'
 import * as Snapshots from 'snapshots/snapshots'
 import toZigAsset from 'snapshots/toZigAsset'
 import { NO_ASSET_ID } from 'consts'
@@ -45,6 +46,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
   Textures.init()
 
   CustomPrograms.init()
+  CustomProgramInputs.init()
   Fonts.init(props.getFontUrl)
 
   const context = canvas.getContext('webgpu')
@@ -86,8 +88,10 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     abortController.signal
   )
 
-  const passSnapshot = (snapshot: ZigProjectSnapshot, commit: boolean) => {
-    Snapshots.saveSnapshot(snapshot)
+  const passSnapshot = (newSnapshot: ZigProjectSnapshot | null, commit: boolean) => {
+    if (newSnapshot) {
+      Snapshots.saveSnapshot(newSnapshot)
+    }
     props.onSnapshotUpdate(Snapshots.lastSnapshot, commit)
     if (commit) {
       PreviewTrigger.safeGeneratePreview()
@@ -135,17 +139,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
 
                 props.onExternalTextureCreation(url, (newUrl) => {
                   Textures.updateTextureUrl(textureId, newUrl)
-
-                  const newAssets = Snapshots.lastSnapshot.assets.map<Asset>((asset) => {
-                    if ('url' in asset && asset.url === url) {
-                      return {
-                        ...asset,
-                        url: newUrl,
-                      }
-                    }
-                    return asset
-                  })
-                  Snapshots.lastSnapshot.assets = newAssets
+                  Snapshots.updateImageUrl(url, newUrl)
                 })
 
                 return resolve({
@@ -242,8 +236,32 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     updateAssetProps: (props, commit) => {
       Logic.setSelectedAssetProps(toZigProps(props), commit)
     },
-    updateAssetEffects: (effects, commit) => {
-      Logic.setSelectedAssetEffects(toZigEffects(effects), commit)
+    updateAssetProgram: (program, inputs, commit) => {
+      const programId = CustomPrograms.getSerializationInfo(program.id, program.code)
+      // this INPUTS might be outdated, if only code has changed
+      // We have to provide here inputs extracted from code, and use "inputs.props" just instead of defaultValues
+
+      // so values are instantly privide
+      // Issues:
+      // 1. Nobody guarantess that new program will compile AFTER previous program
+      // 2. If one program compiles, and is no logner in use, then ANYWAY
+      //    input will be updated with the next program, which migth not be compatible
+      //
+      // How about storing programId in the input, and use the input ONLY when programId is correct?
+      // But still, how are we going to store previous inputs?
+      const inputsSerializeInfo = CustomProgramInputs.getSerializationInfo(
+        inputs.id,
+        inputs.props,
+        program.code
+      )
+
+      Logic.setSelectedAssetProgramId(
+        programId,
+        inputsSerializeInfo.program_inputs_id,
+        inputsSerializeInfo.padding,
+        commit
+      )
+      passSnapshot(null, commit)
     },
     updateAssetBounds: Logic.setSelectedAssetBounds,
     updateAssetTypoProps: (typoProps, commit) => {

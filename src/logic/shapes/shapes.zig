@@ -12,11 +12,9 @@ const images = @import("../images.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const consts = @import("../consts.zig");
 const path_utils = @import("path_utils.zig");
-const fill = @import("../sdf/fill.zig");
 const sdf_drawing = @import("../sdf/drawing.zig");
 const AssetId = @import("../asset_id.zig").AssetId;
 const asset_props = @import("../asset_props.zig");
-const sdf_effect = @import("../sdf/effect.zig");
 const js_glue = @import("../js_glue.zig");
 
 const CREATE_HANDLE_THRESHOLD = 10.0;
@@ -51,8 +49,9 @@ pub const Shape = struct {
     id: u32,
     paths: std.ArrayList(Path),
     props: asset_props.Props,
-    effects: std.ArrayList(sdf_effect.Effect),
     bounds: [4]PointUV,
+    program_id: u32,
+    program_inputs_id: u32,
 
     sdf_tex: sdf_drawing.SdfTex,
 
@@ -63,6 +62,7 @@ pub const Shape = struct {
     cache_scale: f32 = 1.0,
     outdated_cache: bool,
     cache_texture_id: ?u32,
+    padding: f32,
 
     preview_point: ?Point = null,
 
@@ -71,9 +71,11 @@ pub const Shape = struct {
         input_paths: []const []const Point,
         input_bounds: [4]PointUV,
         props: asset_props.Props,
-        input_effects: []const sdf_effect.Serialized,
+        program_id: u32,
+        program_inputs_id: u32,
         sdf_texture_id: u32,
         cache_texture_id: ?u32,
+        padding: f32,
         allocator: std.mem.Allocator,
     ) !Shape {
         var paths_list = std.ArrayList(Path).init(allocator);
@@ -90,12 +92,14 @@ pub const Shape = struct {
             .id = id,
             .paths = paths_list,
             .props = props,
-            .effects = try sdf_effect.deserialize(input_effects, allocator),
+            .program_id = program_id,
+            .program_inputs_id = program_inputs_id,
             .sdf_tex = sdf_drawing.SdfTex{ .id = sdf_texture_id },
             .should_update_sdf = false,
             .bounds = input_bounds,
             .cache_texture_id = cache_texture_id,
             .outdated_cache = true,
+            .padding = padding,
         };
 
         // calculate bounds early so there won't be a change detected while serializing
@@ -286,16 +290,16 @@ pub const Shape = struct {
         return skeleton_buffer.toOwnedSlice();
     }
 
-    pub fn getSkeletonUniform(self: Shape) sdf_drawing.DrawUniform {
-        const stroke_width = path_utils.SKELETON_LINE_WIDTH * self.sdf_tex.scale * shared.ui_scale;
-        return sdf_drawing.DrawUniform{
-            .solid = .{
-                .dist_start = stroke_width * 0.5,
-                .dist_end = -stroke_width * 0.5,
-                .color = .{ 0.0, 0.0, 1.0, 1.0 },
-            },
-        };
-    }
+    // pub fn getSkeletonUniform(self: Shape) sdf_drawing.DrawUniform {
+    //     const stroke_width = path_utils.SKELETON_LINE_WIDTH * self.sdf_tex.scale * shared.ui_scale;
+    //     return sdf_drawing.DrawUniform{
+    //         .solid = .{
+    //             .dist_start = stroke_width * 0.5,
+    //             .dist_end = -stroke_width * 0.5,
+    //             .color = .{ 0.0, 0.0, 1.0, 1.0 },
+    //         },
+    //     };
+    // }
 
     pub fn getSkeletonPickVertexData(
         self: Shape,
@@ -341,21 +345,6 @@ pub const Shape = struct {
         return paths.toOwnedSlice();
     }
 
-    pub fn getPickUniform(self: Shape, effect: sdf_effect.Effect) PickUniform {
-        return PickUniform{
-            .dist_start = effect.dist_start * self.sdf_tex.scale,
-            .dist_end = effect.dist_end * self.sdf_tex.scale,
-        };
-    }
-
-    pub fn getDrawUniform(self: Shape, effect: sdf_effect.Effect) sdf_drawing.DrawUniform {
-        return sdf_drawing.getDrawUniform(
-            effect,
-            self.sdf_tex.scale,
-            self.props.opacity,
-        );
-    }
-
     // returns closed paths, whci halready include preview point also
     pub fn getRelativePaths(self: *Shape, allocator: std.mem.Allocator) !?[][]Point {
         if (!self.sdf_tex.is_outdated and !self.should_update_sdf) {
@@ -392,11 +381,9 @@ pub const Shape = struct {
     }
 
     pub fn getDrawBounds(self: Shape, filter_margin: bool) [6]PointUV {
-        const effects_padding_world = sdf_drawing.getSdfPadding(self.effects.items);
-
         return sdf_drawing.getDrawBounds(
             self.bounds,
-            effects_padding_world,
+            self.padding,
             if (filter_margin) self.getFilterMargin() else consts.POINT_ZERO,
             self.sdf_tex,
             1.0,
@@ -434,9 +421,11 @@ pub const Shape = struct {
             .paths = try paths_list.toOwnedSlice(),
             .bounds = self.bounds,
             .props = self.props,
-            .effects = try sdf_effect.serialize(self.effects, allocator),
+            .program_id = self.program_id,
+            .program_inputs_id = self.program_inputs_id,
             .sdf_texture_id = self.sdf_tex.id,
             .cache_texture_id = self.cache_texture_id,
+            .padding = self.padding,
         };
     }
 
@@ -445,7 +434,6 @@ pub const Shape = struct {
             path.deinit();
         }
         self.paths.deinit();
-        sdf_effect.deinit(self.effects);
     }
 
     pub fn clone(self: Shape) !Shape {
@@ -459,12 +447,14 @@ pub const Shape = struct {
             .id = utils.generateId(),
             .paths = cloned_paths,
             .props = self.props,
-            .effects = try sdf_effect.clone(self.effects),
+            .program_id = self.program_id,
+            .program_inputs_id = self.program_inputs_id,
             .sdf_tex = sdf_drawing.SdfTex{ .id = js_glue.createSdfTexture() },
             .should_update_sdf = self.should_update_sdf,
             .bounds = self.bounds,
             .cache_texture_id = if (self.props.blur != null) js_glue.createCacheTexture() else null,
             .outdated_cache = true,
+            .padding = self.padding,
         };
     }
 };
@@ -479,9 +469,11 @@ pub const Serialized = struct {
     paths: []const []const Point,
     bounds: [4]PointUV,
     props: asset_props.Props,
-    effects: []const sdf_effect.Serialized,
+    program_id: u32,
+    program_inputs_id: u32,
     sdf_texture_id: u32,
     cache_texture_id: ?u32,
+    padding: f32,
 
     // this function returns a lot of false positives because we compare floating point numbers
     pub fn compare(self: Serialized, other: Serialized) bool {
@@ -496,7 +488,8 @@ pub const Serialized = struct {
         const all_match = self.id == other.id and
             self.paths.len == other.paths.len and
             self.props.compare(other.props) and
-            sdf_effect.compareSerialized(self.effects, other.effects) and
+            self.program_id == other.program_id and
+            self.program_inputs_id == other.program_inputs_id and
             utils.compareBounds(self.bounds, other.bounds);
 
         if (!all_match) {

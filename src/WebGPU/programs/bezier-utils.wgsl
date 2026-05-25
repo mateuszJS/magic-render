@@ -1,3 +1,4 @@
+
 const STRAIGHT_LINE_THRESHOLD = 1e10;
 
 // local_t, used to test if "t" is on p0 or p3

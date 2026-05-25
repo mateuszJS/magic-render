@@ -4,6 +4,7 @@ struct Vertex {
 };
 
 struct Uniforms {
+  texture_scale: f32,
   dist_start: f32,
   dist_end: f32,
 };
@@ -40,7 +41,7 @@ struct VertexOutput {
   let distance = length(curve_pos - vsOut.uv);
   let signed_distance = distance * is_inside;
 
-  if (signed_distance > u.dist_start || signed_distance < u.dist_end) {
+  if (signed_distance > u.dist_start * u.texture_scale || signed_distance < u.dist_end * u.texture_scale) {
     discard;
   }
 

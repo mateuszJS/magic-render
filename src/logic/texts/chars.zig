@@ -24,9 +24,9 @@ pub const Details = struct {
     viewport_font_size: f32 = 0, // viewport size of last generated SDF, only used to avoid requesting smaller or equal size
     max_ratio_padding_to_font_size: f32 = 0,
 
-    pub fn request_size(self: *Details, font_size: f32, effect_padding: f32) void {
-        if (consts.EPSILON + self.max_ratio_padding_to_font_size < effect_padding / font_size) {
-            self.max_ratio_padding_to_font_size = effect_padding / font_size;
+    pub fn request_size(self: *Details, font_size: f32, padding: f32) void {
+        if (consts.EPSILON + self.max_ratio_padding_to_font_size < padding / font_size) {
+            self.max_ratio_padding_to_font_size = padding / font_size;
 
             if (self.sdf_tex) |*sdf_tex| {
                 sdf_tex.is_outdated = true;
@@ -65,8 +65,6 @@ pub const Chars = struct {
 pub fn requestCharsSdfs(text: texts.Text) !void {
     if (!fonts.isReady) return;
 
-    const padding = sdf_drawing.getSdfPadding(text.effects.items);
-
     for (text.text_vertex.items) |vertex| {
         if (vertex.char) |char| {
             const ch_d = try fonts.get(text.typo_props.font_family_id, char);
@@ -74,7 +72,7 @@ pub fn requestCharsSdfs(text: texts.Text) !void {
             if (ch_d.sdf_tex != null) {
                 ch_d.request_size(
                     text.typo_props.font_size,
-                    padding,
+                    text.padding,
                 );
             }
         }

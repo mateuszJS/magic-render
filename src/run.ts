@@ -5,17 +5,17 @@ import {
   pickTexture,
   pickTriangle,
   pickCanvasMatrixBuffer,
-  drawSolidShape,
-  drawLinearGradientShape,
-  drawRadialGradientShape,
-  computeShape,
+  // drawSolidShape,
+  // drawLinearGradientShape,
+  // drawRadialGradientShape,
+  // computeShape,
   pickShape,
   drawBlur,
   canvasMatrix,
   destroyGpuObjects,
   combineSdf,
-  clearSdf,
-  clearComputeDepth,
+  // clearSdf,
+  // clearComputeDepth,
   renderShapeSdf,
 } from 'WebGPU/programs/initPrograms'
 import getCanvasMatrix from 'getCanvasMatrix'
@@ -25,9 +25,8 @@ import { camera, pointer } from 'pointer'
 import * as Textures from 'textures'
 import { endCache, startCache } from 'WebGPU/textureCache'
 import { BoundingBox, Point } from 'types'
-import * as CustomPrograms from 'customPrograms'
-import assertUnreachable from 'utils/assertUnreachable'
-// import { TimingHelper, NonNegativeRollingAverage } from 'WebGPU/TimingHelper'
+import * as CustomPrograms from 'programsCompiler/programs'
+import * as CustomProgramInputs from 'programsCompiler/inputs'
 
 let renderPass: GPURenderPassEncoder
 export function updateRenderPass(newRenderPass: GPURenderPassEncoder) {
@@ -139,41 +138,40 @@ export function runCreator(
     },
     draw_shape: (
       bound_box_data,
-      uniform_data,
-      textureId,
+      program_id,
+      program_inputs_id,
+      sdf_texture_scale,
+      sdf_texture_id,
       curves_data,
       arc_lengths_data,
       max_distances_data
     ) => {
+      const program = CustomPrograms.getProgram(program_id)
+
+      if (!program.execute) return // even default programs are not yet compiled
+
+      const inputs = CustomProgramInputs.getInputs(program_inputs_id) // progrma might be otudated for these inputs
+      const drawBuffer =
+        program.defaultDrawBuffer.length === inputs.drawBuffer.length
+          ? inputs.drawBuffer
+          : program.defaultDrawBuffer
+      // console.log(inputs.drawBuffer, inputs.props)
+
+      const boundBoxDataView = bound_box_data['*'].dataView
       const curvesDataView = curves_data['*'].dataView
       const arcLengthsDataView = arc_lengths_data['*'].dataView
       const maxDistanceDataView = max_distances_data['*'].dataView
 
-      let program
-      let uniform
-      if ('linear' in uniform_data && uniform_data.linear) {
-        program = drawLinearGradientShape
-        uniform = uniform_data.linear
-      } else if ('radial' in uniform_data && uniform_data.radial) {
-        program = drawRadialGradientShape
-        uniform = uniform_data.radial
-      } else if ('solid' in uniform_data && uniform_data.solid) {
-        program = drawSolidShape
-        uniform = uniform_data.solid
-      } else if ('program' in uniform_data && uniform_data.program) {
-        const programId = uniform_data.program.dataView.getUint32(0, true)
-        program = CustomPrograms.getExecutable(programId)
-        uniform = uniform_data.program
-      } else {
-        assertUnreachable(uniform_data)
-      }
+      drawBuffer[0] =
+        program_id === Logic.HIGHLIGHT_PATH_PROGRAM_ID
+          ? (sdf_texture_scale * (creatorCanvas.width / creatorCanvas.clientWidth)) / camera.zoom
+          : sdf_texture_scale // this should be part of texture. Like curves, arcLength etc.
 
-      const boundBoxDataView = bound_box_data['*'].dataView
-      program(
+      program.execute(
         renderPass,
-        Textures.getTexture(textureId),
+        Textures.getTexture(sdf_texture_id),
         boundBoxDataView,
-        uniform.dataView,
+        drawBuffer,
         curvesDataView,
         arcLengthsDataView,
         maxDistanceDataView
@@ -185,7 +183,8 @@ export function runCreator(
     },
     pick_shape: (
       bound_box_data,
-      uniform,
+      program_inputs_id,
+      sdf_texture_scale,
       textureId,
       curves_data,
       arc_lengths_data,
@@ -195,10 +194,13 @@ export function runCreator(
       const curvesDataView = curves_data['*'].dataView
       const arcLengthsDataView = arc_lengths_data['*'].dataView
 
+      const inputs = CustomProgramInputs.getInputs(program_inputs_id)
+      inputs.pickBuffer[0] = sdf_texture_scale
+
       pickShape(
         pickPass,
         bound_box_data['*'].dataView,
-        uniform.dataView,
+        inputs.pickBuffer,
         Textures.getTexture(textureId),
         curvesDataView,
         arcLengthsDataView

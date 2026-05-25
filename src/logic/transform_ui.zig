@@ -13,7 +13,6 @@ const Asset = @import("types.zig").Asset;
 
 const white = @Vector(4, u8){ 255, 255, 255, 255 };
 const black = @Vector(4, u8){ 0, 0, 0, 255 };
-const normalized = @Vector(4, f32){ 255, 255, 255, 255 };
 
 const TransformLine = struct {
     id: u32,
@@ -249,13 +248,14 @@ pub fn getDrawVertexData(
             // rotation icon
             thickness = ROTATE_BUTTON_SIZE * shared.ui_scale;
             const icon_size = ROTATE_ICON_SIZE * shared.ui_scale;
-            const icon_color = if (hovered_elem_id == t_line.id) black else white;
+            const icon_program_inputs_id = if (hovered_elem_id == t_line.id) consts.TRANSFORM_UI_HOVER_INPUTS_ID else consts.TRANSFORM_UI_INPUTS_ID;
 
             icon_vertex_data = UI.DrawVertex{
                 .position = p1,
                 .max_size = icon_size,
                 .icon = UI.IconType.Rotate,
-                .color = @as(@Vector(4, f32), @floatFromInt(icon_color)) / normalized,
+                .program_id = consts.SOLID_COLOR_PROGRAM_ID,
+                .program_inputs_id = icon_program_inputs_id,
             };
         }
 

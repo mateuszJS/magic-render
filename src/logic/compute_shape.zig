@@ -27,10 +27,26 @@ pub fn computeShape(
         return sdf_tex;
     }
 
-    const points = if (paths[0].len == 8)
-        try flatter_paths(paths)
-    else
-        try flatter_paths(try sanitize_paths(paths));
+    std.debug.print("-------paths[0].len: {d}\n", .{paths[0].len});
+    std.debug.print("({d}, {d})\n", .{ paths[0][0].x, paths[0][0].y });
+    std.debug.print("({d}, {d})\n", .{ paths[0][1].x, paths[0][1].y });
+    std.debug.print("({d}, {d})\n", .{ paths[0][2].x, paths[0][2].y });
+    std.debug.print("({d}, {d})\n", .{ paths[0][3].x, paths[0][3].y });
+    std.debug.print("({d}, {d})\n", .{ paths[0][4].x, paths[0][4].y });
+    std.debug.print("({d}, {d})\n", .{ paths[0][5].x, paths[0][5].y });
+    std.debug.print("({d}, {d})\n", .{ paths[0][6].x, paths[0][6].y });
+    std.debug.print("({d}, {d})\n", .{ paths[0][7].x, paths[0][7].y });
+
+    const points = try flatter_paths(try sanitize_paths(paths));
+    std.debug.print("==================", .{});
+    std.debug.print("({d}, {d})\n", .{ points[0].x, points[0].y });
+    std.debug.print("({d}, {d})\n", .{ points[1].x, points[1].y });
+    std.debug.print("({d}, {d})\n", .{ points[2].x, points[2].y });
+    std.debug.print("({d}, {d})\n", .{ points[3].x, points[3].y });
+    std.debug.print("({d}, {d})\n", .{ points[4].x, points[4].y });
+    std.debug.print("({d}, {d})\n", .{ points[5].x, points[5].y });
+    std.debug.print("({d}, {d})\n", .{ points[6].x, points[6].y });
+    std.debug.print("({d}, {d})\n", .{ points[7].x, points[7].y });
 
     for (points) |*point| {
         if (path_utils.isStraightLineHandle(point.*)) {
@@ -583,14 +599,51 @@ fn chordIntersect(
     return .{ s, t };
 }
 
+/// A SubBox is "flat" when both handles lie within FLATNESS_TOLERANCE of the
+/// chord p0→p3. At that point the chord is an accurate stand-in for the curve
+/// and a single chord-vs-chord intersection settles the pair — further
+/// subdivision can't move the answer. Crucially this check is independent of
+/// bbox size: a long straight line has a huge bbox yet is perfectly flat, so
+/// the existing bbox-shrinks-below-tolerance leaf never fires for it.
+///
+/// That bbox-only leaf is exactly what made two overlapping segments freeze
+/// the bake: when two curves lie on top of each other their bboxes overlap
+/// at every subdivision level, so recursion only stopped at
+/// MAX_SUBDIVISION_DEPTH (~2^24 pair tests for a single overlapping pair).
+/// With the flatness leaf, two long flat curves bottom out at depth 0:
+/// chord-vs-chord returns null for parallel / coincident chords, so the
+/// overlap silently produces no crossings — which matches the intent
+/// (overlapping lines are not transverse self-intersections and shouldn't
+/// be split).
+///
+/// Straight-line sub-curves (carrying STRAIGHT_LINE_HANDLE) are flat by
+/// definition; we short-circuit so we don't run the perpendicular-distance
+/// math on the sentinel handle values.
+const FLATNESS_TOLERANCE: f32 = SUBDIVISION_TOLERANCE;
+fn isCurveFlat(b: SubBox) bool {
+    if (b.is_straight) return true;
+    const cx = b.p3.x - b.p0.x;
+    const cy = b.p3.y - b.p0.y;
+    const chord_len_sq = cx * cx + cy * cy;
+    if (chord_len_sq < 1e-12) return true; // degenerate chord; nothing to subdivide
+    const inv_chord_len = 1.0 / @sqrt(chord_len_sq);
+    // Perpendicular distance from each handle to the chord, computed as
+    // |cross(handle - p0, chord)| / |chord|.
+    const d1 = @abs((b.p1.x - b.p0.x) * cy - (b.p1.y - b.p0.y) * cx) * inv_chord_len;
+    const d2 = @abs((b.p2.x - b.p0.x) * cy - (b.p2.y - b.p0.y) * cx) * inv_chord_len;
+    return d1 < FLATNESS_TOLERANCE and d2 < FLATNESS_TOLERANCE;
+}
+
 /// Recursively bisect two curves, halving whichever still has the larger
 /// bounding box. When both bboxes have shrunk below SUBDIVISION_TOLERANCE,
-/// fall back to a parametric chord-vs-chord intersection: bbox overlap at
-/// that scale just means "the two curves come close here", not "they cross
-/// here", and treating proximity as a crossing was producing tens of phantom
-/// splits per glyph. The endpoint joints between consecutive curves (and the
-/// wrap joint at the seam) are filtered out before recording — they're
-/// shared p0/p3 of the path, not real crossings.
+/// or when both curves are flat enough that their chord is a faithful
+/// proxy (see isCurveFlat), fall back to a parametric chord-vs-chord
+/// intersection: bbox overlap at that scale just means "the two curves come
+/// close here", not "they cross here", and treating proximity as a crossing
+/// was producing tens of phantom splits per glyph. The endpoint joints
+/// between consecutive curves (and the wrap joint at the seam) are filtered
+/// out before recording — they're shared p0/p3 of the path, not real
+/// crossings.
 fn findCurvePairIntersections(
     a: SubBox,
     b: SubBox,
@@ -608,7 +661,21 @@ fn findCurvePairIntersections(
     const a_size = boxLargestSide(a_bb);
     const b_size = boxLargestSide(b_bb);
 
-    if ((a_size < SUBDIVISION_TOLERANCE and b_size < SUBDIVISION_TOLERANCE) or depth >= MAX_SUBDIVISION_DEPTH) {
+    // Two leaf conditions feed the same chord-vs-chord settle below:
+    //   - bbox-shrink: the original signal, fires once both sub-curves are
+    //     localised to a sub-pixel patch.
+    //   - flatness: catches sub-curves whose chord already represents them
+    //     accurately even though the bbox is still large (long straight
+    //     lines, lightly-curved arcs). Without this, two segments lying on
+    //     top of each other recursed all the way to MAX_SUBDIVISION_DEPTH
+    //     because their bboxes overlap at every level — billions of
+    //     pair-tests for a single overlapping pair, which is what froze the
+    //     bake. Now they bottom out at depth 0 and chordIntersect cleanly
+    //     reports null for the parallel / coincident case.
+    if ((a_size < SUBDIVISION_TOLERANCE and b_size < SUBDIVISION_TOLERANCE) or
+        (isCurveFlat(a) and isCurveFlat(b)) or
+        depth >= MAX_SUBDIVISION_DEPTH)
+    {
         // At this scale each sub-curve is essentially its chord; use a real
         // line-line intersection to confirm the curves actually cross instead
         // of just brushing past each other.

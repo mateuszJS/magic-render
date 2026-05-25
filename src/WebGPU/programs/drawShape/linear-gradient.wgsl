@@ -11,7 +11,7 @@ struct Uniform {
   start: vec2f,
   end: vec2f,
   stops: array<Stop, 10>,
-};
+};// How are we going to feed the stops?
 
 @group(0) @binding(0) var<uniform> u: Uniform;
 

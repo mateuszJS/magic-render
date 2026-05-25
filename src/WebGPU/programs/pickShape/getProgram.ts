@@ -40,7 +40,7 @@ export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer)
   return function pickShape(
     pass: GPURenderPassEncoder,
     vertexData: DataView<ArrayBuffer>,
-    uniformData: DataView<ArrayBuffer>,
+    uniformData: GPUAllowSharedBufferSource,
     sdfTexture: GPUTexture,
     curvesDataView: DataView<ArrayBuffer>,
     arcLengthsDataView: DataView<ArrayBuffer>

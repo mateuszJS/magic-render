@@ -5,6 +5,7 @@ const rects = @import("../rects.zig");
 const lines = @import("../lines.zig");
 const std = @import("std");
 const AssetId = @import("../asset_id.zig").AssetId;
+const consts = @import("../consts.zig");
 
 const STRAIGHT_LINE_THRESHOLD = 1e+10;
 pub const STRAIGHT_LINE_HANDLE = Point{
@@ -55,7 +56,6 @@ pub fn getOppositeHandle(control_point: Point, handle: Point) Point {
 
 const SKELETON_POINT_SIZE = 10.0;
 const PICK_POINT_SCALE = 3.0;
-pub const SKELETON_LINE_WIDTH: f32 = 2.0;
 
 pub fn getVertexDrawSkeletonPoint(
     is_control_point: bool,
@@ -118,7 +118,7 @@ pub fn drawControlPoint(
                 local_buffer[0..2],
                 cp,
                 hp,
-                SKELETON_LINE_WIDTH * shared.ui_scale,
+                consts.SKELETON_LINE_WIDTH * shared.ui_scale,
                 [_]u8{ 0, 0, 255, 255 },
                 0.0,
             );

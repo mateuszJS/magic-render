@@ -1,5 +1,5 @@
 import initCreator from '../src/index'
-import type { ProjectSnapshot, Shape, Image, Text } from '../src/types'
+import type { ProjectSnapshot, Shape, Image, Text, ProgramInputs, Program } from '../src/types'
 import FontEBGaramond from './EBGaramond-VariableFont_wght.ttf'
 import FontGoogleSans from './GoogleSans-Regular.ttf'
 import OutfitWoff2 from './Outfit.woff2'
@@ -36,11 +36,11 @@ async function test() {
   const assetBoundsTextarea = document.querySelector<HTMLTextAreaElement>('#asset-bounds-content')!
   const assetPropertiesTextarea =
     document.querySelector<HTMLTextAreaElement>('#asset-props-content')!
-  const assetEffectsTextarea =
-    document.querySelector<HTMLTextAreaElement>('#asset-effects-content')!
+  const assetProgramTextarea =
+    document.querySelector<HTMLTextAreaElement>('#asset-program-content')!
   const assetBoundsForm = document.querySelector<HTMLFormElement>('#asset-bounds-popover')!
   const assetPropsForm = document.querySelector<HTMLFormElement>('#asset-props-popover')!
-  const assetEffectsForm = document.querySelector<HTMLFormElement>('#asset-effects-popover')!
+  const assetProgramForm = document.querySelector<HTMLFormElement>('#asset-program-popover')!
   const projectSizeForm = document.querySelector<HTMLFormElement>('#project-size-popover')!
   const xSlider = document.querySelector<HTMLInputElement>('#x-slider')!
   const fontFamilySelect = document.querySelector<HTMLSelectElement>('#font-family-select')!
@@ -81,8 +81,15 @@ async function test() {
         assetPropertiesTextarea.value = JSON.stringify(selectedAsset.props, null, 2)
       }
 
-      if ('effects' in selectedAsset) {
-        assetEffectsTextarea.value = JSON.stringify(selectedAsset.effects, null, 2)
+      if ('program' in selectedAsset) {
+        assetProgramTextarea.value = JSON.stringify(
+          {
+            program: selectedAsset.program,
+            inputs: selectedAsset.inputs,
+          },
+          null,
+          2
+        )
       }
 
       if ('content' in selectedAsset) {
@@ -118,6 +125,7 @@ async function test() {
       newTextures++
     },
     onSnapshotUpdate: (snapshot, commit) => {
+      console.log('snapshot', snapshot, commit)
       setLastSnapshot(snapshot)
 
       updatePropsPanels()
@@ -266,12 +274,15 @@ async function test() {
     }
   })
 
-  assetEffectsForm.addEventListener('submit', function (e) {
+  assetProgramForm.addEventListener('submit', function (e) {
     e.preventDefault()
-    const formData = new FormData(assetEffectsForm)
+    const formData = new FormData(assetProgramForm)
     try {
-      const newEffects = JSON.parse(formData.get('code') as string)
-      creator.updateAssetEffects(newEffects, true)
+      const programData = JSON.parse(formData.get('code') as string) as {
+        program: Program
+        inputs: ProgramInputs
+      }
+      creator.updateAssetProgram(programData.program, programData.inputs, true)
     } catch (e) {
       alert('Cannot parse JSON: ' + (e as Error).message)
     }

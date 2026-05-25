@@ -26,8 +26,10 @@ pub fn importUiElement(
         paths,
         consts.DEFAULT_BOUNDS,
         props,
-        &.{},
+        consts.SOLID_COLOR_PROGRAM_ID,
+        consts.TRANSFORM_UI_INPUTS_ID,
         sdf_texture_id,
+        0,
         0,
         std.heap.page_allocator,
     );
@@ -41,13 +43,11 @@ pub fn generateUiElementsSdf() !void {
         var shape = entry.value_ptr;
         const option_paths = try shape.getRelativePaths(std.heap.page_allocator);
         if (option_paths) |paths| {
-            const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
-
             shape.sdf_tex.deinit();
             shape.sdf_tex = try computeShape(
                 shape.sdf_tex.id,
                 shape.bounds,
-                sdf_padding,
+                shape.padding,
                 paths,
                 1,
             );
@@ -61,20 +61,13 @@ pub const DrawVertex = struct {
     position: Point,
     max_size: f32,
     icon: IconType,
-    color: @Vector(4, f32),
+    program_id: u32,
+    program_inputs_id: u32,
 };
 
 pub fn draw(dataset: []DrawVertex) !void {
     for (dataset) |data| {
         if (elements.get(@intFromEnum(data.icon))) |shape| {
-            const uniform = sdf_drawing.DrawUniform{
-                .solid = .{
-                    .dist_start = consts.INFINITE_DISTANCE,
-                    .dist_end = 0,
-                    .color = data.color,
-                },
-            };
-
             const p = data.position;
             const max_sdf_size = @max(shape.sdf_tex.size.w, shape.sdf_tex.size.h);
             const scale = data.max_size / max_sdf_size;
@@ -93,7 +86,9 @@ pub fn draw(dataset: []DrawVertex) !void {
 
             webgpu_glue.draw_shape(
                 &vertex,
-                uniform,
+                data.program_id,
+                data.program_inputs_id,
+                shape.sdf_tex.scale,
                 shape.sdf_tex.id,
                 shape.sdf_tex.points,
                 shape.sdf_tex.arc_lengths,

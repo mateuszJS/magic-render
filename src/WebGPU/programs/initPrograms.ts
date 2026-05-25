@@ -67,39 +67,39 @@ export default function initPrograms(
   drawTexture = getDrawtexture(device, presentationFormat)
   pickTexture = getPickTexture(device, pickCanvasMatrixBuffer)
   pickTriangle = getPickTriangle(device, pickCanvasMatrixBuffer)
-  drawSolidShape = getDrawShape(
-    device,
-    presentationFormat,
-    solidFS,
-    1 /*dist_start*/ + 1 /*dist_end*/ + 2 /*padding*/ + 4 /*color*/,
-    isTest
-  )
-  drawLinearGradientShape = getDrawShape(
-    device,
-    presentationFormat,
-    linearGradientFS,
-    1 /*dist_start*/ +
-      1 /*dist_end*/ +
-      1 /*stops counts*/ +
-      1 /*padding*/ +
-      2 /*start*/ +
-      2 /*end*/ +
-      (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/,
-    isTest
-  )
-  drawRadialGradientShape = getDrawShape(
-    device,
-    presentationFormat,
-    radialGradientFS,
-    1 /*dist_start*/ +
-      1 /*dist_end*/ +
-      1 /*stops_count*/ +
-      1 /*radius_ratio*/ +
-      2 /*start*/ +
-      2 /*end*/ +
-      (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/,
-    isTest
-  )
+  // drawSolidShape = getDrawShape(
+  //   device,
+  //   presentationFormat,
+  //   solidFS,
+  //   1 /*dist_start*/ + 1 /*dist_end*/ + 2 /*padding*/ + 4 /*color*/,
+  //   isTest
+  // )
+  // drawLinearGradientShape = getDrawShape(
+  //   device,
+  //   presentationFormat,
+  //   linearGradientFS,
+  //   1 /*dist_start*/ +
+  //     1 /*dist_end*/ +
+  //     1 /*stops counts*/ +
+  //     1 /*padding*/ +
+  //     2 /*start*/ +
+  //     2 /*end*/ +
+  //     (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/,
+  //   isTest
+  // )
+  // drawRadialGradientShape = getDrawShape(
+  //   device,
+  //   presentationFormat,
+  //   radialGradientFS,
+  //   1 /*dist_start*/ +
+  //     1 /*dist_end*/ +
+  //     1 /*stops_count*/ +
+  //     1 /*radius_ratio*/ +
+  //     2 /*start*/ +
+  //     2 /*end*/ +
+  //     (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/,
+  //   isTest
+  // )
   pickShape = getPickShape(device, pickCanvasMatrixBuffer)
   computeShape = getComputeShape(device)
   combineSdf = getCombineSdf(device)

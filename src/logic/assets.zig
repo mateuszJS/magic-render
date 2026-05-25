@@ -6,7 +6,6 @@ const texts = @import("texts/texts.zig");
 const utils = @import("utils.zig");
 const snapshots = @import("snapshots.zig");
 const asset_props = @import("asset_props.zig");
-const sdf_effect = @import("sdf/effect.zig");
 const typography_props = @import("texts/typography_props.zig");
 const consts = @import("consts.zig");
 const js_glue = @import("js_glue.zig");
@@ -80,9 +79,11 @@ pub fn addShape(
     paths: []const []const types.Point,
     bounds: [4]types.PointUV,
     props: asset_props.Props,
-    effects: []const sdf_effect.Serialized,
+    program_id: u32,
+    program_inputs_id: u32,
     sdf_texture_id: u32,
     cache_texture_id: ?u32,
+    padding: f32,
 ) !u32 {
     const id = if (id_or_zero == 0) utils.generateId() else id_or_zero;
     const shape = try shapes.Shape.new(
@@ -90,9 +91,11 @@ pub fn addShape(
         paths,
         bounds,
         props,
-        effects,
+        program_id,
+        program_inputs_id,
         sdf_texture_id,
         cache_texture_id,
+        padding,
         std.heap.page_allocator,
     );
     try assets.put(id, types.Asset{ .shape = shape });
@@ -106,10 +109,12 @@ pub fn addText(
     content: []const u8,
     bounds: [4]types.PointUV,
     props: asset_props.Props,
-    effects: []const sdf_effect.Serialized,
+    program_id: u32,
+    program_inputs_id: u32,
     typo_props: typography_props.Serialized,
     sdf_texture_id: u32,
     is_sdf_shared: bool,
+    padding: f32,
 ) !texts.Text {
     const id = if (id_or_zero == 0) utils.generateId() else id_or_zero;
     const text = try texts.Text.new(
@@ -118,10 +123,12 @@ pub fn addText(
         content,
         bounds,
         props,
-        effects,
+        program_id,
+        program_inputs_id,
         typo_props,
         sdf_texture_id,
         is_sdf_shared,
+        padding,
     );
     try assets.put(id, types.Asset{ .text = text });
     snapshots.triggerNewSnapshot(true, true);
@@ -140,29 +147,6 @@ pub fn createText(x: f32, y: f32, width: f32, font_size: f32, line_height: f32) 
         .{ .x = x, .y = y - 1.0, .u = 0.0, .v = 0.0 },
     };
 
-    const effects: []const sdf_effect.Serialized = &.{
-        .{
-            .dist_start = consts.INFINITE_DISTANCE,
-            .dist_end = 0,
-            .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
-        },
-        .{
-            .dist_start = 3,
-            .dist_end = 1.5,
-            .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
-        },
-        .{
-            .dist_start = -6,
-            .dist_end = -8,
-            .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
-        },
-        .{
-            .dist_start = -12,
-            .dist_end = -18,
-            .fill = .{ .solid = .{ 1.0, 1.0, 0.0, 1.0 } },
-        },
-    };
-
     const typo_props = typography_props.Serialized{
         .font_size = font_size,
         .font_family_id = 0,
@@ -174,42 +158,31 @@ pub fn createText(x: f32, y: f32, width: f32, font_size: f32, line_height: f32) 
         "Type here",
         bounds,
         asset_props.Props{},
-        effects,
+        consts.SOLID_COLOR_PROGRAM_ID,
+        consts.DEFAULT_INPUTS_ID,
         typo_props,
         js_glue.createSdfTexture(),
         false,
+        consts.SKELETON_LINE_WIDTH * 0.5,
     );
 }
 
 pub fn createShape() !u32 {
     const props = asset_props.Props{
-        .blur = .{ .x = 30, .y = 30 },
+        .blur = null,
+        // .blur = .{ .x = 30, .y = 30 },
     };
-    const effects: []const sdf_effect.Serialized = &.{
-        .{
-            .dist_start = consts.INFINITE_DISTANCE,
-            .dist_end = 0,
-            .fill = .{ .solid = .{ 1.0, 0.0, 1.0, 1.0 } },
-        },
-        .{
-            .dist_start = 26,
-            .dist_end = 24,
-            .fill = .{ .solid = .{ 1.0, 1.0, 1.0, 1.0 } },
-        },
-        .{
-            .dist_start = -30,
-            .dist_end = -32,
-            .fill = .{ .solid = .{ 1.0, 0.0, 0.0, 1.0 } },
-        },
-    };
+
     const id = try addShape(
         0,
         &.{},
         consts.DEFAULT_BOUNDS,
         props,
-        effects,
+        consts.SOLID_COLOR_PROGRAM_ID,
+        consts.DEFAULT_INPUTS_ID,
         js_glue.createSdfTexture(),
         if (props.blur != null) js_glue.createCacheTexture() else null,
+        consts.SKELETON_LINE_WIDTH * 0.5,
     );
 
     return id;
@@ -237,9 +210,11 @@ pub fn resetTo(snapshot_assets: []const types.AssetSerialized) !void {
                     shape.paths,
                     shape.bounds,
                     shape.props,
-                    shape.effects,
+                    shape.program_id,
+                    shape.program_inputs_id,
                     shape.sdf_texture_id,
                     shape.cache_texture_id,
+                    shape.padding,
                 );
             },
             .text => |text| {
@@ -248,10 +223,12 @@ pub fn resetTo(snapshot_assets: []const types.AssetSerialized) !void {
                     text.content orelse "", // should always be provided in real-life executions
                     text.bounds,
                     text.props,
-                    text.effects,
+                    text.program_id,
+                    text.program_inputs_id,
                     text.typo_props,
                     text.sdf_texture_id,
                     text.is_sdf_shared,
+                    text.padding,
                 );
             },
         }

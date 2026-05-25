@@ -2,6 +2,7 @@ const std = @import("std");
 const types = @import("types.zig");
 const bounding_box = @import("shapes/bounding_box.zig");
 
+pub var newFill: *const fn (?u32) u32 = undefined; // null -> defautl fill, u32 -> copy fill from that fill_id
 pub var onAssetSelection: *const fn ([4]u32) void = undefined;
 pub var onUpdateTool: *const fn (u16) void = undefined;
 pub var createSdfTexture: *const fn () u32 = undefined;
