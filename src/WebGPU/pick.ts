@@ -10,6 +10,7 @@ export default class PickManager {
   private pickTexture: GPUTexture
   // private pickDepthTexture: GPUTexture
   private isPreviousPickDone = true
+  private isNewPickReady = false
 
   constructor(device: GPUDevice) {
     this.pickBuffer = device.createBuffer({
@@ -46,7 +47,7 @@ export default class PickManager {
         {
           view: this.pickTexture.createView(),
           loadOp: 'clear',
-          clearValue: [0, 0, 0, 1],
+          clearValue: [0, 0, 0, 0],
           storeOp: 'store',
         } as const,
       ],
@@ -70,6 +71,7 @@ export default class PickManager {
       pass.end()
 
       if (this.isPreviousPickDone) {
+        this.isNewPickReady = true
         encoder.copyTextureToBuffer(
           {
             texture: this.pickTexture,
@@ -105,8 +107,9 @@ export default class PickManager {
   }
 
   async asyncPick() {
-    if (!this.isPreviousPickDone) return
+    if (!this.isPreviousPickDone || !this.isNewPickReady) return
     this.isPreviousPickDone = false
+    this.isNewPickReady = false
     try {
       await this.pickBuffer.mapAsync(GPUMapMode.READ, 0, BYTES_PER_PIXEL * NUM_PIXELS)
       // Some of the elements uses more than one id eg.
@@ -117,7 +120,7 @@ export default class PickManager {
       const [id1, id2, id3, id4] = new Uint32Array(
         this.pickBuffer.getMappedRange(0, BYTES_PER_PIXEL * NUM_PIXELS)
       )
-      // console.log('picked ids:', id1, id2, id3, id4)
+
       Logic.onUpdatePick([id1, id2, id3, id4])
 
       let i = 0

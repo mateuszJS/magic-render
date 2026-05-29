@@ -118,7 +118,8 @@ declare module '*.zig' {
       sdf_texture_id: number,
       curves_data: ArrayPointerDataView,
       arc_lengths_data: ArrayPointerDataView,
-      max_distances_data: ArrayPointerDataView
+      max_distances_data: ArrayPointerDataView,
+      opacity: number
     ) => void
     pick_shape: (
       bound_box_data: ArrayPointerDataView,
@@ -169,6 +170,7 @@ declare module '*.zig' {
   ) => void
   export const generateUiElementsSdf: VoidFunction
 
+  export const selectAsset: (id: number) => void
   export const setSelectedAssetBounds: (bounds: PointUV[], commit: boolean) => void
   export const setSelectedAssetProps: (props: BasicProps, commit: boolean) => void
   export const setSelectedAssetProgramId: (

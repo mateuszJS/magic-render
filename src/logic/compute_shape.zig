@@ -26,27 +26,20 @@ pub fn computeShape(
     if (paths[0].len == 4) {
         return sdf_tex;
     }
+    // else if (paths[0].len == 8) {
+    //     // bypass rendering straight lines
+    //     const is_only_straight_line =
+    //         path_utils.isStraightLineHandle(paths[0][1]) and
+    //         path_utils.isStraightLineHandle(paths[0][2]) and
+    //         path_utils.isStraightLineHandle(paths[1][1]) and
+    //         path_utils.isStraightLineHandle(paths[1][2]);
 
-    std.debug.print("-------paths[0].len: {d}\n", .{paths[0].len});
-    std.debug.print("({d}, {d})\n", .{ paths[0][0].x, paths[0][0].y });
-    std.debug.print("({d}, {d})\n", .{ paths[0][1].x, paths[0][1].y });
-    std.debug.print("({d}, {d})\n", .{ paths[0][2].x, paths[0][2].y });
-    std.debug.print("({d}, {d})\n", .{ paths[0][3].x, paths[0][3].y });
-    std.debug.print("({d}, {d})\n", .{ paths[0][4].x, paths[0][4].y });
-    std.debug.print("({d}, {d})\n", .{ paths[0][5].x, paths[0][5].y });
-    std.debug.print("({d}, {d})\n", .{ paths[0][6].x, paths[0][6].y });
-    std.debug.print("({d}, {d})\n", .{ paths[0][7].x, paths[0][7].y });
+    //     if (is_only_straight_line) {
+    //         return sdf_tex;
+    //     }
+    // }
 
     const points = try flatter_paths(try sanitize_paths(paths));
-    std.debug.print("==================", .{});
-    std.debug.print("({d}, {d})\n", .{ points[0].x, points[0].y });
-    std.debug.print("({d}, {d})\n", .{ points[1].x, points[1].y });
-    std.debug.print("({d}, {d})\n", .{ points[2].x, points[2].y });
-    std.debug.print("({d}, {d})\n", .{ points[3].x, points[3].y });
-    std.debug.print("({d}, {d})\n", .{ points[4].x, points[4].y });
-    std.debug.print("({d}, {d})\n", .{ points[5].x, points[5].y });
-    std.debug.print("({d}, {d})\n", .{ points[6].x, points[6].y });
-    std.debug.print("({d}, {d})\n", .{ points[7].x, points[7].y });
 
     for (points) |*point| {
         if (path_utils.isStraightLineHandle(point.*)) {
@@ -144,18 +137,61 @@ fn ensureClockwiseOrientation(paths: [][]types.Point) void {
     }
 }
 
-// Signed area of the polygon formed by the curve endpoints (p0 → p3 of every
-// curve). For any non-self-intersecting closed bezier path the SIGN of this
-// polygon's area matches the sign of the region the curves actually enclose,
-// so the off-curve handles p1/p2 don't need to be sampled.
+// Exact signed area of the closed bezier path, summed segment by segment.
+// For each segment we accumulate its contribution to the Green's-theorem line
+// integral 2A = ∮(x dy − y dx) and divide by two at the end.
+//
+//   - Straight-line segments (marked by STRAIGHT_LINE_HANDLE on p1 / p2)
+//     reduce to the standard polygon-edge cross product x0·y3 − x3·y0.
+//   - Cubic-bezier segments use the closed-form integral derived from the
+//     Bernstein basis (∫B_i · dB_j/dt over [0,1]):
+//         20·A_seg =  6·(x0·y1 − x1·y0)
+//                  +  3·(x0·y2 − x2·y0)
+//                  +  1·(x0·y3 − x3·y0)
+//                  +  3·(x1·y2 − x2·y1)
+//                  +  3·(x1·y3 − x3·y1)
+//                  +  6·(x2·y3 − x3·y2)
+//     Sanity-checks: collapses to the line formula when p1 = p0 and p2 = p3,
+//     and reproduces π/4 for a quarter-circle bezier (handle length
+//     4/3·(√2 − 1)).
+//
+// The previous implementation used only the polygon of endpoints (one cross
+// product per curve). That's a fine *sign* proxy whenever the endpoint
+// polygon has ≥3 well-separated vertices, but it collapses to zero for the
+// degenerate-but-legitimate case of a closed path with only two distinct
+// endpoints — e.g. a bezier from A to B closed by a straight line back to A.
+// In that case all the actual area sits in the bezier's handle bulge, the
+// polygon area is 0, ensureClockwiseOrientation can't decide which way to
+// flip, and the shape comes out with inverted fill (see ADRs/SDF rendering
+// for why winding matters). Sampling the handles fixes it for the same cost
+// as a few extra multiplies per curve.
+//
+// "Clockwise" in y-up math has NEGATIVE signed area (caller flips on
+// positive), matching the convention documented on ensureClockwiseOrientation.
 fn signedArea(path: []const types.Point) f32 {
     var doubled_area: f32 = 0;
     const num_curves = path.len / 4;
     var ci: usize = 0;
     while (ci < num_curves) : (ci += 1) {
-        const a = path[ci * 4 + 0];
-        const b = path[ci * 4 + 3];
-        doubled_area += a.x * b.y - b.x * a.y;
+        const p0 = path[ci * 4 + 0];
+        const p1 = path[ci * 4 + 1];
+        const p2 = path[ci * 4 + 2];
+        const p3 = path[ci * 4 + 3];
+        const is_straight = path_utils.isStraightLineHandle(p1) or path_utils.isStraightLineHandle(p2);
+        if (is_straight) {
+            doubled_area += p0.x * p3.y - p3.x * p0.y;
+        } else {
+            // 20·A_seg from the Bernstein integral (see header comment),
+            // divided by 10 to land on 2·A_seg in `doubled_area`'s units.
+            const twenty_A =
+                6.0 * (p0.x * p1.y - p1.x * p0.y) +
+                3.0 * (p0.x * p2.y - p2.x * p0.y) +
+                1.0 * (p0.x * p3.y - p3.x * p0.y) +
+                3.0 * (p1.x * p2.y - p2.x * p1.y) +
+                3.0 * (p1.x * p3.y - p3.x * p1.y) +
+                6.0 * (p2.x * p3.y - p3.x * p2.y);
+            doubled_area += twenty_A / 10.0;
+        }
     }
     return doubled_area * 0.5;
 }

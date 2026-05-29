@@ -1,4 +1,4 @@
-import { Asset, ProgramInputs, ProjectSnapshot, ZigProjectSnapshot } from 'types'
+import { Asset, ProjectSnapshot, ZigProjectSnapshot } from 'types'
 import { toBounds, toBasicProps, toTypoProps, toProgram, toProgramInputs } from './convert'
 import * as Typing from 'typing'
 import * as Textures from 'textures'
@@ -91,22 +91,6 @@ export function updateImageUrl(oldUrl: string, newUrl: string) {
       return {
         ...asset,
         url: newUrl,
-      }
-    }
-    return asset
-  })
-  lastSnapshot.assets = newAssets
-}
-
-export function updateProgramInputs(programId: number, newInputs: ProgramInputs) {
-  const newAssets = lastSnapshot.assets.map<Asset>((asset) => {
-    if ('program' in asset && asset.program.id === programId) {
-      return {
-        ...asset,
-        program: {
-          ...asset.program,
-          inputs: newInputs,
-        },
       }
     }
     return asset

@@ -2,6 +2,9 @@ import { delayedDestroy, canvasMatrix } from '../initPrograms'
 import baseCode from './base.wgsl'
 import baseTestCode from './base.test.wgsl'
 import bazierUtilsCode from '../bezier-utils.wgsl'
+import customProgramWrapper from './custom-program-wrapper.wgsl'
+
+const CUSTOM_CODE_PLACEHOLDER = '${CUSTOM_PROGRAM_CODE}'
 
 type DebugType = 'arrow' | 'digits' | 'none'
 
@@ -20,24 +23,28 @@ window.setDebugType = (type: DebugType) => {
 export default function getDrawShape(
   device: GPUDevice,
   presentationFormat: GPUTextureFormat,
-  fragmentShader: string,
+  customCodeSnippet: string,
   uniformDefinition: string,
+  inputFunctionsDefinition: string,
   isTest: boolean,
-  onCompilation?: (info: GPUCompilationInfo) => void
+  onCompilation: (info: GPUCompilationInfo, offset: number, lines: number) => void
 ) {
+  const totalCode = (baseCode + customProgramWrapper + inputFunctionsDefinition + bazierUtilsCode)
+    .replace('${OPTIONAL_UNIFORM_DECLARATION}', uniformDefinition)
+    .replace('${TEST}', isTest ? baseTestCode : '')
+    .replace(CUSTOM_CODE_PLACEHOLDER, customCodeSnippet)
+
   const shaderModule = device.createShaderModule({
     label: 'drawShape shader',
-    code:
-      baseCode
-        .replace('${OPTIONAL_UNIFORM_DECLARATION}', uniformDefinition)
-        .replace('${TEST}', isTest ? baseTestCode : '') +
-      fragmentShader +
-      bazierUtilsCode,
+    code: totalCode,
   })
 
-  if (onCompilation) {
-    shaderModule.getCompilationInfo().then(onCompilation)
-  }
+  shaderModule.getCompilationInfo().then((info) => {
+    const snippetOffset = totalCode.indexOf(customCodeSnippet)
+    const codeBeforeSnippet = totalCode.slice(0, snippetOffset)
+    const linesBeforeSnippet = codeBeforeSnippet.split('\n').length - 1
+    onCompilation(info, snippetOffset, linesBeforeSnippet)
+  })
 
   const pipeline = device.createRenderPipeline({
     label: 'drawShape pipeline',
@@ -66,7 +73,9 @@ export default function getDrawShape(
           format: presentationFormat,
           blend: {
             color: {
-              srcFactor: 'src-alpha',
+              // GPU premultiplies RGB channels, so we don't have to output premultiplied values.
+              srcFactor: 'one',
+              // srcFactor: 'src-alpha',
               dstFactor: 'one-minus-src-alpha',
             },
             alpha: {

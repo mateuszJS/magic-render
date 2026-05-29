@@ -165,7 +165,7 @@ export default function collectShapesData(
         opacity: 1,
       }
       const program: Program | null = {
-        code: 'color=vec4f(1, 0, 0, 1);',
+        codeSnippets: [{ id: 1, content: 'color=vec4f(1, 0, 0, 1);' }],
         // inputs: {
         //   props:
         // },

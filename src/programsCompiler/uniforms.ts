@@ -1,11 +1,10 @@
 import { ProgramInputs } from 'types'
 import * as Logic from '../logic/index.zig'
 
-const INPUT_TYPES = {
+export const INPUT_TYPES = {
   a: {
     uniformType: 'vec4f',
-    defaultValue: [2.9, 2.4, 2, 1.5].toReversed(),
-    // defaultValue: [2.9, 1.4, 2 * Math.PI - 0.9, 2 * Math.PI - 1.4],
+    defaultValue: [1.5, 2, 2.4, 2.9],
     getFn: (name: string) => `
       fn ${name}(s: Sample) -> f32 {
         let start_soft = u.${name}.x;
@@ -62,6 +61,33 @@ const INPUT_TYPES = {
       }
     `,
   },
+  t: {
+    uniformType: 'vec4f',
+    defaultValue: [0.1, 0.3, 0.6, 0.8],
+    getFn: (name: string) => `
+      fn ${name}(s: Sample) -> f32 {
+        let start_soft = u.${name}.x;
+        let start = u.${name}.y;
+        let end = u.${name}.z;
+        let end_soft = u.${name}.w;
+
+        // Normalize s.angle to [0, TAU) — handles -2PI..+2PI input
+        let t = s.norm_arc_blended;
+
+        // Same logic as for angle
+        let local_t        = (((t        - start_soft) % 1) + 1) % 1;
+        let local_start    = (((start    - start_soft) % 1) + 1) % 1;
+        let local_end      = (((end      - start_soft) % 1) + 1) % 1;
+        let local_end_soft = (((end_soft - start_soft) % 1) + 1) % 1;
+        // local_start_soft is implicitly 0.0
+
+        let rise  = smoothstep(              -s.fw, local_start    + s.fw, local_t);
+        let fall  = smoothstep(local_end - s.fw, local_end_soft + s.fw, local_t);
+        return rise * (1.0 - fall);
+
+      }
+    `,
+  },
 }
 
 export function getDeclarationCode(inputNames: string[]): string {
@@ -83,7 +109,7 @@ export function getFunctionCode(inputNames: string[]): string {
 // oherwise we would need to use map for inputs and it's probalematic while working with JSON.stirngify
 export function getBuffers(orderedInputNames: string[], inputs: ProgramInputs['props']) {
   const props: ProgramInputs['props'] = {}
-  const buffer = [0]
+  const buffer = [0 /* sdf texture scale */, 1 /* opacity */]
   let minDistance = -Logic.SKELETON_LINE_WIDTH * 0.5
 
   orderedInputNames.forEach((name) => {
@@ -119,6 +145,7 @@ export function getBuffers(orderedInputNames: string[], inputs: ProgramInputs['p
 
   return {
     props,
+    orderedInputNames,
     drawBuffer: new Float32Array(buffer),
     pickBuffer: new Float32Array([0 /* sdf scale*/, Logic.INFINITE_DISTANCE, minDistance]),
   }

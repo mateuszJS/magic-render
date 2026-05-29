@@ -10,11 +10,11 @@ export default function toZigAsset(asset: Asset, captureError: (error: unknown) 
   if ('paths' in asset) {
     // it's a shape
 
-    const program_id = CustomPrograms.getSerializationInfo(asset.program.id, asset.program.code)
+    const { programId, orderedInputNames } = CustomPrograms.getSerializationInfo(asset.program)
     const { program_inputs_id, padding } = CustomProgramInputs.getSerializationInfo(
       asset.inputs.id,
       asset.inputs.props,
-      asset.program.code
+      orderedInputNames
     )
 
     return {
@@ -23,7 +23,7 @@ export default function toZigAsset(asset: Asset, captureError: (error: unknown) 
         paths: asset.paths,
         bounds: asset.bounds,
         props: toZigProps(asset.props),
-        program_id,
+        program_id: programId,
         program_inputs_id,
         sdf_texture_id: asset.sdf_texture_id || Textures.createSDF(),
         cache_texture_id: asset.cache_texture_id || null,
@@ -32,11 +32,11 @@ export default function toZigAsset(asset: Asset, captureError: (error: unknown) 
     }
   } else if ('content' in asset) {
     Fonts.loadFont(asset.typo_props.font_family_id)
-    const program_id = CustomPrograms.getSerializationInfo(asset.program.id, asset.program.code)
+    const { programId, orderedInputNames } = CustomPrograms.getSerializationInfo(asset.program)
     const { program_inputs_id, padding } = CustomProgramInputs.getSerializationInfo(
       asset.inputs.id,
       asset.inputs.props,
-      asset.program.code
+      orderedInputNames
     )
 
     return {
@@ -46,7 +46,7 @@ export default function toZigAsset(asset: Asset, captureError: (error: unknown) 
         bounds: asset.bounds,
         typo_props: asset.typo_props,
         props: toZigProps(asset.props),
-        program_id,
+        program_id: programId,
         program_inputs_id,
         sdf_texture_id: asset.sdf_texture_id ?? Textures.createSDF(),
         is_sdf_shared: asset.is_sdf_shared,

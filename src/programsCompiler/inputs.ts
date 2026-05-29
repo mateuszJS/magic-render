@@ -1,12 +1,13 @@
 import { ProgramInputs } from 'types'
 import { areSoftVecEqual } from 'utils/areSoftVecEqual'
 import * as Logic from '../logic/index.zig'
-import { extractInputNamesFromCode } from './extractInputNamesFromCode'
 import * as PredefinedPrograms from './predefinedPrograms'
 import * as Uniforms from './uniforms'
+import { mergeCode } from './createProgram'
 
 type Entry = {
   props: ProgramInputs['props']
+  orderedInputNames: string[]
   drawBuffer: Float32Array<ArrayBuffer>
   pickBuffer: Float32Array<ArrayBuffer> /* [sdf tex scale, maxDistance, minDistance] */
 }
@@ -17,44 +18,67 @@ export function init(): void {
   inputsCache = new Map([
     [
       Logic.HIGHLIGHT_PATH_INPUTS_ID,
-      Uniforms.getBuffers(extractInputNamesFromCode(PredefinedPrograms.HIGHLIGHT_PATH), {
-        c_Color: [0, 0, 1, 1],
-        d_distance: [null, +Logic.SKELETON_LINE_WIDTH / 2, -Logic.SKELETON_LINE_WIDTH / 2, null],
-      }),
+      Uniforms.getBuffers(
+        mergeCode([{ id: 1, content: PredefinedPrograms.HIGHLIGHT_PATH }]).orderedInputNames,
+        {
+          c_Color_1: [0, 0, 1, 1],
+          d_distance_1: [
+            null,
+            +Logic.SKELETON_LINE_WIDTH / 2,
+            -Logic.SKELETON_LINE_WIDTH / 2,
+            null,
+          ],
+        }
+      ),
     ],
     [
       Logic.TRANSFORM_UI_INPUTS_ID,
-      Uniforms.getBuffers(extractInputNamesFromCode(PredefinedPrograms.SOLID_COLOR), {
-        d_distance: [null, null, 0, null],
-        c_Color: [1, 1, 1, 1],
-      }),
+      Uniforms.getBuffers(
+        mergeCode([{ id: 1, content: PredefinedPrograms.SOLID_COLOR }]).orderedInputNames,
+        {
+          d_distance_1: [null, null, 0, null],
+          c_Color_1: [1, 1, 1, 1],
+        }
+      ),
     ],
     [
       Logic.TRANSFORM_UI_HOVER_INPUTS_ID,
-      Uniforms.getBuffers(extractInputNamesFromCode(PredefinedPrograms.SOLID_COLOR), {
-        d_distance: [null, null, 0, null],
-        c_Color: [0, 0, 0, 1],
-      }),
+      Uniforms.getBuffers(
+        mergeCode([{ id: 1, content: PredefinedPrograms.SOLID_COLOR }]).orderedInputNames,
+        {
+          d_distance_1: [null, null, 0, null],
+          c_Color_1: [0, 0, 0, 1],
+        }
+      ),
     ],
     [
       Logic.DEFAULT_INPUTS_ID,
-      Uniforms.getBuffers(extractInputNamesFromCode(PredefinedPrograms.SOLID_COLOR), {
-        d_distance: [null, null, 0, null],
-        c_Color: [0.5, 1, 0.5, 1],
-      }),
+      Uniforms.getBuffers(
+        mergeCode([{ id: 1, content: PredefinedPrograms.SOLID_COLOR }]).orderedInputNames,
+        {
+          d_distance_1: [null, null, 0, null],
+          c_Color_1: [0.5, 1, 0.5, 1],
+        }
+      ),
     ],
     [
       Logic.COMPILING_INPUTS_ID,
-      Uniforms.getBuffers(extractInputNamesFromCode(PredefinedPrograms.SOLID_COLOR), {
-        d_distance: [null, null, 0, null],
-        c_Color: [0, 0, 0, 1],
-      }),
+      Uniforms.getBuffers(
+        mergeCode([{ id: 1, content: PredefinedPrograms.SOLID_COLOR }]).orderedInputNames,
+        {
+          d_distance_1: [null, null, 0, null],
+          c_Color_1: [0, 0, 0, 1],
+        }
+      ),
     ],
     [
       Logic.ERROR_INPUTS_ID,
-      Uniforms.getBuffers(extractInputNamesFromCode(PredefinedPrograms.ERROR), {
-        d_distance: [null, null, 0, null],
-      }),
+      Uniforms.getBuffers(
+        mergeCode([{ id: 1, content: PredefinedPrograms.ERROR }]).orderedInputNames,
+        {
+          d_distance_1: [null, null, 0, null],
+        }
+      ),
     ],
   ])
   inputsIdCounter = Math.max(...Array.from(inputsCache.keys())) + 1 // be one bigger than predefiend programs biggest id
@@ -64,20 +88,28 @@ export function init(): void {
 export function getSerializationInfo(
   programInputsId: number | undefined,
   selectedValues: ProgramInputs['props'],
-  code: string
+  orderedInputNames: string[]
 ): { program_inputs_id: number; padding: number } {
   if (programInputsId) {
     const cacheInputs = inputsCache.get(programInputsId)
     if (cacheInputs) {
-      let isSame = true
+      let isSame =
+        cacheInputs.orderedInputNames.length === orderedInputNames.length &&
+        cacheInputs.orderedInputNames.every((key, i) => key === orderedInputNames[i])
 
-      // Snapshots.updateProgramInputs(programId, inputs)
+      if (isSame) {
+        // compare ord
+        for (const inputName of orderedInputNames) {
+          const currValue = selectedValues[inputName]
 
-      for (const [key, values] of Object.entries(cacheInputs.props)) {
-        const currValue = selectedValues[key]
-        if (!currValue || areSoftVecEqual(currValue, values)) {
-          isSame = false
-          break
+          if (
+            !currValue ||
+            !cacheInputs.props[inputName] ||
+            !areSoftVecEqual(currValue, cacheInputs.props[inputName])
+          ) {
+            isSame = false
+            break
+          }
         }
       }
 
@@ -94,11 +126,11 @@ export function getSerializationInfo(
 
   const newId = inputsIdCounter++
 
-  const orderedInputNames = extractInputNamesFromCode(code)
   const { props, drawBuffer, pickBuffer } = Uniforms.getBuffers(orderedInputNames, selectedValues)
 
   inputsCache.set(newId, {
     props,
+    orderedInputNames,
     drawBuffer,
     pickBuffer,
   })

@@ -225,6 +225,10 @@ pub fn onUpdatePick(id: [4]u32) void {
     }
 }
 
+pub fn selectAsset(id: u32) !void {
+    try setSelectedAsset(AssetId{ ._prim = id });
+}
+
 fn setSelectedAsset(id: AssetId) !void {
     try commitChanges();
     assets.selected_asset_id = id;
@@ -711,6 +715,7 @@ pub fn updateCache() void {
                             shape.sdf_tex.points,
                             shape.sdf_tex.arc_lengths,
                             shape.sdf_tex.max_distances,
+                            shape.props.opacity,
                         );
                     }
 
@@ -973,6 +978,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                             shape.sdf_tex.arc_lengths,
                             shape.sdf_tex.max_distances,
                             // TODO: all sdf props should be baked in computeShape and only exists in JS memory
+                            shape.props.opacity,
                         );
                     }
                 }
@@ -993,6 +999,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                         text.sdf_tex.points,
                         text.sdf_tex.arc_lengths,
                         text.sdf_tex.max_distances,
+                        text.props.opacity,
                     );
 
                     if (!is_typing_ui) continue;
@@ -1028,6 +1035,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                                     char_sdf_tex.points,
                                     char_sdf_tex.arc_lengths,
                                     char_sdf_tex.max_distances,
+                                    text.props.opacity,
                                 );
                             }
                         }
@@ -1096,6 +1104,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                     shape.sdf_tex.points,
                     shape.sdf_tex.arc_lengths,
                     shape.sdf_tex.max_distances,
+                    shape.props.opacity,
                 );
             }
 

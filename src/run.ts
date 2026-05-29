@@ -144,7 +144,8 @@ export function runCreator(
       sdf_texture_id,
       curves_data,
       arc_lengths_data,
-      max_distances_data
+      max_distances_data,
+      opacity
     ) => {
       const program = CustomPrograms.getProgram(program_id)
 
@@ -155,7 +156,6 @@ export function runCreator(
         program.defaultDrawBuffer.length === inputs.drawBuffer.length
           ? inputs.drawBuffer
           : program.defaultDrawBuffer
-      // console.log(inputs.drawBuffer, inputs.props)
 
       const boundBoxDataView = bound_box_data['*'].dataView
       const curvesDataView = curves_data['*'].dataView
@@ -166,6 +166,8 @@ export function runCreator(
         program_id === Logic.HIGHLIGHT_PATH_PROGRAM_ID
           ? (sdf_texture_scale * (creatorCanvas.width / creatorCanvas.clientWidth)) / camera.zoom
           : sdf_texture_scale // this should be part of texture. Like curves, arcLength etc.
+
+      drawBuffer[1] = opacity
 
       program.execute(
         renderPass,

@@ -39,8 +39,8 @@ export function toProgram(program_id: number): Program {
 
   return {
     id: program_id,
-    code: program.code,
-    errors: program.errors,
+    codeSnippets: program.codeSnippets,
+    compilationInfo: program.compilationInfo,
   }
 }
 

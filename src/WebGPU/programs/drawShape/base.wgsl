@@ -30,6 +30,7 @@ struct BaseUniform {
 
 struct Uniforms {
   texture_scale: f32,
+  opacity: f32,
   ${OPTIONAL_UNIFORM_DECLARATION}
 };
 
@@ -170,7 +171,7 @@ const MIN_BLEND_DISTANCE: f32 = 1;  // one pixel in pixel-space units
 fn getMovingAvg(pos: vec2f, arc_primary: f32, signed_distance: f32) -> MoveAvgResult {
   let abs_d = abs(signed_distance);
 
-  if (abs_d < MIN_BLEND_DISTANCE) {
+  if (false && abs_d < MIN_BLEND_DISTANCE) {
     let t  = arc_to_t(arc_primary);
     // let p  = t_to_pos(t);
     // let to_curve = p - pos;
@@ -209,12 +210,39 @@ fn getMovingAvg(pos: vec2f, arc_primary: f32, signed_distance: f32) -> MoveAvgRe
 
     let to_curve = p - pos;
     let d = length(to_curve);
-
-    if (d < 1e-6) { continue; }
-
     let w = exp(-(d - abs_d) * inv_softness);
 
-    sum_angle = sum_angle + (to_curve / d) * w;
+    let fix = false;
+    if (!fix) {
+      sum_angle = sum_angle + (to_curve / d) * w;
+      sum_max_distance = sum_max_distance + t_to_max_distance(t) * w;
+      sum_weight       = sum_weight + w;
+      continue;
+    }
+
+    let tan = t_to_tan(t);
+    let n_unit = vec2f(-tan.y, tan.x);
+
+    // Decompose `to_curve` in the curve's local (normal, tangent) frame at
+    // sample `t`. `perp_signed` is the geometrically meaningful signed
+    // perpendicular distance from `pos` to the curve's tangent line; `para`
+    // is just the arc-grid sampling offset and becomes noise (the grain
+    // artifact, see ./artifacts/blend angle grain.png) when abs(perp_signed)
+    // is small.
+    let perp_signed = dot(to_curve, n_unit);
+    let para        = dot(to_curve, tan);
+
+    // Suppress the noisy tangent component when we lack perpendicular
+    // leverage. trust -> 0 recovers sign(perp) * n_unit (the old
+    // tangent-normal "Method A" fallback); trust -> 1 recovers
+    // to_curve / d (the old "Method B" radial direction). The transition
+    // is per-sample on |perp_signed| so there is no fragment-wide step.
+    let trust = smoothstep(0.5, 1.5, abs(perp_signed));
+    let clean = perp_signed * n_unit + para * trust * tan;
+    let dir   = clean / max(length(clean), 1e-6);
+
+    sum_angle = sum_angle + dir * w;
+
     sum_max_distance = sum_max_distance + t_to_max_distance(t) * w;
     sum_weight       = sum_weight + w;
   }
@@ -237,6 +265,7 @@ struct Sample {
   debug_probe: f32,
   fw: f32,
   uv: vec2f,
+  norm_arc_blended: f32,
 };
 
 fn getSample(pos: vec2f) -> Sample {
@@ -356,6 +385,7 @@ fn getSample(pos: vec2f) -> Sample {
     debug_probe,
     fw,
     uv,
+    arc_blended / base_u.total_arc_len,
   );
 }
 
@@ -502,9 +532,9 @@ struct Refined {
   // let inner_alpha = smoothstep(0 - alpha_smooth_factor, 0 + alpha_smooth_factor, s.signed_distance);
   // let outer_alpha = smoothstep(0 - alpha_smooth_factor, 0 + alpha_smooth_factor, s.signed_distance);
   // let alpha = select(0.0, 1.0, s.signed_distance > 0);
-  let _keep_uniform_binding = u.texture_scale;
 
   var color = _priv_X821b6_getColor(s);
+  color = vec4f(color * u.opacity);
   // var color = _priv_X821b6_getColor(s.signed_distance, s.t, s.blend_angle, uv, vsOut.norm_uv, s.norm_distance);
 
   let sdf_texture_grid = min(fract(uv) / s.fw, (1.0 - fract(uv)) / s.fw);

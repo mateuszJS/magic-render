@@ -1,12 +1,14 @@
 import type getDrawShape from 'WebGPU/programs/drawShape/getProgram'
-import { CustomProgramError } from 'types'
+import { CodeSnippet, Program, ProgramCompilationInfo } from 'types'
 import * as Logic from '../logic/index.zig'
 import * as PredefinedPrograms from './predefinedPrograms'
 import { createProgram } from './createProgram'
 
 export interface CustomProgram {
-  code: string
-  errors: CustomProgramError[]
+  codeSnippets: CodeSnippet[]
+  mergedCode: string
+  orderedInputNames: string[]
+  compilationInfo: ProgramCompilationInfo[]
   execute: ReturnType<typeof getDrawShape> | null
   defaultDrawBuffer: Float32Array<ArrayBuffer>
 }
@@ -24,13 +26,22 @@ export function init(): void {
     // TODO: we generate tons of EXACTLY SAME PROGRAMS, ITPS POINTLESS
     [
       Logic.HIGHLIGHT_PATH_PROGRAM_ID,
-      createProgram(PredefinedPrograms.HIGHLIGHT_PATH, Logic.HIGHLIGHT_PATH_PROGRAM_ID),
+      createProgram(
+        [{ id: 1, content: PredefinedPrograms.HIGHLIGHT_PATH }],
+        Logic.HIGHLIGHT_PATH_PROGRAM_ID
+      ),
     ],
     [
       Logic.SOLID_COLOR_PROGRAM_ID,
-      createProgram(PredefinedPrograms.SOLID_COLOR, Logic.SOLID_COLOR_PROGRAM_ID),
+      createProgram(
+        [{ id: 1, content: PredefinedPrograms.SOLID_COLOR }],
+        Logic.SOLID_COLOR_PROGRAM_ID
+      ),
     ],
-    [Logic.ERROR_PROGRAM_ID, createProgram(PredefinedPrograms.ERROR, Logic.ERROR_PROGRAM_ID)],
+    [
+      Logic.ERROR_PROGRAM_ID,
+      createProgram([{ id: 1, content: PredefinedPrograms.ERROR }], Logic.ERROR_PROGRAM_ID),
+    ],
   ])
   programIdCounter = Math.max(...Array.from(customPrograms.keys())) + 1 // be one bigger than predefiend programs biggest id
 }
@@ -40,17 +51,23 @@ export type RenderData = {
   uniform: Float32Array<ArrayBuffer>
 }
 
-// On first snapshot, there is no programId assigned yet
-export function getSerializationInfo(
-  programId: number | undefined,
-  code: string
-): number /* program id */ {
-  // const compiledUniform = compileUniformSchema(inputs)
+function equalCodeSnippets(a: CustomProgram['codeSnippets'], b: CustomProgram['codeSnippets']) {
+  return (
+    a.length === b.length &&
+    a.every((snippet, index) => snippet.id === b[index].id && snippet.content === b[index].content)
+  )
+}
 
-  if (programId) {
-    const program = customPrograms.get(programId)
-    if (program && program.code === code) {
-      return programId
+// On first snapshot, there is no programId assigned yet
+export function getSerializationInfo(program: Program) {
+  if (program.id) {
+    const cachedProgram = customPrograms.get(program.id)
+    if (cachedProgram && equalCodeSnippets(cachedProgram.codeSnippets, program.codeSnippets)) {
+      return {
+        programId: program.id,
+        mergedCode: cachedProgram.mergedCode,
+        orderedInputNames: cachedProgram.orderedInputNames,
+      }
     }
     // TODO: think about removing, we cannot do it right away because it might be used next frame still
     // we should probably "schedule" program for deletion
@@ -58,8 +75,14 @@ export function getSerializationInfo(
 
   const newId = programIdCounter++
 
-  customPrograms.set(newId, createProgram(code, newId))
-  return newId
+  const newProgram = createProgram(program.codeSnippets, newId)
+  customPrograms.set(newId, newProgram)
+
+  return {
+    programId: newId,
+    mergedCode: newProgram.mergedCode,
+    orderedInputNames: newProgram.orderedInputNames,
+  }
 }
 
 export function getAssetDetails(programId: number): CustomProgram {
@@ -74,7 +97,7 @@ export function getProgram(programId: number) {
 
   if (program.execute === null) {
     program = customPrograms.get(
-      program.errors.length > 0 ? Logic.ERROR_PROGRAM_ID : Logic.SOLID_COLOR_PROGRAM_ID
+      program.compilationInfo.length > 0 ? Logic.ERROR_PROGRAM_ID : Logic.SOLID_COLOR_PROGRAM_ID
     )
     if (!program) throw Error('Unknown DEFAULT program id: ' + programId)
   }

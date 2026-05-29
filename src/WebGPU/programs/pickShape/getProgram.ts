@@ -2,7 +2,7 @@ import { delayedDestroy } from '../initPrograms'
 import shaderCode from './shader.wgsl'
 import bazierUtilsCode from '../bezier-utils.wgsl'
 
-export default function getDrawShape(device: GPUDevice, matrixBuffer: GPUBuffer) {
+export default function getPickShape(device: GPUDevice, matrixBuffer: GPUBuffer) {
   const module = device.createShaderModule({
     label: 'pickShape shader',
     code: shaderCode + bazierUtilsCode,

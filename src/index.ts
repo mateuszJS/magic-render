@@ -88,10 +88,8 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     abortController.signal
   )
 
-  const passSnapshot = (newSnapshot: ZigProjectSnapshot | null, commit: boolean) => {
-    if (newSnapshot) {
-      Snapshots.saveSnapshot(newSnapshot)
-    }
+  const passSnapshot = (newSnapshot: ZigProjectSnapshot, commit: boolean) => {
+    Snapshots.saveSnapshot(newSnapshot)
     props.onSnapshotUpdate(Snapshots.lastSnapshot, commit)
     if (commit) {
       PreviewTrigger.safeGeneratePreview()
@@ -237,22 +235,11 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
       Logic.setSelectedAssetProps(toZigProps(props), commit)
     },
     updateAssetProgram: (program, inputs, commit) => {
-      const programId = CustomPrograms.getSerializationInfo(program.id, program.code)
-      // this INPUTS might be outdated, if only code has changed
-      // We have to provide here inputs extracted from code, and use "inputs.props" just instead of defaultValues
-
-      // so values are instantly privide
-      // Issues:
-      // 1. Nobody guarantess that new program will compile AFTER previous program
-      // 2. If one program compiles, and is no logner in use, then ANYWAY
-      //    input will be updated with the next program, which migth not be compatible
-      //
-      // How about storing programId in the input, and use the input ONLY when programId is correct?
-      // But still, how are we going to store previous inputs?
+      const { programId, orderedInputNames } = CustomPrograms.getSerializationInfo(program)
       const inputsSerializeInfo = CustomProgramInputs.getSerializationInfo(
         inputs.id,
         inputs.props,
-        program.code
+        orderedInputNames
       )
 
       Logic.setSelectedAssetProgramId(
@@ -261,7 +248,6 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
         inputsSerializeInfo.padding,
         commit
       )
-      passSnapshot(null, commit)
     },
     updateAssetBounds: Logic.setSelectedAssetBounds,
     updateAssetTypoProps: (typoProps, commit) => {
@@ -284,5 +270,11 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     INFINITE_DISTANCE_THRESHOLD: Logic.INFINITE_DISTANCE * 0.9,
     // 90% of INFINITE_DISTANCE to provide a margin for floating-point errors
     INFINITE_DISTANCE: Logic.INFINITE_DISTANCE,
+    hoverAsset: (assetId: number) => {
+      Logic.onUpdatePick([assetId, 0, 0, 0])
+    },
+    selectAsset: (assetId: number) => {
+      Logic.selectAsset(assetId)
+    },
   }
 }

@@ -39,10 +39,15 @@ export type Id = [number, number, number, number]
 //   radius_ratio: number
 // }
 
+export type CodeSnippet = {
+  id: number
+  content: string
+}
+
 export type Program = {
-  code: string
   id?: number
-  errors?: CustomProgramError[]
+  codeSnippets: CodeSnippet[]
+  compilationInfo?: ProgramCompilationInfo[]
 }
 
 // Same for Zig and Api
@@ -154,12 +159,13 @@ export type ProgramInputs = {
   props: Record<string, Vector4 | SoftVector4>
 }
 
-export type CustomProgramError = {
+export type ProgramCompilationInfo = {
   length: number
   lineNum: number
   linePos: number
   message: string
   offset: number
+  type: 'error' | 'warning'
 }
 
 export type CreatorProps = {
@@ -196,4 +202,7 @@ export type CreatorAPI = {
   INFINITE_DISTANCE_THRESHOLD: number // threshold value for considering a distance as "infinite" in SDF fill effects
   INFINITE_DISTANCE: number // maximum f32 value, used for SDF fill effects
   addText: VoidFunction
+
+  hoverAsset: (assetId: number) => void
+  selectAsset: (assetId: number) => void
 }
