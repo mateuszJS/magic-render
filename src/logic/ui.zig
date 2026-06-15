@@ -94,6 +94,7 @@ pub fn draw(dataset: []DrawVertex) !void {
                 shape.sdf_tex.arc_lengths,
                 shape.sdf_tex.max_distances,
                 shape.props.opacity,
+                shape.sdf_tex.force_outside,
             );
         }
     }

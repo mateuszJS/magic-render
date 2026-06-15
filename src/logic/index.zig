@@ -31,7 +31,8 @@ const caret = @import("texts/caret.zig");
 const chars = @import("texts/chars.zig");
 const assets = @import("assets.zig");
 const webgpu_glue = @import("webgpu_glue.zig");
-const computeShape = @import("compute_shape.zig").computeShape;
+const compute_shape = @import("compute_shape.zig");
+const computeShape = compute_shape.computeShape;
 
 pub const INFINITE_DISTANCE = consts.INFINITE_DISTANCE;
 pub const DEFAULT_FONT_ID = fonts.DEFAULT_FONT_ID;
@@ -716,6 +717,7 @@ pub fn updateCache() void {
                             shape.sdf_tex.arc_lengths,
                             shape.sdf_tex.max_distances,
                             shape.props.opacity,
+                            shape.sdf_tex.force_outside,
                         );
                     }
 
@@ -929,6 +931,20 @@ pub fn computePhase() !void {
                     text.sdf_tex.points = try all_points.toOwnedSlice();
                     text.sdf_tex.valid = text.sdf_tex.points.len > 0;
 
+                    // base.wgsl's drawShape reads arc_lengths and max_distances
+                    // when sampling the SDF (see t_to_arc / t_to_max_distance /
+                    // total_arc_len in the PathMetrics uniform). For per-char
+                    // SDFs these are produced by computeShape; for the SHARED
+                    // text SDF we build the combined point buffer ourselves
+                    // here, so we have to compute the same metrics on it.
+                    // Without this, drawShape ends up with empty storage
+                    // buffers and the text either renders blank or fails to
+                    // create a zero-sized buffer entirely.
+                    std.heap.page_allocator.free(text.sdf_tex.arc_lengths);
+                    std.heap.page_allocator.free(text.sdf_tex.max_distances);
+                    text.sdf_tex.arc_lengths = try compute_shape.get_arc_lengths(text.sdf_tex.points);
+                    text.sdf_tex.max_distances = try compute_shape.get_max_distances(text.sdf_tex.points);
+
                     webgpu_glue.finish_combine_sdf();
                 }
             },
@@ -979,6 +995,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                             shape.sdf_tex.max_distances,
                             // TODO: all sdf props should be baked in computeShape and only exists in JS memory
                             shape.props.opacity,
+                            shape.sdf_tex.force_outside,
                         );
                     }
                 }
@@ -1000,6 +1017,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                         text.sdf_tex.arc_lengths,
                         text.sdf_tex.max_distances,
                         text.props.opacity,
+                        text.sdf_tex.force_outside,
                     );
 
                     if (!is_typing_ui) continue;
@@ -1036,6 +1054,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                                     char_sdf_tex.arc_lengths,
                                     char_sdf_tex.max_distances,
                                     text.props.opacity,
+                                    char_sdf_tex.force_outside,
                                 );
                             }
                         }
@@ -1105,6 +1124,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                     shape.sdf_tex.arc_lengths,
                     shape.sdf_tex.max_distances,
                     shape.props.opacity,
+                    shape.sdf_tex.force_outside,
                 );
             }
 
@@ -1149,6 +1169,7 @@ pub fn renderPick() !void {
                         shape.sdf_tex.points,
                         shape.sdf_tex.arc_lengths,
                         shape.sdf_tex.max_distances,
+                        shape.sdf_tex.force_outside,
                     );
                 }
             },

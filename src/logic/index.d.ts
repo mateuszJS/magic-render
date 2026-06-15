@@ -119,7 +119,8 @@ declare module '*.zig' {
       curves_data: ArrayPointerDataView,
       arc_lengths_data: ArrayPointerDataView,
       max_distances_data: ArrayPointerDataView,
-      opacity: number
+      opacity: number,
+      force_outside: boolean
     ) => void
     pick_shape: (
       bound_box_data: ArrayPointerDataView,
@@ -128,7 +129,8 @@ declare module '*.zig' {
       sdf_texture_id: number,
       curves_data: ArrayPointerDataView,
       arc_lengths_data: ArrayPointerDataView,
-      max_distances_data: ArrayPointerDataView
+      max_distances_data: ArrayPointerDataView,
+      force_outside: boolean
     ) => void
   }) => void
   export function glueJsGeneral(

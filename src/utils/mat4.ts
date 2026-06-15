@@ -68,7 +68,11 @@ const mat4 = {
     return dst
   },
 
-  multiply(a: Float32Array, b: Float32Array, dst: Float32Array = new Float32Array(16)) {
+  multiply(
+    a: Float32Array,
+    b: Float32Array,
+    dst: Float32Array<ArrayBuffer> = new Float32Array(16)
+  ) {
     const b00 = b[0 * 4 + 0]
     const b01 = b[0 * 4 + 1]
     const b02 = b[0 * 4 + 2]
@@ -257,7 +261,7 @@ const mat4 = {
   },
 
   // prettier-ignore
-  translation([tx, ty, tz]: number[], dst: Float32Array = new Float32Array(16)) {
+  translation([tx, ty, tz]: number[], dst: Float32Array<ArrayBuffer> = new Float32Array(16)) {
     dst[ 0] = 1;   dst[ 1] = 0;   dst[ 2] = 0;   dst[ 3] = 0
     dst[ 4] = 0;   dst[ 5] = 1;   dst[ 6] = 0;   dst[ 7] = 0
     dst[ 8] = 0;   dst[ 9] = 0;   dst[10] = 1;   dst[11] = 0
@@ -307,23 +311,23 @@ const mat4 = {
     return dst
   },
 
-  translate(m: Float32Array, translation: number[], dst?: Float32Array) {
+  translate(m: Float32Array, translation: number[], dst?: Float32Array<ArrayBuffer>) {
     return mat4.multiply(m, mat4.translation(translation), dst)
   },
 
-  rotateX(m: Float32Array, angleInRadians: number, dst?: Float32Array) {
+  rotateX(m: Float32Array, angleInRadians: number, dst?: Float32Array<ArrayBuffer>) {
     return mat4.multiply(m, mat4.rotationX(angleInRadians), dst)
   },
 
-  rotateY(m: Float32Array, angleInRadians: number, dst?: Float32Array) {
+  rotateY(m: Float32Array, angleInRadians: number, dst?: Float32Array<ArrayBuffer>) {
     return mat4.multiply(m, mat4.rotationY(angleInRadians), dst)
   },
 
-  rotateZ(m: Float32Array, angleInRadians: number, dst?: Float32Array) {
+  rotateZ(m: Float32Array, angleInRadians: number, dst?: Float32Array<ArrayBuffer>) {
     return mat4.multiply(m, mat4.rotationZ(angleInRadians), dst)
   },
 
-  scale(m: Float32Array, scale: number[], dst?: Float32Array) {
+  scale(m: Float32Array, scale: number[], dst?: Float32Array<ArrayBuffer>) {
     return mat4.multiply(m, mat4.scaling(scale), dst)
   },
 }

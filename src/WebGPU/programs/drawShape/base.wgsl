@@ -25,7 +25,8 @@ struct BaseUniform {
   total_arc_len: f32, // arc_lengths[length-1], Saves one storage-buffer load.
   num_curves: u32, // arrayLength(&curves) / 4. Avoids the runtime length query,
   debug_scale: f32, // multiplier applied to the debug-overlay grid cell,
-  debug_type: u32 // 0u -> no debug, 1u -> show arrows(useful for angles), 2u -> show digits
+  debug_type: u32, // 0u -> no debug, 1u -> show arrows(useful for angles), 2u -> show digits
+  force_outside: u32, // bool
 };
 
 struct Uniforms {
@@ -285,6 +286,10 @@ fn getSample(pos: vec2f) -> Sample {
   let n11 = loadNeighbour(p11, pos);
   let nNearest = getNearestNeighbour(pos, n00, n10, n01, n11);
 
+  if (n00.t < -0.1 && n10.t < -0.1 && n01.t < -0.1 && n11.t < -0.1) {
+    discard;
+  }
+
 
   var debug_probe = nNearest.arc;
 
@@ -320,10 +325,10 @@ fn getSample(pos: vec2f) -> Sample {
   let cos11 = dot(n11.tan, nNearest.tan);
 
   // multiplied by nearest_sign because is_angle_near has only good effects when inside the shape
-  let keep00 = arc_diff_00 < BILINEAR_ARC_THRESHOLD && cos00 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  let keep01 = arc_diff_01 < BILINEAR_ARC_THRESHOLD && cos01 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  let keep10 = arc_diff_10 < BILINEAR_ARC_THRESHOLD && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  let keep11 = arc_diff_11 < BILINEAR_ARC_THRESHOLD && cos11 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  let keep00 = n00.t >= 0 && arc_diff_00 < BILINEAR_ARC_THRESHOLD && cos00 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  let keep01 = n01.t >= 0 && arc_diff_01 < BILINEAR_ARC_THRESHOLD && cos01 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  let keep10 = n10.t >= 0 && arc_diff_10 < BILINEAR_ARC_THRESHOLD && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  let keep11 = n11.t >= 0 && arc_diff_11 < BILINEAR_ARC_THRESHOLD && cos11 > BILINEAR_ANGLE_DOT_THRESHOLD;
 
   let bili_dist00 = (1.0 - fract_pos.x) * (1.0 - fract_pos.y);
   let bili_dist01 = (1.0 - fract_pos.x) * fract_pos.y;
@@ -358,7 +363,7 @@ fn getSample(pos: vec2f) -> Sample {
   
 
   // Negative inside, positive outside, in pixel-space units (see header).
-  let is_inside = get_is_inside(pos, nNearest.t, nNearest.tan, nNearest.pos);
+  let is_inside = get_is_inside(pos, nNearest.t, nNearest.tan, nNearest.pos, bool(base_u.force_outside));
   let curve_pos = t_to_pos(refined_blended_global_t);
   let signed_distance = length(curve_pos - pos) * is_inside;
   

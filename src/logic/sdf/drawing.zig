@@ -14,6 +14,7 @@ pub const SdfTex = struct {
     padding: f32 = 0,
     round_err: Point = .{},
     is_outdated: bool = true,
+    force_outside: bool = false,
     points: []const Point = &.{},
     arc_lengths: []const f32 = &.{},
     max_distances: []const f32 = &.{},

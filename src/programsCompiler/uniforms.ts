@@ -147,6 +147,11 @@ export function getBuffers(orderedInputNames: string[], inputs: ProgramInputs['p
     props,
     orderedInputNames,
     drawBuffer: new Float32Array(buffer),
-    pickBuffer: new Float32Array([0 /* sdf scale*/, Logic.INFINITE_DISTANCE, minDistance]),
+    pickBuffer: new Float32Array([
+      0 /* sdf scale*/,
+      Logic.INFINITE_DISTANCE,
+      minDistance,
+      0 /* force_outside */,
+    ]),
   }
 }

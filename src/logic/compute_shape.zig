@@ -24,6 +24,7 @@ pub fn computeShape(
     );
 
     if (paths[0].len == 4) {
+        sdf_tex.force_outside = true;
         return sdf_tex;
     }
     // else if (paths[0].len == 8) {
@@ -55,6 +56,7 @@ pub fn computeShape(
 
     sdf_tex.points = points;
     sdf_tex.valid = points.len > 0;
+    sdf_tex.force_outside = points.len == 8;
 
     sdf_tex.arc_lengths = try get_arc_lengths(points);
     sdf_tex.max_distances = try get_max_distances(points);
@@ -1203,7 +1205,7 @@ fn flatter_paths(paths: [][]types.Point) ![]types.Point {
     return points;
 }
 
-fn get_arc_lengths(points: []types.Point) ![]f32 {
+pub fn get_arc_lengths(points: []const types.Point) ![]f32 {
 
     // jsut happened that we want 4 sampels per curve and also we have 4 poitns per curve, it's coincidence
     const arc_lengths = try std.heap.page_allocator.alloc(f32, points.len + 1);
@@ -1249,7 +1251,7 @@ fn get_arc_lengths(points: []types.Point) ![]f32 {
     return arc_lengths;
 }
 
-fn get_max_distances(points: []types.Point) ![]f32 {
+pub fn get_max_distances(points: []const types.Point) ![]f32 {
     // =========================================================================
     // MEDIAL-AXIS DISTANCE  (max_distances_list)
     // =========================================================================

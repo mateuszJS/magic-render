@@ -98,7 +98,7 @@ export default class PickManager {
       mat4.scaling([canvas.width, canvas.height, 0]), // scale to 1px convers whole shader output
       mat4.translation([tx, ty, 0]),
       canvasMatrix,
-    ].reduce(
+    ].reduce<Float32Array<ArrayBuffer>>(
       (accMatrix, rotationMatrix) => mat4.multiply(accMatrix, rotationMatrix),
       mat4.translation([-1, 1, 0]) // move (0,0) to the top left corner
     )

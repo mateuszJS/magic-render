@@ -83,7 +83,7 @@ export function runCreator(
             view: Textures.getTexture(sdfTextureId).createView(),
             loadOp: 'clear',
             clearValue: {
-              r: -3.402823466e38,
+              r: -1,
               g: 0,
               b: 0,
               a: 0,
@@ -93,7 +93,7 @@ export function runCreator(
         ],
         depthStencilAttachment: {
           view: Textures.getTexture(computeDepthTextureId).createView(),
-          depthClearValue: 0, //-3.402823466e38,
+          depthClearValue: 0, // -3.402823466e38,
           depthLoadOp: 'clear',
           depthStoreOp: 'store',
         },
@@ -145,7 +145,8 @@ export function runCreator(
       curves_data,
       arc_lengths_data,
       max_distances_data,
-      opacity
+      opacity,
+      force_outside
     ) => {
       const program = CustomPrograms.getProgram(program_id)
 
@@ -176,7 +177,8 @@ export function runCreator(
         drawBuffer,
         curvesDataView,
         arcLengthsDataView,
-        maxDistanceDataView
+        maxDistanceDataView,
+        force_outside
       )
     },
     pick_texture: (vertex_data, texture_id) => {
@@ -191,13 +193,15 @@ export function runCreator(
       curves_data,
       arc_lengths_data,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      _max_distances
+      _max_distances,
+      force_outside
     ) => {
       const curvesDataView = curves_data['*'].dataView
       const arcLengthsDataView = arc_lengths_data['*'].dataView
 
       const inputs = CustomProgramInputs.getInputs(program_inputs_id)
       inputs.pickBuffer[0] = sdf_texture_scale
+      inputs.pickBuffer[3] = force_outside ? 1 : 0
 
       pickShape(
         pickPass,

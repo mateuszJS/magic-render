@@ -118,12 +118,16 @@ fn prev_curve_in_path(cur_idx: u32) -> u32 {
 // uv -> position of the currently claculated pixel
 // tan -> tangent of the closest point on curve
 // pos -> position of the closest point on curve
-fn get_is_inside(uv: vec2f, t: f32, tan: vec2f, pos: vec2f) -> f32 {
+fn get_is_inside(uv: vec2f, t: f32, tan: vec2f, pos: vec2f, force_outside: bool) -> f32 {
+  if (force_outside) {
+    return -1.0;
+  }
+
   let inward_normal = vec2f(tan.y, -tan.x); // 90 degree CCW,
   // inward -> something moving towards from the center(shape), towards the interior
 
   // pos - uv points towards curve, so different direction base if inside or outside.
-  // Dot will return 1 if direction is towards the inside. This is true onyl for exterior pixels, all pixels insdie shape
+  // Dot will return 1 if direction is towards the inside. This is true onyl for exterior pixels, all pixels inside shape
   // will point toward closest curve, so exterior, that's why we multiply by -1
   var is_inside = -sign(dot(pos - uv, inward_normal));
   

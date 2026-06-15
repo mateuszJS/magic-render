@@ -98,7 +98,8 @@ export default function getDrawShape(
     uniformDataView: GPUAllowSharedBufferSource,
     curvesDataView: DataView<ArrayBuffer>,
     arcLengthsDataView: DataView<ArrayBuffer>,
-    maxDistancesDataView: DataView<ArrayBuffer>
+    maxDistancesDataView: DataView<ArrayBuffer>,
+    forceOutside = false
   ) {
     const boundBoxBuffer = device.createBuffer({
       label: 'drawShape vertex buffer',
@@ -145,7 +146,12 @@ export default function getDrawShape(
       size: BASE_UNIFORM_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
-    const metricsArrayBuffer = getBaseUniformValues(sdfTexture, curvesDataView, arcLengthsDataView)
+    const metricsArrayBuffer = getBaseUniformValues(
+      sdfTexture,
+      curvesDataView,
+      arcLengthsDataView,
+      forceOutside
+    )
     device.queue.writeBuffer(baseUniformBuffer, 0, metricsArrayBuffer)
     delayedDestroy(baseUniformBuffer)
 
@@ -176,7 +182,9 @@ export default function getDrawShape(
 //   off  8 : total_arc_len   f32
 //   off 12 : num_curves      u32
 //   off 16 : debug_scale     f32    (devicePixelRatio for debug overlay)
-//   off 20 : 12 bytes padding (struct rounded up to 32 for uniform align)
+//   off 20 : debug_type      u32
+//   off 24 : force_outside   u32    (0 or 1, converted via bool() in shader)
+//   off 28 : 4 bytes padding (struct rounded up to 32 for uniform align)
 const BASE_UNIFORM_BYTES = 32
 // Size of one cubic curve in `curves` storage buffer: 4 vec2f × 8 bytes.
 const CURVE_STRIDE_BYTES = 4 * 2 * 4
@@ -184,7 +192,8 @@ const CURVE_STRIDE_BYTES = 4 * 2 * 4
 function getBaseUniformValues(
   sdfTexture: GPUTexture,
   curvesDataView: DataView<ArrayBuffer>,
-  arcLengthsDataView: DataView<ArrayBuffer>
+  arcLengthsDataView: DataView<ArrayBuffer>,
+  forceOutside: boolean
 ) {
   // Build the PathMetrics uniform from the data we already have.
   // `total_arc_len` is the last entry of arc_lengths (cumulative arc length
@@ -211,6 +220,7 @@ function getBaseUniformValues(
       : debugType === 'digits'
         ? 2
         : 0 // debug_arrow
+  metricsU32[6] = forceOutside ? 1 : 0
 
   return metricsArrayBuffer
 }

@@ -9,7 +9,7 @@ type Entry = {
   props: ProgramInputs['props']
   orderedInputNames: string[]
   drawBuffer: Float32Array<ArrayBuffer>
-  pickBuffer: Float32Array<ArrayBuffer> /* [sdf tex scale, maxDistance, minDistance] */
+  pickBuffer: Float32Array<ArrayBuffer> /* [sdf tex scale, maxDistance, minDistance, force_outside] */
 }
 let inputsCache: Map<number, Entry>
 let inputsIdCounter: number
