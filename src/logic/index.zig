@@ -1455,7 +1455,6 @@ pub fn invalidateCacheByProgramId(program_id: u32) void {
                     state.redraw_needed = true;
                     shape.outdated_cache = true;
                     snapshots.triggerNewSnapshot(true, false);
-                    break;
                 }
             },
             else => {},
@@ -1472,7 +1471,12 @@ pub fn invalidateCacheByProgramInputsId(program_inputs_id: u32) void {
                     state.redraw_needed = true;
                     shape.outdated_cache = true;
                     snapshots.triggerNewSnapshot(true, false);
-                    break;
+                }
+            },
+            .text => |*text| {
+                if (text.program_inputs_id == program_inputs_id) {
+                    state.redraw_needed = true;
+                    snapshots.triggerNewSnapshot(true, false);
                 }
             },
             else => {},

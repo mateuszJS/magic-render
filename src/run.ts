@@ -152,7 +152,7 @@ export function runCreator(
 
       if (!program.execute) return // even default programs are not yet compiled
 
-      const inputs = CustomProgramInputs.getInputs(program_inputs_id) // progrma might be otudated for these inputs
+      const inputs = CustomProgramInputs.getInputs(program_inputs_id) // program might be outdated for these inputs
       const drawBuffer =
         program.defaultDrawBuffer.length === inputs.drawBuffer.length
           ? inputs.drawBuffer
@@ -192,7 +192,7 @@ export function runCreator(
       textureId,
       curves_data,
       arc_lengths_data,
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
       _max_distances,
       force_outside
     ) => {

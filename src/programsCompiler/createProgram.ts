@@ -13,6 +13,8 @@ export function mergeCode(codeSnippets: CodeSnippet[]) {
     const inputNames = extractInputNamesFromCode(snippet.content)
     const indexedSnippet = inputNames.reduce((acc, inputName) => {
       orderedInputNames.push(`${inputName}_${snippet.id}`)
+      // TODO: there will be an error when we have two inputs in this order:
+      // d_dist and d_distance, because d_dist will corrupt the d_distance input.
       return acc.replaceAll(inputName, `${inputName}_${snippet.id}`)
     }, snippet.content)
 

@@ -215,6 +215,7 @@ fn getMovingAvg(pos: vec2f, arc_primary: f32, signed_distance: f32) -> MoveAvgRe
 
     let fix = false;
     if (!fix) {
+      // when "d" is zero, the angle is a NaN probably
       sum_angle = sum_angle + (to_curve / d) * w;
       sum_max_distance = sum_max_distance + t_to_max_distance(t) * w;
       sum_weight       = sum_weight + w;
