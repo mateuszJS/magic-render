@@ -12,13 +12,13 @@ pub var fonts: std.AutoArrayHashMap(u32, chars.Chars) = undefined;
 
 pub fn init() void {
     fonts = std.AutoArrayHashMap(u32, chars.Chars).init(std.heap.page_allocator);
+    isReady = false;
 }
 
 // struct "Details" is owned by allocator, ArrayHashMap only has a pointer, but doesn't own the struct!
 // So pointer to a "Details" struct should never change!
 pub fn get(_font_id: u32, c: u21) !*chars.Details {
     const safe_font_id = if (fonts.contains(_font_id)) _font_id else DEFAULT_FONT_ID;
-
     const font = fonts.getPtr(safe_font_id) orelse @panic("Font ID not found");
     const details = font.getChar(c);
     if (details) |d| {

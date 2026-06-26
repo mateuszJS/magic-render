@@ -1,4 +1,4 @@
-import vec3 from "./vec3"
+import vec3 from './vec3'
 
 const mat4 = {
   projection(width: number, height: number, depth: number, dst: Float32Array) {
@@ -6,7 +6,8 @@ const mat4 = {
     return mat4.ortho(0, width, height, 0, depth, -depth, dst)
   },
 
-  perspective(fieldOfViewYInRadians: number, aspect: number, zNear: number, zFar: number, dst = new Float32Array(16)) {
+  // prettier-ignore
+  perspective(fieldOfViewYInRadians: number, aspect: number, zNear: number, zFar: number, dst: Float32Array = new Float32Array(16)) {
     const f = Math.tan(Math.PI * 0.5 - 0.5 * fieldOfViewYInRadians)
     const rangeInv = 1 / (zNear - zFar)
 
@@ -33,7 +34,8 @@ const mat4 = {
     return dst
   },
 
-  ortho(left: number, right: number, bottom: number, top: number, near: number, far: number, dst = new Float32Array(16)) {
+  // prettier-ignore
+  ortho(left: number, right: number, bottom: number, top: number, near: number, far: number, dst: Float32Array = new Float32Array(16)) {
     dst[0] = 2 / (right - left)
     dst[1] = 0
     dst[2] = 0
@@ -57,7 +59,8 @@ const mat4 = {
     return dst
   },
 
-  identity(dst = new Float32Array(16)) {
+  // prettier-ignore
+  identity(dst: Float32Array = new Float32Array(16)) {
     dst[ 0] = 1;  dst[ 1] = 0;  dst[ 2] = 0;   dst[ 3] = 0
     dst[ 4] = 0;  dst[ 5] = 1;  dst[ 6] = 0;   dst[ 7] = 0
     dst[ 8] = 0;  dst[ 9] = 0;  dst[10] = 1;   dst[11] = 0
@@ -65,7 +68,11 @@ const mat4 = {
     return dst
   },
 
-  multiply(a: Float32Array, b: Float32Array, dst = new Float32Array(16)) {
+  multiply(
+    a: Float32Array,
+    b: Float32Array,
+    dst: Float32Array<ArrayBuffer> = new Float32Array(16)
+  ) {
     const b00 = b[0 * 4 + 0]
     const b01 = b[0 * 4 + 1]
     const b02 = b[0 * 4 + 2]
@@ -122,7 +129,8 @@ const mat4 = {
     return dst
   },
 
-  cameraAim(eye: number[] | Float32Array, target: number[], up: number[], dst = new Float32Array(16)) {
+  // prettier-ignore
+  cameraAim(eye: number[] | Float32Array, target: number[], up: number[], dst: Float32Array = new Float32Array(16)) {
     const zAxis = vec3.normalize(vec3.subtract(eye, target))
     const xAxis = vec3.normalize(vec3.cross(up, zAxis))
     const yAxis = vec3.normalize(vec3.cross(zAxis, xAxis))
@@ -135,7 +143,8 @@ const mat4 = {
     return dst
   },
 
-  inverse(m: Float32Array, dst = new Float32Array(16)) {
+  // prettier-ignore
+  inverse(m: Float32Array, dst: Float32Array = new Float32Array(16)) {
     const m00 = m[0 * 4 + 0]
     const m01 = m[0 * 4 + 1]
     const m02 = m[0 * 4 + 2]
@@ -223,7 +232,8 @@ const mat4 = {
     return dst
   },
 
-  transpose(m: Float32Array, dst = new Float32Array(16)) {
+  // prettier-ignore
+  transpose(m: Float32Array, dst: Float32Array = new Float32Array(16)) {
     dst[ 0] = m[ 0];  dst[ 1] = m[ 4];  dst[ 2] = m[ 8];  dst[ 3] = m[12]
     dst[ 4] = m[ 1];  dst[ 5] = m[ 5];  dst[ 6] = m[ 9];  dst[ 7] = m[13]
     dst[ 8] = m[ 2];  dst[ 9] = m[ 6];  dst[10] = m[10];  dst[11] = m[14]
@@ -232,7 +242,8 @@ const mat4 = {
     return dst
   },
 
-  aim(eye: Float32Array | number[], target: number[], up: number[], dst = new Float32Array(16)) {
+  // prettier-ignore
+  aim(eye: Float32Array | number[], target: number[], up: number[], dst: Float32Array = new Float32Array(16)) {
     const zAxis = vec3.normalize(vec3.subtract(target, eye))
     const xAxis = vec3.normalize(vec3.cross(up, zAxis))
     const yAxis = vec3.normalize(vec3.cross(zAxis, xAxis))
@@ -249,7 +260,8 @@ const mat4 = {
     return mat4.inverse(mat4.cameraAim(eye, target, up, dst), dst)
   },
 
-  translation([tx, ty, tz]: number[], dst = new Float32Array(16)) {
+  // prettier-ignore
+  translation([tx, ty, tz]: number[], dst: Float32Array<ArrayBuffer> = new Float32Array(16)) {
     dst[ 0] = 1;   dst[ 1] = 0;   dst[ 2] = 0;   dst[ 3] = 0
     dst[ 4] = 0;   dst[ 5] = 1;   dst[ 6] = 0;   dst[ 7] = 0
     dst[ 8] = 0;   dst[ 9] = 0;   dst[10] = 1;   dst[11] = 0
@@ -257,7 +269,8 @@ const mat4 = {
     return dst
   },
 
-  rotationX(angleInRadians: number, dst = new Float32Array(16)) {
+  // prettier-ignore
+  rotationX(angleInRadians: number, dst: Float32Array = new Float32Array(16)) {
     const c = Math.cos(angleInRadians)
     const s = Math.sin(angleInRadians)
     dst[ 0] = 1;  dst[ 1] = 0;   dst[ 2] = 0;  dst[ 3] = 0
@@ -267,7 +280,8 @@ const mat4 = {
     return dst
   },
 
-  rotationY(angleInRadians: number, dst = new Float32Array(16)) {
+  // prettier-ignore
+  rotationY(angleInRadians: number, dst: Float32Array = new Float32Array(16)) {
     const c = Math.cos(angleInRadians)
     const s = Math.sin(angleInRadians)
     dst[ 0] = c;  dst[ 1] = 0;  dst[ 2] = -s;  dst[ 3] = 0
@@ -277,7 +291,8 @@ const mat4 = {
     return dst
   },
 
-  rotationZ(angleInRadians: number, dst = new Float32Array(16)) {
+  // prettier-ignore
+  rotationZ(angleInRadians: number, dst: Float32Array = new Float32Array(16)) {
     const c = Math.cos(angleInRadians)
     const s = Math.sin(angleInRadians)
     dst[ 0] = c;   dst[ 1] = s;  dst[ 2] = 0;  dst[ 3] = 0
@@ -287,7 +302,8 @@ const mat4 = {
     return dst
   },
 
-  scaling([sx, sy, sz]: number[], dst = new Float32Array(16)) {
+  // prettier-ignore
+  scaling([sx, sy, sz]: number[], dst: Float32Array = new Float32Array(16)) {
     dst[ 0] = sx;  dst[ 1] = 0;   dst[ 2] = 0;    dst[ 3] = 0
     dst[ 4] = 0;   dst[ 5] = sy;  dst[ 6] = 0;    dst[ 7] = 0
     dst[ 8] = 0;   dst[ 9] = 0;   dst[10] = sz;   dst[11] = 0
@@ -295,23 +311,23 @@ const mat4 = {
     return dst
   },
 
-  translate(m: Float32Array, translation: number[], dst?: Float32Array) {
+  translate(m: Float32Array, translation: number[], dst?: Float32Array<ArrayBuffer>) {
     return mat4.multiply(m, mat4.translation(translation), dst)
   },
 
-  rotateX(m: Float32Array, angleInRadians: number, dst?: Float32Array) {
+  rotateX(m: Float32Array, angleInRadians: number, dst?: Float32Array<ArrayBuffer>) {
     return mat4.multiply(m, mat4.rotationX(angleInRadians), dst)
   },
 
-  rotateY(m: Float32Array, angleInRadians: number, dst?: Float32Array) {
+  rotateY(m: Float32Array, angleInRadians: number, dst?: Float32Array<ArrayBuffer>) {
     return mat4.multiply(m, mat4.rotationY(angleInRadians), dst)
   },
 
-  rotateZ(m: Float32Array, angleInRadians: number, dst?: Float32Array) {
+  rotateZ(m: Float32Array, angleInRadians: number, dst?: Float32Array<ArrayBuffer>) {
     return mat4.multiply(m, mat4.rotationZ(angleInRadians), dst)
   },
 
-  scale(m: Float32Array, scale: number[], dst?: Float32Array) {
+  scale(m: Float32Array, scale: number[], dst?: Float32Array<ArrayBuffer>) {
     return mat4.multiply(m, mat4.scaling(scale), dst)
   },
 }

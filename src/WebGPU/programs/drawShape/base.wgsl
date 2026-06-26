@@ -1,3 +1,4 @@
+// this file assumes we work ONLY with closed paths. We are not obthered by any issues created by open paths.
 
 const EPSILON = 1e-10;
 const PI = 3.141592653589793;
@@ -24,9 +25,17 @@ struct BaseUniform {
   total_arc_len: f32, // arc_lengths[length-1], Saves one storage-buffer load.
   num_curves: u32, // arrayLength(&curves) / 4. Avoids the runtime length query,
   debug_scale: f32, // multiplier applied to the debug-overlay grid cell,
-  debug_type: u32 // 0u -> no debug, 1u -> show arrows(useful for angles), 2u -> show digits
+  debug_type: u32, // 0u -> no debug, 1u -> show arrows(useful for angles), 2u -> show digits
+  force_outside: u32, // bool
 };
 
+struct Uniforms {
+  texture_scale: f32,
+  opacity: f32,
+  ${OPTIONAL_UNIFORM_DECLARATION}
+};
+
+@group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var texture: texture_2d<f32>;
 @group(0) @binding(2) var<uniform> camera_projection: mat4x4f;
 @group(0) @binding(3) var<storage, read> curves: array<vec2f>;
@@ -156,12 +165,35 @@ struct MoveAvgResult {
   max_distance: f32,
 };
 
-fn getMovingAvg(pos: vec2f, arc_primary: f32, d_min: f32) -> MoveAvgResult {
+const MIN_BLEND_DISTANCE: f32 = 1;  // one pixel in pixel-space units
+// when point is on the curve, there is no reaosn to blend angles, just read tangent at that point
+// blending causes grain/sand artifacts, see ./artifacts/blend angle grain.png
+
+fn getMovingAvg(pos: vec2f, arc_primary: f32, signed_distance: f32) -> MoveAvgResult {
+  let abs_d = abs(signed_distance);
+
+  if (false && abs_d < MIN_BLEND_DISTANCE) {
+    let t  = arc_to_t(arc_primary);
+    // let p  = t_to_pos(t);
+    // let to_curve = p - pos;
+    // let d  = length(to_curve);
+
+    // If even that is degenerate (pixel essentially ON the curve, sub-ulp),
+    // fall back to the inward normal of the tangent. Both sides of the curve
+    // then disagree on sign, but the discontinuity is exactly one pixel wide
+    // and downstream `is_inside` resolves it.
+    let tan      = t_to_tan(t);
+    let tan_toward_t = vec2f(tan.y * -sign(signed_distance), tan.x * sign(signed_distance));   // matches get_is_inside convention
+    // let dir      = select(inward_n, to_curve / max(d, 1e-6), d > 1e-3);
+
+    return MoveAvgResult(atan2(tan_toward_t.y, tan_toward_t.x), t_to_max_distance(t));
+  }
+  
   let total = base_u.total_arc_len;
   let n_f = f32(WALK_ARC_SAMPLES);
-  let softness = max(WALK_ARC_SOFTNESS_FACTOR * d_min, 1e-6);
+  let softness = max(WALK_ARC_SOFTNESS_FACTOR * abs_d, 1e-6);
   let inv_softness = 1.0 / softness;
-  let half_win = WALK_ARC_WINDOW_FACTOR * d_min;
+  let half_win = WALK_ARC_WINDOW_FACTOR * abs_d;
 
   var sum_angle = vec2f(0.0);
   var sum_max_distance = 0.0;
@@ -169,18 +201,50 @@ fn getMovingAvg(pos: vec2f, arc_primary: f32, d_min: f32) -> MoveAvgResult {
 
 
   for (var i = 0; i < WALK_ARC_SAMPLES; i = i + 1) {
-    let arc = clamp(arc_primary - half_win + (f32(i) + 0.5) * (2.0 * half_win) / n_f, 0.0, total);
+    let raw_arc = arc_primary - half_win + (f32(i) + 0.5) * (2.0 * half_win) / n_f;
+    // Wrap to [0, total) so the seam doesn't pile samples onto one point.
+    let arc = raw_arc - total * floor(raw_arc / total);
+
+    // let arc = clamp(arc_primary - half_win + (f32(i) + 0.5) * (2.0 * half_win) / n_f, 0.0, total);
     let t = arc_to_t(arc);
     let p = t_to_pos(t);
 
     let to_curve = p - pos;
     let d = length(to_curve);
+    let w = exp(-(d - abs_d) * inv_softness);
 
-    if (d < 1e-6) { continue; }
+    let fix = false;
+    if (!fix) {
+      // when "d" is zero, the angle is a NaN probably
+      sum_angle = sum_angle + (to_curve / d) * w;
+      sum_max_distance = sum_max_distance + t_to_max_distance(t) * w;
+      sum_weight       = sum_weight + w;
+      continue;
+    }
 
-    let w = exp(-(d - d_min) * inv_softness);
+    let tan = t_to_tan(t);
+    let n_unit = vec2f(-tan.y, tan.x);
 
-    sum_angle = sum_angle + (to_curve / d) * w;
+    // Decompose `to_curve` in the curve's local (normal, tangent) frame at
+    // sample `t`. `perp_signed` is the geometrically meaningful signed
+    // perpendicular distance from `pos` to the curve's tangent line; `para`
+    // is just the arc-grid sampling offset and becomes noise (the grain
+    // artifact, see ./artifacts/blend angle grain.png) when abs(perp_signed)
+    // is small.
+    let perp_signed = dot(to_curve, n_unit);
+    let para        = dot(to_curve, tan);
+
+    // Suppress the noisy tangent component when we lack perpendicular
+    // leverage. trust -> 0 recovers sign(perp) * n_unit (the old
+    // tangent-normal "Method A" fallback); trust -> 1 recovers
+    // to_curve / d (the old "Method B" radial direction). The transition
+    // is per-sample on |perp_signed| so there is no fragment-wide step.
+    let trust = smoothstep(0.5, 1.5, abs(perp_signed));
+    let clean = perp_signed * n_unit + para * trust * tan;
+    let dir   = clean / max(length(clean), 1e-6);
+
+    sum_angle = sum_angle + dir * w;
+
     sum_max_distance = sum_max_distance + t_to_max_distance(t) * w;
     sum_weight       = sum_weight + w;
   }
@@ -201,6 +265,9 @@ struct Sample {
   blend_angle: f32,
   norm_distance: f32,
   debug_probe: f32,
+  fw: f32,
+  uv: vec2f,
+  norm_arc_blended: f32,
 };
 
 fn getSample(pos: vec2f) -> Sample {
@@ -220,10 +287,14 @@ fn getSample(pos: vec2f) -> Sample {
   let n11 = loadNeighbour(p11, pos);
   let nNearest = getNearestNeighbour(pos, n00, n10, n01, n11);
 
+  if (n00.t < -0.1 && n10.t < -0.1 && n01.t < -0.1 && n11.t < -0.1) {
+    discard;
+  }
+
 
   var debug_probe = nNearest.arc;
 
-  let is_inside = get_is_inside(pos, nNearest.t, nNearest.tan, nNearest.pos);
+  
 
   // ---------------------------------------------------------------------------
   // Filter & bilinear-blend the four neighbours' arc-length values.
@@ -238,10 +309,10 @@ fn getSample(pos: vec2f) -> Sample {
   let inv_arc = select(0.0, 1.0 / base_u.total_arc_len, base_u.total_arc_len > 1e-8); // I'm not sure if total_arc_len can ever be that small
 
   // without abs() we prodcue extremly small neagtive value, like -0.000000001, and that negative value messes up logic later
-  let arc00 = n00.arc + base_u.total_arc_len * round(abs(nNearest.arc - n00.arc) * inv_arc);
-  let arc10 = n10.arc + base_u.total_arc_len * round(abs(nNearest.arc - n10.arc) * inv_arc);
-  let arc01 = n01.arc + base_u.total_arc_len * round(abs(nNearest.arc - n01.arc) * inv_arc);
-  let arc11 = n11.arc + base_u.total_arc_len * round(abs(nNearest.arc - n11.arc) * inv_arc);
+  let arc00 = n00.arc + base_u.total_arc_len * round((nNearest.arc - n00.arc) * inv_arc);
+  let arc10 = n10.arc + base_u.total_arc_len * round((nNearest.arc - n10.arc) * inv_arc);
+  let arc01 = n01.arc + base_u.total_arc_len * round((nNearest.arc - n01.arc) * inv_arc);
+  let arc11 = n11.arc + base_u.total_arc_len * round((nNearest.arc - n11.arc) * inv_arc);
 
   let arc_diff_00 = abs(arc00 - nNearest.arc);
   let arc_diff_10 = abs(arc10 - nNearest.arc);
@@ -255,10 +326,10 @@ fn getSample(pos: vec2f) -> Sample {
   let cos11 = dot(n11.tan, nNearest.tan);
 
   // multiplied by nearest_sign because is_angle_near has only good effects when inside the shape
-  let keep00 = arc_diff_00 < BILINEAR_ARC_THRESHOLD && cos00 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  let keep01 = arc_diff_01 < BILINEAR_ARC_THRESHOLD && cos01 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  let keep10 = arc_diff_10 < BILINEAR_ARC_THRESHOLD && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD;
-  let keep11 = arc_diff_11 < BILINEAR_ARC_THRESHOLD && cos11 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  let keep00 = n00.t >= 0 && arc_diff_00 < BILINEAR_ARC_THRESHOLD && cos00 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  let keep01 = n01.t >= 0 && arc_diff_01 < BILINEAR_ARC_THRESHOLD && cos01 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  let keep10 = n10.t >= 0 && arc_diff_10 < BILINEAR_ARC_THRESHOLD && cos10 > BILINEAR_ANGLE_DOT_THRESHOLD;
+  let keep11 = n11.t >= 0 && arc_diff_11 < BILINEAR_ARC_THRESHOLD && cos11 > BILINEAR_ANGLE_DOT_THRESHOLD;
 
   let bili_dist00 = (1.0 - fract_pos.x) * (1.0 - fract_pos.y);
   let bili_dist01 = (1.0 - fract_pos.x) * fract_pos.y;
@@ -272,29 +343,44 @@ fn getSample(pos: vec2f) -> Sample {
 
   let total_w = w00 + w10 + w01 + w11;
   // Fallback to nearest when all neighbours are filtered (e.g. very sharp corner).
-  let arc_blended = select(
+  let arc_blended_raw = select(
     nNearest.arc,
     (arc00 * w00 + arc10 * w10 + arc01 * w01 + arc11 * w11) / total_w,
     total_w > 1e-6
   );
+  // Bilinear shifts can leave the blended value outside [0, total). Re-wrap.
+  let arc_blended = arc_blended_raw - base_u.total_arc_len * floor(arc_blended_raw / base_u.total_arc_len);
+
   let _blended_global_t = arc_to_t(arc_blended);
 
   let refined_primary = refine_curve_pos(pos, _blended_global_t);
   let blended_global_t = refined_primary.t;
 
   let refined_blended_global_t = refine_curve_pos(pos, blended_global_t).t; // looks good for distance
-  let abs_distance = length(pos - t_to_pos(refined_blended_global_t));
+  // let abs_distance = length(pos - t_to_pos(refined_blended_global_t));
 
-  let move_avg_results = getMovingAvg(pos, arc_blended, abs_distance);
-  let blend_angle = move_avg_results.angle;
+  
+  
+  
 
-  let curve_pos = t_to_pos(refined_blended_global_t);
   // Negative inside, positive outside, in pixel-space units (see header).
+  let is_inside = get_is_inside(pos, nNearest.t, nNearest.tan, nNearest.pos, bool(base_u.force_outside));
+  let curve_pos = t_to_pos(refined_blended_global_t);
   let signed_distance = length(curve_pos - pos) * is_inside;
-  let angle = atan2(curve_pos.y - pos.y, curve_pos.x - pos.x);
+  
+  let angle_side_correction = select(0.0, PI, is_inside < 0.0); // adds PI to ensure all angles point outwards
+  let angle = atan2(curve_pos.y - pos.y, curve_pos.x - pos.x) + angle_side_correction;
+
+  let move_avg_results = getMovingAvg(pos, arc_blended, signed_distance);
+  let blend_angle = move_avg_results.angle + angle_side_correction;
   let norm_distance = clamp(abs(signed_distance) / move_avg_results.max_distance, 0.0, 1.0);
 
-  debug_probe = nNearest.arc - n00.arc;
+  debug_probe = move_avg_results.angle;
+
+  let dist_derivative = length(fwidth(pos));
+  let safe_dist_derivative = select(0.0, dist_derivative, dist_derivative <= FWIDTH_VALID_LIMIT);
+  let fw = max(safe_dist_derivative * 0.5, EPSILON);
+  let uv = pos;
 
   return Sample(
     refined_blended_global_t,
@@ -303,6 +389,9 @@ fn getSample(pos: vec2f) -> Sample {
     blend_angle,
     norm_distance,
     debug_probe,
+    fw,
+    uv,
+    arc_blended / base_u.total_arc_len,
   );
 }
 
@@ -431,28 +520,25 @@ struct Refined {
 
   ${TEST}
 
+  // I'm not sure if it's needed, s.fw might be enough
   let dist_derivative = length(fwidth(uv));
   // Background derivatives are huge (≈ 3.4e38) — clamp those to 0 so we don't
   // smear the AA band into "this whole pixel is on a boundary".
   let safe_dist_derivative = select(0.0, dist_derivative, dist_derivative <= FWIDTH_VALID_LIMIT);
   let alpha_smooth_factor = max(safe_dist_derivative * 0.5, EPSILON);
 
-  // TODO: should this be done like this? Currently distance is not the only thing that impact boundaries of the output.
-  let inner_alpha = smoothstep(u.dist_start - alpha_smooth_factor, u.dist_start + alpha_smooth_factor, s.signed_distance);
-  let outer_alpha = smoothstep(u.dist_end   - alpha_smooth_factor, u.dist_end   + alpha_smooth_factor, s.signed_distance);
-  let alpha = outer_alpha - inner_alpha;
+  var color = _priv_X821b6_getColor(s);
+  color = vec4f(color * u.opacity);
+  // var color = _priv_X821b6_getColor(s.signed_distance, s.t, s.blend_angle, uv, vsOut.norm_uv, s.norm_distance);
 
-  var color = getColor(s.signed_distance, s.t, s.blend_angle, uv, vsOut.norm_uv, s.norm_distance);
-
-  let fw = fwidth(uv);
-  let sdf_texture_grid = min(fract(uv) / fw, (1.0 - fract(uv)) / fw);
+  let sdf_texture_grid = min(fract(uv) / s.fw, (1.0 - fract(uv)) / s.fw);
   let on_sdf_texture_grid = min(sdf_texture_grid.x, sdf_texture_grid.y) < 0.5;
 
   // if (on_sdf_texture_grid) {
   //   return vec4f(0.0, 1.0, 0.0, 1.0);
   // }
 
-  let final_result = vec4f(color.rgb, color.a * alpha);
+  let final_result = color;
 
   if (base_u.debug_type > 0u) {
 

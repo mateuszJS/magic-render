@@ -11,7 +11,7 @@ export const DEFAULT_BOUNDS: PointUV[] = [
   { x: 0, y: 0, u: 0, v: 0 },
 ]
 
-export default function getShapesZigAssets(shapesData: ShapeData[], maxY?: number): Asset[] {
+export function getShapesAssets(shapesData: ShapeData[], maxY?: number): Asset[] {
   if (!maxY) {
     const totalBB = new BoundingBox()
     shapesData.forEach((shape) => {
@@ -21,7 +21,7 @@ export default function getShapesZigAssets(shapesData: ShapeData[], maxY?: numbe
     maxY = totalBB.max_y
   }
 
-  return shapesData.map(({ paths, props, effects }) => {
+  return shapesData.map(({ paths, props, program, inputs }) => {
     const correctedPaths = paths.map((path) => path.map((p) => ({ x: p.x, y: maxY - p.y })))
 
     return {
@@ -29,7 +29,10 @@ export default function getShapesZigAssets(shapesData: ShapeData[], maxY?: numbe
       paths: correctedPaths,
       bounds: DEFAULT_BOUNDS,
       props,
-      effects,
+      program,
+      inputs: {
+        props: inputs,
+      },
       sdf_texture_id: Textures.createSDF(),
       cache_texture_id: null,
     }

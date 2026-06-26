@@ -1,5 +1,6 @@
-import { toFill, toZigFill } from 'snapshots/fill'
-import { Effect, PointUV, BasicProps, TypoProps, ZigEffect } from 'types'
+import { PointUV, BasicProps, TypoProps, Program, ProgramInputs } from 'types'
+import * as CustomPrograms from 'programsCompiler/programs'
+import * as CustomProgramInputs from 'programsCompiler/inputs'
 
 export function toBounds(bounds: PointUV[]): PointUV[] {
   return bounds.map((point) => ({
@@ -7,22 +8,6 @@ export function toBounds(bounds: PointUV[]): PointUV[] {
     y: point.y,
     u: point.u,
     v: point.v,
-  }))
-}
-
-export function toEffects(effects: ZigEffect[]): Effect[] {
-  return [...effects].map((effect) => ({
-    dist_start: effect.dist_start,
-    dist_end: effect.dist_end,
-    fill: toFill(effect.fill),
-  }))
-}
-
-export function toZigEffects(effects: Effect[]): ZigEffect[] {
-  return effects.map((effect) => ({
-    dist_start: effect.dist_start,
-    dist_end: effect.dist_end,
-    fill: toZigFill(effect.fill),
   }))
 }
 
@@ -49,10 +34,30 @@ export function toBasicProps(props: BasicProps): BasicProps {
   }
 }
 
+export function toProgram(program_id: number): Program {
+  const program = CustomPrograms.getAssetDetails(program_id)
+
+  return {
+    id: program_id,
+    codeSnippets: program.codeSnippets,
+    compilationInfo: program.compilationInfo,
+  }
+}
+
+export function toProgramInputs(program_inputs_id: number): ProgramInputs {
+  const inputs = CustomProgramInputs.getInputs(program_inputs_id)
+
+  return {
+    id: program_inputs_id,
+    props: inputs.props,
+  }
+}
+
 export function toTypoProps(props: TypoProps): TypoProps {
   return {
     font_size: props.font_size,
     font_family_id: props.font_family_id,
     line_height: props.line_height,
+    is_sdf_shared: props.is_sdf_shared,
   }
 }

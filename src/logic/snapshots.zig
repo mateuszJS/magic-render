@@ -70,7 +70,7 @@ fn getCurrSnapshot(state: State) !ProjectSnapshot {
             },
             .text => |text| {
                 try new_assets_update.append(AssetSerialized{
-                    .text = try text.serialize(std.heap.page_allocator),
+                    .text = text.serialize(),
                 });
             },
         }

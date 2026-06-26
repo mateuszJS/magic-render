@@ -1,5 +1,5 @@
 import { Asset, ProjectSnapshot, ZigProjectSnapshot } from 'types'
-import { toBounds, toEffects, toBasicProps, toTypoProps } from './convert'
+import { toBounds, toBasicProps, toTypoProps, toProgram, toProgramInputs } from './convert'
 import * as Typing from 'typing'
 import * as Textures from 'textures'
 
@@ -48,7 +48,8 @@ export function saveSnapshot(snapshot: ZigProjectSnapshot) {
         ),
         bounds: toBounds([...shape.bounds]),
         props: toBasicProps(shape.props),
-        effects: toEffects(shape.effects),
+        program: toProgram(shape.program_id),
+        inputs: toProgramInputs(shape.program_inputs_id),
         sdf_texture_id: shape.sdf_texture_id,
         cache_texture_id: shape.cache_texture_id,
       }
@@ -59,9 +60,9 @@ export function saveSnapshot(snapshot: ZigProjectSnapshot) {
         bounds: toBounds([...asset.text.bounds]),
         typo_props: toTypoProps(asset.text.typo_props),
         props: toBasicProps(asset.text.props),
-        effects: toEffects(asset.text.effects),
+        program: toProgram(asset.text.program_id),
+        inputs: toProgramInputs(asset.text.program_inputs_id),
         sdf_texture_id: asset.text.sdf_texture_id,
-        is_sdf_shared: asset.text.is_sdf_shared,
       }
     } else {
       throw Error('Unknown asset type')
@@ -78,4 +79,20 @@ export function saveSnapshot(snapshot: ZigProjectSnapshot) {
     snapshotWaitingCalls.forEach((cb) => cb(lastSnapshot))
     snapshotWaitingCalls = null
   }
+}
+
+// The functions below could be replaced by just trigerring a new snapshot from zig, BUT
+// it doesn't seem right to produce a snapshot even thoug hfro mZig poitn fo view, nothing has changed
+// thos changeS(program inputs, image url) only exist in JS
+export function updateImageUrl(oldUrl: string, newUrl: string) {
+  const newAssets = lastSnapshot.assets.map<Asset>((asset) => {
+    if ('url' in asset && asset.url === oldUrl) {
+      return {
+        ...asset,
+        url: newUrl,
+      }
+    }
+    return asset
+  })
+  lastSnapshot.assets = newAssets
 }

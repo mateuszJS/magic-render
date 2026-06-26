@@ -1,11 +1,12 @@
 import clamp from 'utils/clamp'
 import { delayedDestroy } from '../initPrograms'
 import shaderCode from './shader.wgsl'
+import bezierUtilsCode from '../bezier-utils.wgsl'
 
 export default function getCombineSdf(device: GPUDevice) {
   const shaderModule = device.createShaderModule({
     label: 'combineSdf shader',
-    code: shaderCode,
+    code: shaderCode + bezierUtilsCode,
   })
 
   const pipeline = device.createRenderPipeline({

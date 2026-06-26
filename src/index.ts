@@ -12,8 +12,9 @@ import * as Fonts from 'fonts'
 import { Asset, CreatorAPI, CreatorProps, Id, ZigAsset, ZigProjectSnapshot } from './types'
 import { destroyCanvasTextures } from 'getCanvasRenderDescriptor'
 import setCamera from 'utils/setCamera'
-import { toZigEffects, toZigProps } from 'snapshots/convert'
-import * as CustomPrograms from 'customPrograms'
+import { toZigProps } from 'snapshots/convert'
+import * as CustomPrograms from 'programsCompiler/programs'
+import * as CustomProgramInputs from 'programsCompiler/inputs'
 import * as Snapshots from 'snapshots/snapshots'
 import toZigAsset from 'snapshots/toZigAsset'
 import { NO_ASSET_ID } from 'consts'
@@ -45,6 +46,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
   Textures.init()
 
   CustomPrograms.init()
+  CustomProgramInputs.init()
   Fonts.init(props.getFontUrl)
 
   const context = canvas.getContext('webgpu')
@@ -74,7 +76,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     updateRenderScale()
   })
 
-  initPrograms(device, presentationFormat, props.isTest)
+  initPrograms(device, presentationFormat)
 
   initMouseController(
     canvas,
@@ -86,8 +88,8 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     abortController.signal
   )
 
-  const passSnapshot = (snapshot: ZigProjectSnapshot, commit: boolean) => {
-    Snapshots.saveSnapshot(snapshot)
+  const passSnapshot = (newSnapshot: ZigProjectSnapshot, commit: boolean) => {
+    Snapshots.saveSnapshot(newSnapshot)
     props.onSnapshotUpdate(Snapshots.lastSnapshot, commit)
     if (commit) {
       PreviewTrigger.safeGeneratePreview()
@@ -135,17 +137,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
 
                 props.onExternalTextureCreation(url, (newUrl) => {
                   Textures.updateTextureUrl(textureId, newUrl)
-
-                  const newAssets = Snapshots.lastSnapshot.assets.map<Asset>((asset) => {
-                    if ('url' in asset && asset.url === url) {
-                      return {
-                        ...asset,
-                        url: newUrl,
-                      }
-                    }
-                    return asset
-                  })
-                  Snapshots.lastSnapshot.assets = newAssets
+                  Snapshots.updateImageUrl(url, newUrl)
                 })
 
                 return resolve({
@@ -234,6 +226,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
       context.unconfigure()
       destroyCanvasTextures()
       device.destroy()
+      Fonts.deinit()
     },
     setTool: (tool) => {
       props.onUpdateTool(tool)
@@ -242,8 +235,20 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     updateAssetProps: (props, commit) => {
       Logic.setSelectedAssetProps(toZigProps(props), commit)
     },
-    updateAssetEffects: (effects, commit) => {
-      Logic.setSelectedAssetEffects(toZigEffects(effects), commit)
+    updateAssetProgram: (program, inputs, commit) => {
+      const { programId, orderedInputNames } = CustomPrograms.getSerializationInfo(program)
+      const inputsSerializeInfo = CustomProgramInputs.getSerializationInfo(
+        inputs.id,
+        inputs.props,
+        orderedInputNames
+      )
+
+      Logic.setSelectedAssetProgramId(
+        programId,
+        inputsSerializeInfo.program_inputs_id,
+        inputsSerializeInfo.padding,
+        commit
+      )
     },
     updateAssetBounds: Logic.setSelectedAssetBounds,
     updateAssetTypoProps: (typoProps, commit) => {
@@ -266,5 +271,11 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     INFINITE_DISTANCE_THRESHOLD: Logic.INFINITE_DISTANCE * 0.9,
     // 90% of INFINITE_DISTANCE to provide a margin for floating-point errors
     INFINITE_DISTANCE: Logic.INFINITE_DISTANCE,
+    hoverAsset: (assetId: number) => {
+      Logic.onUpdatePick([assetId, 0, 0, 0])
+    },
+    selectAsset: (assetId: number) => {
+      Logic.selectAsset(assetId)
+    },
   }
 }

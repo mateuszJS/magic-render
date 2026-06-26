@@ -13,7 +13,6 @@ const Asset = @import("types.zig").Asset;
 
 const white = @Vector(4, u8){ 255, 255, 255, 255 };
 const black = @Vector(4, u8){ 0, 0, 0, 255 };
-const normalized = @Vector(4, f32){ 255, 255, 255, 255 };
 
 const TransformLine = struct {
     id: u32,
@@ -249,13 +248,14 @@ pub fn getDrawVertexData(
             // rotation icon
             thickness = ROTATE_BUTTON_SIZE * shared.ui_scale;
             const icon_size = ROTATE_ICON_SIZE * shared.ui_scale;
-            const icon_color = if (hovered_elem_id == t_line.id) black else white;
+            const icon_program_inputs_id = if (hovered_elem_id == t_line.id) consts.TRANSFORM_UI_HOVER_INPUTS_ID else consts.TRANSFORM_UI_INPUTS_ID;
 
             icon_vertex_data = UI.DrawVertex{
                 .position = p1,
                 .max_size = icon_size,
                 .icon = UI.IconType.Rotate,
-                .color = @as(@Vector(4, f32), @floatFromInt(icon_color)) / normalized,
+                .program_id = consts.SOLID_COLOR_PROGRAM_ID,
+                .program_inputs_id = icon_program_inputs_id,
             };
         }
 
@@ -307,7 +307,7 @@ pub fn getPickVertexData(buffer: *[PICK_TRIANGLE_INSTANCES]triangles.PickInstanc
 }
 
 const UI_PATH_STRONG_COLOR = [_]u8{ 90, 90, 255, 255 };
-const UI_PATH_LIGHT_COLOR = [_]u8{ UI_PATH_STRONG_COLOR[0], UI_PATH_STRONG_COLOR[1], UI_PATH_STRONG_COLOR[2], 30 };
+const UI_PATH_LIGHT_COLOR = [_]u8{ UI_PATH_STRONG_COLOR[0], UI_PATH_STRONG_COLOR[1], UI_PATH_STRONG_COLOR[2], 10 };
 
 const NON_INTERACTIVE_BORDER_WIDTH = 5.0;
 
@@ -315,6 +315,7 @@ pub fn getBorderDrawVertex(asset: Asset, strong: bool) [8]triangles.DrawInstance
     var buffer: [8]triangles.DrawInstance = undefined;
     const bounds = asset.getBounds();
     const color = if (strong) UI_PATH_STRONG_COLOR else UI_PATH_LIGHT_COLOR;
+    const border: f32 = if (strong) NON_INTERACTIVE_BORDER_WIDTH else NON_INTERACTIVE_BORDER_WIDTH * 0.5;
 
     for (bounds, 0..) |point, i| {
         const next_point = if (i == 3) bounds[0] else bounds[i + 1];
@@ -322,9 +323,9 @@ pub fn getBorderDrawVertex(asset: Asset, strong: bool) [8]triangles.DrawInstance
             buffer[(i * 2)..][0..2],
             point,
             next_point,
-            NON_INTERACTIVE_BORDER_WIDTH * shared.ui_scale,
+            border * shared.ui_scale,
             color,
-            (NON_INTERACTIVE_BORDER_WIDTH / 2.0) * shared.ui_scale,
+            (border / 2.0) * shared.ui_scale,
         );
     }
 

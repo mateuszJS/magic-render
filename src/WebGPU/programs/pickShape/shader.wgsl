@@ -4,8 +4,10 @@ struct Vertex {
 };
 
 struct Uniforms {
+  texture_scale: f32,
   dist_start: f32,
   dist_end: f32,
+  force_outside: u32, // bool
 };
 
 @group(0) @binding(0) var<uniform> camera_projection: mat4x4f;
@@ -35,12 +37,12 @@ struct VertexOutput {
   let t = textureLoad(texture, vec2u(vsOut.uv), 0).r;
   let curve_pos = t_to_pos(t);
   let curve_tan = t_to_tan(t);
-  let is_inside = get_is_inside(vsOut.uv, t, curve_tan, curve_pos);
+  let is_inside = get_is_inside(vsOut.uv, t, curve_tan, curve_pos, bool(u.force_outside));
 
   let distance = length(curve_pos - vsOut.uv);
   let signed_distance = distance * is_inside;
 
-  if (signed_distance > u.dist_start || signed_distance < u.dist_end) {
+  if (signed_distance > u.dist_start * u.texture_scale || signed_distance < u.dist_end * u.texture_scale) {
     discard;
   }
 

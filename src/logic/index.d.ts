@@ -8,24 +8,8 @@ type PointerDataView = {
   dataView: DataView<ArrayBuffer>
 }
 
-type ShapeDrawUniform = OneOf<{
-  solid: PointerDataView
-  linear: PointerDataView
-  radial: PointerDataView
-  program: PointerDataView
-}>
-
 declare module '*.zig' {
-  import {
-    Point,
-    PointUV,
-    Id,
-    ZigProjectSnapshot,
-    TypoProps,
-    BasicProps,
-    ZigEffect,
-    BoundingBox,
-  } from 'types'
+  import { Point, PointUV, Id, ZigProjectSnapshot, TypoProps, BasicProps, BoundingBox } from 'types'
 
   export const initState: (
     width: number,
@@ -128,19 +112,25 @@ declare module '*.zig' {
     finish_combine_sdf: () => void
     draw_shape: (
       bound_box_data: ArrayPointerDataView,
-      uniformData: ShapeDrawUniform,
+      program_id: number,
+      program_inputs_id: number,
+      sdf_tex_scale: number,
       sdf_texture_id: number,
       curves_data: ArrayPointerDataView,
       arc_lengths_data: ArrayPointerDataView,
-      max_distances_data: ArrayPointerDataView
+      max_distances_data: ArrayPointerDataView,
+      opacity: number,
+      force_outside: boolean
     ) => void
     pick_shape: (
       bound_box_data: ArrayPointerDataView,
-      uniformData: PointerDataView,
+      program_inputs_id: number,
+      sdf_texture_scale: number,
       sdf_texture_id: number,
       curves_data: ArrayPointerDataView,
       arc_lengths_data: ArrayPointerDataView,
-      max_distances_data: ArrayPointerDataView
+      max_distances_data: ArrayPointerDataView,
+      force_outside: boolean
     ) => void
   }) => void
   export function glueJsGeneral(
@@ -182,9 +172,15 @@ declare module '*.zig' {
   ) => void
   export const generateUiElementsSdf: VoidFunction
 
+  export const selectAsset: (id: number) => void
   export const setSelectedAssetBounds: (bounds: PointUV[], commit: boolean) => void
   export const setSelectedAssetProps: (props: BasicProps, commit: boolean) => void
-  export const setSelectedAssetEffects: (effects: ZigEffect[], commit: boolean) => void
+  export const setSelectedAssetProgramId: (
+    program_id: number,
+    program_inputs_id: number,
+    padding: number,
+    commit: boolean
+  ) => void
   export const setSelectedAssetTypoProps: (typo_props: TypoProps, commit: boolean) => void
 
   export const addFont: (font_id: number) => void
@@ -192,7 +188,20 @@ declare module '*.zig' {
 
   export const INFINITE_DISTANCE: number
   export const DEFAULT_FONT_ID: number
+  export const SKELETON_LINE_WIDTH: number
+
+  export const HIGHLIGHT_PATH_PROGRAM_ID: number
+  export const SOLID_COLOR_PROGRAM_ID: number
+  export const ERROR_PROGRAM_ID: number
+
+  export const HIGHLIGHT_PATH_INPUTS_ID: number
+  export const TRANSFORM_UI_INPUTS_ID: number
+  export const TRANSFORM_UI_HOVER_INPUTS_ID: number
+  export const DEFAULT_INPUTS_ID: number
+  export const COMPILING_INPUTS_ID: number
+  export const ERROR_INPUTS_ID: number
 
   export const invalidateCache: (ids: number[]) => void
-  export const invalidateCacheByProgram: (id: number) => void
+  export const invalidateCacheByProgramId: (program_id: number) => void
+  export const invalidateCacheByProgramInputsId: (program_inputs_id: number) => void
 }

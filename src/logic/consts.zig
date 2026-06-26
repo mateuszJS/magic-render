@@ -24,3 +24,16 @@ pub const INFINITE_DISTANCE = std.math.floatMax(f32); // purely for SDF effects
 pub const SDF_RESIZE_STEP = 1.5;
 // ususally when user zoom we need to gernerate tons of new SDF, jsut slightly bigger than preivous one
 // generating sdf 1.5 tiems bigger reduces number of generations
+
+pub const HIGHLIGHT_PATH_PROGRAM_ID: u32 = 1;
+pub const SOLID_COLOR_PROGRAM_ID: u32 = 2;
+pub const ERROR_PROGRAM_ID: u32 = 3;
+
+pub const HIGHLIGHT_PATH_INPUTS_ID: u32 = 1;
+pub const TRANSFORM_UI_INPUTS_ID: u32 = 2;
+pub const TRANSFORM_UI_HOVER_INPUTS_ID: u32 = 3;
+pub const DEFAULT_INPUTS_ID: u32 = 4;
+pub const COMPILING_INPUTS_ID: u32 = 5;
+pub const ERROR_INPUTS_ID: u32 = 6;
+
+pub const SKELETON_LINE_WIDTH: f32 = 2.0;

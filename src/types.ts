@@ -24,37 +24,15 @@ export type BoundingBox = {
 export type Color = [number, number, number, number]
 export type Id = [number, number, number, number]
 
-export type GradientStop = {
-  color: Color
-  offset: number // 0..1
+export type CodeSnippet = {
+  id: number
+  content: string
 }
 
-export type LinearGradient = {
-  start: Point
-  end: Point
-  stops: GradientStop[]
-}
-
-export type RadialGradient = LinearGradient & {
-  radius_ratio: number
-}
-
-type Program = {
-  code: string
+export type Program = {
   id?: number
-  errors?: CustomProgramError[]
-}
-
-export type Fill =
-  | { linear: LinearGradient }
-  | { radial: RadialGradient }
-  | { solid: Color }
-  | { program: Program }
-
-export type Effect = {
-  dist_start: number
-  dist_end: number
-  fill: Fill
+  codeSnippets: CodeSnippet[]
+  compilationInfo?: ProgramCompilationInfo[]
 }
 
 // Same for Zig and Api
@@ -68,6 +46,7 @@ export type TypoProps = {
   font_size: number
   font_family_id: number
   line_height: number
+  is_sdf_shared: boolean
 }
 
 /* type WITHOUT prefix "Zig" are used in API */
@@ -84,7 +63,8 @@ export type Shape = {
   paths: Point[][]
   bounds: PointUV[]
   props: BasicProps
-  effects: Effect[]
+  program: Program
+  inputs: ProgramInputs
   sdf_texture_id?: number
   cache_texture_id?: number | null
 }
@@ -94,10 +74,10 @@ export type Text = {
   content: string
   bounds: PointUV[]
   props: BasicProps
-  effects: Effect[]
+  program: Program
+  inputs: ProgramInputs
   typo_props: TypoProps
   sdf_texture_id: number | null
-  is_sdf_shared: boolean
 }
 
 export type Asset = Image | Shape | Text
@@ -115,21 +95,6 @@ export enum CreatorTool {
   // Text = 3, it does exist i nzig ,but user should be never be able ot choose it manually
 }
 
-/* type with prefix "Zig" mirrors the data coming from/to the zig module */
-
-export type ZigFill = OneOf<{
-  solid: Color
-  linear: LinearGradient
-  radial: RadialGradient
-  program_id: number
-}>
-
-export type ZigEffect = {
-  dist_start: number
-  dist_end: number
-  fill: ZigFill
-}
-
 type ZigImage = {
   id: number
   bounds: PointUV[]
@@ -141,9 +106,11 @@ type ZigShape = {
   paths: Point[][]
   bounds: PointUV[]
   props: BasicProps
-  effects: ZigEffect[]
+  program_id: number
+  program_inputs_id: number
   sdf_texture_id: number
   cache_texture_id: number | null
+  padding: number
 }
 
 type ZigText = {
@@ -151,10 +118,11 @@ type ZigText = {
   content: string | null
   bounds: PointUV[]
   props: BasicProps
-  effects: ZigEffect[]
+  program_id: number
+  program_inputs_id: number
   typo_props: TypoProps
   sdf_texture_id: number | null
-  is_sdf_shared: boolean
+  padding: number
 }
 
 export type ZigAsset = { img: ZigImage } | { shape: ZigShape } | { text: ZigText }
@@ -165,12 +133,23 @@ export type ZigProjectSnapshot = {
   assets: ZigAsset[]
 }
 
-export type CustomProgramError = {
+export type Vector4 = [number, number, number, number]
+export type SoftVector4 = // at least y or z component need to be present
+  | [number | null, number | null, number, number | null]
+  | [number | null, number, number | null, number | null]
+
+export type ProgramInputs = {
+  id?: number
+  props: Record<string, Vector4 | SoftVector4>
+}
+
+export type ProgramCompilationInfo = {
   length: number
   lineNum: number
   linePos: number
   message: string
   offset: number
+  type: 'error' | 'warning'
 }
 
 export type CreatorProps = {
@@ -201,10 +180,13 @@ export type CreatorAPI = {
   // we need to obtain live update!
   updateAssetTypoProps: (props: TypoProps, commit: boolean) => void // updates typography properties of selected asset
   updateAssetProps: (props: BasicProps, commit: boolean) => void // updates basic properties of selected asset
-  updateAssetEffects: (effects: Effect[], commit: boolean) => void // updates only effects of selected asset
+  updateAssetProgram: (program: Program, inputs: ProgramInputs, commit: boolean) => void // updates only effects of selected asset
   updateAssetBounds: (bounds: PointUV[], commit: boolean) => void // updates bounds of selected asset
   download: VoidFunction // triggers download of the current canvas content as an image
   INFINITE_DISTANCE_THRESHOLD: number // threshold value for considering a distance as "infinite" in SDF fill effects
   INFINITE_DISTANCE: number // maximum f32 value, used for SDF fill effects
   addText: VoidFunction
+
+  hoverAsset: (assetId: number) => void
+  selectAsset: (assetId: number) => void
 }

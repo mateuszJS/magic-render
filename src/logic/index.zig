@@ -27,15 +27,27 @@ const ActionType = @import("types.zig").ActionType;
 const Tool = @import("types.zig").Tool;
 const typography_props = @import("texts/typography_props.zig");
 const js_glue = @import("js_glue.zig");
-const sdf_effect = @import("sdf/effect.zig");
 const caret = @import("texts/caret.zig");
 const chars = @import("texts/chars.zig");
 const assets = @import("assets.zig");
 const webgpu_glue = @import("webgpu_glue.zig");
-const computeShape = @import("compute_shape.zig").computeShape;
+const compute_shape = @import("compute_shape.zig");
+const computeShape = compute_shape.computeShape;
 
 pub const INFINITE_DISTANCE = consts.INFINITE_DISTANCE;
 pub const DEFAULT_FONT_ID = fonts.DEFAULT_FONT_ID;
+pub const SKELETON_LINE_WIDTH = consts.SKELETON_LINE_WIDTH;
+
+pub const HIGHLIGHT_PATH_PROGRAM_ID = consts.HIGHLIGHT_PATH_PROGRAM_ID;
+pub const SOLID_COLOR_PROGRAM_ID = consts.SOLID_COLOR_PROGRAM_ID;
+pub const ERROR_PROGRAM_ID = consts.ERROR_PROGRAM_ID;
+
+pub const HIGHLIGHT_PATH_INPUTS_ID = consts.HIGHLIGHT_PATH_INPUTS_ID;
+pub const TRANSFORM_UI_INPUTS_ID = consts.TRANSFORM_UI_INPUTS_ID;
+pub const TRANSFORM_UI_HOVER_INPUTS_ID = consts.TRANSFORM_UI_HOVER_INPUTS_ID;
+pub const DEFAULT_INPUTS_ID = consts.DEFAULT_INPUTS_ID;
+pub const COMPILING_INPUTS_ID = consts.COMPILING_INPUTS_ID;
+pub const ERROR_INPUTS_ID = consts.ERROR_INPUTS_ID;
 
 pub fn connectWebGpuPrograms(programs: *const webgpu_glue.WebGpuProgramsInput) void {
     // https://github.com/chung-leong/zigar/wiki/JavaScript-to-Zig-function-conversion
@@ -146,11 +158,10 @@ pub fn updateRenderScale(zoom: f32, pixel_density: f32) !void {
         switch (asset.value_ptr.*) {
             .img => {},
             .shape => |*shape| {
-                const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
                 const new_sdf_dims = sdf_drawing.getTexture(
                     shape.sdf_tex.id,
                     shape.bounds,
-                    sdf_padding,
+                    shape.padding,
                     1.0,
                 );
 
@@ -161,11 +172,11 @@ pub fn updateRenderScale(zoom: f32, pixel_density: f32) !void {
             .text => |*text| {
                 try chars.requestCharsSdfs(text.*);
 
-                if (text.is_sdf_shared) {
+                if (text.typo_props.is_sdf_shared) {
                     const sdf_dims = sdf_drawing.getTexture(
                         text.sdf_tex.id,
                         text.bounds,
-                        sdf_drawing.getSdfPadding(text.effects.items),
+                        text.padding,
                         1,
                     );
 
@@ -213,6 +224,10 @@ pub fn onUpdatePick(id: [4]u32) void {
         state.hovered_asset_id = AssetId.fromArray(id);
         // hovered_asset_id stores id of the ui transform element during transformations
     }
+}
+
+pub fn selectAsset(id: u32) !void {
+    try setSelectedAsset(AssetId{ ._prim = id });
 }
 
 fn setSelectedAsset(id: AssetId) !void {
@@ -647,10 +662,9 @@ pub fn updateCache() void {
                         break :b id;
                     };
 
-                    const padding_world = sdf_drawing.getSdfPadding(shape.effects.items);
                     const bounds = sdf_drawing.getBoundsWithPadding(
                         shape.bounds,
-                        padding_world,
+                        shape.padding,
                         1 / shared.render_scale,
                         // WARNING: here 1px safety padding changes into 1/shared.render_scale
                         shape.getFilterMargin(),
@@ -693,16 +707,18 @@ pub fn updateCache() void {
                     };
 
                     if (shape.sdf_tex.valid) {
-                        for (shape.effects.items) |effect| {
-                            webgpu_glue.draw_shape(
-                                &vertex_bounds,
-                                shape.getDrawUniform(effect),
-                                shape.sdf_tex.id,
-                                shape.sdf_tex.points,
-                                shape.sdf_tex.arc_lengths,
-                                shape.sdf_tex.max_distances,
-                            );
-                        }
+                        webgpu_glue.draw_shape(
+                            &vertex_bounds,
+                            shape.program_id,
+                            shape.program_inputs_id,
+                            shape.sdf_tex.scale,
+                            shape.sdf_tex.id,
+                            shape.sdf_tex.points,
+                            shape.sdf_tex.arc_lengths,
+                            shape.sdf_tex.max_distances,
+                            shape.props.opacity,
+                            shape.sdf_tex.force_outside,
+                        );
                     }
 
                     js_glue.endCache();
@@ -816,14 +832,12 @@ pub fn computePhase() !void {
 
                 const option_paths = try shape.getRelativePaths(allocator);
                 if (option_paths) |paths| {
-                    const sdf_padding = sdf_drawing.getSdfPadding(shape.effects.items);
-
                     shape.sdf_tex.deinit();
 
                     shape.sdf_tex = try computeShape(
                         shape.sdf_tex.id,
                         shape.bounds,
-                        sdf_padding,
+                        shape.padding,
                         paths,
                         consts.SDF_RESIZE_STEP,
                     );
@@ -835,18 +849,16 @@ pub fn computePhase() !void {
             },
 
             .text => |*text| {
-                if (text.is_sdf_shared) {
+                if (text.typo_props.is_sdf_shared) {
                     if (!text.sdf_tex.is_outdated) continue;
 
                     if (!fonts.isReady) continue;
-
-                    const text_padding = sdf_drawing.getSdfPadding(text.effects.items);
 
                     text.sdf_tex.deinit();
                     text.sdf_tex = sdf_drawing.getTexture(
                         text.sdf_tex.id,
                         text.bounds,
-                        text_padding,
+                        text.padding,
                         consts.SDF_RESIZE_STEP,
                     );
 
@@ -864,8 +876,8 @@ pub fn computePhase() !void {
 
                     const bounds_height = text.bounds[0].distance(text.bounds[3]);
                     const matrix = Matrix3x3.translation(
-                        text_padding,
-                        bounds_height + text_padding,
+                        text.padding,
+                        bounds_height + text.padding,
                     );
 
                     var all_points = std.ArrayList(types.Point).init(std.heap.page_allocator);
@@ -919,6 +931,20 @@ pub fn computePhase() !void {
                     text.sdf_tex.points = try all_points.toOwnedSlice();
                     text.sdf_tex.valid = text.sdf_tex.points.len > 0;
 
+                    // base.wgsl's drawShape reads arc_lengths and max_distances
+                    // when sampling the SDF (see t_to_arc / t_to_max_distance /
+                    // total_arc_len in the PathMetrics uniform). For per-char
+                    // SDFs these are produced by computeShape; for the SHARED
+                    // text SDF we build the combined point buffer ourselves
+                    // here, so we have to compute the same metrics on it.
+                    // Without this, drawShape ends up with empty storage
+                    // buffers and the text either renders blank or fails to
+                    // create a zero-sized buffer entirely.
+                    std.heap.page_allocator.free(text.sdf_tex.arc_lengths);
+                    std.heap.page_allocator.free(text.sdf_tex.max_distances);
+                    text.sdf_tex.arc_lengths = try compute_shape.get_arc_lengths(text.sdf_tex.points);
+                    text.sdf_tex.max_distances = try compute_shape.get_max_distances(text.sdf_tex.points);
+
                     webgpu_glue.finish_combine_sdf();
                 }
             },
@@ -957,16 +983,20 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                 } else {
                     const bounds = shape.getDrawBounds(false);
                     if (shape.sdf_tex.valid) {
-                        for (shape.effects.items) |effect| {
-                            webgpu_glue.draw_shape(
-                                &bounds,
-                                shape.getDrawUniform(effect),
-                                shape.sdf_tex.id,
-                                shape.sdf_tex.points,
-                                shape.sdf_tex.arc_lengths,
-                                shape.sdf_tex.max_distances,
-                            );
-                        }
+                        // JS maps shape id to programs? But we can have a new hsape id, via clone for example?
+                        webgpu_glue.draw_shape(
+                            &bounds,
+                            shape.program_id, // but if we copy, then 2 shaeops has same feel id, if we udpate one, both will be updated
+                            shape.program_inputs_id,
+                            shape.sdf_tex.scale,
+                            shape.sdf_tex.id,
+                            shape.sdf_tex.points,
+                            shape.sdf_tex.arc_lengths,
+                            shape.sdf_tex.max_distances,
+                            // TODO: all sdf props should be baked in computeShape and only exists in JS memory
+                            shape.props.opacity,
+                            shape.sdf_tex.force_outside,
+                        );
                     }
                 }
             },
@@ -975,18 +1005,20 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
 
                 const is_typing_ui = !is_ui_hidden and state.tool == .Text and assets.selected_asset_id.getPrim() == text.id;
 
-                if (text.is_sdf_shared) {
+                if (text.typo_props.is_sdf_shared) {
                     const bounds = text.getDrawBounds();
-                    for (text.effects.items) |effect| {
-                        webgpu_glue.draw_shape(
-                            &bounds,
-                            text.getDrawUniform(effect, text.sdf_tex.scale),
-                            text.sdf_tex.id,
-                            text.sdf_tex.points,
-                            text.sdf_tex.arc_lengths,
-                            text.sdf_tex.max_distances,
-                        );
-                    }
+                    webgpu_glue.draw_shape(
+                        &bounds,
+                        text.program_id,
+                        text.program_inputs_id,
+                        text.sdf_tex.scale,
+                        text.sdf_tex.id,
+                        text.sdf_tex.points,
+                        text.sdf_tex.arc_lengths,
+                        text.sdf_tex.max_distances,
+                        text.props.opacity,
+                        text.sdf_tex.force_outside,
+                    );
 
                     if (!is_typing_ui) continue;
                 }
@@ -997,7 +1029,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
 
                 for (text.text_vertex.items, 0..) |vertex, i| {
                     if (vertex.char) |char| {
-                        if (!text.is_sdf_shared) {
+                        if (!text.typo_props.is_sdf_shared) {
                             const ch_d = try fonts.get(text.typo_props.font_family_id, char);
 
                             if (ch_d.sdf_tex) |char_sdf_tex| {
@@ -1012,16 +1044,18 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
                                     1.0,
                                 );
 
-                                for (text.effects.items) |effect| {
-                                    webgpu_glue.draw_shape(
-                                        &bounds,
-                                        text.getDrawUniform(effect, sdf_scale),
-                                        char_sdf_tex.id,
-                                        char_sdf_tex.points,
-                                        char_sdf_tex.arc_lengths,
-                                        char_sdf_tex.max_distances,
-                                    );
-                                }
+                                webgpu_glue.draw_shape(
+                                    &bounds,
+                                    text.program_id,
+                                    text.program_inputs_id,
+                                    sdf_scale,
+                                    char_sdf_tex.id,
+                                    char_sdf_tex.points,
+                                    char_sdf_tex.arc_lengths,
+                                    char_sdf_tex.max_distances,
+                                    text.props.opacity,
+                                    char_sdf_tex.force_outside,
+                                );
                             }
                         }
 
@@ -1082,11 +1116,15 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
             if (shape.sdf_tex.valid) {
                 webgpu_glue.draw_shape(
                     &shape.getDrawBounds(false),
-                    shape.getSkeletonUniform(),
+                    consts.HIGHLIGHT_PATH_PROGRAM_ID,
+                    consts.HIGHLIGHT_PATH_INPUTS_ID,
+                    shape.sdf_tex.scale,
                     shape.sdf_tex.id,
                     shape.sdf_tex.points,
                     shape.sdf_tex.arc_lengths,
                     shape.sdf_tex.max_distances,
+                    shape.props.opacity,
+                    shape.sdf_tex.force_outside,
                 );
             }
 
@@ -1123,16 +1161,16 @@ pub fn renderPick() !void {
                 const bounds = shape.getPickBounds();
 
                 if (shape.sdf_tex.valid) {
-                    for (shape.effects.items) |effect| {
-                        webgpu_glue.pick_shape(
-                            &bounds,
-                            shape.getPickUniform(effect),
-                            shape.sdf_tex.id,
-                            shape.sdf_tex.points,
-                            shape.sdf_tex.arc_lengths,
-                            shape.sdf_tex.max_distances,
-                        );
-                    }
+                    webgpu_glue.pick_shape(
+                        &bounds,
+                        shape.program_inputs_id,
+                        shape.sdf_tex.scale,
+                        shape.sdf_tex.id,
+                        shape.sdf_tex.points,
+                        shape.sdf_tex.arc_lengths,
+                        shape.sdf_tex.max_distances,
+                        shape.sdf_tex.force_outside,
+                    );
                 }
             },
             .text => |text| {
@@ -1286,22 +1324,24 @@ pub fn setSelectedAssetTypoProps(serialized: typography_props.Serialized, commit
     }
 }
 
-pub fn setSelectedAssetEffects(serialized_effects: []const sdf_effect.Serialized, commit: bool) !void {
+pub fn setSelectedAssetProgramId(program_id: u32, program_inputs_id: u32, padding: f32, commit: bool) !void {
     if (assets.getSelectedAsset()) |asset| {
         switch (asset.*) {
             .img => {},
             .shape => |*shape| {
-                sdf_effect.deinit(shape.effects);
-                shape.effects = try sdf_effect.deserialize(serialized_effects, std.heap.page_allocator);
+                shape.program_id = program_id;
+                shape.program_inputs_id = program_inputs_id;
+                shape.padding = padding;
                 shape.sdf_tex.is_outdated = true;
             },
             .text => |*text| {
-                sdf_effect.deinit(text.effects);
-                text.effects = try sdf_effect.deserialize(serialized_effects, std.heap.page_allocator);
+                text.program_id = program_id;
+                text.program_inputs_id = program_inputs_id;
+                text.padding = padding;
 
                 try chars.requestCharsSdfs(text.*);
 
-                if (text.is_sdf_shared) {
+                if (text.typo_props.is_sdf_shared) {
                     text.sdf_tex.is_outdated = true;
                 }
             },
@@ -1378,7 +1418,7 @@ pub fn addFont(font_id: u32) !void {
             .img => {},
             .shape => {},
             .text => |*text| {
-                // defualt font is used as fallback
+                // default font is used as fallback
                 if (font_id == DEFAULT_FONT_ID or text.typo_props.font_family_id == font_id) {
                     state.redraw_needed = true;
 
@@ -1406,23 +1446,37 @@ pub fn onBlurTextArea() void {
     }
 }
 
-pub fn invalidateCacheByProgram(program_id: u32) void {
+pub fn invalidateCacheByProgramId(program_id: u32) void {
     var iter = assets.getIter();
     while (iter.next()) |asset| {
         switch (asset.value_ptr.*) {
             .shape => |*shape| {
-                for (shape.effects.items) |effect| {
-                    switch (effect.fill) {
-                        .program_id => |id| {
-                            if (id == program_id) {
-                                state.redraw_needed = true;
-                                shape.outdated_cache = true;
-                                snapshots.triggerNewSnapshot(true, false);
-                                break;
-                            }
-                        },
-                        else => {},
-                    }
+                if (shape.program_id == program_id) {
+                    state.redraw_needed = true;
+                    shape.outdated_cache = true;
+                    snapshots.triggerNewSnapshot(true, false);
+                }
+            },
+            else => {},
+        }
+    }
+}
+
+pub fn invalidateCacheByProgramInputsId(program_inputs_id: u32) void {
+    var iter = assets.getIter();
+    while (iter.next()) |asset| {
+        switch (asset.value_ptr.*) {
+            .shape => |*shape| {
+                if (shape.program_inputs_id == program_inputs_id) {
+                    state.redraw_needed = true;
+                    shape.outdated_cache = true;
+                    snapshots.triggerNewSnapshot(true, false);
+                }
+            },
+            .text => |*text| {
+                if (text.program_inputs_id == program_inputs_id) {
+                    state.redraw_needed = true;
+                    snapshots.triggerNewSnapshot(true, false);
                 }
             },
             else => {},

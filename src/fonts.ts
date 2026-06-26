@@ -21,6 +21,11 @@ export function init(getFontUrlFn: (fontId: number) => string) {
   paper.setup(new paper.Size(1, 1))
 }
 
+export function deinit() {
+  fonts.clear()
+  paper.project.activeLayer.removeChildren()
+}
+
 export async function loadFont(fontId: number) {
   if (fonts.has(fontId)) {
     return

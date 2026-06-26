@@ -23,10 +23,12 @@ pub fn computeShape(
         resize,
     );
 
-    const points = if (paths[0].len == 8)
-        try flatter_paths(paths)
-    else
-        try flatter_paths(try sanitize_paths(paths));
+    if (paths[0].len == 4) {
+        sdf_tex.force_outside = true;
+        return sdf_tex;
+    }
+
+    const points = try flatter_paths(try sanitize_paths(paths));
 
     for (points) |*point| {
         if (path_utils.isStraightLineHandle(point.*)) {
@@ -42,6 +44,8 @@ pub fn computeShape(
 
     sdf_tex.points = points;
     sdf_tex.valid = points.len > 0;
+    sdf_tex.force_outside = points.len == 8;
+
     sdf_tex.arc_lengths = try get_arc_lengths(points);
     sdf_tex.max_distances = try get_max_distances(points);
 
@@ -123,18 +127,61 @@ fn ensureClockwiseOrientation(paths: [][]types.Point) void {
     }
 }
 
-// Signed area of the polygon formed by the curve endpoints (p0 → p3 of every
-// curve). For any non-self-intersecting closed bezier path the SIGN of this
-// polygon's area matches the sign of the region the curves actually enclose,
-// so the off-curve handles p1/p2 don't need to be sampled.
+// Exact signed area of the closed bezier path, summed segment by segment.
+// For each segment we accumulate its contribution to the Green's-theorem line
+// integral 2A = ∮(x dy − y dx) and divide by two at the end.
+//
+//   - Straight-line segments (marked by STRAIGHT_LINE_HANDLE on p1 / p2)
+//     reduce to the standard polygon-edge cross product x0·y3 − x3·y0.
+//   - Cubic-bezier segments use the closed-form integral derived from the
+//     Bernstein basis (∫B_i · dB_j/dt over [0,1]):
+//         20·A_seg =  6·(x0·y1 − x1·y0)
+//                  +  3·(x0·y2 − x2·y0)
+//                  +  1·(x0·y3 − x3·y0)
+//                  +  3·(x1·y2 − x2·y1)
+//                  +  3·(x1·y3 − x3·y1)
+//                  +  6·(x2·y3 − x3·y2)
+//     Sanity-checks: collapses to the line formula when p1 = p0 and p2 = p3,
+//     and reproduces π/4 for a quarter-circle bezier (handle length
+//     4/3·(√2 − 1)).
+//
+// The previous implementation used only the polygon of endpoints (one cross
+// product per curve). That's a fine *sign* proxy whenever the endpoint
+// polygon has ≥3 well-separated vertices, but it collapses to zero for the
+// degenerate-but-legitimate case of a closed path with only two distinct
+// endpoints — e.g. a bezier from A to B closed by a straight line back to A.
+// In that case all the actual area sits in the bezier's handle bulge, the
+// polygon area is 0, ensureClockwiseOrientation can't decide which way to
+// flip, and the shape comes out with inverted fill (see ADRs/SDF rendering
+// for why winding matters). Sampling the handles fixes it for the same cost
+// as a few extra multiplies per curve.
+//
+// "Clockwise" in y-up math has NEGATIVE signed area (caller flips on
+// positive), matching the convention documented on ensureClockwiseOrientation.
 fn signedArea(path: []const types.Point) f32 {
     var doubled_area: f32 = 0;
     const num_curves = path.len / 4;
     var ci: usize = 0;
     while (ci < num_curves) : (ci += 1) {
-        const a = path[ci * 4 + 0];
-        const b = path[ci * 4 + 3];
-        doubled_area += a.x * b.y - b.x * a.y;
+        const p0 = path[ci * 4 + 0];
+        const p1 = path[ci * 4 + 1];
+        const p2 = path[ci * 4 + 2];
+        const p3 = path[ci * 4 + 3];
+        const is_straight = path_utils.isStraightLineHandle(p1) or path_utils.isStraightLineHandle(p2);
+        if (is_straight) {
+            doubled_area += p0.x * p3.y - p3.x * p0.y;
+        } else {
+            // 20·A_seg from the Bernstein integral (see header comment),
+            // divided by 10 to land on 2·A_seg in `doubled_area`'s units.
+            const twenty_A =
+                6.0 * (p0.x * p1.y - p1.x * p0.y) +
+                3.0 * (p0.x * p2.y - p2.x * p0.y) +
+                1.0 * (p0.x * p3.y - p3.x * p0.y) +
+                3.0 * (p1.x * p2.y - p2.x * p1.y) +
+                3.0 * (p1.x * p3.y - p3.x * p1.y) +
+                6.0 * (p2.x * p3.y - p3.x * p2.y);
+            doubled_area += twenty_A / 10.0;
+        }
     }
     return doubled_area * 0.5;
 }
@@ -578,14 +625,51 @@ fn chordIntersect(
     return .{ s, t };
 }
 
+/// A SubBox is "flat" when both handles lie within FLATNESS_TOLERANCE of the
+/// chord p0→p3. At that point the chord is an accurate stand-in for the curve
+/// and a single chord-vs-chord intersection settles the pair — further
+/// subdivision can't move the answer. Crucially this check is independent of
+/// bbox size: a long straight line has a huge bbox yet is perfectly flat, so
+/// the existing bbox-shrinks-below-tolerance leaf never fires for it.
+///
+/// That bbox-only leaf is exactly what made two overlapping segments freeze
+/// the bake: when two curves lie on top of each other their bboxes overlap
+/// at every subdivision level, so recursion only stopped at
+/// MAX_SUBDIVISION_DEPTH (~2^24 pair tests for a single overlapping pair).
+/// With the flatness leaf, two long flat curves bottom out at depth 0:
+/// chord-vs-chord returns null for parallel / coincident chords, so the
+/// overlap silently produces no crossings — which matches the intent
+/// (overlapping lines are not transverse self-intersections and shouldn't
+/// be split).
+///
+/// Straight-line sub-curves (carrying STRAIGHT_LINE_HANDLE) are flat by
+/// definition; we short-circuit so we don't run the perpendicular-distance
+/// math on the sentinel handle values.
+const FLATNESS_TOLERANCE: f32 = SUBDIVISION_TOLERANCE;
+fn isCurveFlat(b: SubBox) bool {
+    if (b.is_straight) return true;
+    const cx = b.p3.x - b.p0.x;
+    const cy = b.p3.y - b.p0.y;
+    const chord_len_sq = cx * cx + cy * cy;
+    if (chord_len_sq < 1e-12) return true; // degenerate chord; nothing to subdivide
+    const inv_chord_len = 1.0 / @sqrt(chord_len_sq);
+    // Perpendicular distance from each handle to the chord, computed as
+    // |cross(handle - p0, chord)| / |chord|.
+    const d1 = @abs((b.p1.x - b.p0.x) * cy - (b.p1.y - b.p0.y) * cx) * inv_chord_len;
+    const d2 = @abs((b.p2.x - b.p0.x) * cy - (b.p2.y - b.p0.y) * cx) * inv_chord_len;
+    return d1 < FLATNESS_TOLERANCE and d2 < FLATNESS_TOLERANCE;
+}
+
 /// Recursively bisect two curves, halving whichever still has the larger
 /// bounding box. When both bboxes have shrunk below SUBDIVISION_TOLERANCE,
-/// fall back to a parametric chord-vs-chord intersection: bbox overlap at
-/// that scale just means "the two curves come close here", not "they cross
-/// here", and treating proximity as a crossing was producing tens of phantom
-/// splits per glyph. The endpoint joints between consecutive curves (and the
-/// wrap joint at the seam) are filtered out before recording — they're
-/// shared p0/p3 of the path, not real crossings.
+/// or when both curves are flat enough that their chord is a faithful
+/// proxy (see isCurveFlat), fall back to a parametric chord-vs-chord
+/// intersection: bbox overlap at that scale just means "the two curves come
+/// close here", not "they cross here", and treating proximity as a crossing
+/// was producing tens of phantom splits per glyph. The endpoint joints
+/// between consecutive curves (and the wrap joint at the seam) are filtered
+/// out before recording — they're shared p0/p3 of the path, not real
+/// crossings.
 fn findCurvePairIntersections(
     a: SubBox,
     b: SubBox,
@@ -603,7 +687,21 @@ fn findCurvePairIntersections(
     const a_size = boxLargestSide(a_bb);
     const b_size = boxLargestSide(b_bb);
 
-    if ((a_size < SUBDIVISION_TOLERANCE and b_size < SUBDIVISION_TOLERANCE) or depth >= MAX_SUBDIVISION_DEPTH) {
+    // Two leaf conditions feed the same chord-vs-chord settle below:
+    //   - bbox-shrink: the original signal, fires once both sub-curves are
+    //     localised to a sub-pixel patch.
+    //   - flatness: catches sub-curves whose chord already represents them
+    //     accurately even though the bbox is still large (long straight
+    //     lines, lightly-curved arcs). Without this, two segments lying on
+    //     top of each other recursed all the way to MAX_SUBDIVISION_DEPTH
+    //     because their bboxes overlap at every level — billions of
+    //     pair-tests for a single overlapping pair, which is what froze the
+    //     bake. Now they bottom out at depth 0 and chordIntersect cleanly
+    //     reports null for the parallel / coincident case.
+    if ((a_size < SUBDIVISION_TOLERANCE and b_size < SUBDIVISION_TOLERANCE) or
+        (isCurveFlat(a) and isCurveFlat(b)) or
+        depth >= MAX_SUBDIVISION_DEPTH)
+    {
         // At this scale each sub-curve is essentially its chord; use a real
         // line-line intersection to confirm the curves actually cross instead
         // of just brushing past each other.
@@ -1095,7 +1193,7 @@ fn flatter_paths(paths: [][]types.Point) ![]types.Point {
     return points;
 }
 
-fn get_arc_lengths(points: []types.Point) ![]f32 {
+pub fn get_arc_lengths(points: []const types.Point) ![]f32 {
 
     // jsut happened that we want 4 sampels per curve and also we have 4 poitns per curve, it's coincidence
     const arc_lengths = try std.heap.page_allocator.alloc(f32, points.len + 1);
@@ -1141,7 +1239,7 @@ fn get_arc_lengths(points: []types.Point) ![]f32 {
     return arc_lengths;
 }
 
-fn get_max_distances(points: []types.Point) ![]f32 {
+pub fn get_max_distances(points: []const types.Point) ![]f32 {
     // =========================================================================
     // MEDIAL-AXIS DISTANCE  (max_distances_list)
     // =========================================================================

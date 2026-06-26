@@ -12,10 +12,8 @@ const lines = @import("../lines.zig");
 const Matrix3x3 = @import("../matrix.zig").Matrix3x3;
 const sdf_drawing = @import("../sdf/drawing.zig");
 const asset_props = @import("../asset_props.zig");
-const fill = @import("../sdf/fill.zig");
 const typography_props = @import("typography_props.zig");
 const js_glue = @import("../js_glue.zig");
-const sdf_effect = @import("../sdf/effect.zig");
 
 const ENTER_CHAR_CODE: u21 = 0xa;
 const SOFT_BREAK_MARKER: u21 = 0x2060;
@@ -28,7 +26,7 @@ pub const CharVertex = struct {
 
     pub fn getDrawBounds(
         self: CharVertex,
-        effects_padding_world: f32,
+        sdf_padding_world: f32,
         ch_sdf_tex: sdf_drawing.SdfTex,
         matrix: Matrix3x3,
         scale: f32,
@@ -46,7 +44,7 @@ pub const CharVertex = struct {
 
         return sdf_drawing.getDrawBounds(
             bounds,
-            effects_padding_world,
+            sdf_padding_world,
             Point{ .x = 0, .y = 0 },
             ch_sdf_tex,
             scale,
@@ -66,12 +64,14 @@ pub const Text = struct {
     bounds: [4]PointUV,
     text_vertex: std.ArrayList(CharVertex),
 
-    is_sdf_shared: bool = false,
     sdf_tex: sdf_drawing.SdfTex,
 
     props: asset_props.Props,
-    effects: std.ArrayList(sdf_effect.Effect),
+    program_id: u32,
+    program_inputs_id: u32,
     typo_props: typography_props.Props,
+
+    padding: f32,
 
     pub fn new(
         allocator: std.mem.Allocator,
@@ -79,21 +79,23 @@ pub const Text = struct {
         content: []const u8,
         bounds: [4]PointUV,
         props: asset_props.Props,
-        input_effects: []const sdf_effect.Serialized,
+        program_id: u32,
+        program_inputs_id: u32,
         input_typo_props: typography_props.Serialized,
         sdf_texture_id: u32,
-        is_sdf_shared: bool,
+        padding: f32,
     ) !Text {
         var text = Text{
             .id = id,
             .content = try allocator.dupe(u8, content),
-            .typo_props = typography_props.deserialize(input_typo_props),
             .bounds = bounds,
-            .text_vertex = std.ArrayList(CharVertex).init(allocator),
             .props = props,
-            .effects = try sdf_effect.deserialize(input_effects, allocator),
+            .program_id = program_id,
+            .program_inputs_id = program_inputs_id,
+            .typo_props = typography_props.deserialize(input_typo_props),
             .sdf_tex = sdf_drawing.SdfTex{ .id = sdf_texture_id },
-            .is_sdf_shared = is_sdf_shared,
+            .text_vertex = std.ArrayList(CharVertex).init(allocator),
+            .padding = padding,
         };
 
         _ = try text.computeText(0, 0);
@@ -124,7 +126,7 @@ pub const Text = struct {
     ) !ComputeTextResult {
         defer chars.requestCharsSdfs(self.*) catch @panic("Failed to request SDFs for text chars in computeText");
 
-        if (self.is_sdf_shared) {
+        if (self.typo_props.is_sdf_shared) {
             self.sdf_tex.is_outdated = true;
         }
 
@@ -384,22 +386,12 @@ pub const Text = struct {
     }
 
     pub fn getDrawBounds(self: Text) [6]PointUV {
-        const effects_padding_world = sdf_drawing.getSdfPadding(self.effects.items);
-
         return sdf_drawing.getDrawBounds(
             self.bounds,
-            effects_padding_world,
+            self.padding,
             Point{ .x = 0, .y = 0 },
             self.sdf_tex,
             1.0,
-        );
-    }
-
-    pub fn getDrawUniform(self: Text, effects: sdf_effect.Effect, sdf_scale: f32) sdf_drawing.DrawUniform {
-        return sdf_drawing.getDrawUniform(
-            effects,
-            sdf_scale,
-            self.props.opacity,
         );
     }
 
@@ -409,43 +401,35 @@ pub const Text = struct {
 
         return Text{
             .id = utils.generateId(),
+            .program_id = self.program_id,
+            .program_inputs_id = self.program_inputs_id,
             .content = cloned_content,
             .bounds = self.bounds,
             .text_vertex = try self.text_vertex.clone(),
-            .is_sdf_shared = self.is_sdf_shared,
             .sdf_tex = sdf_drawing.SdfTex{ .id = js_glue.createSdfTexture() },
             .props = self.props,
-            .effects = try sdf_effect.clone(self.effects),
             .typo_props = self.typo_props,
+            .padding = self.padding,
         };
     }
 
-    pub fn serialize(self: Text, allocator: std.mem.Allocator) !Serialized {
-        var effects_list = std.ArrayList(sdf_effect.Serialized).init(allocator);
-        for (self.effects.items) |effect| {
-            try effects_list.append(sdf_effect.Serialized{
-                .dist_start = effect.dist_start,
-                .dist_end = effect.dist_end,
-                .fill = try effect.fill.serialize(allocator),
-            });
-        }
-
+    pub fn serialize(self: Text) Serialized {
         return Serialized{
             .id = self.id,
             .content = self.content,
             .bounds = self.bounds,
             .props = self.props,
-            .effects = try effects_list.toOwnedSlice(),
+            .program_id = self.program_id,
+            .program_inputs_id = self.program_inputs_id,
             .typo_props = self.typo_props.serialize(),
             .sdf_texture_id = self.sdf_tex.id,
-            .is_sdf_shared = self.is_sdf_shared,
+            .padding = self.padding,
         };
     }
 
     pub fn deinit(self: *Text) void {
         std.heap.page_allocator.free(self.content);
         self.text_vertex.deinit();
-        sdf_effect.deinit(self.effects);
     }
 };
 
@@ -455,18 +439,19 @@ pub const Serialized = struct {
     // to avoid throwing the exception by Zigar
     bounds: [4]PointUV,
     props: asset_props.Props,
-    effects: []sdf_effect.Serialized,
+    program_id: u32,
+    program_inputs_id: u32,
     typo_props: typography_props.Serialized,
     sdf_texture_id: u32,
-    is_sdf_shared: bool,
+    padding: f32,
 
     pub fn compare(self: Serialized, other: Serialized) bool {
         const all_match = self.id == other.id and
             self.props.compare(other.props) and
-            self.is_sdf_shared == other.is_sdf_shared and
             utils.compareBounds(self.bounds, other.bounds) and
             self.typo_props.compare(other.typo_props) and
-            sdf_effect.compareSerialized(self.effects, other.effects) and
+            self.program_id == other.program_id and
+            self.program_inputs_id == other.program_inputs_id and
             std.mem.eql(u8, self.content orelse &.{}, other.content orelse &.{});
 
         return all_match;
