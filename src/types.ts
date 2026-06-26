@@ -61,6 +61,7 @@ export type TypoProps = {
   font_size: number
   font_family_id: number
   line_height: number
+  is_sdf_shared: boolean
 }
 
 /* type WITHOUT prefix "Zig" are used in API */
@@ -92,7 +93,6 @@ export type Text = {
   inputs: ProgramInputs
   typo_props: TypoProps
   sdf_texture_id: number | null
-  is_sdf_shared: boolean
 }
 
 export type Asset = Image | Shape | Text
@@ -137,7 +137,6 @@ type ZigText = {
   program_inputs_id: number
   typo_props: TypoProps
   sdf_texture_id: number | null
-  is_sdf_shared: boolean
   padding: number
 }
 

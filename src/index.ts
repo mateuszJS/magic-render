@@ -226,6 +226,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
       context.unconfigure()
       destroyCanvasTextures()
       device.destroy()
+      Fonts.deinit()
     },
     setTool: (tool) => {
       props.onUpdateTool(tool)

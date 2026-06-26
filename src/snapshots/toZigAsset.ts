@@ -49,7 +49,6 @@ export default function toZigAsset(asset: Asset, captureError: (error: unknown) 
         program_id: programId,
         program_inputs_id,
         sdf_texture_id: asset.sdf_texture_id ?? Textures.createSDF(),
-        is_sdf_shared: asset.is_sdf_shared,
         padding,
       },
     }

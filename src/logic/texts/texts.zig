@@ -64,7 +64,6 @@ pub const Text = struct {
     bounds: [4]PointUV,
     text_vertex: std.ArrayList(CharVertex),
 
-    is_sdf_shared: bool = false,
     sdf_tex: sdf_drawing.SdfTex,
 
     props: asset_props.Props,
@@ -84,7 +83,6 @@ pub const Text = struct {
         program_inputs_id: u32,
         input_typo_props: typography_props.Serialized,
         sdf_texture_id: u32,
-        is_sdf_shared: bool,
         padding: f32,
     ) !Text {
         var text = Text{
@@ -96,7 +94,6 @@ pub const Text = struct {
             .program_inputs_id = program_inputs_id,
             .typo_props = typography_props.deserialize(input_typo_props),
             .sdf_tex = sdf_drawing.SdfTex{ .id = sdf_texture_id },
-            .is_sdf_shared = is_sdf_shared,
             .text_vertex = std.ArrayList(CharVertex).init(allocator),
             .padding = padding,
         };
@@ -129,7 +126,7 @@ pub const Text = struct {
     ) !ComputeTextResult {
         defer chars.requestCharsSdfs(self.*) catch @panic("Failed to request SDFs for text chars in computeText");
 
-        if (self.is_sdf_shared) {
+        if (self.typo_props.is_sdf_shared) {
             self.sdf_tex.is_outdated = true;
         }
 
@@ -409,7 +406,6 @@ pub const Text = struct {
             .content = cloned_content,
             .bounds = self.bounds,
             .text_vertex = try self.text_vertex.clone(),
-            .is_sdf_shared = self.is_sdf_shared,
             .sdf_tex = sdf_drawing.SdfTex{ .id = js_glue.createSdfTexture() },
             .props = self.props,
             .typo_props = self.typo_props,
@@ -427,7 +423,6 @@ pub const Text = struct {
             .program_inputs_id = self.program_inputs_id,
             .typo_props = self.typo_props.serialize(),
             .sdf_texture_id = self.sdf_tex.id,
-            .is_sdf_shared = self.is_sdf_shared,
             .padding = self.padding,
         };
     }
@@ -448,13 +443,11 @@ pub const Serialized = struct {
     program_inputs_id: u32,
     typo_props: typography_props.Serialized,
     sdf_texture_id: u32,
-    is_sdf_shared: bool,
     padding: f32,
 
     pub fn compare(self: Serialized, other: Serialized) bool {
         const all_match = self.id == other.id and
             self.props.compare(other.props) and
-            self.is_sdf_shared == other.is_sdf_shared and
             utils.compareBounds(self.bounds, other.bounds) and
             self.typo_props.compare(other.typo_props) and
             self.program_id == other.program_id and

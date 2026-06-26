@@ -94,7 +94,7 @@ async function test() {
 
       if ('content' in selectedAsset) {
         sharedTextEffects.style.display = 'block'
-        sharedTextEffects.checked = selectedAsset.is_sdf_shared
+        sharedTextEffects.checked = selectedAsset.typo_props.is_sdf_shared
         fontSizeInput.value = selectedAsset.typo_props.font_size.toString()
       } else {
         sharedTextEffects.style.display = 'none'
@@ -235,7 +235,10 @@ async function test() {
       if (asset.id === selectedAssetId && 'content' in asset) {
         return {
           ...asset,
-          is_sdf_shared: sharedTextEffects.checked,
+          typo_props: {
+            ...asset.typo_props,
+            is_sdf_shared: sharedTextEffects.checked,
+          },
         }
       }
 

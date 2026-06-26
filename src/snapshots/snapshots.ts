@@ -63,7 +63,6 @@ export function saveSnapshot(snapshot: ZigProjectSnapshot) {
         program: toProgram(asset.text.program_id),
         inputs: toProgramInputs(asset.text.program_inputs_id),
         sdf_texture_id: asset.text.sdf_texture_id,
-        is_sdf_shared: asset.text.is_sdf_shared,
       }
     } else {
       throw Error('Unknown asset type')

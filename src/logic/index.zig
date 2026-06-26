@@ -172,7 +172,7 @@ pub fn updateRenderScale(zoom: f32, pixel_density: f32) !void {
             .text => |*text| {
                 try chars.requestCharsSdfs(text.*);
 
-                if (text.is_sdf_shared) {
+                if (text.typo_props.is_sdf_shared) {
                     const sdf_dims = sdf_drawing.getTexture(
                         text.sdf_tex.id,
                         text.bounds,
@@ -849,7 +849,7 @@ pub fn computePhase() !void {
             },
 
             .text => |*text| {
-                if (text.is_sdf_shared) {
+                if (text.typo_props.is_sdf_shared) {
                     if (!text.sdf_tex.is_outdated) continue;
 
                     if (!fonts.isReady) continue;
@@ -1005,7 +1005,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
 
                 const is_typing_ui = !is_ui_hidden and state.tool == .Text and assets.selected_asset_id.getPrim() == text.id;
 
-                if (text.is_sdf_shared) {
+                if (text.typo_props.is_sdf_shared) {
                     const bounds = text.getDrawBounds();
                     webgpu_glue.draw_shape(
                         &bounds,
@@ -1029,7 +1029,7 @@ pub fn renderDraw(is_ui_hidden: bool) !void {
 
                 for (text.text_vertex.items, 0..) |vertex, i| {
                     if (vertex.char) |char| {
-                        if (!text.is_sdf_shared) {
+                        if (!text.typo_props.is_sdf_shared) {
                             const ch_d = try fonts.get(text.typo_props.font_family_id, char);
 
                             if (ch_d.sdf_tex) |char_sdf_tex| {
@@ -1341,7 +1341,7 @@ pub fn setSelectedAssetProgramId(program_id: u32, program_inputs_id: u32, paddin
 
                 try chars.requestCharsSdfs(text.*);
 
-                if (text.is_sdf_shared) {
+                if (text.typo_props.is_sdf_shared) {
                     text.sdf_tex.is_outdated = true;
                 }
             },
@@ -1418,7 +1418,7 @@ pub fn addFont(font_id: u32) !void {
             .img => {},
             .shape => {},
             .text => |*text| {
-                // defualt font is used as fallback
+                // default font is used as fallback
                 if (font_id == DEFAULT_FONT_ID or text.typo_props.font_family_id == font_id) {
                     state.redraw_needed = true;
 

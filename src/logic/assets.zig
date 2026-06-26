@@ -113,7 +113,6 @@ pub fn addText(
     program_inputs_id: u32,
     typo_props: typography_props.Serialized,
     sdf_texture_id: u32,
-    is_sdf_shared: bool,
     padding: f32,
 ) !texts.Text {
     const id = if (id_or_zero == 0) utils.generateId() else id_or_zero;
@@ -127,7 +126,6 @@ pub fn addText(
         program_inputs_id,
         typo_props,
         sdf_texture_id,
-        is_sdf_shared,
         padding,
     );
     try assets.put(id, types.Asset{ .text = text });
@@ -162,7 +160,6 @@ pub fn createText(x: f32, y: f32, width: f32, font_size: f32, line_height: f32) 
         consts.DEFAULT_INPUTS_ID,
         typo_props,
         js_glue.createSdfTexture(),
-        false,
         consts.SKELETON_LINE_WIDTH * 0.5,
     );
 }
@@ -227,7 +224,6 @@ pub fn resetTo(snapshot_assets: []const types.AssetSerialized) !void {
                     text.program_inputs_id,
                     text.typo_props,
                     text.sdf_texture_id,
-                    text.is_sdf_shared,
                     text.padding,
                 );
             },
