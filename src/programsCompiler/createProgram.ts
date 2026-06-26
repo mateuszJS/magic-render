@@ -81,12 +81,16 @@ export function createProgram(codeSnippets: CodeSnippet[], newId: number): Custo
           offset: err.offset - offset,
           type: err.type,
         }))
+
         console.log(`===========FAILED COMPILATION FOR PROGRAM ID: ${newId}==========`)
         console.log(messages)
         console.log('---codeSnippet---', mergedCode)
         console.log('---uniformCode---', uniformCode)
         console.log('---customFunctions---', customFunctions)
-      } else {
+      }
+
+      const isError = messages.some((msg) => msg.type === 'error')
+      if (!isError) {
         program.execute = executeCallback
       }
 
