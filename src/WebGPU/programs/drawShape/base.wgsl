@@ -526,18 +526,6 @@ struct Refined {
   let safe_dist_derivative = select(0.0, dist_derivative, dist_derivative <= FWIDTH_VALID_LIMIT);
   let alpha_smooth_factor = max(safe_dist_derivative * 0.5, EPSILON);
 
-
-  // TODO: should this be done like this? Currently distance is not the only thing that impact boundaries of the output.
-  // let dist_start = u.dist_start * u.texture_scale;
-  // let dist_end = u.dist_end * u.texture_scale;
-  // let inner_alpha = smoothstep(dist_start - alpha_smooth_factor, dist_start + alpha_smooth_factor, s.signed_distance);
-  // let outer_alpha = smoothstep(dist_end   - alpha_smooth_factor, dist_end   + alpha_smooth_factor, s.signed_distance);
-  // let alpha = outer_alpha - inner_alpha;
-
-  // let inner_alpha = smoothstep(0 - alpha_smooth_factor, 0 + alpha_smooth_factor, s.signed_distance);
-  // let outer_alpha = smoothstep(0 - alpha_smooth_factor, 0 + alpha_smooth_factor, s.signed_distance);
-  // let alpha = select(0.0, 1.0, s.signed_distance > 0);
-
   var color = _priv_X821b6_getColor(s);
   color = vec4f(color * u.opacity);
   // var color = _priv_X821b6_getColor(s.signed_distance, s.t, s.blend_angle, uv, vsOut.norm_uv, s.norm_distance);
@@ -550,8 +538,6 @@ struct Refined {
   // }
 
   let final_result = color;
-  // return final_result;
-  // let final_result = vec4f(color.rgb, color.a * alpha);
 
   if (base_u.debug_type > 0u) {
 

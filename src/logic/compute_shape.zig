@@ -27,18 +27,6 @@ pub fn computeShape(
         sdf_tex.force_outside = true;
         return sdf_tex;
     }
-    // else if (paths[0].len == 8) {
-    //     // bypass rendering straight lines
-    //     const is_only_straight_line =
-    //         path_utils.isStraightLineHandle(paths[0][1]) and
-    //         path_utils.isStraightLineHandle(paths[0][2]) and
-    //         path_utils.isStraightLineHandle(paths[1][1]) and
-    //         path_utils.isStraightLineHandle(paths[1][2]);
-
-    //     if (is_only_straight_line) {
-    //         return sdf_tex;
-    //     }
-    // }
 
     const points = try flatter_paths(try sanitize_paths(paths));
 

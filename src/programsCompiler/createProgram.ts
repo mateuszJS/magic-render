@@ -16,6 +16,7 @@ export function mergeCode(codeSnippets: CodeSnippet[]) {
       return acc.replaceAll(inputName, `${inputName}_${snippet.id}`)
     }, snippet.content)
 
+    // example of a shader code snippet:
     // let fill = c_Color_<program_index>(s);
     // let progress = t_progress_<program_index>(s);
     // let dist = d_distance_<program_index>(s);

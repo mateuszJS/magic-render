@@ -120,8 +120,9 @@ export function getSerializationInfo(
         }
       }
     }
-    // TODO: think about removing, we cannot do it right away because it might be used next frame still
-    // we should probably "schedule" program for deletion
+    // TODO: think about removing, we cannot do it right away because it might be used next frame still.
+    // Old program is used until new one is compiled & ready
+    // we should probably "schedule" inputs for deletion
   }
 
   const newId = inputsIdCounter++

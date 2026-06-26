@@ -290,17 +290,6 @@ pub const Shape = struct {
         return skeleton_buffer.toOwnedSlice();
     }
 
-    // pub fn getSkeletonUniform(self: Shape) sdf_drawing.DrawUniform {
-    //     const stroke_width = path_utils.SKELETON_LINE_WIDTH * self.sdf_tex.scale * shared.ui_scale;
-    //     return sdf_drawing.DrawUniform{
-    //         .solid = .{
-    //             .dist_start = stroke_width * 0.5,
-    //             .dist_end = -stroke_width * 0.5,
-    //             .color = .{ 0.0, 0.0, 1.0, 1.0 },
-    //         },
-    //     };
-    // }
-
     pub fn getSkeletonPickVertexData(
         self: Shape,
         allocator: std.mem.Allocator,

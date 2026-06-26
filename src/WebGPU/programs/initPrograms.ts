@@ -4,9 +4,6 @@ import getDrawtexture from './drawTexture/getProgram'
 import getPickTexture from './pickTexture/getProgram'
 import getPickTriangle from './pickTriangle/getProgram'
 import getDrawShape from './drawShape/getProgram'
-import solidFS from './drawShape/solid.wgsl'
-import linearGradientFS from './drawShape/linear-gradient.wgsl'
-import radialGradientFS from './drawShape/radial-gradient.wgsl'
 import getPickShape from './pickShape/getProgram'
 import getComputeShape from './computeShape/getProgram'
 import getCombineSdf from './combineSdf/getProgram'
@@ -45,11 +42,7 @@ export function destroyGpuObjects() {
   gpuObjectToDestroy = []
 }
 
-export default function initPrograms(
-  device: GPUDevice,
-  presentationFormat: GPUTextureFormat,
-  isTest: boolean
-) {
+export default function initPrograms(device: GPUDevice, presentationFormat: GPUTextureFormat) {
   canvasMatrix.buffer = device.createBuffer({
     label: 'uniforms',
     size: 16 /*projection matrix*/ * 4,
@@ -67,39 +60,6 @@ export default function initPrograms(
   drawTexture = getDrawtexture(device, presentationFormat)
   pickTexture = getPickTexture(device, pickCanvasMatrixBuffer)
   pickTriangle = getPickTriangle(device, pickCanvasMatrixBuffer)
-  // drawSolidShape = getDrawShape(
-  //   device,
-  //   presentationFormat,
-  //   solidFS,
-  //   1 /*dist_start*/ + 1 /*dist_end*/ + 2 /*padding*/ + 4 /*color*/,
-  //   isTest
-  // )
-  // drawLinearGradientShape = getDrawShape(
-  //   device,
-  //   presentationFormat,
-  //   linearGradientFS,
-  //   1 /*dist_start*/ +
-  //     1 /*dist_end*/ +
-  //     1 /*stops counts*/ +
-  //     1 /*padding*/ +
-  //     2 /*start*/ +
-  //     2 /*end*/ +
-  //     (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/,
-  //   isTest
-  // )
-  // drawRadialGradientShape = getDrawShape(
-  //   device,
-  //   presentationFormat,
-  //   radialGradientFS,
-  //   1 /*dist_start*/ +
-  //     1 /*dist_end*/ +
-  //     1 /*stops_count*/ +
-  //     1 /*radius_ratio*/ +
-  //     2 /*start*/ +
-  //     2 /*end*/ +
-  //     (4 /*color*/ + 1 /*offset*/ + 3) /*padding*/ * 10 /*stops*/,
-  //   isTest
-  // )
   pickShape = getPickShape(device, pickCanvasMatrixBuffer)
   computeShape = getComputeShape(device)
   combineSdf = getCombineSdf(device)

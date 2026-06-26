@@ -76,7 +76,7 @@ export default async function initCreator({ canvas, ...props }: CreatorProps): P
     updateRenderScale()
   })
 
-  initPrograms(device, presentationFormat, props.isTest)
+  initPrograms(device, presentationFormat)
 
   initMouseController(
     canvas,

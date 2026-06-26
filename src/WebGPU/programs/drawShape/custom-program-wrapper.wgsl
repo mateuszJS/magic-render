@@ -8,6 +8,6 @@ ${CUSTOM_PROGRAM_CODE}
   return _priv_X821b6_total_color;
 }
 
-// example of custom program code:
+// example of a custom program code:
 // "program":{"code": "color=vec4f(abs(signed_distance*0.01),path_t%1,angle/6.24,1);"}
-// IMPORTANT: empty lien at the end to avoid conflicts while merging next piece of code
+// IMPORTANT: empty line at the end is needed to avoid conflicts while merging next piece of code

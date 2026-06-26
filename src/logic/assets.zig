@@ -167,7 +167,6 @@ pub fn createText(x: f32, y: f32, width: f32, font_size: f32, line_height: f32) 
 pub fn createShape() !u32 {
     const props = asset_props.Props{
         .blur = null,
-        // .blur = .{ .x = 30, .y = 30 },
     };
 
     const id = try addShape(

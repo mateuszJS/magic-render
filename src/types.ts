@@ -24,21 +24,6 @@ export type BoundingBox = {
 export type Color = [number, number, number, number]
 export type Id = [number, number, number, number]
 
-// export type GradientStop = {
-//   color: Color
-//   offset: number // 0..1
-// }
-
-// export type LinearGradient = {
-//   start: Point
-//   end: Point
-//   stops: GradientStop[]
-// }
-
-// export type RadialGradient = LinearGradient & {
-//   radius_ratio: number
-// }
-
 export type CodeSnippet = {
   id: number
   content: string
